@@ -1,13 +1,53 @@
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { config } from "../config.js";
 import { decodePayload, isPayloadDecodeError } from "../payload.js";
 import { closeAlertForHanger, openAlertForHanger } from "../services/alert-flow.js";
+import { getLowBatteryThreshold } from "../services/system-settings.js";
+import { notifyEmail, notifyPush, notifySms } from "../services/notifications.js";
 
 interface TtsUplink {
   end_device_ids: { dev_eui: string };
   uplink_message: { f_port: number; frm_payload: string };
+}
+
+async function maybeFireLowBatteryAlert(
+  hangerId: string,
+  hangerLabel: string,
+  oldPct: number | null,
+  newPct: number,
+): Promise<void> {
+  const threshold = await getLowBatteryThreshold();
+  const wasAbove = oldPct === null || oldPct > threshold;
+  const nowBelow = newPct <= threshold;
+  if (!wasAbove || !nowBelow) return;
+
+  const recipients = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(
+      isNull(schema.users.deactivatedAt),
+    ));
+
+  const adminAndSupervisors = await db
+    .select({ id: schema.users.id, role: schema.users.role })
+    .from(schema.users)
+    .where(isNull(schema.users.deactivatedAt));
+
+  for (const u of adminAndSupervisors) {
+    if (u.role !== "admin" && u.role !== "supervisor") continue;
+    const ctx = {
+      alertId: null,
+      userId: u.id,
+      title: "Hanger battery low",
+      body: `${hangerLabel} battery at ${newPct}% (threshold ${threshold}%)`,
+      kind: "low_battery" as const,
+    };
+    await notifyPush(ctx);
+    await notifyEmail(ctx);
+  }
+  void recipients;
 }
 
 export default async function webhookRoutes(app: FastifyInstance): Promise<void> {
@@ -46,6 +86,8 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
       return reply.code(202).send({ status: "unknown_hanger" });
     }
 
+    const oldBattery = hanger.batteryPct;
+
     await db
       .update(schema.hangers)
       .set({
@@ -61,6 +103,9 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
       batteryPct: decoded.batteryPct,
       rawPayload: frmPayload,
     });
+
+    const hangerLabel = hanger.devEui;
+    void maybeFireLowBatteryAlert(hanger.id, hangerLabel, oldBattery, decoded.batteryPct);
 
     if (hanger.status !== "active") {
       return reply.send({ status: "ok", hangerStatus: hanger.status });

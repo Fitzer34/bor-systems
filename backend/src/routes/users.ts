@@ -26,6 +26,48 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  app.patch("/users/me", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const body = z
+      .object({
+        name: z.string().min(1).optional(),
+        phoneE164: z.string().regex(/^\+[1-9]\d{6,14}$/).nullable().optional(),
+        locale: z.string().min(2).max(10).optional(),
+      })
+      .safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+    const userId = (req.user as { sub: string }).sub;
+    await db.update(schema.users).set(body.data).where(eq(schema.users.id, userId));
+    await db.insert(schema.auditLog).values({
+      actorUserId: userId,
+      action: "user.profile_updated",
+      targetType: "user",
+      targetId: userId,
+      metadata: body.data,
+    });
+    return { ok: true };
+  });
+
+  app.post("/users/me/password", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const body = z
+      .object({ currentPassword: z.string().min(1), newPassword: z.string().min(8).max(200) })
+      .safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+    const userId = (req.user as { sub: string }).sub;
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+    if (!user) return reply.code(404).send({ error: "not_found" });
+    const ok = await argon2.verify(user.passwordHash, body.data.currentPassword);
+    if (!ok) return reply.code(401).send({ error: "wrong_current_password" });
+    const newHash = await argon2.hash(body.data.newPassword);
+    await db.update(schema.users).set({ passwordHash: newHash }).where(eq(schema.users.id, userId));
+    await db.insert(schema.auditLog).values({
+      actorUserId: userId,
+      action: "user.password_changed",
+      targetType: "user",
+      targetId: userId,
+    });
+    return { ok: true };
+  });
+
   app.get("/users", { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] }, async () => {
     const rows = await db
       .select({

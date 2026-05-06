@@ -13,6 +13,7 @@ import userRoutes from "./routes/users.js";
 import buildingRoutes from "./routes/buildings.js";
 import reportRoutes from "./routes/reports.js";
 import settingsRoutes from "./routes/settings.js";
+import adminLogRoutes from "./routes/admin-logs.js";
 import webhookRoutes from "./routes/webhook.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 
@@ -51,6 +52,7 @@ async function main(): Promise<void> {
   await app.register(buildingRoutes);
   await app.register(reportRoutes);
   await app.register(settingsRoutes);
+  await app.register(adminLogRoutes);
   await app.register(webhookRoutes);
 
   startEscalationTimer();

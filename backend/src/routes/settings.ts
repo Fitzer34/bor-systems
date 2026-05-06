@@ -1,8 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
-import { config } from "../config.js";
+import {
+  SETTING_KEYS,
+  getAcknowledgementTimerMinutes,
+  getDefaultAudibleAlarm,
+  getLowBatteryThreshold,
+  getResolutionTimerMinutes,
+  setBool,
+  setNumber,
+} from "../services/system-settings.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -10,22 +17,30 @@ const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) 
     if (!role || !allowed.includes(role)) return reply.code(403).send({ error: "forbidden" });
   };
 
-const RESOLUTION_KEY = "resolution_timer_minutes";
-
-export async function getResolutionTimerMinutes(): Promise<number> {
-  const [row] = await db.select().from(schema.settings).where(eq(schema.settings.key, RESOLUTION_KEY)).limit(1);
-  if (!row) return config.RESOLUTION_TIMER_MINUTES;
-  const v = (row.value as { minutes?: unknown }).minutes;
-  return typeof v === "number" && v > 0 ? v : config.RESOLUTION_TIMER_MINUTES;
+async function audit(req: any, action: string, key: string, metadata: Record<string, unknown>) {
+  const userId = (req.user as { sub: string } | undefined)?.sub ?? null;
+  await db.insert(schema.auditLog).values({
+    actorUserId: userId,
+    action,
+    targetType: "setting",
+    targetId: key,
+    metadata,
+  });
 }
 
 export default async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.get(
-    "/settings/resolution-timer",
+    "/settings",
     { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async () => {
-      const minutes = await getResolutionTimerMinutes();
-      return { minutes, default: config.RESOLUTION_TIMER_MINUTES };
+      const [resolutionMinutes, ackMinutes, lowBatteryThreshold, defaultAudibleAlarm] =
+        await Promise.all([
+          getResolutionTimerMinutes(),
+          getAcknowledgementTimerMinutes(),
+          getLowBatteryThreshold(),
+          getDefaultAudibleAlarm(),
+        ]);
+      return { resolutionMinutes, ackMinutes, lowBatteryThreshold, defaultAudibleAlarm };
     },
   );
 
@@ -35,23 +50,45 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
     async (req, reply) => {
       const body = z.object({ minutes: z.number().int().positive().max(720) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
-
-      const userId = (req.user as { sub: string }).sub;
-      await db
-        .insert(schema.settings)
-        .values({ key: RESOLUTION_KEY, value: { minutes: body.data.minutes } })
-        .onConflictDoUpdate({
-          target: schema.settings.key,
-          set: { value: { minutes: body.data.minutes }, updatedAt: new Date() },
-        });
-      await db.insert(schema.auditLog).values({
-        actorUserId: userId,
-        action: "settings.resolution_timer_set",
-        targetType: "setting",
-        targetId: RESOLUTION_KEY,
-        metadata: { minutes: body.data.minutes },
-      });
+      await setNumber(SETTING_KEYS.RESOLUTION_TIMER, body.data.minutes);
+      await audit(req, "settings.resolution_timer_set", SETTING_KEYS.RESOLUTION_TIMER, { minutes: body.data.minutes });
       return { minutes: body.data.minutes };
+    },
+  );
+
+  app.put(
+    "/settings/ack-timer",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    async (req, reply) => {
+      const body = z.object({ minutes: z.number().int().positive().max(120) }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      await setNumber(SETTING_KEYS.ACKNOWLEDGEMENT_TIMER, body.data.minutes);
+      await audit(req, "settings.ack_timer_set", SETTING_KEYS.ACKNOWLEDGEMENT_TIMER, { minutes: body.data.minutes });
+      return { minutes: body.data.minutes };
+    },
+  );
+
+  app.put(
+    "/settings/low-battery-threshold",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    async (req, reply) => {
+      const body = z.object({ pct: z.number().int().min(1).max(99) }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      await setNumber(SETTING_KEYS.LOW_BATTERY_THRESHOLD, body.data.pct);
+      await audit(req, "settings.low_battery_threshold_set", SETTING_KEYS.LOW_BATTERY_THRESHOLD, { pct: body.data.pct });
+      return { pct: body.data.pct };
+    },
+  );
+
+  app.put(
+    "/settings/default-audible-alarm",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    async (req, reply) => {
+      const body = z.object({ enabled: z.boolean() }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      await setBool(SETTING_KEYS.DEFAULT_AUDIBLE_ALARM, body.data.enabled);
+      await audit(req, "settings.default_audible_alarm_set", SETTING_KEYS.DEFAULT_AUDIBLE_ALARM, { enabled: body.data.enabled });
+      return { enabled: body.data.enabled };
     },
   );
 }

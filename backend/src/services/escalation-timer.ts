@@ -1,7 +1,7 @@
 import { and, eq, isNull, lte } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
-import { escalateAlert } from "./alert-flow.js";
-import { getResolutionTimerMinutes } from "../routes/settings.js";
+import { broadcastToOnDutyCleaners, escalateAlert } from "./alert-flow.js";
+import { getAcknowledgementTimerMinutes, getResolutionTimerMinutes } from "./system-settings.js";
 
 const TICK_MS = 30_000;
 
@@ -10,19 +10,44 @@ export function startEscalationTimer(): NodeJS.Timeout {
 }
 
 async function tick(): Promise<void> {
-  const minutes = await getResolutionTimerMinutes();
-  const cutoff = new Date(Date.now() - minutes * 60_000);
-  const due = await db
+  const [resolutionMinutes, ackMinutes] = await Promise.all([
+    getResolutionTimerMinutes(),
+    getAcknowledgementTimerMinutes(),
+  ]);
+  const now = Date.now();
+  const ackCutoff = new Date(now - ackMinutes * 60_000);
+  const resCutoff = new Date(now - resolutionMinutes * 60_000);
+
+  // Ack timeout: nobody has tapped "I'm on it" — escalate to supervisors
+  const ackTimeouts = await db
     .select({ id: schema.alerts.id })
     .from(schema.alerts)
     .where(
       and(
         isNull(schema.alerts.closedAt),
+        isNull(schema.alerts.acknowledgedAt),
         isNull(schema.alerts.escalatedAt),
-        lte(schema.alerts.openedAt, cutoff),
+        lte(schema.alerts.openedAt, ackCutoff),
       ),
     );
-  for (const a of due) await escalateAlert(a.id);
+  for (const a of ackTimeouts) await escalateAlert(a.id);
+
+  // Resolution timeout: sign still not physically returned — rebroadcast and escalate if not already
+  const resTimeouts = await db
+    .select({ id: schema.alerts.id, escalatedAt: schema.alerts.escalatedAt })
+    .from(schema.alerts)
+    .where(
+      and(
+        isNull(schema.alerts.closedAt),
+        eq(schema.alerts.rebroadcastCount, 0),
+        lte(schema.alerts.openedAt, resCutoff),
+      ),
+    );
+  for (const a of resTimeouts) {
+    await db.update(schema.alerts).set({ rebroadcastCount: 1 }).where(eq(schema.alerts.id, a.id));
+    await broadcastToOnDutyCleaners(a.id, "rebroadcast");
+    if (!a.escalatedAt) await escalateAlert(a.id);
+  }
 }
 
 export async function _runOnceForTests(): Promise<void> {

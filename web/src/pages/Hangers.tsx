@@ -26,6 +26,8 @@ export function Hangers() {
 
   const hangers = useQuery({ queryKey: ["hangers"], queryFn: () => api<{ hangers: Hanger[] }>("/hangers") });
   const buildings = useQuery({ queryKey: ["buildings"], queryFn: () => api<{ buildings: Building[] }>("/buildings") });
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<{ lowBatteryThreshold: number }>("/settings"), enabled: isAdmin || user?.role === "supervisor" });
+  const lowBatteryThreshold = settings.data?.lowBatteryThreshold ?? 20;
   const allZones = useQuery({
     queryKey: ["all-zones", buildings.data?.buildings.map((b) => b.id)],
     enabled: !!buildings.data,
@@ -139,7 +141,13 @@ export function Hangers() {
                     "bg-slate-200 text-slate-600"
                   }`}>{h.status}</span>
                 </td>
-                <td className="p-2">{h.batteryPct == null ? "—" : `${h.batteryPct}%`}</td>
+                <td className="p-2">
+                  {h.batteryPct == null ? "—" : (
+                    <span className={h.batteryPct <= lowBatteryThreshold ? "text-red-700 font-medium" : ""}>
+                      {h.batteryPct}%{h.batteryPct <= lowBatteryThreshold ? " ⚠" : ""}
+                    </span>
+                  )}
+                </td>
                 <td className="p-2 text-slate-500">{h.lastSeenAt ? new Date(h.lastSeenAt).toLocaleString() : "never"}</td>
                 <td className="p-2 text-right">
                   {isAdmin && h.status !== "decommissioned" && (

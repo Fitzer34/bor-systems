@@ -12,13 +12,18 @@ export function Layout() {
           <div className="font-semibold tracking-wide">BOR Systems</div>
           <div className="text-xs text-slate-400 mt-1">{user.name} · {user.role}</div>
         </div>
-        <nav className="flex-1 p-2 space-y-1 text-sm">
+        <nav className="flex-1 p-2 space-y-1 text-sm overflow-y-auto">
           <NavItem to="/" end>Active alerts</NavItem>
           {isStaff && <NavItem to="/hangers">Hangers</NavItem>}
           {isStaff && <NavItem to="/users">Users</NavItem>}
           {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}
           {isStaff && <NavItem to="/reports">Reports</NavItem>}
           {isStaff && <NavItem to="/settings">Settings</NavItem>}
+          {isStaff && <NavItem to="/notifications-log">Notifications</NavItem>}
+          {user.role === "admin" && <NavItem to="/audit-log">Audit log</NavItem>}
+          <div className="pt-3 mt-3 border-t border-slate-800">
+            <NavItem to="/profile">My profile</NavItem>
+          </div>
         </nav>
         <div className="p-3 border-t border-slate-800 text-sm">
           <label className="flex items-center gap-2 cursor-pointer">
