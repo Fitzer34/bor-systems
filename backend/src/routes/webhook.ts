@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { config } from "../config.js";
-import { decodePayload, PayloadDecodeError } from "../../../shared/payload.js";
+import { decodePayload, isPayloadDecodeError } from "../payload.js";
 import { closeAlertForHanger, openAlertForHanger } from "../services/alert-flow.js";
 
 interface TtsUplink {
@@ -29,7 +29,7 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
     try {
       decoded = decodePayload(bytes);
     } catch (err) {
-      if (err instanceof PayloadDecodeError) {
+      if (isPayloadDecodeError(err)) {
         return reply.code(400).send({ error: err.message });
       }
       throw err;

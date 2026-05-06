@@ -1,0 +1,31 @@
+module.exports = {
+  apps: [
+    {
+      name: "bor-backend",
+      cwd: "./backend",
+      script: "npm",
+      args: "run dev",
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      env: { NODE_ENV: "development" },
+      out_file: "./logs/backend.out.log",
+      error_file: "./logs/backend.err.log",
+      merge_logs: true,
+      time: true,
+    },
+    {
+      name: "bor-web",
+      cwd: "./web",
+      script: "npm",
+      args: "run dev",
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      out_file: "./logs/web.out.log",
+      error_file: "./logs/web.err.log",
+      merge_logs: true,
+      time: true,
+    },
+  ],
+};

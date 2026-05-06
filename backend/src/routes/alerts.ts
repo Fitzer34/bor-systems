@@ -14,7 +14,9 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
         openedAt: schema.alerts.openedAt,
         acknowledgedAt: schema.alerts.acknowledgedAt,
         acknowledgedBy: schema.alerts.acknowledgedBy,
+        zoneId: schema.zones.id,
         zoneName: schema.zones.name,
+        floorId: schema.floors.id,
         floorName: schema.floors.name,
       })
       .from(schema.alerts)

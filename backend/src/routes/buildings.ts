@@ -70,8 +70,8 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
       .object({ name: z.string().min(1), pinX: z.number().int().nullable().optional(), pinY: z.number().int().nullable().optional() })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
-    const [z] = await db.insert(schema.zones).values({ floorId: id, ...body.data }).returning();
-    return { zone: z };
+    const [zone] = await db.insert(schema.zones).values({ floorId: id, ...body.data }).returning();
+    return { zone };
   });
 
   app.patch("/zones/:id", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req, reply) => {

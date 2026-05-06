@@ -5,6 +5,7 @@ import { api, getToken } from "../lib/api";
 interface Building { id: string; name: string }
 interface Floor { id: string; name: string; buildingId: string; floorPlanUrl: string | null; orderIndex: number }
 interface Zone { id: string; name: string; floorId: string; pinX: number | null; pinY: number | null }
+interface ActiveAlert { id: string; zoneId: string | null }
 
 export function FloorPlans() {
   const qc = useQueryClient();
@@ -25,6 +26,12 @@ export function FloorPlans() {
     enabled: !!activeFloorId,
     queryFn: () => api<{ zones: Zone[] }>(`/floors/${activeFloorId}/zones`),
   });
+  const activeAlerts = useQuery({
+    queryKey: ["active-alerts"],
+    queryFn: () => api<{ alerts: ActiveAlert[] }>("/alerts/active"),
+    refetchInterval: 5_000,
+  });
+  const alertedZoneIds = new Set((activeAlerts.data?.alerts ?? []).map((a) => a.zoneId).filter(Boolean) as string[]);
 
   const createBuilding = useMutation({
     mutationFn: () => api("/buildings", { method: "POST", body: JSON.stringify({ name: buildingName }) }),
@@ -165,14 +172,19 @@ export function FloorPlans() {
               className={`relative inline-block ${pinningZoneId ? "cursor-crosshair" : ""}`}
             >
               <img src={activeFloor.floorPlanUrl} alt="" className="block max-w-full max-h-[600px]" />
-              {zones.data?.zones.filter((z) => z.pinX != null && z.pinY != null).map((z) => (
-                <div
-                  key={z.id}
-                  title={z.name}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow"
-                  style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
-                />
-              ))}
+              {zones.data?.zones.filter((z) => z.pinX != null && z.pinY != null).map((z) => {
+                const alerted = alertedZoneIds.has(z.id);
+                return (
+                  <div
+                    key={z.id}
+                    title={`${z.name}${alerted ? " — ALERT" : ""}`}
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white shadow ${
+                      alerted ? "bg-red-500 animate-pulse" : "bg-green-500"
+                    }`}
+                    style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
+                  />
+                );
+              })}
             </div>
           ) : (
             <div className="text-sm text-slate-500">No plan uploaded for this floor yet.</div>
