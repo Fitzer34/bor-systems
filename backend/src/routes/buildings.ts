@@ -58,6 +58,13 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     return { url };
   });
 
+  app.get("/floors/:id", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [floor] = await db.select().from(schema.floors).where(eq(schema.floors.id, id)).limit(1);
+    if (!floor) return reply.code(404).send({ error: "not_found" });
+    return { floor };
+  });
+
   app.get("/floors/:id/zones", { preHandler: [app.authenticate] }, async (req) => {
     const { id } = req.params as { id: string };
     const rows = await db.select().from(schema.zones).where(eq(schema.zones.floorId, id));

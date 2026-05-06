@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
+import { AlertFloorPlanThumb } from "../components/AlertFloorPlanThumb";
 
 interface ActiveAlert {
   id: string;
@@ -9,7 +10,9 @@ interface ActiveAlert {
   openedAt: string;
   acknowledgedAt: string | null;
   acknowledgedBy: string | null;
+  zoneId: string | null;
   zoneName: string | null;
+  floorId: string | null;
   floorName: string | null;
 }
 
@@ -38,25 +41,24 @@ export function Dashboard() {
           <li key={a.id}>
             <Link
               to={`/alerts/${a.id}`}
-              className={`block rounded-lg border p-4 shadow-sm bg-white hover:shadow ${
+              className={`flex items-center gap-4 rounded-lg border p-4 shadow-sm bg-white hover:shadow ${
                 a.status === "open" ? "border-red-300" : "border-amber-300"
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-slate-900">
-                    {a.floorName ?? "Unknown floor"} — {a.zoneName ?? "Unassigned zone"}
-                  </div>
-                  <div className="text-sm text-slate-500 mt-1">
-                    Lifted {timeAgo(a.openedAt)} · Status: {a.status}
-                  </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-slate-900">
+                  {a.floorName ?? "Unknown floor"} — {a.zoneName ?? "Unassigned zone"}
                 </div>
-                <span className={`px-2 py-1 rounded text-xs font-medium ${
-                  a.status === "open" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                }`}>
-                  {a.status === "open" ? "UNACKNOWLEDGED" : "IN PROGRESS"}
-                </span>
+                <div className="text-sm text-slate-500 mt-1">
+                  Lifted {timeAgo(a.openedAt)} · Status: {a.status}
+                </div>
               </div>
+              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                a.status === "open" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+              }`}>
+                {a.status === "open" ? "UNACKNOWLEDGED" : "IN PROGRESS"}
+              </span>
+              <AlertFloorPlanThumb floorId={a.floorId} alertedZoneId={a.zoneId} />
             </Link>
           </li>
         ))}
