@@ -11,6 +11,7 @@ import { Hangers } from "./pages/Hangers";
 import { Users } from "./pages/Users";
 import { FloorPlans } from "./pages/FloorPlans";
 import { Reports } from "./pages/Reports";
+import { Settings } from "./pages/Settings";
 import "./index.css";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000 } } });
@@ -44,6 +45,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />
               <Route path="floor-plans" element={<RequireAuth role={["admin"]}><FloorPlans /></RequireAuth>} />
               <Route path="reports" element={<RequireAuth role={["admin", "supervisor"]}><Reports /></RequireAuth>} />
+              <Route path="settings" element={<RequireAuth role={["admin", "supervisor"]}><Settings /></RequireAuth>} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -18,6 +18,7 @@ export function Layout() {
           {isStaff && <NavItem to="/users">Users</NavItem>}
           {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}
           {isStaff && <NavItem to="/reports">Reports</NavItem>}
+          {isStaff && <NavItem to="/settings">Settings</NavItem>}
         </nav>
         <div className="p-3 border-t border-slate-800 text-sm">
           <label className="flex items-center gap-2 cursor-pointer">

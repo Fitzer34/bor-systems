@@ -1,7 +1,7 @@
 import { and, eq, isNull, lte } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
-import { config } from "../config.js";
 import { escalateAlert } from "./alert-flow.js";
+import { getResolutionTimerMinutes } from "../routes/settings.js";
 
 const TICK_MS = 30_000;
 
@@ -10,7 +10,8 @@ export function startEscalationTimer(): NodeJS.Timeout {
 }
 
 async function tick(): Promise<void> {
-  const cutoff = new Date(Date.now() - config.RESOLUTION_TIMER_MINUTES * 60_000);
+  const minutes = await getResolutionTimerMinutes();
+  const cutoff = new Date(Date.now() - minutes * 60_000);
   const due = await db
     .select({ id: schema.alerts.id })
     .from(schema.alerts)
