@@ -1,0 +1,21 @@
+## XcodeGen-generated — regenerate with ./setup.sh
+BORSystems.xcodeproj/
+
+## Xcode user data
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+
+## Derived data
+build/
+DerivedData/
+
+## Swift Package Manager
+.swiftpm/
+.build/
+
+## CocoaPods (not used, but ignore just in case)
+Pods/
+
+## macOS junk
+.DS_Store
