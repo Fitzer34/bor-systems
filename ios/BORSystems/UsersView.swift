@@ -11,7 +11,8 @@ struct UsersView: View {
             ForEach(users) { u in
                 UserRowItem(user: u)
                     .swipeActions(allowsFullSwipe: false) {
-                        if auth.user?.role == .admin && u.id != auth.user?.id {
+                        let canManage = (auth.user?.role == .admin || auth.user?.role == .supervisor) && u.id != auth.user?.id
+                        if canManage {
                             if u.deactivatedAt == nil {
                                 Button("Deactivate") { Task { await deactivate(u) } }.tint(.orange)
                             }

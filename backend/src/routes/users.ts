@@ -117,14 +117,22 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post("/users/:id/deactivate", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req) => {
+  app.post("/users/:id/deactivate", { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] }, async (req) => {
     const { id } = req.params as { id: string };
+    const actorId = (req.user as { sub: string }).sub;
     await db.update(schema.users).set({ deactivatedAt: new Date(), onDuty: false }).where(eq(schema.users.id, id));
+    await db.insert(schema.auditLog).values({
+      actorUserId: actorId,
+      action: "user.deactivated",
+      targetType: "user",
+      targetId: id,
+    });
     return { ok: true };
   });
 
-  app.delete("/users/:id", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req) => {
+  app.delete("/users/:id", { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] }, async (req) => {
     const { id } = req.params as { id: string };
+    const actorId = (req.user as { sub: string }).sub;
     await db
       .update(schema.users)
       .set({
@@ -137,6 +145,12 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
         onDuty: false,
       })
       .where(eq(schema.users.id, id));
+    await db.insert(schema.auditLog).values({
+      actorUserId: actorId,
+      action: "user.erased",
+      targetType: "user",
+      targetId: id,
+    });
     return { ok: true };
   });
 }

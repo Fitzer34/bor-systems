@@ -274,6 +274,26 @@ extension APIClient {
     func deleteShift(_ id: String) async throws {
         let _: EmptyResponse = try await request("/shifts/\(id)", method: "DELETE")
     }
+    struct UpdateShiftBody: Encodable {
+        let userId: String?
+        let startsAt: String?
+        let endsAt: String?
+        let buildingId: String?
+        let floorId: String?
+        let zoneId: String?
+        let notes: String?
+    }
+    func updateShift(_ id: String, userId: String?, startsAt: Date?, endsAt: Date?,
+                     buildingId: String?, floorId: String?, zoneId: String?, notes: String?) async throws {
+        let iso = ISO8601DateFormatter()
+        let _: EmptyResponse = try await request("/shifts/\(id)", method: "PATCH",
+            body: UpdateShiftBody(
+                userId: userId,
+                startsAt: startsAt.map { iso.string(from: $0) },
+                endsAt: endsAt.map { iso.string(from: $0) },
+                buildingId: buildingId, floorId: floorId, zoneId: zoneId, notes: notes,
+            ))
+    }
 
     // MARK: Settings
 

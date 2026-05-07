@@ -8,16 +8,18 @@ struct MenuView: View {
             List {
                 if let u = auth.user {
                     Section {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(u.name).font(.headline)
-                            Text("\(u.email) · \(u.role.rawValue.capitalized)")
-                                .font(.caption).foregroundStyle(.secondary)
+                        HStack(alignment: .center) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(u.name).font(.headline)
+                                Text("\(u.email) · \(u.role.rawValue.capitalized)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            DutySwitch(isOn: u.onDuty) { newValue in
+                                Task { await auth.setOnDuty(newValue) }
+                            }
                         }
                         .padding(.vertical, 4)
-                        Toggle("On duty", isOn: Binding(
-                            get: { u.onDuty },
-                            set: { newValue in Task { await auth.setOnDuty(newValue) } }
-                        ))
                     }
                 }
 

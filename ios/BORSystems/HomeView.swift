@@ -51,13 +51,9 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if let user = auth.user {
-                        Toggle("On duty", isOn: Binding(
-                            get: { user.onDuty },
-                            set: { newValue in Task { await auth.setOnDuty(newValue) } }
-                        ))
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .tint(.green)
+                        DutySwitch(isOn: user.onDuty) { newValue in
+                            Task { await auth.setOnDuty(newValue) }
+                        }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {

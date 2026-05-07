@@ -13,16 +13,20 @@ struct FloorPlanWithPins: View {
             case .empty:
                 ProgressView().frame(maxWidth: .infinity, minHeight: 220)
             case .success(let image):
-                GeometryReader { geo in
-                    ZStack(alignment: .topLeading) {
-                        image.resizable().scaledToFit()
-                            .frame(width: geo.size.width, height: geo.size.height)
-                        ForEach(zones.filter { $0.pinX != nil && $0.pinY != nil }) { z in
-                            pin(for: z, in: geo.size)
+                // Put the image as the layout primary, then overlay pins via a
+                // GeometryReader pinned to the image's actual rendered size.
+                // This is the only way SwiftUI lets pin coords (0..1000) map to
+                // the *image* rectangle and not the surrounding container.
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .overlay(
+                        GeometryReader { geo in
+                            ForEach(zones.filter { $0.pinX != nil && $0.pinY != nil }) { z in
+                                pin(for: z, in: geo.size)
+                            }
                         }
-                    }
-                }
-                .aspectRatio(contentMode: .fit)
+                    )
             case .failure:
                 Text("Could not load plan image.")
                     .foregroundStyle(.secondary)

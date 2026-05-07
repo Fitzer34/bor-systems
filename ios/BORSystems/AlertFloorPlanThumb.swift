@@ -10,30 +10,31 @@ struct AlertFloorPlanThumb: View {
     @State private var zones: [Zone] = []
 
     var body: some View {
-        ZStack {
+        Group {
             if let url = planURL {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
-                        GeometryReader { geo in
-                            ZStack(alignment: .topLeading) {
-                                image.resizable().scaledToFill()
-                                    .frame(width: geo.size.width, height: geo.size.height)
-                                    .clipped()
-                                ForEach(zones.filter { $0.pinX != nil && $0.pinY != nil }) { z in
-                                    let isAlerted = (z.id == alertedZoneId)
-                                    let color: Color = isAlerted ? (status == .acknowledged ? .blue : .red) : .green
-                                    Circle()
-                                        .fill(color)
-                                        .overlay(Circle().stroke(.white, lineWidth: 1.5))
-                                        .frame(width: isAlerted ? 14 : 8, height: isAlerted ? 14 : 8)
-                                        .position(
-                                            x: CGFloat(z.pinX ?? 0) / 1000 * geo.size.width,
-                                            y: CGFloat(z.pinY ?? 0) / 1000 * geo.size.height,
-                                        )
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .overlay(
+                                GeometryReader { geo in
+                                    ForEach(zones.filter { $0.pinX != nil && $0.pinY != nil }) { z in
+                                        let isAlerted = (z.id == alertedZoneId)
+                                        let color: Color = isAlerted ? (status == .acknowledged ? .blue : .red) : .green
+                                        Circle()
+                                            .fill(color)
+                                            .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                                            .frame(width: isAlerted ? 12 : 6, height: isAlerted ? 12 : 6)
+                                            .position(
+                                                x: CGFloat(z.pinX ?? 0) / 1000 * geo.size.width,
+                                                y: CGFloat(z.pinY ?? 0) / 1000 * geo.size.height,
+                                            )
+                                    }
                                 }
-                            }
-                        }
+                            )
+                            .background(Color(.secondarySystemBackground))
                     default:
                         Color(.secondarySystemBackground)
                     }
