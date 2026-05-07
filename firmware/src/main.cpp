@@ -111,8 +111,34 @@ static void showTestIndicator() {
   }
 }
 
+// Battery pin on RAK Wisblock RAK19007 base — built-in voltage divider
+// brings the 2x AA pack voltage into ADC range. Calibrate the divider
+// scale once with a multimeter: measure actual battery mV, divide by
+// the raw ADC mV reading, store as BATTERY_DIVIDER_SCALE.
+constexpr uint8_t  PIN_VBAT = WB_A0;
+constexpr float    BATTERY_DIVIDER_SCALE = 1.73f;  // RAK19007 default
+constexpr uint16_t ADC_REF_MV = 3000;               // STM32WLE5 internal ref
+
+// Energizer L91 Ultimate Lithium 2x AA in series — piecewise linear
+// approximation of the room-temperature, light-load discharge curve.
+static uint8_t voltageToPct(uint32_t mv) {
+  if (mv >= 3400) return 100;
+  if (mv >= 3200) return 80 + (mv - 3200) * 20 / 200;
+  if (mv >= 3000) return 50 + (mv - 3000) * 30 / 200;
+  if (mv >= 2800) return 20 + (mv - 2800) * 30 / 200;
+  if (mv >= 2400) return (mv - 2400) * 20 / 400;
+  return 0;
+}
+
 static uint8_t readBatteryPct() {
-  return 100; // TODO: ADC on VBAT divider with cutoff 2.0 V → 0%, 3.2 V → 100%
+  pinMode(PIN_VBAT, INPUT);
+  analogReadResolution(12);
+  // Average a few samples to denoise
+  uint32_t sum = 0;
+  for (int i = 0; i < 8; ++i) sum += analogRead(PIN_VBAT);
+  uint32_t adc = sum / 8;
+  uint32_t mv = (uint32_t)((float)adc * ADC_REF_MV / 4095.0f * BATTERY_DIVIDER_SCALE);
+  return voltageToPct(mv);
 }
 
 static void sendUplink(uint8_t evt) {
