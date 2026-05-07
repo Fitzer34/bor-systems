@@ -199,3 +199,47 @@ export const settings = pgTable("settings", {
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const shifts = pgTable(
+  "shifts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    floorId: uuid("floor_id").references(() => floors.id, { onDelete: "set null" }),
+    zoneId: uuid("zone_id").references(() => zones.id, { onDelete: "set null" }),
+    notes: text("notes"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    userIdx: index("shifts_user_idx").on(t.userId, t.startsAt),
+    activeIdx: index("shifts_active_idx").on(t.startsAt, t.endsAt),
+  }),
+);
+
+export const dispatchStatus = pgEnum("dispatch_status", ["sent", "acknowledged", "completed"]);
+
+export const dispatches = pgTable(
+  "dispatches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    recipientUserId: uuid("recipient_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    senderUserId: uuid("sender_user_id").references(() => users.id, { onDelete: "set null" }),
+    zoneId: uuid("zone_id").references(() => zones.id, { onDelete: "set null" }),
+    message: text("message").notNull(),
+    status: dispatchStatus("status").notNull().default("sent"),
+    sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    recipientIdx: index("dispatches_recipient_idx").on(t.recipientUserId, t.status, t.sentAt),
+  }),
+);

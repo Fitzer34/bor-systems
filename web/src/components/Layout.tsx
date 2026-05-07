@@ -14,6 +14,8 @@ export function Layout() {
         </div>
         <nav className="flex-1 p-2 space-y-1 text-sm overflow-y-auto">
           <NavItem to="/" end>Active alerts</NavItem>
+          {isStaff && <NavItem to="/dispatch">Dispatch</NavItem>}
+          {isStaff && <NavItem to="/schedule">Schedule</NavItem>}
           {isStaff && <NavItem to="/hangers">Hangers</NavItem>}
           {isStaff && <NavItem to="/users">Users</NavItem>}
           {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}

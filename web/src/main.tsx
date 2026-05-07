@@ -16,6 +16,8 @@ import { Settings } from "./pages/Settings";
 import { Profile } from "./pages/Profile";
 import { AuditLog } from "./pages/AuditLog";
 import { NotificationsLog } from "./pages/NotificationsLog";
+import { Schedule } from "./pages/Schedule";
+import { Dispatch } from "./pages/Dispatch";
 import "./index.css";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000 } } });
@@ -54,6 +56,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="settings" element={<RequireAuth role={["admin", "supervisor"]}><Settings /></RequireAuth>} />
               <Route path="audit-log" element={<RequireAuth role={["admin"]}><AuditLog /></RequireAuth>} />
               <Route path="notifications-log" element={<RequireAuth role={["admin", "supervisor"]}><NotificationsLog /></RequireAuth>} />
+              <Route path="schedule" element={<RequireAuth role={["admin", "supervisor"]}><Schedule /></RequireAuth>} />
+              <Route path="dispatch" element={<RequireAuth role={["admin", "supervisor"]}><Dispatch /></RequireAuth>} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

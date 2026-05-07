@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { AlertFloorPlanThumb } from "../components/AlertFloorPlanThumb";
@@ -16,28 +16,58 @@ interface ActiveAlert {
   floorName: string | null;
 }
 
+interface DispatchRow {
+  id: string;
+  recipientUserId: string;
+  zoneId: string | null;
+  zoneName: string | null;
+  floorId: string | null;
+  message: string;
+  status: "sent" | "acknowledged" | "completed";
+  sentAt: string;
+}
+
 export function Dashboard() {
-  const { data, isLoading, error, refetch } = useQuery({
+  const qc = useQueryClient();
+
+  const alerts = useQuery({
     queryKey: ["active-alerts"],
     queryFn: () => api<{ alerts: ActiveAlert[] }>("/alerts/active"),
     refetchInterval: 5_000,
   });
 
+  const dispatches = useQuery({
+    queryKey: ["dispatches"],
+    queryFn: () => api<{ dispatches: DispatchRow[] }>("/dispatches"),
+    refetchInterval: 5_000,
+  });
+
+  const ackDispatch = useMutation({
+    mutationFn: (id: string) => api(`/dispatches/${id}/acknowledge`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dispatches"] }),
+  });
+  const completeDispatch = useMutation({
+    mutationFn: (id: string) => api(`/dispatches/${id}/complete`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dispatches"] }),
+  });
+
+  const activeDispatches = (dispatches.data?.dispatches ?? []).filter((d) => d.status !== "completed");
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Active alerts</h1>
-        <button onClick={() => refetch()} className="text-sm text-slate-600 hover:text-slate-900">Refresh</button>
+        <button onClick={() => alerts.refetch()} className="text-sm text-slate-600 hover:text-slate-900">Refresh</button>
       </div>
-      {isLoading && <div className="text-slate-500">Loading…</div>}
-      {error && <div className="text-red-600">Could not load alerts.</div>}
-      {data && data.alerts.length === 0 && (
+      {alerts.isLoading && <div className="text-slate-500">Loading…</div>}
+      {alerts.error && <div className="text-red-600">Could not load alerts.</div>}
+      {alerts.data && alerts.data.alerts.length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 p-10 text-center text-slate-500">
-          No active alerts. All signs are on their hangers.
+          No active spill alerts.
         </div>
       )}
       <ul className="space-y-3">
-        {data?.alerts.map((a) => (
+        {alerts.data?.alerts.map((a) => (
           <li key={a.id}>
             <Link
               to={`/alerts/${a.id}`}
@@ -63,6 +93,43 @@ export function Dashboard() {
           </li>
         ))}
       </ul>
+
+      {activeDispatches.length > 0 && (
+        <>
+          <h2 className="text-2xl font-semibold mt-10 mb-3">Dispatches</h2>
+          <ul className="space-y-3">
+            {activeDispatches.map((d) => (
+              <li key={d.id} className="rounded-lg border border-blue-300 bg-white p-4 shadow-sm">
+                <div className="flex items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">
+                      {d.zoneName ? `Go to: ${d.zoneName}` : "Dispatch"}
+                    </div>
+                    <p className="text-slate-700 mt-1 whitespace-pre-wrap">{d.message}</p>
+                    <div className="text-xs text-slate-500 mt-2">
+                      Sent {timeAgo(d.sentAt)} · Status: {d.status}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    {d.status === "sent" && (
+                      <button onClick={() => ackDispatch.mutate(d.id)}
+                        className="px-3 py-2 text-sm rounded bg-blue-600 text-white">
+                        On my way
+                      </button>
+                    )}
+                    {d.status !== "completed" && (
+                      <button onClick={() => completeDispatch.mutate(d.id)}
+                        className="px-3 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50">
+                        Mark done
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }
