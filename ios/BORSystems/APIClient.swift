@@ -143,4 +143,175 @@ extension APIClient {
     func completeDispatch(_ id: String) async throws {
         let _: EmptyResponse = try await request("/dispatches/\(id)/complete", method: "POST")
     }
+
+    // MARK: Buildings / floors / zones
+
+    func buildings() async throws -> [Building] {
+        let res: BuildingsResponse = try await request("/buildings")
+        return res.buildings
+    }
+    func floors(buildingId: String) async throws -> [Floor] {
+        let res: FloorsResponse = try await request("/buildings/\(buildingId)/floors")
+        return res.floors
+    }
+    func floor(_ id: String) async throws -> Floor {
+        let res: FloorResponse = try await request("/floors/\(id)")
+        return res.floor
+    }
+    func zones(floorId: String) async throws -> [Zone] {
+        let res: ZonesResponse = try await request("/floors/\(floorId)/zones")
+        return res.zones
+    }
+
+    // MARK: Users / dispatch sending (admin/supervisor)
+
+    func users() async throws -> [UserRow] {
+        let res: UsersResponse = try await request("/users")
+        return res.users
+    }
+    struct SendDispatchBody: Encodable {
+        let recipientUserId: String
+        let zoneId: String?
+        let message: String
+        let alsoSms: Bool
+    }
+    func sendDispatch(to recipientId: String, zoneId: String?, message: String, alsoSms: Bool) async throws {
+        let body = SendDispatchBody(recipientUserId: recipientId, zoneId: zoneId, message: message, alsoSms: alsoSms)
+        let _: EmptyResponse = try await request("/dispatches", method: "POST", body: body)
+    }
+
+    // MARK: Profile self-service
+
+    struct UpdateProfileBody: Encodable {
+        let name: String?
+        let phoneE164: String?
+    }
+    struct ChangePasswordBody: Encodable {
+        let currentPassword: String
+        let newPassword: String
+    }
+    func updateProfile(name: String?, phoneE164: String?) async throws {
+        let _: EmptyResponse = try await request("/users/me", method: "PATCH",
+            body: UpdateProfileBody(name: name, phoneE164: phoneE164))
+    }
+    func changePassword(currentPassword: String, newPassword: String) async throws {
+        let _: EmptyResponse = try await request("/users/me/password", method: "POST",
+            body: ChangePasswordBody(currentPassword: currentPassword, newPassword: newPassword))
+    }
+
+    // MARK: Hangers (admin/supervisor)
+
+    func hangers() async throws -> [Hanger] {
+        let res: HangersResponse = try await request("/hangers")
+        return res.hangers
+    }
+    struct RegisterHangerBody: Encodable {
+        let devEui: String
+        let zoneId: String?
+        let audibleAlarmEnabled: Bool
+    }
+    func registerHanger(devEui: String, zoneId: String?, audibleAlarmEnabled: Bool) async throws {
+        let _: EmptyResponse = try await request("/hangers/register", method: "POST",
+            body: RegisterHangerBody(devEui: devEui, zoneId: zoneId, audibleAlarmEnabled: audibleAlarmEnabled))
+    }
+    struct RelocateBody: Encodable { let zoneId: String }
+    func relocateHanger(_ id: String, toZoneId zoneId: String) async throws {
+        let _: EmptyResponse = try await request("/hangers/\(id)/relocate", method: "POST", body: RelocateBody(zoneId: zoneId))
+    }
+    func decommissionHanger(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/hangers/\(id)/decommission", method: "POST")
+    }
+    func recommissionHanger(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/hangers/\(id)/recommission", method: "POST")
+    }
+
+    // MARK: Users management (admin)
+
+    struct CreateUserBody: Encodable {
+        let email: String
+        let name: String
+        let password: String
+        let role: String
+        let phoneE164: String?
+    }
+    func createUser(email: String, name: String, password: String, role: UserRole, phoneE164: String?) async throws {
+        let _: EmptyResponse = try await request("/users", method: "POST",
+            body: CreateUserBody(email: email, name: name, password: password, role: role.rawValue, phoneE164: phoneE164))
+    }
+    func deactivateUser(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/users/\(id)/deactivate", method: "POST")
+    }
+    func eraseUser(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/users/\(id)", method: "DELETE")
+    }
+
+    // MARK: Schedule (shifts)
+
+    func shifts() async throws -> [Shift] {
+        let res: ShiftsResponse = try await request("/shifts")
+        return res.shifts
+    }
+    struct CreateShiftBody: Encodable {
+        let userId: String
+        let startsAt: String
+        let endsAt: String
+        let buildingId: String?
+        let floorId: String?
+        let zoneId: String?
+        let notes: String?
+    }
+    func createShift(userId: String, startsAt: Date, endsAt: Date,
+                     buildingId: String?, floorId: String?, zoneId: String?, notes: String?) async throws {
+        let iso = ISO8601DateFormatter()
+        let _: EmptyResponse = try await request("/shifts", method: "POST",
+            body: CreateShiftBody(
+                userId: userId,
+                startsAt: iso.string(from: startsAt),
+                endsAt: iso.string(from: endsAt),
+                buildingId: buildingId, floorId: floorId, zoneId: zoneId, notes: notes,
+            ))
+    }
+    func deleteShift(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/shifts/\(id)", method: "DELETE")
+    }
+
+    // MARK: Settings
+
+    func appSettings() async throws -> AppSettings {
+        try await request("/settings")
+    }
+    struct PutMinutesBody: Encodable { let minutes: Int }
+    struct PutPctBody: Encodable { let pct: Int }
+    struct PutBoolBody: Encodable { let enabled: Bool }
+    func setAckTimer(minutes: Int) async throws {
+        let _: EmptyResponse = try await request("/settings/ack-timer", method: "PUT", body: PutMinutesBody(minutes: minutes))
+    }
+    func setResolutionTimer(minutes: Int) async throws {
+        let _: EmptyResponse = try await request("/settings/resolution-timer", method: "PUT", body: PutMinutesBody(minutes: minutes))
+    }
+    func setLowBatteryThreshold(pct: Int) async throws {
+        let _: EmptyResponse = try await request("/settings/low-battery-threshold", method: "PUT", body: PutPctBody(pct: pct))
+    }
+    func setDefaultAudibleAlarm(enabled: Bool) async throws {
+        let _: EmptyResponse = try await request("/settings/default-audible-alarm", method: "PUT", body: PutBoolBody(enabled: enabled))
+    }
+    func setExpectedCleaningTime(minutes: Int) async throws {
+        let _: EmptyResponse = try await request("/settings/expected-cleaning-time", method: "PUT", body: PutMinutesBody(minutes: minutes))
+    }
+
+    // MARK: Reports + admin logs
+
+    func spillsReport(from: Date, to: Date) async throws -> SpillsResponse {
+        let iso = ISO8601DateFormatter()
+        let qs = "?from=\(iso.string(from: from))&to=\(iso.string(from: to))"
+        return try await request("/reports/spills\(qs)")
+    }
+    func auditLog(limit: Int = 200) async throws -> [AuditEntry] {
+        let res: AuditResponse = try await request("/admin/audit-log?limit=\(limit)")
+        return res.entries
+    }
+    func notificationsLog(limit: Int = 300) async throws -> [NotificationEntry] {
+        let res: NotificationsResponse = try await request("/admin/notifications-log?limit=\(limit)")
+        return res.entries
+    }
 }

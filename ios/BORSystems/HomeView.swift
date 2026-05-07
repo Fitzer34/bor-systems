@@ -152,9 +152,10 @@ private struct AlertRow: View {
                 Text("Lifted \(alert.openedAt, style: .relative) ago · Status: \(alert.status.rawValue)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                statusBadge
             }
             Spacer(minLength: 8)
-            statusBadge
+            AlertFloorPlanThumb(floorId: alert.floorId, alertedZoneId: alert.zoneId, status: alert.status)
         }
         .padding(14)
         .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 12))

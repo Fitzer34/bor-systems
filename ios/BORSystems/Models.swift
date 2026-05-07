@@ -61,3 +61,124 @@ enum CloseReason: String, Codable {
 struct OkResponse: Codable { let ok: Bool }
 struct AlertsResponse: Codable { let alerts: [ActiveAlert] }
 struct DispatchesResponse: Codable { let dispatches: [DispatchItem] }
+
+struct Building: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+}
+struct BuildingsResponse: Codable { let buildings: [Building] }
+
+struct Floor: Codable, Identifiable, Hashable {
+    let id: String
+    let buildingId: String
+    let name: String
+    let orderIndex: Int
+    let floorPlanUrl: String?
+}
+struct FloorsResponse: Codable { let floors: [Floor] }
+struct FloorResponse: Codable { let floor: Floor }
+
+struct Zone: Codable, Identifiable, Hashable {
+    let id: String
+    let floorId: String
+    let name: String
+    let pinX: Int?
+    let pinY: Int?
+}
+struct ZonesResponse: Codable { let zones: [Zone] }
+
+struct UserRow: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let email: String
+    let role: UserRole
+    let onDuty: Bool
+    let deactivatedAt: Date?
+}
+struct UsersResponse: Codable { let users: [UserRow] }
+
+enum HangerStatus: String, Codable {
+    case active, outOfService = "out_of_service", decommissioned
+}
+
+struct Hanger: Codable, Identifiable, Hashable {
+    let id: String
+    let devEui: String
+    let zoneId: String?
+    let status: HangerStatus
+    let audibleAlarmEnabled: Bool
+    let batteryPct: Int?
+    let firmwareVersion: String?
+    let lastSeenAt: Date?
+}
+struct HangersResponse: Codable { let hangers: [Hanger] }
+
+struct Shift: Codable, Identifiable, Hashable {
+    let id: String
+    let userId: String
+    let userName: String?
+    let startsAt: Date
+    let endsAt: Date
+    let buildingId: String?
+    let buildingName: String?
+    let floorId: String?
+    let floorName: String?
+    let zoneId: String?
+    let zoneName: String?
+    let notes: String?
+}
+struct ShiftsResponse: Codable { let shifts: [Shift] }
+
+struct AppSettings: Codable {
+    let resolutionMinutes: Int
+    let ackMinutes: Int
+    let lowBatteryThreshold: Int
+    let defaultAudibleAlarm: Bool
+    let expectedCleaningMinutes: Int
+}
+
+struct Spill: Codable, Identifiable, Hashable {
+    let alertId: String
+    let openedAt: Date
+    let acknowledgedAt: Date?
+    let closedAt: Date?
+    let closureReason: String?
+    let zoneName: String?
+    let floorName: String?
+    let buildingName: String?
+    let responseSeconds: Double?
+    let resolutionSeconds: Double?
+    var id: String { alertId }
+}
+struct SpillsResponse: Codable {
+    let from: Date
+    let to: Date
+    let count: Int
+    let spills: [Spill]
+}
+
+struct AuditEntry: Codable, Identifiable, Hashable {
+    let id: String
+    let actorUserId: String?
+    let actorName: String?
+    let actorEmail: String?
+    let action: String
+    let targetType: String?
+    let targetId: String?
+    let at: Date
+}
+struct AuditResponse: Codable { let entries: [AuditEntry] }
+
+struct NotificationEntry: Codable, Identifiable, Hashable {
+    let id: String
+    let alertId: String?
+    let userId: String?
+    let recipientName: String?
+    let recipientEmail: String?
+    let channel: String
+    let kind: String
+    let sentAt: Date
+    let delivered: Bool?
+    let error: String?
+}
+struct NotificationsResponse: Codable { let entries: [NotificationEntry] }

@@ -14,7 +14,7 @@ struct ContentView: View {
             } else if auth.user == nil {
                 LoginView()
             } else {
-                HomeView()
+                MainTabView()
                     .task { await requestPushAuthorization() }
             }
         }

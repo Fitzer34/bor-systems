@@ -8,6 +8,8 @@ struct AlertDetailView: View {
     @State private var note = ""
     @State private var isWorking = false
     @State private var error: String?
+    @State private var floor: Floor?
+    @State private var zones: [Zone] = []
 
     var body: some View {
         ScrollView {
@@ -16,6 +18,8 @@ struct AlertDetailView: View {
                     .font(.title3.weight(.semibold))
                 Text("Opened \(alert.openedAt, style: .relative) ago · Status: \(alert.status.rawValue)")
                     .foregroundStyle(.secondary)
+
+                locationCard
 
                 if alert.status == .open {
                     Button {
@@ -67,6 +71,36 @@ struct AlertDetailView: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Alert")
         .navigationBarTitleDisplayMode(.inline)
+        .task { await loadLocation() }
+    }
+
+    @ViewBuilder
+    private var locationCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Location").font(.headline)
+            if let floor = floor, let urlString = floor.floorPlanUrl, let url = assetURL(urlString) {
+                let statusByZoneId: [String: AlertStatus] = alert.zoneId.map { [$0: alert.status] } ?? [:]
+                FloorPlanWithPins(planURL: url, zones: zones, alertedStatusByZoneId: statusByZoneId)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+            } else if alert.floorId == nil {
+                Text("This hanger isn't assigned to a zone yet.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text("No floor plan uploaded for this floor yet.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func loadLocation() async {
+        guard let id = alert.floorId else { return }
+        async let f = APIClient.shared.floor(id)
+        async let z = APIClient.shared.zones(floorId: id)
+        self.floor = try? await f
+        self.zones = (try? await z) ?? []
     }
 
     private func closeButton(title: String, color: Color, reason: CloseReason) -> some View {
