@@ -88,7 +88,7 @@ export function Dashboard() {
               }`}>
                 {a.status === "open" ? "UNACKNOWLEDGED" : "IN PROGRESS"}
               </span>
-              <AlertFloorPlanThumb floorId={a.floorId} alertedZoneId={a.zoneId} />
+              <AlertFloorPlanThumb floorId={a.floorId} alertedZoneId={a.zoneId} status={a.status} />
             </Link>
           </li>
         ))}

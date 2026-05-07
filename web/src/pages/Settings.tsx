@@ -7,6 +7,7 @@ interface AllSettings {
   ackMinutes: number;
   lowBatteryThreshold: number;
   defaultAudibleAlarm: boolean;
+  expectedCleaningMinutes: number;
 }
 
 export function Settings() {
@@ -20,6 +21,7 @@ export function Settings() {
   const [ack, setAck] = useState("");
   const [lowBattery, setLowBattery] = useState("");
   const [audibleAlarm, setAudibleAlarm] = useState(false);
+  const [cleaning, setCleaning] = useState("");
   const [savedKey, setSavedKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,6 +30,7 @@ export function Settings() {
     setAck(String(current.data.ackMinutes));
     setLowBattery(String(current.data.lowBatteryThreshold));
     setAudibleAlarm(current.data.defaultAudibleAlarm);
+    setCleaning(String(current.data.expectedCleaningMinutes));
   }, [current.data]);
 
   const onSaved = (label: string) => () => {
@@ -51,6 +54,10 @@ export function Settings() {
     mutationFn: () => api("/settings/default-audible-alarm", { method: "PUT", body: JSON.stringify({ enabled: audibleAlarm }) }),
     onSuccess: onSaved("audible-alarm"),
   });
+  const saveCleaning = useMutation({
+    mutationFn: () => api("/settings/expected-cleaning-time", { method: "PUT", body: JSON.stringify({ minutes: Number(cleaning) }) }),
+    onSuccess: onSaved("cleaning"),
+  });
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -61,6 +68,13 @@ export function Settings() {
           dirty={current.data ? Number(ack) !== current.data.ackMinutes : false}
           onSave={() => saveAck.mutate()} pending={saveAck.isPending}
           saved={savedKey?.startsWith("ack@") ?? false} />
+      </Card>
+
+      <Card title="Expected cleaning time" description="How long a typical clean-up takes. After the cleaner taps 'I'm on it', a reminder push is sent to them after this many minutes asking them to put the sign back on the hanger.">
+        <NumberRow value={cleaning} onChange={setCleaning} suffix="minutes" min={1} max={240}
+          dirty={current.data ? Number(cleaning) !== current.data.expectedCleaningMinutes : false}
+          onSave={() => saveCleaning.mutate()} pending={saveCleaning.isPending}
+          saved={savedKey?.startsWith("cleaning@") ?? false} />
       </Card>
 
       <Card title="Resolution timer" description="If the sign isn't physically replaced on the hanger within this many minutes, the alert is rebroadcast to all on-duty cleaners and (if not already) escalated to supervisors.">

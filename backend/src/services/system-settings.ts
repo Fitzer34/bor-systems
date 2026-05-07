@@ -7,6 +7,7 @@ export const SETTING_KEYS = {
   ACKNOWLEDGEMENT_TIMER: "acknowledgement_timer_minutes",
   LOW_BATTERY_THRESHOLD: "low_battery_threshold_pct",
   DEFAULT_AUDIBLE_ALARM: "default_audible_alarm_enabled",
+  EXPECTED_CLEANING_TIME: "expected_cleaning_time_minutes",
 } as const;
 
 const DEFAULTS = {
@@ -14,6 +15,7 @@ const DEFAULTS = {
   ACKNOWLEDGEMENT_TIMER: 5,
   LOW_BATTERY_THRESHOLD: 20,
   DEFAULT_AUDIBLE_ALARM: false,
+  EXPECTED_CLEANING_TIME: 10,
 };
 
 async function readNumber(key: string, fallback: number): Promise<number> {
@@ -46,6 +48,10 @@ export async function getLowBatteryThreshold(): Promise<number> {
 
 export async function getDefaultAudibleAlarm(): Promise<boolean> {
   return readBool(SETTING_KEYS.DEFAULT_AUDIBLE_ALARM, DEFAULTS.DEFAULT_AUDIBLE_ALARM);
+}
+
+export async function getExpectedCleaningTimeMinutes(): Promise<number> {
+  return readNumber(SETTING_KEYS.EXPECTED_CLEANING_TIME, DEFAULTS.EXPECTED_CLEANING_TIME);
 }
 
 export async function setNumber(key: string, value: number): Promise<void> {

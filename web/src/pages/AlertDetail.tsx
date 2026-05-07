@@ -98,15 +98,19 @@ export function AlertDetail() {
             {alertedZone && alertedZone.pinX != null && alertedZone.pinY != null && (
               <>
                 <div
-                  title={`${alertedZone.name} — ALERT`}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-red-500 border-2 border-white shadow animate-pulse"
+                  title={`${alertedZone.name} — ${alert.status === "acknowledged" ? "cleaning in progress" : "ALERT"}`}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full border-2 border-white shadow animate-pulse ${
+                    alert.status === "acknowledged" ? "bg-blue-500" : "bg-red-500"
+                  }`}
                   style={{ left: `${(alertedZone.pinX / 1000) * 100}%`, top: `${(alertedZone.pinY / 1000) * 100}%` }}
                 />
                 <div
-                  className="absolute -translate-x-1/2 mt-1 px-2 py-0.5 rounded bg-red-600 text-white text-xs font-medium whitespace-nowrap"
+                  className={`absolute -translate-x-1/2 mt-1 px-2 py-0.5 rounded text-white text-xs font-medium whitespace-nowrap ${
+                    alert.status === "acknowledged" ? "bg-blue-600" : "bg-red-600"
+                  }`}
                   style={{ left: `${(alertedZone.pinX / 1000) * 100}%`, top: `calc(${(alertedZone.pinY / 1000) * 100}% + 18px)` }}
                 >
-                  {alertedZone.name}
+                  {alertedZone.name}{alert.status === "acknowledged" ? " — cleaning" : ""}
                 </div>
               </>
             )}

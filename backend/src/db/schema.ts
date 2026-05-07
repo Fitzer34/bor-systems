@@ -160,6 +160,7 @@ export const alerts = pgTable(
     closedBy: uuid("closed_by").references(() => users.id, { onDelete: "set null" }),
     closureReason: closureReason("closure_reason"),
     closureNote: text("closure_note"),
+    cleaningReminderSentAt: timestamp("cleaning_reminder_sent_at", { withTimezone: true }),
   },
   (t) => ({
     statusIdx: index("alerts_status_idx").on(t.status),

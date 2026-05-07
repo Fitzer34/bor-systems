@@ -7,9 +7,11 @@ interface Zone { id: string; name: string; pinX: number | null; pinY: number | n
 export function AlertFloorPlanThumb({
   floorId,
   alertedZoneId,
+  status,
 }: {
   floorId: string | null;
   alertedZoneId: string | null;
+  status: "open" | "acknowledged" | "closed";
 }) {
   const floor = useQuery({
     queryKey: ["floor", floorId],
@@ -31,6 +33,8 @@ export function AlertFloorPlanThumb({
     (z) => z.id !== alertedZoneId && z.pinX != null && z.pinY != null,
   );
 
+  const pinColor = status === "acknowledged" ? "bg-blue-500" : "bg-red-500";
+
   return (
     <div className="relative w-48 h-32 shrink-0 rounded overflow-hidden bg-slate-100 border border-slate-200">
       <img src={planUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -43,7 +47,7 @@ export function AlertFloorPlanThumb({
       ))}
       {alertedZone && alertedZone.pinX != null && alertedZone.pinY != null && (
         <div
-          className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow animate-pulse"
+          className={`absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full ${pinColor} border-2 border-white shadow animate-pulse`}
           style={{ left: `${(alertedZone.pinX / 1000) * 100}%`, top: `${(alertedZone.pinY / 1000) * 100}%` }}
         />
       )}

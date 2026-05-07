@@ -3,6 +3,7 @@ import { z } from "zod";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { closeAlertForHanger } from "../services/alert-flow.js";
+import { notifyEmail, notifyPush } from "../services/notifications.js";
 
 export default async function alertRoutes(app: FastifyInstance): Promise<void> {
   app.get("/alerts/active", { preHandler: [app.authenticate] }, async () => {
@@ -68,6 +69,34 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
         .update(schema.hangers)
         .set({ status: "out_of_service" })
         .where(eq(schema.hangers.id, alert.hangerId));
+
+      // Notify admins + supervisors with the reporting cleaner's name and zone
+      const [reporter] = await db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+      const [zone] = await db
+        .select({ zoneName: schema.zones.name, floorName: schema.floors.name })
+        .from(schema.hangers)
+        .leftJoin(schema.zones, eq(schema.zones.id, schema.hangers.zoneId))
+        .leftJoin(schema.floors, eq(schema.floors.id, schema.zones.floorId))
+        .where(eq(schema.hangers.id, alert.hangerId))
+        .limit(1);
+      const where = [zone?.floorName, zone?.zoneName].filter(Boolean).join(" — ") || "(unassigned hanger)";
+      const reasonLabel = body.data.reason === "sign_damaged" ? "damaged" : "missing";
+      const recipients = await db
+        .select({ id: schema.users.id, role: schema.users.role })
+        .from(schema.users)
+        .where(isNull(schema.users.deactivatedAt));
+      for (const u of recipients) {
+        if (u.role !== "admin" && u.role !== "supervisor") continue;
+        const ctx = {
+          alertId: id,
+          userId: u.id,
+          title: `Sign ${reasonLabel} — ${where}`,
+          body: `${reporter?.name ?? "A cleaner"} reported the sign as ${reasonLabel}${body.data.note ? `. Note: ${body.data.note}` : ""}.`,
+          kind: "sign_replacement_needed" as const,
+        };
+        await notifyPush(ctx);
+        await notifyEmail(ctx);
+      }
     }
     return { ok: true };
   });

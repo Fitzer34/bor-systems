@@ -5,6 +5,7 @@ import {
   SETTING_KEYS,
   getAcknowledgementTimerMinutes,
   getDefaultAudibleAlarm,
+  getExpectedCleaningTimeMinutes,
   getLowBatteryThreshold,
   getResolutionTimerMinutes,
   setBool,
@@ -33,14 +34,27 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
     "/settings",
     { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async () => {
-      const [resolutionMinutes, ackMinutes, lowBatteryThreshold, defaultAudibleAlarm] =
+      const [resolutionMinutes, ackMinutes, lowBatteryThreshold, defaultAudibleAlarm, expectedCleaningMinutes] =
         await Promise.all([
           getResolutionTimerMinutes(),
           getAcknowledgementTimerMinutes(),
           getLowBatteryThreshold(),
           getDefaultAudibleAlarm(),
+          getExpectedCleaningTimeMinutes(),
         ]);
-      return { resolutionMinutes, ackMinutes, lowBatteryThreshold, defaultAudibleAlarm };
+      return { resolutionMinutes, ackMinutes, lowBatteryThreshold, defaultAudibleAlarm, expectedCleaningMinutes };
+    },
+  );
+
+  app.put(
+    "/settings/expected-cleaning-time",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    async (req, reply) => {
+      const body = z.object({ minutes: z.number().int().positive().max(240) }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      await setNumber(SETTING_KEYS.EXPECTED_CLEANING_TIME, body.data.minutes);
+      await audit(req, "settings.expected_cleaning_time_set", SETTING_KEYS.EXPECTED_CLEANING_TIME, { minutes: body.data.minutes });
+      return { minutes: body.data.minutes };
     },
   );
 
