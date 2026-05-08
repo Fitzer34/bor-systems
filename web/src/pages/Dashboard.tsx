@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { AlertFloorPlanThumb } from "../components/AlertFloorPlanThumb";
+import { SiteFloorPlansOverview } from "../components/SiteFloorPlansOverview";
 
 interface ActiveAlert {
   id: string;
@@ -93,6 +94,13 @@ export function Dashboard() {
           </li>
         ))}
       </ul>
+
+      <h2 className="text-2xl font-semibold mt-10 mb-3">All floor plans</h2>
+      <p className="text-sm text-slate-500 mb-3">
+        Live view of every floor with a plan uploaded. Pins: <span className="text-red-600">red</span> = active alert,
+        <span className="text-blue-600"> blue</span> = cleaning in progress, <span className="text-green-600">green</span> = idle.
+      </p>
+      <SiteFloorPlansOverview />
 
       {activeDispatches.length > 0 && (
         <>
