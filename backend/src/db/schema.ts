@@ -10,6 +10,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 
 export const userRole = pgEnum("user_role", ["admin", "supervisor", "cleaner"]);
@@ -50,8 +51,17 @@ export const notificationKind = pgEnum("notification_kind", [
   "sign_replacement_needed",
 ]);
 
+export const organisations = pgTable("organisations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const buildings = pgTable("buildings", {
   id: uuid("id").defaultRandom().primaryKey(),
+  organisationId: uuid("organisation_id")
+    .references(() => organisations.id, { onDelete: "cascade" })
+    .notNull(),
   name: text("name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -60,6 +70,9 @@ export const floors = pgTable(
   "floors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     buildingId: uuid("building_id")
       .references(() => buildings.id, { onDelete: "cascade" })
       .notNull(),
@@ -74,6 +87,9 @@ export const zones = pgTable(
   "zones",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     floorId: uuid("floor_id")
       .references(() => floors.id, { onDelete: "cascade" })
       .notNull(),
@@ -88,6 +104,9 @@ export const hangers = pgTable(
   "hangers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     devEui: text("dev_eui").notNull(),
     appEui: text("app_eui"),
     appKey: text("app_key"),
@@ -109,6 +128,9 @@ export const events = pgTable(
   "events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     hangerId: uuid("hanger_id")
       .references(() => hangers.id, { onDelete: "cascade" })
       .notNull(),
@@ -126,6 +148,9 @@ export const users = pgTable(
   "users",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     name: text("name").notNull(),
@@ -138,13 +163,16 @@ export const users = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by"),
   },
-  (t) => ({ emailUnique: uniqueIndex("users_email_unique").on(t.email) }),
+  (t) => ({ emailOrgUnique: uniqueIndex("users_org_email_unique").on(t.organisationId, t.email) }),
 );
 
 export const alerts = pgTable(
   "alerts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     hangerId: uuid("hanger_id")
       .references(() => hangers.id, { onDelete: "restrict" })
       .notNull(),
@@ -172,6 +200,9 @@ export const notifications = pgTable(
   "notifications",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     alertId: uuid("alert_id").references(() => alerts.id, { onDelete: "cascade" }),
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
     channel: notificationChannel("channel").notNull(),
@@ -185,6 +216,9 @@ export const notifications = pgTable(
 
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").defaultRandom().primaryKey(),
+  organisationId: uuid("organisation_id")
+    .references(() => organisations.id, { onDelete: "cascade" })
+    .notNull(),
   actorUserId: uuid("actor_user_id").references(() => users.id, {
     onDelete: "set null",
   }),
@@ -195,16 +229,28 @@ export const auditLog = pgTable("audit_log", {
   at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const settings = pgTable("settings", {
-  key: text("key").primaryKey(),
-  value: jsonb("value").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const settings = pgTable(
+  "settings",
+  {
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    key: text("key").notNull(),
+    value: jsonb("value").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.organisationId, t.key] }),
+  }),
+);
 
 export const shifts = pgTable(
   "shifts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     userId: uuid("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
@@ -229,6 +275,9 @@ export const dispatches = pgTable(
   "dispatches",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
     recipientUserId: uuid("recipient_user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),

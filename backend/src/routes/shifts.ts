@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
+import { ctx } from "../services/auth-context.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -9,17 +10,19 @@ const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) 
     if (!role || !allowed.includes(role)) return reply.code(403).send({ error: "forbidden" });
   };
 
-const shiftBody = z
-  .object({
-    userId: z.string().uuid(),
-    startsAt: z.string().datetime(),
-    endsAt: z.string().datetime(),
-    buildingId: z.string().uuid().nullable().optional(),
-    floorId: z.string().uuid().nullable().optional(),
-    zoneId: z.string().uuid().nullable().optional(),
-    notes: z.string().max(500).nullable().optional(),
-  })
-  .refine((s) => new Date(s.endsAt) > new Date(s.startsAt), { message: "ends_at must be after starts_at" });
+const shiftFields = z.object({
+  userId: z.string().uuid(),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  buildingId: z.string().uuid().nullable().optional(),
+  floorId: z.string().uuid().nullable().optional(),
+  zoneId: z.string().uuid().nullable().optional(),
+  notes: z.string().max(500).nullable().optional(),
+});
+const shiftBody = shiftFields.refine(
+  (s) => new Date(s.endsAt) > new Date(s.startsAt),
+  { message: "ends_at must be after starts_at" },
+);
 
 export default async function shiftRoutes(app: FastifyInstance): Promise<void> {
   app.get(
@@ -34,8 +37,9 @@ export default async function shiftRoutes(app: FastifyInstance): Promise<void> {
         })
         .safeParse(req.query);
       if (!q.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
 
-      const conds = [];
+      const conds = [eq(schema.shifts.organisationId, c.orgId)];
       if (q.data.from) conds.push(gte(schema.shifts.endsAt, new Date(q.data.from)));
       if (q.data.to) conds.push(lte(schema.shifts.startsAt, new Date(q.data.to)));
       if (q.data.userId) conds.push(eq(schema.shifts.userId, q.data.userId));
@@ -60,7 +64,7 @@ export default async function shiftRoutes(app: FastifyInstance): Promise<void> {
         .leftJoin(schema.buildings, eq(schema.buildings.id, schema.shifts.buildingId))
         .leftJoin(schema.floors, eq(schema.floors.id, schema.shifts.floorId))
         .leftJoin(schema.zones, eq(schema.zones.id, schema.shifts.zoneId))
-        .where(conds.length > 0 ? and(...conds) : undefined)
+        .where(and(...conds))
         .orderBy(desc(schema.shifts.startsAt));
       return { shifts: rows };
     },
@@ -72,10 +76,11 @@ export default async function shiftRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const body = shiftBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input", details: body.error.flatten() });
-      const createdBy = (req.user as { sub: string }).sub;
+      const c = ctx(req);
       const [shift] = await db
         .insert(schema.shifts)
         .values({
+          organisationId: c.orgId,
           userId: body.data.userId,
           startsAt: new Date(body.data.startsAt),
           endsAt: new Date(body.data.endsAt),
@@ -83,11 +88,12 @@ export default async function shiftRoutes(app: FastifyInstance): Promise<void> {
           floorId: body.data.floorId ?? null,
           zoneId: body.data.zoneId ?? null,
           notes: body.data.notes ?? null,
-          createdBy,
+          createdBy: c.sub,
         })
         .returning();
       await db.insert(schema.auditLog).values({
-        actorUserId: createdBy,
+        organisationId: c.orgId,
+        actorUserId: c.sub,
         action: "shift.created",
         targetType: "shift",
         targetId: shift!.id,
@@ -102,8 +108,9 @@ export default async function shiftRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async (req, reply) => {
       const { id } = req.params as { id: string };
-      const body = shiftBody.partial().safeParse(req.body);
+      const body = shiftFields.partial().safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
       const update: Record<string, unknown> = {};
       if (body.data.userId) update.userId = body.data.userId;
       if (body.data.startsAt) update.startsAt = new Date(body.data.startsAt);
@@ -112,7 +119,8 @@ export default async function shiftRoutes(app: FastifyInstance): Promise<void> {
       if (body.data.floorId !== undefined) update.floorId = body.data.floorId;
       if (body.data.zoneId !== undefined) update.zoneId = body.data.zoneId;
       if (body.data.notes !== undefined) update.notes = body.data.notes;
-      await db.update(schema.shifts).set(update).where(eq(schema.shifts.id, id));
+      await db.update(schema.shifts).set(update)
+        .where(and(eq(schema.shifts.id, id), eq(schema.shifts.organisationId, c.orgId)));
       return { ok: true };
     },
   );
@@ -122,10 +130,14 @@ export default async function shiftRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async (req) => {
       const { id } = req.params as { id: string };
-      const actorId = (req.user as { sub: string }).sub;
-      await db.delete(schema.shifts).where(eq(schema.shifts.id, id));
+      const c = ctx(req);
+      await db.delete(schema.shifts).where(and(
+        eq(schema.shifts.id, id),
+        eq(schema.shifts.organisationId, c.orgId),
+      ));
       await db.insert(schema.auditLog).values({
-        actorUserId: actorId,
+        organisationId: c.orgId,
+        actorUserId: c.sub,
         action: "shift.deleted",
         targetType: "shift",
         targetId: id,

@@ -13,41 +13,35 @@ interface TtsUplink {
 }
 
 async function maybeFireLowBatteryAlert(
+  orgId: string,
   hangerId: string,
   hangerLabel: string,
   oldPct: number | null,
   newPct: number,
 ): Promise<void> {
-  const threshold = await getLowBatteryThreshold();
+  const threshold = await getLowBatteryThreshold(orgId);
   const wasAbove = oldPct === null || oldPct > threshold;
   const nowBelow = newPct <= threshold;
   if (!wasAbove || !nowBelow) return;
 
-  const recipients = await db
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .where(and(
-      isNull(schema.users.deactivatedAt),
-    ));
-
   const adminAndSupervisors = await db
     .select({ id: schema.users.id, role: schema.users.role })
     .from(schema.users)
-    .where(isNull(schema.users.deactivatedAt));
+    .where(and(eq(schema.users.organisationId, orgId), isNull(schema.users.deactivatedAt)));
 
   for (const u of adminAndSupervisors) {
     if (u.role !== "admin" && u.role !== "supervisor") continue;
-    const ctx = {
+    const ctxN = {
+      orgId,
       alertId: null,
       userId: u.id,
       title: "Hanger battery low",
       body: `${hangerLabel} battery at ${newPct}% (threshold ${threshold}%)`,
       kind: "low_battery" as const,
     };
-    await notifyPush(ctx);
-    await notifyEmail(ctx);
+    await notifyPush(ctxN);
+    await notifyEmail(ctxN);
   }
-  void recipients;
 }
 
 export default async function webhookRoutes(app: FastifyInstance): Promise<void> {
@@ -98,6 +92,7 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
       .where(eq(schema.hangers.id, hanger.id));
 
     await db.insert(schema.events).values({
+      organisationId: hanger.organisationId,
       hangerId: hanger.id,
       type: decoded.eventType,
       batteryPct: decoded.batteryPct,
@@ -105,7 +100,7 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
     });
 
     const hangerLabel = hanger.devEui;
-    void maybeFireLowBatteryAlert(hanger.id, hangerLabel, oldBattery, decoded.batteryPct);
+    void maybeFireLowBatteryAlert(hanger.organisationId, hanger.id, hangerLabel, oldBattery, decoded.batteryPct);
 
     if (hanger.status !== "active") {
       return reply.send({ status: "ok", hangerStatus: hanger.status });

@@ -10,6 +10,9 @@ export function Layout() {
       <aside className="w-60 bg-slate-900 text-slate-100 flex flex-col">
         <div className="px-4 py-5 border-b border-slate-800">
           <div className="font-semibold tracking-wide">BOR Systems</div>
+          {user.organisationName && (
+            <div className="text-xs text-slate-300 mt-1 truncate">{user.organisationName}</div>
+          )}
           <div className="text-xs text-slate-400 mt-1">{user.name} · {user.role}</div>
         </div>
         <nav className="flex-1 p-2 space-y-1 text-sm overflow-y-auto">

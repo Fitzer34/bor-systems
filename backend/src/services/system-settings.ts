@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { config } from "../config.js";
 
@@ -18,8 +18,12 @@ const DEFAULTS = {
   EXPECTED_CLEANING_TIME: 10,
 };
 
-async function readNumber(key: string, fallback: number): Promise<number> {
-  const [row] = await db.select().from(schema.settings).where(eq(schema.settings.key, key)).limit(1);
+async function readNumber(orgId: string, key: string, fallback: number): Promise<number> {
+  const [row] = await db
+    .select()
+    .from(schema.settings)
+    .where(and(eq(schema.settings.organisationId, orgId), eq(schema.settings.key, key)))
+    .limit(1);
   if (!row) return fallback;
   const v = (row.value as { value?: unknown; minutes?: unknown; pct?: unknown }).value
     ?? (row.value as { minutes?: unknown }).minutes
@@ -27,43 +31,49 @@ async function readNumber(key: string, fallback: number): Promise<number> {
   return typeof v === "number" && v >= 0 ? v : fallback;
 }
 
-async function readBool(key: string, fallback: boolean): Promise<boolean> {
-  const [row] = await db.select().from(schema.settings).where(eq(schema.settings.key, key)).limit(1);
+async function readBool(orgId: string, key: string, fallback: boolean): Promise<boolean> {
+  const [row] = await db
+    .select()
+    .from(schema.settings)
+    .where(and(eq(schema.settings.organisationId, orgId), eq(schema.settings.key, key)))
+    .limit(1);
   if (!row) return fallback;
   const v = (row.value as { value?: unknown }).value;
   return typeof v === "boolean" ? v : fallback;
 }
 
-export async function getResolutionTimerMinutes(): Promise<number> {
-  return readNumber(SETTING_KEYS.RESOLUTION_TIMER, config.RESOLUTION_TIMER_MINUTES);
+export async function getResolutionTimerMinutes(orgId: string): Promise<number> {
+  return readNumber(orgId, SETTING_KEYS.RESOLUTION_TIMER, config.RESOLUTION_TIMER_MINUTES);
+}
+export async function getAcknowledgementTimerMinutes(orgId: string): Promise<number> {
+  return readNumber(orgId, SETTING_KEYS.ACKNOWLEDGEMENT_TIMER, DEFAULTS.ACKNOWLEDGEMENT_TIMER);
+}
+export async function getLowBatteryThreshold(orgId: string): Promise<number> {
+  return readNumber(orgId, SETTING_KEYS.LOW_BATTERY_THRESHOLD, DEFAULTS.LOW_BATTERY_THRESHOLD);
+}
+export async function getDefaultAudibleAlarm(orgId: string): Promise<boolean> {
+  return readBool(orgId, SETTING_KEYS.DEFAULT_AUDIBLE_ALARM, DEFAULTS.DEFAULT_AUDIBLE_ALARM);
+}
+export async function getExpectedCleaningTimeMinutes(orgId: string): Promise<number> {
+  return readNumber(orgId, SETTING_KEYS.EXPECTED_CLEANING_TIME, DEFAULTS.EXPECTED_CLEANING_TIME);
 }
 
-export async function getAcknowledgementTimerMinutes(): Promise<number> {
-  return readNumber(SETTING_KEYS.ACKNOWLEDGEMENT_TIMER, DEFAULTS.ACKNOWLEDGEMENT_TIMER);
-}
-
-export async function getLowBatteryThreshold(): Promise<number> {
-  return readNumber(SETTING_KEYS.LOW_BATTERY_THRESHOLD, DEFAULTS.LOW_BATTERY_THRESHOLD);
-}
-
-export async function getDefaultAudibleAlarm(): Promise<boolean> {
-  return readBool(SETTING_KEYS.DEFAULT_AUDIBLE_ALARM, DEFAULTS.DEFAULT_AUDIBLE_ALARM);
-}
-
-export async function getExpectedCleaningTimeMinutes(): Promise<number> {
-  return readNumber(SETTING_KEYS.EXPECTED_CLEANING_TIME, DEFAULTS.EXPECTED_CLEANING_TIME);
-}
-
-export async function setNumber(key: string, value: number): Promise<void> {
+export async function setNumber(orgId: string, key: string, value: number): Promise<void> {
   await db
     .insert(schema.settings)
-    .values({ key, value: { value } })
-    .onConflictDoUpdate({ target: schema.settings.key, set: { value: { value }, updatedAt: new Date() } });
+    .values({ organisationId: orgId, key, value: { value } })
+    .onConflictDoUpdate({
+      target: [schema.settings.organisationId, schema.settings.key],
+      set: { value: { value }, updatedAt: new Date() },
+    });
 }
 
-export async function setBool(key: string, value: boolean): Promise<void> {
+export async function setBool(orgId: string, key: string, value: boolean): Promise<void> {
   await db
     .insert(schema.settings)
-    .values({ key, value: { value } })
-    .onConflictDoUpdate({ target: schema.settings.key, set: { value: { value }, updatedAt: new Date() } });
+    .values({ organisationId: orgId, key, value: { value } })
+    .onConflictDoUpdate({
+      target: [schema.settings.organisationId, schema.settings.key],
+      set: { value: { value }, updatedAt: new Date() },
+    });
 }

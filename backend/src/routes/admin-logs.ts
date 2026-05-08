@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
+import { ctx } from "../services/auth-context.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -21,6 +22,7 @@ export default async function adminLogRoutes(app: FastifyInstance): Promise<void
     async (req, reply) => {
       const q = querySchema.safeParse(req.query);
       if (!q.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
       const rows = await db
         .select({
           id: schema.auditLog.id,
@@ -35,6 +37,7 @@ export default async function adminLogRoutes(app: FastifyInstance): Promise<void
         })
         .from(schema.auditLog)
         .leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorUserId))
+        .where(eq(schema.auditLog.organisationId, c.orgId))
         .orderBy(desc(schema.auditLog.at))
         .limit(q.data.limit)
         .offset(q.data.offset);
@@ -48,6 +51,7 @@ export default async function adminLogRoutes(app: FastifyInstance): Promise<void
     async (req, reply) => {
       const q = querySchema.safeParse(req.query);
       if (!q.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
       const rows = await db
         .select({
           id: schema.notifications.id,
@@ -63,6 +67,7 @@ export default async function adminLogRoutes(app: FastifyInstance): Promise<void
         })
         .from(schema.notifications)
         .leftJoin(schema.users, eq(schema.users.id, schema.notifications.userId))
+        .where(eq(schema.notifications.organisationId, c.orgId))
         .orderBy(desc(schema.notifications.sentAt))
         .limit(q.data.limit)
         .offset(q.data.offset);

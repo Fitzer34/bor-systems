@@ -3,6 +3,7 @@ import { z } from "zod";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { notifyEmail, notifyPush, notifySms } from "../services/notifications.js";
+import { ctx } from "../services/auth-context.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -23,14 +24,16 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
           alsoSms: z.boolean().default(false),
         })
         .safeParse(req.body);
-      if (!body.success) return reply.code(400).send({ error: "invalid_input", details: body.error.flatten() });
-
-      const senderId = (req.user as { sub: string }).sub;
+      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
 
       const [recipient] = await db
         .select()
         .from(schema.users)
-        .where(eq(schema.users.id, body.data.recipientUserId))
+        .where(and(
+          eq(schema.users.id, body.data.recipientUserId),
+          eq(schema.users.organisationId, c.orgId),
+        ))
         .limit(1);
       if (!recipient || recipient.deactivatedAt) {
         return reply.code(404).send({ error: "recipient_not_found_or_deactivated" });
@@ -42,7 +45,10 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
           .select({ name: schema.zones.name, floorName: schema.floors.name })
           .from(schema.zones)
           .leftJoin(schema.floors, eq(schema.floors.id, schema.zones.floorId))
-          .where(eq(schema.zones.id, body.data.zoneId))
+          .where(and(
+            eq(schema.zones.id, body.data.zoneId),
+            eq(schema.zones.organisationId, c.orgId),
+          ))
           .limit(1);
         if (zone) zoneLabel = `${zone.floorName ?? ""} — ${zone.name}`.replace(/^ — /, "");
       }
@@ -50,27 +56,30 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
       const [created] = await db
         .insert(schema.dispatches)
         .values({
+          organisationId: c.orgId,
           recipientUserId: body.data.recipientUserId,
-          senderUserId: senderId,
+          senderUserId: c.sub,
           zoneId: body.data.zoneId ?? null,
           message: body.data.message,
         })
         .returning();
 
       const title = zoneLabel ? `Dispatch — ${zoneLabel}` : "Dispatch";
-      const ctx = {
+      const ctxN = {
+        orgId: c.orgId,
         alertId: null,
         userId: body.data.recipientUserId,
         title,
         body: body.data.message,
         kind: "alert" as const,
       };
-      await notifyPush(ctx);
-      if (body.data.alsoSms) await notifySms(ctx);
-      void notifyEmail; // unused unless we extend
+      await notifyPush(ctxN);
+      if (body.data.alsoSms) await notifySms(ctxN);
+      void notifyEmail;
 
       await db.insert(schema.auditLog).values({
-        actorUserId: senderId,
+        organisationId: c.orgId,
+        actorUserId: c.sub,
         action: "dispatch.sent",
         targetType: "dispatch",
         targetId: created!.id,
@@ -81,10 +90,8 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
     },
   );
 
-  // List dispatches: admin/supervisor see all (recent); cleaner sees their own active ones
   app.get("/dispatches", { preHandler: [app.authenticate] }, async (req) => {
-    const userId = (req.user as { sub: string }).sub;
-    const role = (req.user as { role: string }).role;
+    const c = ctx(req);
 
     const baseSelect = db
       .select({
@@ -103,26 +110,54 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
       })
       .from(schema.dispatches)
       .leftJoin(schema.users, eq(schema.users.id, schema.dispatches.recipientUserId))
-      .leftJoin(schema.zones, eq(schema.zones.id, schema.dispatches.zoneId));
+      .leftJoin(schema.zones, eq(schema.zones.id, schema.dispatches.zoneId))
+      .where(eq(schema.dispatches.organisationId, c.orgId));
 
-    if (role === "admin" || role === "supervisor") {
+    if (c.role === "admin" || c.role === "supervisor") {
       const rows = await baseSelect.orderBy(desc(schema.dispatches.sentAt)).limit(200);
       return { dispatches: rows };
     }
 
-    const rows = await baseSelect
-      .where(and(eq(schema.dispatches.recipientUserId, userId), ne(schema.dispatches.status, "completed")))
+    // Cleaner: only their own active ones
+    const rows = await db
+      .select({
+        id: schema.dispatches.id,
+        recipientUserId: schema.dispatches.recipientUserId,
+        recipientName: schema.users.name,
+        senderUserId: schema.dispatches.senderUserId,
+        zoneId: schema.dispatches.zoneId,
+        zoneName: schema.zones.name,
+        floorId: schema.zones.floorId,
+        message: schema.dispatches.message,
+        status: schema.dispatches.status,
+        sentAt: schema.dispatches.sentAt,
+        acknowledgedAt: schema.dispatches.acknowledgedAt,
+        completedAt: schema.dispatches.completedAt,
+      })
+      .from(schema.dispatches)
+      .leftJoin(schema.users, eq(schema.users.id, schema.dispatches.recipientUserId))
+      .leftJoin(schema.zones, eq(schema.zones.id, schema.dispatches.zoneId))
+      .where(and(
+        eq(schema.dispatches.organisationId, c.orgId),
+        eq(schema.dispatches.recipientUserId, c.sub),
+        ne(schema.dispatches.status, "completed"),
+      ))
       .orderBy(desc(schema.dispatches.sentAt));
     return { dispatches: rows };
   });
 
   app.post("/dispatches/:id/acknowledge", { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const userId = (req.user as { sub: string }).sub;
+    const c = ctx(req);
     const result = await db
       .update(schema.dispatches)
       .set({ status: "acknowledged", acknowledgedAt: new Date() })
-      .where(and(eq(schema.dispatches.id, id), eq(schema.dispatches.recipientUserId, userId), eq(schema.dispatches.status, "sent")))
+      .where(and(
+        eq(schema.dispatches.id, id),
+        eq(schema.dispatches.organisationId, c.orgId),
+        eq(schema.dispatches.recipientUserId, c.sub),
+        eq(schema.dispatches.status, "sent"),
+      ))
       .returning({ id: schema.dispatches.id });
     if (!result[0]) return reply.code(409).send({ error: "not_yours_or_already_actioned" });
     return { ok: true };
@@ -130,10 +165,13 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
 
   app.post("/dispatches/:id/complete", { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const userId = (req.user as { sub: string }).sub;
-    const role = (req.user as { role: string }).role;
-    const conds = [eq(schema.dispatches.id, id), inArray(schema.dispatches.status, ["sent", "acknowledged"])];
-    if (role === "cleaner") conds.push(eq(schema.dispatches.recipientUserId, userId));
+    const c = ctx(req);
+    const conds = [
+      eq(schema.dispatches.id, id),
+      eq(schema.dispatches.organisationId, c.orgId),
+      inArray(schema.dispatches.status, ["sent", "acknowledged"]),
+    ];
+    if (c.role === "cleaner") conds.push(eq(schema.dispatches.recipientUserId, c.sub));
     const result = await db
       .update(schema.dispatches)
       .set({ status: "completed", completedAt: new Date() })

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
 export function Login() {
@@ -60,6 +60,13 @@ export function Login() {
         >
           {busy ? "Signing in…" : "Sign in"}
         </button>
+
+        <div className="pt-3 border-t text-sm text-center text-slate-500">
+          New to BOR Systems?{" "}
+          <Link to="/signup" className="text-blue-600 underline font-medium">
+            Create an organisation
+          </Link>
+        </div>
       </form>
     </div>
   );

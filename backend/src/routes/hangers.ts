@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
+import { ctx } from "../services/auth-context.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -10,8 +11,9 @@ const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) 
   };
 
 export default async function hangerRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/hangers", { preHandler: [app.authenticate] }, async () => {
-    return { hangers: await db.select().from(schema.hangers) };
+  app.get("/hangers", { preHandler: [app.authenticate] }, async (req) => {
+    const c = ctx(req);
+    return { hangers: await db.select().from(schema.hangers).where(eq(schema.hangers.organisationId, c.orgId)) };
   });
 
   app.post(
@@ -26,16 +28,25 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
         })
         .safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
 
-      const [created] = await db
-        .insert(schema.hangers)
-        .values({
-          devEui: body.data.devEui.toUpperCase(),
-          zoneId: body.data.zoneId,
-          audibleAlarmEnabled: body.data.audibleAlarmEnabled,
-        })
-        .returning();
-      return { hanger: created };
+      try {
+        const [created] = await db
+          .insert(schema.hangers)
+          .values({
+            organisationId: c.orgId,
+            devEui: body.data.devEui.toUpperCase(),
+            zoneId: body.data.zoneId,
+            audibleAlarmEnabled: body.data.audibleAlarmEnabled,
+          })
+          .returning();
+        return { hanger: created };
+      } catch (err: any) {
+        if (String(err).includes("hangers_dev_eui_unique")) {
+          return reply.code(409).send({ error: "dev_eui_already_registered" });
+        }
+        throw err;
+      }
     },
   );
 
@@ -46,7 +57,9 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
       const { id } = req.params as { id: string };
       const body = z.object({ zoneId: z.string().uuid() }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
-      await db.update(schema.hangers).set({ zoneId: body.data.zoneId }).where(eq(schema.hangers.id, id));
+      const c = ctx(req);
+      await db.update(schema.hangers).set({ zoneId: body.data.zoneId })
+        .where(and(eq(schema.hangers.id, id), eq(schema.hangers.organisationId, c.orgId)));
       return { ok: true };
     },
   );
@@ -56,7 +69,9 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
     { preHandler: [app.authenticate, requireRole(["admin"])] },
     async (req) => {
       const { id } = req.params as { id: string };
-      await db.update(schema.hangers).set({ status: "decommissioned" }).where(eq(schema.hangers.id, id));
+      const c = ctx(req);
+      await db.update(schema.hangers).set({ status: "decommissioned" })
+        .where(and(eq(schema.hangers.id, id), eq(schema.hangers.organisationId, c.orgId)));
       return { ok: true };
     },
   );
@@ -66,7 +81,9 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
     { preHandler: [app.authenticate, requireRole(["admin"])] },
     async (req) => {
       const { id } = req.params as { id: string };
-      await db.update(schema.hangers).set({ status: "active" }).where(eq(schema.hangers.id, id));
+      const c = ctx(req);
+      await db.update(schema.hangers).set({ status: "active" })
+        .where(and(eq(schema.hangers.id, id), eq(schema.hangers.organisationId, c.orgId)));
       return { ok: true };
     },
   );

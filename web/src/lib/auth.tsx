@@ -7,7 +7,9 @@ export interface CurrentUser {
   name: string;
   role: "admin" | "supervisor" | "cleaner";
   onDuty: boolean;
-  locale: string;
+  locale?: string;
+  organisationId?: string;
+  organisationName?: string;
 }
 
 interface AuthState {

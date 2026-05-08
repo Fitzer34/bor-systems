@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
+import { ctx } from "../services/auth-context.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -18,6 +19,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   app.get("/reports/spills", { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] }, async (req, reply) => {
     const q = querySchema.safeParse(req.query);
     if (!q.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
     const from = q.data.from ? new Date(q.data.from) : new Date(Date.now() - 30 * 24 * 3600 * 1000);
     const to = q.data.to ? new Date(q.data.to) : new Date();
 
@@ -39,7 +41,11 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
       .leftJoin(schema.zones, eq(schema.zones.id, schema.hangers.zoneId))
       .leftJoin(schema.floors, eq(schema.floors.id, schema.zones.floorId))
       .leftJoin(schema.buildings, eq(schema.buildings.id, schema.floors.buildingId))
-      .where(and(gte(schema.alerts.openedAt, from), lte(schema.alerts.openedAt, to)))
+      .where(and(
+        eq(schema.alerts.organisationId, c.orgId),
+        gte(schema.alerts.openedAt, from),
+        lte(schema.alerts.openedAt, to),
+      ))
       .orderBy(desc(schema.alerts.openedAt));
 
     return { from, to, count: rows.length, spills: rows };
@@ -48,6 +54,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   app.get("/reports/spills.csv", { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] }, async (req, reply) => {
     const q = querySchema.safeParse(req.query);
     if (!q.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
     const from = q.data.from ? new Date(q.data.from) : new Date(Date.now() - 30 * 24 * 3600 * 1000);
     const to = q.data.to ? new Date(q.data.to) : new Date();
 
@@ -67,7 +74,11 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
       .leftJoin(schema.zones, eq(schema.zones.id, schema.hangers.zoneId))
       .leftJoin(schema.floors, eq(schema.floors.id, schema.zones.floorId))
       .leftJoin(schema.buildings, eq(schema.buildings.id, schema.floors.buildingId))
-      .where(and(gte(schema.alerts.openedAt, from), lte(schema.alerts.openedAt, to)))
+      .where(and(
+        eq(schema.alerts.organisationId, c.orgId),
+        gte(schema.alerts.openedAt, from),
+        lte(schema.alerts.openedAt, to),
+      ))
       .orderBy(desc(schema.alerts.openedAt));
 
     const header = "alert_id,opened_at,acknowledged_at,closed_at,closure_reason,building,floor,zone";

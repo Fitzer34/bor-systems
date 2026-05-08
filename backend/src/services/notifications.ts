@@ -43,6 +43,7 @@ function smsReady(): boolean {
 }
 
 interface DispatchInput {
+  orgId: string;
   alertId: string | null;
   userId: string;
   title: string;
@@ -52,6 +53,7 @@ interface DispatchInput {
 
 async function record(input: DispatchInput, channel: typeof schema.notificationChannel.enumValues[number], delivered: boolean, error?: string) {
   await db.insert(schema.notifications).values({
+    organisationId: input.orgId,
     alertId: input.alertId,
     userId: input.userId,
     channel,

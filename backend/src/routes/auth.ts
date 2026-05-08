@@ -1,40 +1,166 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import argon2 from "argon2";
 import { db, schema } from "../db/client.js";
+import { ctx } from "../services/auth-context.js";
 
-const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+  organisationName: z.string().optional(),
+});
+
+const registerSchema = z.object({
+  organisationName: z.string().min(1).max(120),
+  adminName: z.string().min(1).max(120),
+  email: z.string().email(),
+  password: z.string().min(8).max(200),
+});
 
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
+  // --------- Sign in ---------
   app.post("/auth/login", async (req, reply) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const email = parsed.data.email.toLowerCase();
 
-    const [user] = await db
+    // If multiple orgs share an email (shouldn't normally happen — email is
+    // unique per-org), the optional `organisationName` disambiguates.
+    let candidates = await db
       .select()
       .from(schema.users)
-      .where(eq(schema.users.email, parsed.data.email.toLowerCase()))
-      .limit(1);
+      .where(eq(schema.users.email, email));
 
-    if (!user || user.deactivatedAt) {
+    if (candidates.length === 0) {
       return reply.code(401).send({ error: "invalid_credentials" });
     }
-    const ok = await argon2.verify(user.passwordHash, parsed.data.password);
-    if (!ok) return reply.code(401).send({ error: "invalid_credentials" });
 
-    const token = app.jwt.sign({ sub: user.id, role: user.role, name: user.name });
+    if (parsed.data.organisationName) {
+      const orgs = await db
+        .select()
+        .from(schema.organisations)
+        .where(eq(schema.organisations.name, parsed.data.organisationName));
+      const orgIds = new Set(orgs.map((o) => o.id));
+      candidates = candidates.filter((c) => orgIds.has(c.organisationId));
+    }
+
+    let user = candidates[0];
+    let okPassword = false;
+    for (const c of candidates) {
+      try {
+        if (await argon2.verify(c.passwordHash, parsed.data.password)) {
+          user = c;
+          okPassword = true;
+          break;
+        }
+      } catch { /* keep checking */ }
+    }
+    if (!user || !okPassword || user.deactivatedAt) {
+      return reply.code(401).send({ error: "invalid_credentials" });
+    }
+
+    const [org] = await db
+      .select()
+      .from(schema.organisations)
+      .where(eq(schema.organisations.id, user.organisationId))
+      .limit(1);
+
+    const token = app.jwt.sign({
+      sub: user.id,
+      orgId: user.organisationId,
+      role: user.role,
+      name: user.name,
+    });
     return reply.send({
       token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, onDuty: user.onDuty },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        onDuty: user.onDuty,
+        organisationId: user.organisationId,
+        organisationName: org?.name ?? "",
+      },
     });
   });
 
+  // --------- Create new organisation ---------
+  app.post("/auth/register-organisation", async (req, reply) => {
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_input", details: parsed.error.flatten() });
+    }
+
+    const email = parsed.data.email.toLowerCase();
+    const passwordHash = await argon2.hash(parsed.data.password);
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [org] = await tx
+          .insert(schema.organisations)
+          .values({ name: parsed.data.organisationName })
+          .returning();
+
+        const [admin] = await tx
+          .insert(schema.users)
+          .values({
+            organisationId: org!.id,
+            email,
+            name: parsed.data.adminName,
+            passwordHash,
+            role: "admin",
+          })
+          .returning();
+
+        await tx.insert(schema.auditLog).values({
+          organisationId: org!.id,
+          actorUserId: admin!.id,
+          action: "organisation.created",
+          targetType: "organisation",
+          targetId: org!.id,
+        });
+
+        return { org: org!, admin: admin! };
+      });
+
+      const token = app.jwt.sign({
+        sub: result.admin.id,
+        orgId: result.org.id,
+        role: result.admin.role,
+        name: result.admin.name,
+      });
+      return reply.code(201).send({
+        token,
+        user: {
+          id: result.admin.id,
+          email: result.admin.email,
+          name: result.admin.name,
+          role: result.admin.role,
+          onDuty: result.admin.onDuty,
+          organisationId: result.org.id,
+          organisationName: result.org.name,
+        },
+      });
+    } catch (err: any) {
+      if (String(err).includes("users_org_email_unique")) {
+        return reply.code(409).send({ error: "email_taken_in_org" });
+      }
+      app.log.error(err, "register-organisation failed");
+      return reply.code(500).send({ error: "registration_failed" });
+    }
+  });
+
+  // --------- Toggle on / off duty ---------
   app.post("/auth/duty", { preHandler: [app.authenticate] }, async (req, reply) => {
     const body = z.object({ onDuty: z.boolean() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
-    const userId = (req.user as { sub: string }).sub;
-    await db.update(schema.users).set({ onDuty: body.data.onDuty }).where(eq(schema.users.id, userId));
+    const c = ctx(req);
+    await db
+      .update(schema.users)
+      .set({ onDuty: body.data.onDuty })
+      .where(and(eq(schema.users.id, c.sub), eq(schema.users.organisationId, c.orgId)));
     return reply.send({ onDuty: body.data.onDuty });
   });
 }
