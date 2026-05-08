@@ -1,19 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import { promises as fs } from "node:fs";
-import { extname, join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { uploadFloorPlan } from "../services/storage.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
     const role = req.user?.role;
     if (!role || !allowed.includes(role)) return reply.code(403).send({ error: "forbidden" });
   };
-
-const UPLOAD_DIR = join(process.cwd(), "uploads", "floorplans");
 
 async function assertFloorInOrg(floorId: string, orgId: string): Promise<boolean> {
   const [f] = await db
@@ -34,8 +30,6 @@ async function assertZoneInOrg(zoneId: string, orgId: string): Promise<boolean> 
 }
 
 export default async function buildingRoutes(app: FastifyInstance): Promise<void> {
-  await fs.mkdir(UPLOAD_DIR, { recursive: true });
-
   app.get("/buildings", { preHandler: [app.authenticate] }, async (req) => {
     const c = ctx(req);
     return { buildings: await db.select().from(schema.buildings).where(eq(schema.buildings.organisationId, c.orgId)) };
@@ -94,11 +88,8 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     if (!["image/png", "image/jpeg"].includes(file.mimetype)) {
       return reply.code(400).send({ error: "must_be_png_or_jpeg" });
     }
-    const ext = extname(file.filename) || (file.mimetype === "image/png" ? ".png" : ".jpg");
-    const filename = `${randomUUID()}${ext}`;
-    const path = join(UPLOAD_DIR, filename);
-    await fs.writeFile(path, await file.toBuffer());
-    const url = `/uploads/floorplans/${filename}`;
+    const buf = await file.toBuffer();
+    const { url } = await uploadFloorPlan({ filename: file.filename, mimetype: file.mimetype, body: buf });
     await db.update(schema.floors).set({ floorPlanUrl: url }).where(eq(schema.floors.id, id));
     return { url };
   });
