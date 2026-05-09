@@ -77,9 +77,18 @@ struct PulsingDot: View {
     }
 }
 
-/// Builds the full URL for an asset path returned from the backend (e.g. "/uploads/floorplans/x.png").
+/// Builds the full URL for an asset returned from the backend.
+///
+/// Handles two cases:
+/// - Absolute URL (e.g. "https://images.bor-systems.com/floorplans/x.png") — returned unchanged.
+///   This is what the live backend returns when R2 storage is configured.
+/// - Relative path (e.g. "/uploads/floorplans/x.png") — appended to apiBaseURL.
+///   This is what local-dev backend returns when files are written to disk.
 func assetURL(_ path: String) -> URL? {
     guard !path.isEmpty else { return nil }
+    if path.hasPrefix("http://") || path.hasPrefix("https://") {
+        return URL(string: path)
+    }
     let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: ["/"])
     let suffix = path.hasPrefix("/") ? path : "/\(path)"
     return URL(string: base + suffix)
