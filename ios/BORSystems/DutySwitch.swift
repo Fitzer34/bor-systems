@@ -73,7 +73,9 @@ struct DutySwitch: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+        // minimumDistance > 0 so tap-on-thumb falls through to the outer
+        // capsule's onTapGesture instead of being eaten by the drag.
+        DragGesture(minimumDistance: 4)
             .onChanged { value in
                 isDragging = true
                 dragOffset = value.translation.width
