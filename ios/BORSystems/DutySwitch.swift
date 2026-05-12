@@ -16,7 +16,7 @@ struct DutySwitch: View {
     @State private var isDragging = false
 
     var body: some View {
-        VStack(spacing: 4) {
+        HStack(spacing: 8) {
             Text("Duty")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
