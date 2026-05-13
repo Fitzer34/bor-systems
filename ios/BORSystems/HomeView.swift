@@ -114,6 +114,8 @@ struct HomeView: View {
             self.alerts = try await alertsTask
             self.dispatches = try await dispTask
             self.error = nil
+            // Fire local notifications for any new alerts/dispatches we haven't seen
+            LocalAlertNotifier.shared.observe(alerts: self.alerts, dispatches: self.dispatches)
         } catch APIError.unauthorized {
             auth.logout()
         } catch {
