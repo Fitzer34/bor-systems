@@ -69,16 +69,32 @@ def apt_install(extra: list[str]) -> None:
 
 def setup_venv(install_gpiozero: bool = False) -> None:
     print("\n=== Python venv ===")
+    # If the venv already exists but needs to gain access to system-installed
+    # gpiozero (i.e. we're switching from gateway role → hanger role), wipe
+    # it and start fresh. Tiny cost; avoids ModuleNotFoundError at runtime.
+    needs_system_pkgs = install_gpiozero
+    if VENV_DIR.exists() and needs_system_pkgs:
+        pyvenv_cfg = VENV_DIR / "pyvenv.cfg"
+        has_sys = pyvenv_cfg.exists() and "include-system-site-packages = true" in pyvenv_cfg.read_text()
+        if not has_sys:
+            import shutil
+            print("Existing venv lacks --system-site-packages; recreating for hanger role")
+            shutil.rmtree(VENV_DIR)
+
     if not VENV_DIR.exists():
-        # --system-site-packages lets the venv see python3-gpiozero / python3-lgpio
-        # installed via apt, which is the supported way on Pi 5.
         args = ["python3", "-m", "venv"]
-        if install_gpiozero:
+        if needs_system_pkgs:
+            # Pi 5's GPIO is gated behind gpiozero+lgpio which install cleanly
+            # only via apt — this flag exposes them inside the venv.
             args.append("--system-site-packages")
         run([*args, str(VENV_DIR)])
     pip = VENV_DIR / "bin" / "pip"
     run([str(pip), "install", "--upgrade", "pip"])
     run([str(pip), "install", "-r", str(SCRIPT_DIR / "requirements.txt")])
+    if install_gpiozero:
+        # Belt-and-braces: explicitly install gpiozero+lgpio into the venv too,
+        # in case the apt versions are missing or out of date.
+        run([str(pip), "install", "gpiozero", "lgpio"])
 
 
 def render_unit(src: Path, dst: Path, mapping: dict[str, str]) -> None:
