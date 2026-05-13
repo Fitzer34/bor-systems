@@ -1,8 +1,21 @@
-# BOR Systems — Raspberry Pi 5
+# BOR Systems — Raspberry Pi
 
-This folder contains everything for running a **Raspberry Pi 5 as the in-building LoRaWAN gateway** for BOR Systems. The Pi receives radio packets from the wet-floor-sign hangers and forwards them to the cloud backend (the rest of the system — backend, database, web dashboard — stays on Render).
+The same Pi codebase can run in **two roles**. Pick the one that fits the building.
 
-If you ever want to fully self-host (Pi runs backend + DB too), see [self-host notes](#fully-self-hosted-option) at the bottom.
+| Role | Pi acts as | Reaches backend via | Best for |
+|---|---|---|---|
+| **Gateway** | A shared LoRaWAN gateway for many battery-powered remote hangers | LoRa radio → The Things Stack → cloud webhook | Big buildings, patchy WiFi (basements etc.) |
+| **Hanger** | The hanger itself, microswitch on GPIO | Building WiFi → HTTPS straight to cloud | Buildings with strong WiFi everywhere |
+
+Both write to the same cloud, same dashboards, same iOS app. You can mix roles within one deployment.
+
+Install with one command after cloning the repo on the Pi:
+
+```sh
+sudo python3 install.py --role gateway   # one Pi serving many remote hangers
+# or
+sudo python3 install.py --role hanger    # this Pi IS a hanger
+```
 
 ## What you need
 

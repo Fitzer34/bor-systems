@@ -1,0 +1,18 @@
+[Unit]
+Description=BOR Systems WiFi hanger daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__WORKDIR__
+EnvironmentFile=/etc/bor-hanger.env
+ExecStart=__PYTHON__ __HANGER_PY__
+Restart=on-failure
+RestartSec=10
+# Allow GPIO access
+SupplementaryGroups=gpio
+
+[Install]
+WantedBy=multi-user.target
