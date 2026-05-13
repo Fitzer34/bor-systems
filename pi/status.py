@@ -84,8 +84,11 @@ def systemd_active(unit: str) -> bool:
 
 
 def cloud_reachable() -> tuple[bool, str]:
+    # Render's free tier spins down after inactivity — first cold-start
+    # request can take 30-60s. Use a generous timeout so the badge shows
+    # the right state even when the cloud is just waking up.
     try:
-        r = requests.get(CLOUD_HEALTH_URL, timeout=5)
+        r = requests.get(CLOUD_HEALTH_URL, timeout=20)
         if r.ok:
             return True, f"OK ({r.json().get('version', '?')})"
         return False, f"HTTP {r.status_code}"
