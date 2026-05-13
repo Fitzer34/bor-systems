@@ -102,6 +102,15 @@ Register the hanger DevEUI in the **Hangers** page first, with a zone, so the al
 2. **Pilot:** 12 hangers, real install in target building, host backend on EU infra, real FCM/Twilio/SMTP creds.
 3. **Production:** custom PCB, hardened backend, deployment to additional buildings.
 
+## Deployment options
+
+The backend and web are deployed to **Render** (see `render.yaml`) — tagged at `v0.1-cloud-deploy` for safe rollback. For the in-building **LoRaWAN gateway**, two options:
+
+- **RAK7268V2** — turnkey hardware gateway (£170)
+- **Raspberry Pi 5 + LoRa concentrator hat** — DIY, ~£100. Setup scripts and a status server live in [`pi/`](pi/README.md).
+
+The Pi is a drop-in replacement for the dedicated gateway. The cloud backend is unchanged.
+
 ## Status
 
 Functional end-to-end software stack. **Not yet tested with hardware** because no hangers exist yet. The webhook is shaped to accept The Things Stack uplinks; the firmware sketch is complete except for the LoRaWAN join + send and STM32 sleep calls, which need to be wired against the RAK3172 SDK once a board is in hand.
