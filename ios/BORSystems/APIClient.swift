@@ -33,15 +33,18 @@ final class APIClient {
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        // Backend emits ISO 8601 with fractional seconds, e.g. "2026-05-07T00:08:02.013Z"
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let fallback = ISO8601DateFormatter()
-        fallback.formatOptions = [.withInternetDateTime]
+        // Backend emits ISO 8601 with fractional seconds, e.g. "2026-05-07T00:08:02.013Z".
+        // ISO8601DateFormatter is thread-safe but not formally Sendable, so we
+        // create instances inside the decode closure rather than capturing them.
         d.dateDecodingStrategy = .custom { decoder in
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)
-            return formatter.date(from: s) ?? fallback.date(from: s) ?? Date()
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: s) { return date }
+            let fallback = ISO8601DateFormatter()
+            fallback.formatOptions = [.withInternetDateTime]
+            return fallback.date(from: s) ?? Date()
         }
         return d
     }()
