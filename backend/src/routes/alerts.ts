@@ -5,6 +5,7 @@ import { db, schema } from "../db/client.js";
 import { closeAlertForHanger } from "../services/alert-flow.js";
 import { notifyEmail, notifyPush } from "../services/notifications.js";
 import { ctx } from "../services/auth-context.js";
+import { eventBus } from "../services/event-bus.js";
 
 export default async function alertRoutes(app: FastifyInstance): Promise<void> {
   app.get("/alerts/active", { preHandler: [app.authenticate] }, async (req) => {
@@ -44,6 +45,7 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
       ))
       .returning({ id: schema.alerts.id });
     if (!result[0]) return reply.code(409).send({ error: "already_acknowledged_or_closed" });
+    eventBus.publish(c.orgId, { type: "alert.acknowledged", alertId: id });
     return { ok: true };
   });
 

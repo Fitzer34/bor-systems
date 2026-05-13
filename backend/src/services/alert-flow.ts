@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { notifyEmail, notifyPush, notifySms } from "./notifications.js";
+import { eventBus } from "./event-bus.js";
 
 export async function openAlertForHanger(hangerId: string): Promise<string | null> {
   const [hanger] = await db
@@ -23,6 +24,11 @@ export async function openAlertForHanger(hangerId: string): Promise<string | nul
     .returning({ id: schema.alerts.id });
 
   await broadcastToOnDutyCleaners(hanger.organisationId, alert!.id, "alert");
+  eventBus.publish(hanger.organisationId, {
+    type: "alert.open",
+    alertId: alert!.id,
+    zoneId: hanger.zoneId ?? null,
+  });
   return alert!.id;
 }
 
@@ -32,7 +38,7 @@ export async function closeAlertForHanger(
   closedBy: string | null,
   note?: string,
 ): Promise<void> {
-  await db
+  const closed = await db
     .update(schema.alerts)
     .set({
       status: "closed",
@@ -41,7 +47,11 @@ export async function closeAlertForHanger(
       closedBy,
       closureNote: note,
     })
-    .where(and(eq(schema.alerts.hangerId, hangerId), isNull(schema.alerts.closedAt)));
+    .where(and(eq(schema.alerts.hangerId, hangerId), isNull(schema.alerts.closedAt)))
+    .returning({ id: schema.alerts.id, organisationId: schema.alerts.organisationId });
+  for (const a of closed) {
+    eventBus.publish(a.organisationId, { type: "alert.closed", alertId: a.id, reason });
+  }
 }
 
 export async function broadcastToOnDutyCleaners(
@@ -89,4 +99,5 @@ export async function escalateAlert(alertId: string): Promise<void> {
     await notifyEmail(ctxN);
   }
   await broadcastToOnDutyCleaners(alert.organisationId, alertId, "rebroadcast");
+  eventBus.publish(alert.organisationId, { type: "alert.escalated", alertId });
 }

@@ -17,6 +17,7 @@ import adminLogRoutes from "./routes/admin-logs.js";
 import shiftRoutes from "./routes/shifts.js";
 import dispatchRoutes from "./routes/dispatches.js";
 import webhookRoutes from "./routes/webhook.js";
+import eventsRoutes from "./routes/events.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 
 declare module "fastify" {
@@ -58,6 +59,7 @@ async function main(): Promise<void> {
   await app.register(shiftRoutes);
   await app.register(dispatchRoutes);
   await app.register(webhookRoutes);
+  await app.register(eventsRoutes);
 
   startEscalationTimer();
 

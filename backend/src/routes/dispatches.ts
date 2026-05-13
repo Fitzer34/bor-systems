@@ -4,6 +4,7 @@ import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { notifyEmail, notifyPush, notifySms } from "../services/notifications.js";
 import { ctx } from "../services/auth-context.js";
+import { eventBus } from "../services/event-bus.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -85,6 +86,11 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
         targetId: created!.id,
         metadata: { recipient: body.data.recipientUserId, zoneId: body.data.zoneId, alsoSms: body.data.alsoSms },
       });
+      eventBus.publish(c.orgId, {
+        type: "dispatch.created",
+        dispatchId: created!.id,
+        recipientUserId: body.data.recipientUserId,
+      });
 
       return { dispatch: created };
     },
@@ -160,6 +166,7 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
       ))
       .returning({ id: schema.dispatches.id });
     if (!result[0]) return reply.code(409).send({ error: "not_yours_or_already_actioned" });
+    eventBus.publish(c.orgId, { type: "dispatch.acknowledged", dispatchId: id });
     return { ok: true };
   });
 
@@ -178,6 +185,7 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
       .where(and(...conds))
       .returning({ id: schema.dispatches.id });
     if (!result[0]) return reply.code(409).send({ error: "not_yours_or_already_completed" });
+    eventBus.publish(c.orgId, { type: "dispatch.completed", dispatchId: id });
     return { ok: true };
   });
 }
