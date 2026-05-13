@@ -5,6 +5,7 @@ import twilio, { type Twilio } from "twilio";
 import { eq } from "drizzle-orm";
 import { config } from "../config.js";
 import { db, schema } from "../db/client.js";
+import { sendApns, apnsConfigured } from "./apns.js";
 
 let fcm: App | null = null;
 let smtp: Transporter | null = null;
@@ -74,8 +75,28 @@ export async function notifyPush(input: DispatchInput): Promise<void> {
     await record(input, "push", false, "no_push_token");
     return;
   }
+
+  // iOS device tokens are 64-char hex strings (32 bytes encoded). If the token
+  // looks like that and APNs is configured, send via APNs. Otherwise fall back
+  // to FCM (Android, or iOS if you're using Firebase Messaging).
+  const isApnsToken = /^[0-9a-fA-F]{64}$/.test(user.pushToken);
+
+  if (isApnsToken && apnsConfigured) {
+    const result = await sendApns(user.pushToken, {
+      title: input.title,
+      body: input.body,
+      threadId: input.kind,
+      data: {
+        ...(input.alertId ? { alertId: input.alertId } : {}),
+        kind: input.kind,
+      },
+    });
+    await record(input, "push", result.ok, result.error);
+    return;
+  }
+
   if (!fcmReady()) {
-    await record(input, "push", false, "fcm_not_configured");
+    await record(input, "push", false, isApnsToken ? "apns_not_configured" : "fcm_not_configured");
     return;
   }
   try {
