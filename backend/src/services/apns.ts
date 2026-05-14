@@ -92,6 +92,10 @@ export async function sendApns(
       ":path": `/3/device/${deviceToken}`,
       "apns-topic": APNS_TOPIC,
       "apns-push-type": "alert",
+      // Priority 10 = immediate. Required for the watch to wake and buzz.
+      // Priority 5 = power-considerate, can defer — fine for FYI pings, not
+      // for spill alerts. Apple docs: any user-visible alert should use 10.
+      "apns-priority": "10",
       "authorization": `bearer ${getApnsJwt()}`,
       "content-type": "application/json",
     });
@@ -116,6 +120,13 @@ export async function sendApns(
         alert: { title: payload.title, body: payload.body },
         sound: "default",
         badge: 1,
+        // "time-sensitive" wakes the screen, bypasses Focus / Do Not Disturb
+        // (when the user has allowed it in Settings), and crucially makes
+        // the paired Apple Watch buzz and ping with the haptic rather than
+        // silently logging the notification. Plain notifications get
+        // suppressed on the watch when the iPhone is unlocked.
+        "interruption-level": "time-sensitive",
+        // Apple Watch reads this for the prominent title on the watch face.
         ...(payload.threadId ? { "thread-id": payload.threadId } : {}),
       },
       ...(payload.data ?? {}),
