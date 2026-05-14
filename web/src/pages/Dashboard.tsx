@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { AlertFloorPlanThumb } from "../components/AlertFloorPlanThumb";
 import { SiteFloorPlansOverview } from "../components/SiteFloorPlansOverview";
+import { useTicker } from "../lib/ticker";
 
 interface ActiveAlert {
   id: string;
@@ -36,10 +37,17 @@ interface Hanger {
 
 /** Match the 3-minute online window used elsewhere — WiFi-Pi hangers
  *  heartbeat every 60 seconds, so 3 minutes is two missed beats. */
-const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+// Tight 15-second window — Pi heartbeats every 5 seconds, so this allows
+// 2 missed beats before flipping to Offline. Combined with a 1-second
+// ticker re-render, worst-case unplug detection is ~16 seconds.
+const ONLINE_WINDOW_MS = 15 * 1000;
 
 export function Dashboard() {
   const qc = useQueryClient();
+  // Forces a re-render every second so the Online/Offline computation
+  // (which depends on Date.now()) flips the instant the threshold is crossed,
+  // even between React Query refetches.
+  useTicker(1000);
 
   const alerts = useQuery({
     queryKey: ["active-alerts"],

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useTicker } from "../lib/ticker";
 
 interface ActiveAlert {
   id: string;
@@ -17,9 +18,13 @@ interface FloorWithZones {
   zones: Zone[];
 }
 
-const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+const ONLINE_WINDOW_MS = 15 * 1000;
 
 export function SiteFloorPlansOverview() {
+  // Re-render every second so offline pins appear the moment a hanger
+  // crosses the 15-second silence threshold.
+  useTicker(1000);
+
   const buildings = useQuery({
     queryKey: ["buildings"],
     queryFn: () => api<{ buildings: Building[] }>("/buildings"),

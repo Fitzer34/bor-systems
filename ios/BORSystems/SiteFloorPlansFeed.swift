@@ -16,9 +16,12 @@ struct SiteFloorPlansFeed: View {
     @State private var hangers: [Hanger] = []
     @State private var loadError: String?
     @State private var didInitialLoad = false
+    @State private var refreshTask: Task<Void, Never>?
+    /// Bumped every second to force re-evaluation of offline pins between fetches.
+    @State private var tick = 0
 
-    /// 3-minute window matches the WiFi-Pi 60-second heartbeat (allows two misses).
-    private static let onlineWindow: TimeInterval = 3 * 60
+    /// 15-second window matches the WiFi-Pi 5-second heartbeat (allows two misses).
+    private static let onlineWindow: TimeInterval = 15
 
     struct FloorBundle: Identifiable {
         let id: String
@@ -48,7 +51,21 @@ struct SiteFloorPlansFeed: View {
                           offlineZoneIds: offlineZoneIds)
             }
         }
-        .task { await refresh() }
+        .task {
+            await refresh()
+            refreshTask?.cancel()
+            refreshTask = Task {
+                var i = 0
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    tick &+= 1
+                    i += 1
+                    // Refetch every 5 seconds; tick re-renders every second.
+                    if i % 5 == 0 { await refresh() }
+                }
+            }
+        }
+        .onDisappear { refreshTask?.cancel() }
     }
 
     // MARK: derived state

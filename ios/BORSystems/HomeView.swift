@@ -8,9 +8,14 @@ struct HomeView: View {
     @State private var error: String?
     @State private var refreshTask: Task<Void, Never>?
     @State private var showProfile = false
+    /// Bumped every second to force re-evaluation of the offline computation
+    /// even when the polled data is identical.
+    @State private var tick = 0
 
-    /// 3-minute window matches the WiFi-Pi 60-second heartbeat (tolerates 2 misses).
-    private static let onlineWindow: TimeInterval = 3 * 60
+    /// 15-second window matches the WiFi-Pi 5-second heartbeat (tolerates 2 misses).
+    /// Combined with a 1-second tick, offline indicators flip within ~16s of a
+    /// hanger going dark.
+    private static let onlineWindow: TimeInterval = 15
 
     private var offlineHangerIds: Set<String> {
         let now = Date()
@@ -122,9 +127,14 @@ struct HomeView: View {
     private func startPolling() {
         refreshTask?.cancel()
         refreshTask = Task {
+            // Hit the API every 5 seconds but bump `tick` every second so
+            // the offline indicator flips purely from time elapsing.
+            var i = 0
             while !Task.isCancelled {
-                await refresh()
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                if i % 5 == 0 { await refresh() }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                tick &+= 1
+                i += 1
             }
         }
     }

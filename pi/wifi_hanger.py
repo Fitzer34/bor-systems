@@ -81,11 +81,13 @@ def load_config() -> Config:
         dev_eui=dev_eui,
         webhook_url=webhook,
         tts_secret=secret,
-        # WiFi-Pi hangers are mains-powered, so we can afford a frequent
-        # heartbeat to drive a live online/offline indicator on the dashboard.
-        # Battery-powered LoRa hangers use a separate firmware that defaults
-        # to a much longer 24h heartbeat to preserve battery.
-        heartbeat_seconds=int(os.environ.get("HEARTBEAT_INTERVAL", "60")),
+        # WiFi-Pi hangers are mains-powered, so we can afford a very frequent
+        # heartbeat to drive a near-instant online/offline indicator on the
+        # dashboard. 5 seconds combined with a 15-second offline threshold
+        # gives a worst-case ~16s detection lag. Battery-powered LoRa hangers
+        # use a separate firmware that defaults to a 24h heartbeat to preserve
+        # battery.
+        heartbeat_seconds=int(os.environ.get("HEARTBEAT_INTERVAL", "5")),
         buzzer_enabled=os.environ.get("BUZZER_ENABLED", "false").lower() == "true",
     )
 

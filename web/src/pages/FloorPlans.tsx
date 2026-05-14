@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { api, getToken } from "../lib/api";
+import { useTicker } from "../lib/ticker";
 
 interface Building { id: string; name: string }
 interface Floor { id: string; name: string; buildingId: string; floorPlanUrl: string | null; orderIndex: number }
@@ -10,9 +11,12 @@ interface Hanger { id: string; zoneId: string | null; status: "active" | "out_of
 
 /** A zone is considered offline if it has at least one active hanger and
  *  none of its active hangers have phoned home in the last 3 minutes. */
-const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+const ONLINE_WINDOW_MS = 15 * 1000;
 
 export function FloorPlans() {
+  // 1-second ticker so offline pins appear within ~16s of a hanger going dark.
+  useTicker(1000);
+
   const qc = useQueryClient();
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
   const [buildingName, setBuildingName] = useState("");

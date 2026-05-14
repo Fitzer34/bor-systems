@@ -7,6 +7,10 @@ struct HangersView: View {
     @State private var zoneById: [String: (zone: Zone, floor: String, building: String)] = [:]
     @State private var error: String?
     @State private var showRegister = false
+    @State private var refreshTask: Task<Void, Never>?
+    // Re-render every second so the Online/Offline badge flips the instant
+    // the 15-second silence threshold is crossed.
+    @State private var tick = 0
 
     var body: some View {
         List {
@@ -44,7 +48,20 @@ struct HangersView: View {
                 .environmentObject(auth)
         }
         .refreshable { await refresh() }
-        .task { await refresh() }
+        .task {
+            await refresh()
+            // Continuous background refresh every 5s while view is on screen,
+            // plus a per-second tick so badges flip purely from time passing.
+            refreshTask?.cancel()
+            refreshTask = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    tick &+= 1
+                    if tick % 5 == 0 { await refresh() }
+                }
+            }
+        }
+        .onDisappear { refreshTask?.cancel() }
     }
 
     private func location(for h: Hanger) -> String {
@@ -127,12 +144,12 @@ private struct HangerRow: View {
         }
     }
 
-    /// "Online" if the hanger has phoned home within the last 3 minutes.
-    /// WiFi-Pi hangers heartbeat every 60 seconds, so 3 minutes tolerates
-    /// two missed beats without flapping. Battery LoRa hangers will need
-    /// a longer threshold once we ship them — read the configured interval
-    /// off the hanger record then.
-    private static let onlineWindow: TimeInterval = 3 * 60
+    /// "Online" if the hanger has phoned home within the last 15 seconds.
+    /// WiFi-Pi hangers heartbeat every 5 seconds, so 15 seconds tolerates
+    /// two missed beats. Combined with the 1-second tick driven by the
+    /// parent HangersView, the badge flips within ~16 seconds of going dark.
+    /// Battery LoRa hangers will need a longer threshold once we ship them.
+    private static let onlineWindow: TimeInterval = 15
 
     @ViewBuilder
     private var statusBadge: some View {

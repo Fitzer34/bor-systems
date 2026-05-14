@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useTicker } from "../lib/ticker";
 
 interface Hanger {
   id: string;
@@ -18,6 +19,10 @@ interface Floor { id: string; name: string; buildingId: string }
 interface Building { id: string; name: string }
 
 export function Hangers() {
+  // Re-render every second so the Online/Offline badge flips the instant
+  // the 15-second silence threshold is crossed, even between API refetches.
+  useTicker(1000);
+
   const { user } = useAuth();
   const qc = useQueryClient();
   const isAdmin = user?.role === "admin";
@@ -152,8 +157,8 @@ export function Hangers() {
                       return <span className="px-2 py-0.5 rounded text-xs bg-slate-200 text-slate-600">decommissioned</span>;
                     }
                     // Active: derive online/offline from lastSeenAt.
-                    // WiFi-Pi hangers heartbeat every 60s; allow 2 misses.
-                    const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+                    // Pi heartbeats every 10s; allow 2 misses then flip.
+                    const ONLINE_WINDOW_MS = 30 * 1000;
                     const isOnline = h.lastSeenAt != null
                       && Date.now() - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
                     return isOnline
