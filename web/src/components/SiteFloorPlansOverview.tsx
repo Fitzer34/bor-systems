@@ -41,17 +41,20 @@ export function SiteFloorPlansOverview() {
       }
       return out;
     },
+    // Pick up newly-uploaded floor plans or reordered floors within ~15s
+    // without needing a page refresh.
+    refetchInterval: 15_000,
   });
 
   const alerts = useQuery({
     queryKey: ["active-alerts"],
     queryFn: () => api<{ alerts: ActiveAlert[] }>("/alerts/active"),
-    refetchInterval: 5_000,
+    refetchInterval: 3_000,
   });
   const hangers = useQuery({
     queryKey: ["hangers"],
     queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
-    refetchInterval: 30_000,
+    refetchInterval: 5_000,
   });
 
   const statusByZoneId = new Map<string, "open" | "acknowledged">();

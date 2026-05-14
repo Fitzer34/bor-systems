@@ -44,22 +44,23 @@ export function Dashboard() {
   const alerts = useQuery({
     queryKey: ["active-alerts"],
     queryFn: () => api<{ alerts: ActiveAlert[] }>("/alerts/active"),
-    refetchInterval: 5_000,
+    refetchInterval: 3_000,
   });
 
   const dispatches = useQuery({
     queryKey: ["dispatches"],
     queryFn: () => api<{ dispatches: DispatchRow[] }>("/dispatches"),
-    refetchInterval: 5_000,
+    refetchInterval: 3_000,
   });
 
   // Fetch hangers so each alert can show whether the reporting hanger has
   // gone offline since (e.g. it sent "lifted" then died — the spill is still
-  // there but you can't rely on getting a "returned" event).
+  // there but you can't rely on getting a "returned" event). 5s polling so
+  // the Offline indicator flips within seconds of the Pi going dark.
   const hangers = useQuery({
     queryKey: ["hangers"],
     queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
-    refetchInterval: 30_000,
+    refetchInterval: 5_000,
   });
 
   const offlineHangerIds = new Set<string>();

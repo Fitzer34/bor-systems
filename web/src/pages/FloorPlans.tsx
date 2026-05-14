@@ -36,12 +36,12 @@ export function FloorPlans() {
     queryFn: () => api<{ alerts: ActiveAlert[] }>("/alerts/active"),
     refetchInterval: 5_000,
   });
-  // Fetch hangers so we can flag offline zones on the floor plan. Refetch
-  // every 30s so the indicator stays live without a page refresh.
+  // Fetch hangers so we can flag offline zones on the floor plan. 5s polling
+  // so the indicator flips within seconds of a Pi going dark.
   const hangers = useQuery({
     queryKey: ["hangers"],
     queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
-    refetchInterval: 30_000,
+    refetchInterval: 5_000,
   });
 
   const zoneStatusById = new Map<string, "open" | "acknowledged">();
