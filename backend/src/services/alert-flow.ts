@@ -88,11 +88,13 @@ export async function broadcastToOnDutyCleaners(
 
 /**
  * Called when a cleaner presses the physical button on the hanger (Pi sends
- * `cleaning_started` event). The button TOGGLES cleaning mode:
+ * `cleaning_started` event). Cleaning mode starts here and only ends when
+ * the sign is replaced on the hanger (which closes the alert via the normal
+ * `returned` event flow). No toggle, no second press — sign-return is the
+ * end-of-cleaning signal.
  *
  *   1. No open alert → create a planned-cleaning alert (blue pin appears).
- *   2. Planned-cleaning alert already open → close it (button pressed again
- *      to turn cleaning mode off — pin returns to green).
+ *   2. Planned-cleaning alert already open → no-op (cleaning already on).
  *   3. Spill alert open (sign got lifted unexpectedly first) → flip it from
  *      "open" to "acknowledged" so the dashboards stop showing red.
  *
@@ -118,17 +120,10 @@ export async function startCleaningSession(hangerId: string): Promise<void> {
     .limit(1);
 
   if (existing) {
-    if (existing.kind === "planned_cleaning") {
-      // Second press on an active planned-cleaning session → toggle OFF.
-      await db
-        .update(schema.alerts)
-        .set({ status: "closed", closedAt: new Date(), closureReason: "manual" })
-        .where(eq(schema.alerts.id, existing.id));
-      eventBus.publish(hanger.organisationId, { type: "alert.closed", alertId: existing.id, reason: "manual" });
-      return;
-    }
-    // Spill alert in progress — first press acknowledges it.
+    // Already in cleaning mode (or any acknowledged state) → leave it alone.
     if (existing.status === "acknowledged") return;
+    // Spill alert in progress — promote to acknowledged so the dashboards
+    // stop showing the red urgent state.
     await db
       .update(schema.alerts)
       .set({ status: "acknowledged", acknowledgedAt: new Date(), acknowledgedBy: null })

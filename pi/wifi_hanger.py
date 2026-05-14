@@ -197,21 +197,16 @@ class HangerState:
     def _on_test_button(self) -> None:
         """Cleaner pressed the button on the front of the hanger.
 
-        The button TOGGLES cleaning mode. Each press fires the same
-        `cleaning_started` event up to the cloud; the backend interprets it
-        as "start a planned-cleaning session" on first press and "stop it"
-        on the second press. The green LED tracks local state so the
-        cleaner sees feedback even before the cloud round-trips.
+        Single press = start cleaning mode. The cleaning session only ends
+        when the sign is replaced on the hanger (microswitch closes →
+        `_on_sign_returned` fires → green LED off and alert closed in the
+        cloud). No toggle, no second press needed.
         """
         self.test_button_pressed_since_last_uplink = True
-        # Toggle the local LED. `is_lit` is the gpiozero property for the
-        # current LED state — flip it.
-        if self.led_green.is_lit:
-            self.led_green.off()
-            log.info("button pressed — cleaning mode OFF (toggle)")
-        else:
-            self.led_green.on()
-            log.info("button pressed — cleaning mode ON (toggle)")
+        log.info("button pressed — cleaning mode on")
+        # Light the green LED and leave it on. _on_sign_returned will clear
+        # it when the cleaner finishes.
+        self.led_green.on()
         with self.lock:
             send_uplink(self.cfg, EVT_CLEANING_STARTED,
                         test_button=self.test_button_pressed_since_last_uplink)
