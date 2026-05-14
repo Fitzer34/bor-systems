@@ -193,23 +193,16 @@ class HangerState:
     def _on_test_button(self) -> None:
         """Cleaner pressed the button on the front of the hanger.
 
-        - If the sign is currently lifted (an alert is open in the cloud),
-          send `cleaning_started` so the dashboard flips to "in progress"
-          and the supervisor gets a "🧽 Cleaning in progress" push.
-        - If the sign is in place (no alert open), treat as a hardware test:
-          flash the green LED for 5 seconds, no uplink.
+        ALWAYS fires the `cleaning_started` event — this is a *proactive*
+        cleaning press, not a response to an existing alert. The cleaner
+        is announcing "I'm about to clean here, treat any sign-lift as
+        planned" before they take the sign off the hanger.
         """
         self.test_button_pressed_since_last_uplink = True
-        # Sign present = microswitch closed = no active alert. Just a test.
-        if self.microswitch.is_pressed:
-            log.info("button pressed (no active alert — flashing test LED)")
-            self.led_green.on()
-            threading.Timer(5.0, self.led_green.off).start()
-            return
-
-        # Otherwise, the sign is lifted — this is the cleaner saying "I'm
-        # on it". Tell the cloud and keep the green LED on while we work.
         log.info("button pressed — cleaning started")
+        # Green LED stays lit while the cleaning session is active. The
+        # session ends when the sign goes back on the hanger or when the
+        # expected-cleaning-time window expires on the backend.
         self.led_green.on()
         with self.lock:
             send_uplink(self.cfg, EVT_CLEANING_STARTED,
