@@ -96,7 +96,7 @@ private struct CreateUserSheet: View {
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    SecureField("Password (min 8 chars)", text: $password)
+                    SecureField("Password (10+ chars, mix of types)", text: $password)
                     TextField("Phone (E.164, optional)", text: $phone)
                         .keyboardType(.phonePad)
                     Picker("Role", selection: $role) {
@@ -127,7 +127,7 @@ private struct CreateUserSheet: View {
     }
 
     private var canCreate: Bool {
-        !name.isEmpty && email.contains("@") && password.count >= 8 && !creating
+        !name.isEmpty && email.contains("@") && password.count >= 10 && !creating
     }
 
     private func create() async {
@@ -137,8 +137,19 @@ private struct CreateUserSheet: View {
                                                   phoneE164: phone.isEmpty ? nil : phone)
             onCreated()
             dismiss()
+        } catch let APIError.http(_, body) {
+            // Surface the specific reason returned by the backend so the
+            // admin knows whether to fix the password, change the email, etc.
+            let reason = body.contains("password_too_short") ? "Password is too short — needs at least 10 characters."
+                : body.contains("password_too_common") ? "Password is too common — pick something less guessable."
+                : body.contains("password_too_simple") ? "Password needs at least 3 of: lowercase, uppercase, digit, symbol."
+                : body.contains("password_too_long") ? "Password is too long."
+                : body.contains("email_taken") ? "Someone in your organisation already uses that email."
+                : body.contains("invalid_input") ? "One of the fields is invalid (check email format, phone in +country format)."
+                : "Could not create user."
+            self.error = reason
         } catch {
-            self.error = "Could not create — email may already be taken."
+            self.error = "Could not create user."
         }
         creating = false
     }

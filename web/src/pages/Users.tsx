@@ -36,7 +36,24 @@ export function Users() {
       setErr(null);
       qc.invalidateQueries({ queryKey: ["users"] });
     },
-    onError: () => setErr("Could not create user (email may already exist or password too short)."),
+    onError: (e: unknown) => {
+      // Surface the actual server reason so the admin knows whether to fix
+      // the password, change the email, or something else. ApiError.payload
+      // is the parsed JSON body (or text if non-JSON).
+      const payload = (e as { payload?: unknown })?.payload;
+      const reason = typeof payload === "object" && payload !== null && "error" in payload
+        ? (payload as { error?: string }).error
+        : undefined;
+      const friendly: Record<string, string> = {
+        password_too_short: "Password is too short — needs at least 10 characters.",
+        password_too_long: "Password is too long.",
+        password_too_common: "Password is too common — pick something less guessable.",
+        password_too_simple: "Password needs at least 3 of: lowercase, uppercase, digit, symbol.",
+        email_taken: "Someone in your organisation already uses that email.",
+        invalid_input: "One of the fields is invalid (check email format, phone in +country format).",
+      };
+      setErr(friendly[reason ?? ""] ?? "Could not create user.");
+    },
   });
 
   const deactivate = useMutation({
@@ -59,7 +76,7 @@ export function Users() {
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="border rounded px-3 py-2" />
             <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="border rounded px-3 py-2" />
-            <input placeholder="Password (min 8 chars)" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="border rounded px-3 py-2" />
+            <input placeholder="Password (10+ chars, mix of types)" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="border rounded px-3 py-2" />
             <input placeholder="Phone (E.164, e.g. +353…)" value={form.phoneE164} onChange={(e) => setForm({ ...form, phoneE164: e.target.value })} className="border rounded px-3 py-2" />
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as UserRow["role"] })} className="border rounded px-3 py-2">
               <option value="cleaner">Cleaner</option>
@@ -68,11 +85,15 @@ export function Users() {
             </select>
             <button
               onClick={() => create.mutate()}
-              disabled={!form.email || !form.name || form.password.length < 8 || create.isPending}
+              disabled={!form.email || !form.name || form.password.length < 10 || create.isPending}
               className="bg-slate-900 text-white rounded px-4 py-2 disabled:opacity-50"
             >
               {create.isPending ? "Creating…" : "Create user"}
             </button>
+          </div>
+          <div className="text-xs text-slate-500 mt-2">
+            Password must be at least 10 characters and include at least 3 of:
+            lowercase letter, uppercase letter, digit, symbol.
           </div>
           {err && <div className="text-sm text-red-600 mt-2">{err}</div>}
         </div>
