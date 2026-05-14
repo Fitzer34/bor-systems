@@ -147,7 +147,9 @@ private struct HangerRow: View {
                    Date().timeIntervalSince(seen) <= Self.onlineWindow {
                     return ("Online", .green)
                 }
-                return ("Offline", .red)
+                // Amber so it stands out from healthy green without competing
+                // with red alert pulses for attention.
+                return ("Offline", .orange)
             }
         }()
         Text(label).font(.caption2.weight(.medium))

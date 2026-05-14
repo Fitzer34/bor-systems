@@ -142,7 +142,7 @@ function FloorPlanCard({
             </span>
           )}
           {offlineHere.length > 0 && (
-            <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 border border-dashed border-slate-400 font-medium">
+            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-medium">
               {offlineHere.length} offline
             </span>
           )}
@@ -172,11 +172,18 @@ function FloorPlanCard({
             return (
               <div
                 key={z.id}
-                title={`${z.name} — hanger offline`}
-                className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full shadow ring-1 ring-white border border-dashed border-slate-600 bg-slate-300 w-3.5 h-3.5 flex items-center justify-center text-[8px] font-bold text-slate-700 leading-none"
+                className="absolute -translate-x-1/2 -translate-y-1/2"
                 style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
               >
-                ?
+                <div
+                  title={`${z.name} — hanger offline`}
+                  className="rounded-full shadow ring-1 ring-white border border-dashed border-amber-700 bg-amber-400 w-3.5 h-3.5 flex items-center justify-center text-[8px] font-bold text-amber-900 leading-none"
+                >
+                  ?
+                </div>
+                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 bg-white/90 px-1 rounded whitespace-nowrap">
+                  offline
+                </span>
               </div>
             );
           }

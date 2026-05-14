@@ -187,8 +187,9 @@ private struct AlertRow: View {
                         Text("HANGER OFFLINE")
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .overlay(Capsule().strokeBorder(Color.gray, style: StrokeStyle(lineWidth: 1, dash: [3])))
-                            .foregroundStyle(.secondary)
+                            .background(Color.orange.opacity(0.18), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color.orange, style: StrokeStyle(lineWidth: 1, dash: [3])))
+                            .foregroundStyle(Color.orange)
                     }
                 }
             }

@@ -147,8 +147,9 @@ private struct FloorCard: View {
                         Text("\(offlineHere.count) offline")
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6).padding(.vertical, 3)
-                            .overlay(Capsule().strokeBorder(Color.gray, style: StrokeStyle(lineWidth: 1, dash: [3])))
-                            .foregroundStyle(.secondary)
+                            .background(Color.orange.opacity(0.15), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color.orange, style: StrokeStyle(lineWidth: 1, dash: [3])))
+                            .foregroundStyle(Color.orange)
                     }
                     Text("\(pinned.count) zone\(pinned.count == 1 ? "" : "s")")
                         .font(.caption2)

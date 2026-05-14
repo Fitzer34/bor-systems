@@ -265,12 +265,18 @@ export function FloorPlans() {
                   pinClass = "bg-blue-500 animate-pulse";
                   label = " — cleaning in progress";
                 } else if (isOffline) {
-                  // Distinct visual: hollow grey with a dashed border + "?"
-                  // so it's obvious at a glance that the zone isn't reporting.
-                  pinClass = "bg-slate-300 border-dashed";
+                  // Amber pin with a dashed border so it stands out from the
+                  // calm green of healthy zones but doesn't compete with the
+                  // red/blue pulsing pins for active alerts.
+                  pinClass = "bg-amber-400 border-dashed border-amber-700";
                   label = " — hanger offline";
                   inner = (
-                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-700 leading-none">?</span>
+                    <>
+                      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-amber-900 leading-none">?</span>
+                      <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-white/90 px-1 rounded whitespace-nowrap">
+                        offline
+                      </span>
+                    </>
                   );
                 } else {
                   pinClass = "bg-green-500";

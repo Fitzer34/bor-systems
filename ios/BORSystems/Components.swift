@@ -91,21 +91,32 @@ struct PulsingDot: View {
 }
 
 /// The pin shown when a zone's hanger has stopped phoning home.
-/// Distinct look so it doesn't get confused with the idle green dot.
+/// Amber so it's visually distinct from the green idle pin without
+/// pulsing or shouting for attention like the red/blue alert pins.
+/// A small "OFFLINE" label sits to the right of the dot so the meaning
+/// is clear at a glance — no hover/tap required.
 struct OfflinePin: View {
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.gray.opacity(0.35))
-                .frame(width: 16, height: 16)
-            Circle()
-                .strokeBorder(Color.gray, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
-                .frame(width: 16, height: 16)
-            Text("?")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.secondary)
+        HStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.85))
+                    .frame(width: 16, height: 16)
+                Circle()
+                    .strokeBorder(Color.orange, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
+                    .frame(width: 16, height: 16)
+                Text("?")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .shadow(radius: 1)
+            Text("OFFLINE")
+                .font(.system(size: 8, weight: .heavy))
+                .foregroundStyle(Color.orange)
+                .padding(.horizontal, 3)
+                .padding(.vertical, 1)
+                .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 2))
         }
-        .shadow(radius: 1)
     }
 }
 

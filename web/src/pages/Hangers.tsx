@@ -158,7 +158,7 @@ export function Hangers() {
                       && Date.now() - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
                     return isOnline
                       ? <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">Online</span>
-                      : <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">Offline</span>;
+                      : <span className="px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-700">Offline</span>;
                   })()}
                 </td>
                 <td className="p-2">

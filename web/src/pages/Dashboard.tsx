@@ -109,7 +109,7 @@ export function Dashboard() {
                   <span>{a.floorName ?? "Unknown floor"} — {a.zoneName ?? "Unassigned zone"}</span>
                   {offlineHangerIds.has(a.hangerId) && (
                     <span
-                      className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700 border border-dashed border-slate-400"
+                      className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-400"
                       title="The hanger that reported this alert hasn't phoned home recently — assume it's offline"
                     >
                       HANGER OFFLINE
