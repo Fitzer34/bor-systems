@@ -9,12 +9,15 @@ interface ActiveAlert {
 interface Building { id: string; name: string }
 interface Floor { id: string; name: string; buildingId: string; floorPlanUrl: string | null; orderIndex: number }
 interface Zone { id: string; name: string; floorId: string; pinX: number | null; pinY: number | null }
+interface Hanger { id: string; zoneId: string | null; status: "active" | "out_of_service" | "decommissioned"; lastSeenAt: string | null }
 
 interface FloorWithZones {
   building: Building;
   floor: Floor;
   zones: Zone[];
 }
+
+const ONLINE_WINDOW_MS = 3 * 60 * 1000;
 
 export function SiteFloorPlansOverview() {
   const buildings = useQuery({
@@ -45,10 +48,33 @@ export function SiteFloorPlansOverview() {
     queryFn: () => api<{ alerts: ActiveAlert[] }>("/alerts/active"),
     refetchInterval: 5_000,
   });
+  const hangers = useQuery({
+    queryKey: ["hangers"],
+    queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
+    refetchInterval: 30_000,
+  });
 
   const statusByZoneId = new Map<string, "open" | "acknowledged">();
   for (const a of alerts.data?.alerts ?? []) {
     if (a.zoneId && a.status !== "closed") statusByZoneId.set(a.zoneId, a.status);
+  }
+
+  // A zone is "offline" when it has active hangers but none have phoned home
+  // recently. Lifecycle states (decommissioned/out-of-service) don't count.
+  const offlineZoneIds = new Set<string>();
+  {
+    const now = Date.now();
+    const byZone = new Map<string, Hanger[]>();
+    for (const h of hangers.data?.hangers ?? []) {
+      if (!h.zoneId || h.status !== "active") continue;
+      const list = byZone.get(h.zoneId) ?? [];
+      list.push(h);
+      byZone.set(h.zoneId, list);
+    }
+    for (const [zoneId, hs] of byZone.entries()) {
+      const fresh = hs.some((h) => h.lastSeenAt != null && now - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS);
+      if (!fresh) offlineZoneIds.add(zoneId);
+    }
   }
 
   const items = allFloors.data ?? [];
@@ -64,12 +90,15 @@ export function SiteFloorPlansOverview() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    // Single column so each plan is large and easy to scan. Floors are
+    // sorted by orderIndex (set via the Floor plans admin page).
+    <div className="flex flex-col gap-4">
       {items.map((it) => (
         <FloorPlanCard
           key={it.floor.id}
           item={it}
           statusByZoneId={statusByZoneId}
+          offlineZoneIds={offlineZoneIds}
         />
       ))}
     </div>
@@ -79,13 +108,16 @@ export function SiteFloorPlansOverview() {
 function FloorPlanCard({
   item,
   statusByZoneId,
+  offlineZoneIds,
 }: {
   item: FloorWithZones;
   statusByZoneId: Map<string, "open" | "acknowledged">;
+  offlineZoneIds: Set<string>;
 }) {
   const planUrl = item.floor.floorPlanUrl!;
   const pinned = item.zones.filter((z) => z.pinX != null && z.pinY != null);
   const alertedHere = pinned.filter((z) => statusByZoneId.has(z.id));
+  const offlineHere = pinned.filter((z) => offlineZoneIds.has(z.id) && !statusByZoneId.has(z.id));
   const hasOpen = alertedHere.some((z) => statusByZoneId.get(z.id) === "open");
   const hasAck = alertedHere.some((z) => statusByZoneId.get(z.id) === "acknowledged");
 
@@ -100,29 +132,56 @@ function FloorPlanCard({
           <div className="font-medium truncate">{item.floor.name}</div>
           <div className="text-xs text-slate-500 truncate">{item.building.name}</div>
         </div>
-        <div className="text-xs text-slate-500 shrink-0">
-          {alertedHere.length === 0
-            ? `${pinned.length} zone${pinned.length === 1 ? "" : "s"}`
-            : `${alertedHere.length} active`}
+        <div className="text-xs text-slate-500 shrink-0 flex items-center gap-2">
+          {alertedHere.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">
+              {alertedHere.length} active
+            </span>
+          )}
+          {offlineHere.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 border border-dashed border-slate-400 font-medium">
+              {offlineHere.length} offline
+            </span>
+          )}
+          <span>{pinned.length} zone{pinned.length === 1 ? "" : "s"}</span>
         </div>
       </div>
       <div className="relative">
         <img src={planUrl} alt="" className="block w-full h-auto" />
         {pinned.map((z) => {
           const s = statusByZoneId.get(z.id);
-          const color = s === "open"
-            ? "bg-red-500"
-            : s === "acknowledged"
-              ? "bg-blue-500"
-              : "bg-green-500";
-          const ring = s ? "ring-2 ring-white" : "ring-1 ring-white";
-          const sizeClass = s ? "w-4 h-4" : "w-2.5 h-2.5";
-          const animate = s ? "animate-pulse" : "";
+          const isOffline = !s && offlineZoneIds.has(z.id);
+
+          // Alert state always wins — a zone with an open alert showing as
+          // offline would bury the more urgent signal.
+          if (s) {
+            const color = s === "open" ? "bg-red-500" : "bg-blue-500";
+            return (
+              <div
+                key={z.id}
+                title={`${z.name}${s === "open" ? " — ALERT" : " — cleaning in progress"}`}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full shadow ring-2 ring-white animate-pulse w-4 h-4 ${color}`}
+                style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
+              />
+            );
+          }
+          if (isOffline) {
+            return (
+              <div
+                key={z.id}
+                title={`${z.name} — hanger offline`}
+                className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full shadow ring-1 ring-white border border-dashed border-slate-600 bg-slate-300 w-3.5 h-3.5 flex items-center justify-center text-[8px] font-bold text-slate-700 leading-none"
+                style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
+              >
+                ?
+              </div>
+            );
+          }
           return (
             <div
               key={z.id}
-              title={`${z.name}${s === "open" ? " — ALERT" : s === "acknowledged" ? " — cleaning in progress" : ""}`}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full shadow ${color} ${sizeClass} ${ring} ${animate}`}
+              title={z.name}
+              className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full shadow ring-1 ring-white bg-green-500 w-2.5 h-2.5"
               style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
             />
           );

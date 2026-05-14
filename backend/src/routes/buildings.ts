@@ -78,6 +78,27 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     return { floor };
   });
 
+  // Reorder / rename a floor. Used by the Floor plans admin page to drive
+  // the order they appear in the Active alerts dashboard feed.
+  app.patch("/floors/:id", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    const body = z.object({
+      name: z.string().min(1).optional(),
+      orderIndex: z.number().int().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+    if (Object.keys(body.data).length === 0) return reply.code(400).send({ error: "nothing_to_update" });
+
+    if (!(await assertFloorInOrg(id, c.orgId))) return reply.code(404).send({ error: "not_found" });
+
+    const [updated] = await db.update(schema.floors)
+      .set(body.data)
+      .where(and(eq(schema.floors.id, id), eq(schema.floors.organisationId, c.orgId)))
+      .returning();
+    return { floor: updated };
+  });
+
   app.post("/floors/:id/floor-plan", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);

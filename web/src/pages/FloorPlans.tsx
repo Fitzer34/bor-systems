@@ -88,6 +88,26 @@ export function FloorPlans() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["zones", activeFloorId] }),
   });
 
+  /** Swap two floors' orderIndex values. This is what drives the order
+   *  they appear in the Active alerts dashboard feed. */
+  const swapFloors = useMutation({
+    mutationFn: async (args: { a: Floor; b: Floor }) => {
+      // Sequential rather than parallel so a transient unique-index conflict
+      // can't happen if we ever add one on (buildingId, orderIndex).
+      await api(`/floors/${args.a.id}`, { method: "PATCH", body: JSON.stringify({ orderIndex: args.b.orderIndex }) });
+      await api(`/floors/${args.b.id}`, { method: "PATCH", body: JSON.stringify({ orderIndex: args.a.orderIndex }) });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["floors", activeBuildingId] });
+      // Dashboard fetches via a different query key — refresh that too so
+      // the order updates without a page reload.
+      qc.invalidateQueries({ queryKey: ["all-site-floors"] });
+    },
+  });
+
+  // Floors sorted by orderIndex (ascending) — same order the dashboard uses.
+  const sortedFloors = [...(floors.data?.floors ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
+
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadPlan = useMutation({
     mutationFn: async (file: File) => {
@@ -140,15 +160,37 @@ export function FloorPlans() {
         </div>
 
         <div>
-          <div className="font-medium mb-2">Floors</div>
+          <div className="font-medium mb-1">Floors</div>
+          <div className="text-xs text-slate-500 mb-2">
+            Order here controls the order on the Active alerts dashboard.
+          </div>
           {!activeBuildingId ? <div className="text-sm text-slate-500">Pick a building.</div> : (
             <>
               <ul className="space-y-1 text-sm">
-                {floors.data?.floors.map((f) => (
-                  <li key={f.id}>
-                    <button onClick={() => setActiveFloorId(f.id)} className={`block w-full text-left rounded px-2 py-1 ${activeFloorId === f.id ? "bg-slate-200" : "hover:bg-slate-100"}`}>{f.name}</button>
-                  </li>
-                ))}
+                {sortedFloors.map((f, idx) => {
+                  const above = idx > 0 ? sortedFloors[idx - 1] : null;
+                  const below = idx < sortedFloors.length - 1 ? sortedFloors[idx + 1] : null;
+                  return (
+                    <li key={f.id} className="flex items-center gap-1">
+                      <button
+                        onClick={() => setActiveFloorId(f.id)}
+                        className={`flex-1 text-left rounded px-2 py-1 ${activeFloorId === f.id ? "bg-slate-200" : "hover:bg-slate-100"}`}
+                      >{f.name}</button>
+                      <button
+                        onClick={() => above && swapFloors.mutate({ a: f, b: above })}
+                        disabled={!above || swapFloors.isPending}
+                        title="Move up"
+                        className="px-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-30 disabled:hover:text-slate-400"
+                      >↑</button>
+                      <button
+                        onClick={() => below && swapFloors.mutate({ a: f, b: below })}
+                        disabled={!below || swapFloors.isPending}
+                        title="Move down"
+                        className="px-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-30 disabled:hover:text-slate-400"
+                      >↓</button>
+                    </li>
+                  );
+                })}
               </ul>
               <div className="mt-2 flex gap-2">
                 <input value={floorName} onChange={(e) => setFloorName(e.target.value)} placeholder="New floor" className="border rounded px-2 py-1 text-sm flex-1" />
