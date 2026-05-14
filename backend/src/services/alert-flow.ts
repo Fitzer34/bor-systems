@@ -69,8 +69,35 @@ export async function broadcastToOnDutyCleaners(
       isNull(schema.users.deactivatedAt),
     ));
 
-  for (const c of cleaners) {
-    await notifyPush({ orgId, alertId, userId: c.id, title: "Spill alert", body: "A wet floor sign has been lifted.", kind });
+  if (cleaners.length > 0) {
+    for (const c of cleaners) {
+      await notifyPush({ orgId, alertId, userId: c.id, title: "Spill alert", body: "A wet floor sign has been lifted.", kind });
+    }
+    return;
+  }
+
+  // Fallback: no on-duty cleaners means no one would otherwise hear about
+  // the spill until the escalation timer fires (typically 15 minutes).
+  // For small orgs and out-of-hours coverage, ping any on-duty supervisor
+  // or admin immediately so the spill doesn't sit unattended.
+  const fallback = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(
+      eq(schema.users.organisationId, orgId),
+      eq(schema.users.onDuty, true),
+      isNull(schema.users.deactivatedAt),
+    ));
+
+  for (const u of fallback) {
+    await notifyPush({
+      orgId,
+      alertId,
+      userId: u.id,
+      title: "Spill alert — no cleaner on duty",
+      body: "A wet floor sign has been lifted. No cleaner is on duty to respond.",
+      kind,
+    });
   }
 }
 
