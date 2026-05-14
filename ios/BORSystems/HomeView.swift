@@ -167,6 +167,20 @@ struct HomeView: View {
             case .complete:    try await APIClient.shared.completeDispatch(d.id)
             }
             await refresh()
+        } catch let APIError.http(_, body) {
+            // Show the actual reason from the server so the user knows whether
+            // the dispatch is theirs, already actioned, or something else.
+            if body.contains("not_your_dispatch") {
+                self.error = "This dispatch is assigned to a different user."
+            } else if body.contains("already_acknowledged") {
+                self.error = "Already accepted earlier."
+            } else if body.contains("already_completed") {
+                self.error = "Already marked done."
+            } else if body.contains("dispatch_not_found") {
+                self.error = "Dispatch was deleted."
+            } else {
+                self.error = "Could not action dispatch."
+            }
         } catch {
             self.error = "Action failed."
         }

@@ -78,7 +78,11 @@ struct MyDispatchesView: View {
         do {
             try await APIClient.shared.acknowledgeDispatch(d.id)
             await refresh()
-        } catch { self.error = "Could not acknowledge." }
+        } catch let APIError.http(_, body) {
+            self.error = friendlyDispatchError(body, action: "accept")
+        } catch {
+            self.error = "Could not accept dispatch."
+        }
     }
 
     private func complete(_ d: DispatchItem) async {
@@ -86,8 +90,28 @@ struct MyDispatchesView: View {
         do {
             try await APIClient.shared.completeDispatch(d.id)
             await refresh()
-        } catch { self.error = "Could not complete." }
+        } catch let APIError.http(_, body) {
+            self.error = friendlyDispatchError(body, action: "complete")
+        } catch {
+            self.error = "Could not complete dispatch."
+        }
     }
+}
+
+private func friendlyDispatchError(_ body: String, action: String) -> String {
+    if body.contains("not_your_dispatch") {
+        return "This dispatch isn't assigned to you."
+    }
+    if body.contains("already_acknowledged") {
+        return "Already accepted — pull to refresh."
+    }
+    if body.contains("already_completed") {
+        return "Already marked done — pull to refresh."
+    }
+    if body.contains("dispatch_not_found") {
+        return "Dispatch was deleted. Pull to refresh."
+    }
+    return "Could not \(action) dispatch."
 }
 
 private struct DispatchCard: View {

@@ -155,17 +155,60 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
   app.post("/dispatches/:id/acknowledge", { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);
-    const result = await db
+
+    // Look at the row first so we can give a specific error message instead
+    // of the catch-all "not_yours_or_already_actioned". Common reasons:
+    //   - dispatch belongs to a different org
+    //   - the caller isn't the recipient
+    //   - it's already been acknowledged/completed
+    const [existing] = await db
+      .select({
+        recipientUserId: schema.dispatches.recipientUserId,
+        senderUserId: schema.dispatches.senderUserId,
+        status: schema.dispatches.status,
+        zoneId: schema.dispatches.zoneId,
+        message: schema.dispatches.message,
+      })
+      .from(schema.dispatches)
+      .where(and(eq(schema.dispatches.id, id), eq(schema.dispatches.organisationId, c.orgId)))
+      .limit(1);
+    if (!existing) return reply.code(404).send({ error: "dispatch_not_found" });
+    if (existing.recipientUserId !== c.sub) {
+      return reply.code(403).send({ error: "not_your_dispatch" });
+    }
+    if (existing.status !== "sent") {
+      return reply.code(409).send({ error: "already_acknowledged" });
+    }
+
+    await db
       .update(schema.dispatches)
       .set({ status: "acknowledged", acknowledgedAt: new Date() })
-      .where(and(
-        eq(schema.dispatches.id, id),
-        eq(schema.dispatches.organisationId, c.orgId),
-        eq(schema.dispatches.recipientUserId, c.sub),
-        eq(schema.dispatches.status, "sent"),
-      ))
-      .returning({ id: schema.dispatches.id });
-    if (!result[0]) return reply.code(409).send({ error: "not_yours_or_already_actioned" });
+      .where(eq(schema.dispatches.id, id));
+
+    // Tell the sender (admin/supervisor) that the recipient is on their way.
+    if (existing.senderUserId) {
+      const [recipient] = await db
+        .select({ name: schema.users.name })
+        .from(schema.users)
+        .where(eq(schema.users.id, c.sub))
+        .limit(1);
+      const [zone] = existing.zoneId ? await db
+        .select({ name: schema.zones.name })
+        .from(schema.zones)
+        .where(eq(schema.zones.id, existing.zoneId))
+        .limit(1) : [];
+      const who = recipient?.name ?? "Cleaner";
+      const where_ = zone?.name ? ` to ${zone.name}` : "";
+      await notifyPush({
+        orgId: c.orgId,
+        alertId: null,
+        userId: existing.senderUserId,
+        title: "Dispatch accepted",
+        body: `${who} is on the way${where_}.`,
+        kind: "alert",
+      });
+    }
+
     eventBus.publish(c.orgId, { type: "dispatch.acknowledged", dispatchId: id });
     return { ok: true };
   });
@@ -173,18 +216,48 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
   app.post("/dispatches/:id/complete", { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);
-    const conds = [
-      eq(schema.dispatches.id, id),
-      eq(schema.dispatches.organisationId, c.orgId),
-      inArray(schema.dispatches.status, ["sent", "acknowledged"]),
-    ];
-    if (c.role === "cleaner") conds.push(eq(schema.dispatches.recipientUserId, c.sub));
-    const result = await db
+
+    const [existing] = await db
+      .select({
+        recipientUserId: schema.dispatches.recipientUserId,
+        senderUserId: schema.dispatches.senderUserId,
+        status: schema.dispatches.status,
+        zoneId: schema.dispatches.zoneId,
+      })
+      .from(schema.dispatches)
+      .where(and(eq(schema.dispatches.id, id), eq(schema.dispatches.organisationId, c.orgId)))
+      .limit(1);
+    if (!existing) return reply.code(404).send({ error: "dispatch_not_found" });
+    if (c.role === "cleaner" && existing.recipientUserId !== c.sub) {
+      return reply.code(403).send({ error: "not_your_dispatch" });
+    }
+    if (existing.status === "completed") {
+      return reply.code(409).send({ error: "already_completed" });
+    }
+
+    await db
       .update(schema.dispatches)
       .set({ status: "completed", completedAt: new Date() })
-      .where(and(...conds))
-      .returning({ id: schema.dispatches.id });
-    if (!result[0]) return reply.code(409).send({ error: "not_yours_or_already_completed" });
+      .where(eq(schema.dispatches.id, id));
+
+    // Tell the sender the job is done. Quiet success — no need for SMS.
+    if (existing.senderUserId && existing.senderUserId !== c.sub) {
+      const [recipient] = await db
+        .select({ name: schema.users.name })
+        .from(schema.users)
+        .where(eq(schema.users.id, existing.recipientUserId))
+        .limit(1);
+      const who = recipient?.name ?? "Cleaner";
+      await notifyPush({
+        orgId: c.orgId,
+        alertId: null,
+        userId: existing.senderUserId,
+        title: "Dispatch completed",
+        body: `${who} marked the dispatch as done.`,
+        kind: "alert",
+      });
+    }
+
     eventBus.publish(c.orgId, { type: "dispatch.completed", dispatchId: id });
     return { ok: true };
   });
