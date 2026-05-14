@@ -5,12 +5,34 @@ struct MapView: View {
     @State private var floors: [Floor] = []
     @State private var zones: [Zone] = []
     @State private var alerts: [ActiveAlert] = []
+    @State private var hangers: [Hanger] = []
 
     @State private var selectedBuilding: Building?
     @State private var selectedFloor: Floor?
 
     @State private var refreshTask: Task<Void, Never>?
     @State private var loadError: String?
+    /// Bumped every second to force re-evaluation of the offline pins.
+    @State private var tick = 0
+
+    private static let onlineWindow: TimeInterval = 15
+
+    private var offlineZoneIds: Set<String> {
+        let now = Date()
+        var byZone: [String: [Hanger]] = [:]
+        for h in hangers where h.zoneId != nil && h.status == .active {
+            byZone[h.zoneId!, default: []].append(h)
+        }
+        var out = Set<String>()
+        for (zid, list) in byZone {
+            let fresh = list.contains { h in
+                guard let last = h.lastSeenAt else { return false }
+                return now.timeIntervalSince(last) <= Self.onlineWindow
+            }
+            if !fresh { out.insert(zid) }
+        }
+        return out
+    }
 
     var body: some View {
         NavigationStack {
@@ -94,7 +116,7 @@ struct MapView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(floor.name).font(.headline)
             if let urlString = floor.floorPlanUrl, let url = assetURL(urlString) {
-                FloorPlanWithPins(planURL: url, zones: zones, alertedStatusByZoneId: alertStatusByZoneId)
+                FloorPlanWithPins(planURL: url, zones: zones, alertedStatusByZoneId: alertStatusByZoneId, offlineZoneIds: offlineZoneIds)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 240)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
@@ -183,6 +205,7 @@ struct MapView: View {
                 await refreshFloors()
             }
             await refreshAlerts()
+            await refreshHangers()
         } catch {
             loadError = "Could not load buildings."
         }
@@ -226,10 +249,25 @@ struct MapView: View {
     private func startPolling() {
         refreshTask?.cancel()
         refreshTask = Task {
+            // Tick every second so the offline pin flips the moment the
+            // 15-second silence threshold is crossed. Hit the API every 5s
+            // to keep alerts + hanger lastSeenAt fresh.
+            var i = 0
             while !Task.isCancelled {
-                await refreshAlerts()
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                tick &+= 1
+                i += 1
+                if i % 5 == 0 {
+                    await refreshAlerts()
+                    await refreshHangers()
+                }
             }
+        }
+    }
+
+    private func refreshHangers() async {
+        if let h = try? await APIClient.shared.hangers() {
+            self.hangers = h
         }
     }
 }

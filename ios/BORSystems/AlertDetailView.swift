@@ -10,6 +10,29 @@ struct AlertDetailView: View {
     @State private var error: String?
     @State private var floor: Floor?
     @State private var zones: [Zone] = []
+    @State private var hangers: [Hanger] = []
+    @State private var refreshTask: Task<Void, Never>?
+    /// Bumped every second so the offline pin updates live.
+    @State private var tick = 0
+
+    private static let onlineWindow: TimeInterval = 15
+
+    private var offlineZoneIds: Set<String> {
+        let now = Date()
+        var byZone: [String: [Hanger]] = [:]
+        for h in hangers where h.zoneId != nil && h.status == .active {
+            byZone[h.zoneId!, default: []].append(h)
+        }
+        var out = Set<String>()
+        for (zid, list) in byZone {
+            let fresh = list.contains { h in
+                guard let last = h.lastSeenAt else { return false }
+                return now.timeIntervalSince(last) <= Self.onlineWindow
+            }
+            if !fresh { out.insert(zid) }
+        }
+        return out
+    }
 
     var body: some View {
         ScrollView {
@@ -71,7 +94,27 @@ struct AlertDetailView: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Alert")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await loadLocation() }
+        .task {
+            await loadLocation()
+            await refreshHangers()
+            refreshTask?.cancel()
+            refreshTask = Task {
+                var i = 0
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    tick &+= 1
+                    i += 1
+                    if i % 5 == 0 { await refreshHangers() }
+                }
+            }
+        }
+        .onDisappear { refreshTask?.cancel() }
+    }
+
+    private func refreshHangers() async {
+        if let h = try? await APIClient.shared.hangers() {
+            self.hangers = h
+        }
     }
 
     @ViewBuilder
@@ -80,7 +123,7 @@ struct AlertDetailView: View {
             Text("Location").font(.headline)
             if let floor = floor, let urlString = floor.floorPlanUrl, let url = assetURL(urlString) {
                 let statusByZoneId: [String: AlertStatus] = alert.zoneId.map { [$0: alert.status] } ?? [:]
-                FloorPlanWithPins(planURL: url, zones: zones, alertedStatusByZoneId: statusByZoneId)
+                FloorPlanWithPins(planURL: url, zones: zones, alertedStatusByZoneId: statusByZoneId, offlineZoneIds: offlineZoneIds)
                     .frame(maxWidth: .infinity)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
             } else if alert.floorId == nil {
