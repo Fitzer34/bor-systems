@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { config } from "../config.js";
 import { decodePayload, isPayloadDecodeError } from "../payload.js";
-import { acknowledgeAlertFromHardware, closeAlertForHanger, openAlertForHanger } from "../services/alert-flow.js";
+import { closeAlertForHanger, openAlertForHanger, startCleaningSession } from "../services/alert-flow.js";
 import { getLowBatteryThreshold } from "../services/system-settings.js";
 import { notifyEmail, notifyPush, notifySms } from "../services/notifications.js";
 import { eventBus } from "../services/event-bus.js";
@@ -119,10 +119,13 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
     } else if (decoded.eventType === "returned") {
       await closeAlertForHanger(hanger.id, "sign_returned", null);
     } else if (decoded.eventType === "cleaning_started") {
-      // Cleaner is physically at the hanger and pressed the button.
-      // Flip the open alert (if any) to "acknowledged" status and ping
-      // the sender / admins.
-      await acknowledgeAlertFromHardware(hanger.id);
+      // Cleaner is at the hanger and pressed the button. Either:
+      //   - flips an existing open alert to acknowledged, or
+      //   - creates a fresh acknowledged alert (planned cleaning).
+      // Either way, all dashboards immediately show "in progress" / blue pin
+      // for that zone, and subsequent lifted events get absorbed by the
+      // existing-open-alert guard.
+      await startCleaningSession(hanger.id);
     }
 
     return reply.send({ status: "ok" });

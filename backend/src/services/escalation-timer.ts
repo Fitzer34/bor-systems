@@ -59,9 +59,16 @@ async function tick(): Promise<void> {
       if (!a.escalatedAt) await escalateAlert(a.id);
     }
 
-    // Cleaning-time reminder
+    // Cleaning-time reminder. We branch on whether the acknowledgement was
+    // from a human (a user tapping "I'm on it" on their phone — acknowledgedBy
+    // is set) or from the hardware "I'm cleaning" button (acknowledgedBy null
+    // — this is a planned-cleaning session).
+    //
+    // For human acknowledgements: send them a reminder to put the sign back.
+    // For hardware sessions: auto-close the alert so a forgotten cleaning
+    // session doesn't sit blue on the dashboard forever.
     const cleaningReminders = await db
-      .select({ id: schema.alerts.id, acknowledgedBy: schema.alerts.acknowledgedBy })
+      .select({ id: schema.alerts.id, acknowledgedBy: schema.alerts.acknowledgedBy, hangerId: schema.alerts.hangerId })
       .from(schema.alerts)
       .where(and(
         eq(schema.alerts.organisationId, org.id),
@@ -84,6 +91,14 @@ async function tick(): Promise<void> {
           body: `Your expected cleaning time of ${cleaningMinutes} min has passed. Please return the sign to the hanger when the area is dry.`,
           kind: "alert",
         });
+      } else {
+        // Planned-cleaning session has exceeded its window — auto-close so
+        // the dashboard stops showing blue indefinitely. Cleaner can always
+        // press the button again to start a fresh session.
+        await db
+          .update(schema.alerts)
+          .set({ status: "closed", closedAt: new Date(), closureReason: "manual" })
+          .where(eq(schema.alerts.id, a.id));
       }
     }
   }

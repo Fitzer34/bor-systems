@@ -87,52 +87,67 @@ export async function broadcastToOnDutyCleaners(
 }
 
 /**
- * Called when a cleaner presses the physical "I'm cleaning" button on the
- * hanger (Pi sends `cleaning_started` event). Flips the most-recently-opened
- * unclosed alert for that hanger from "open" to "acknowledged" and pings the
- * sender / on-duty admins so they know the spill is being handled.
+ * Called when a cleaner presses the physical button on the hanger (Pi sends
+ * `cleaning_started` event). Two scenarios:
  *
- * No-op if the hanger has no open alert.
+ *   1. Sign was already lifted and an alert is open (someone slipped, the
+ *      sign got moved, etc.) → flip that alert from "open" to "acknowledged"
+ *      so the dashboards stop showing it as urgent.
+ *
+ *   2. Sign is still on the hanger (no open alert) → create a fresh alert
+ *      directly in "acknowledged" status. This is the *planned-cleaning*
+ *      case: the cleaner is about to lift the sign deliberately to mark a
+ *      wet floor while they clean. The blue pin shows on every dashboard
+ *      for the configured `expectedCleaningTimeMinutes` (or until the sign
+ *      returns to the hanger, whichever comes first). Subsequent "lifted"
+ *      events get absorbed by the existing open-alert guard, so no spurious
+ *      spill alert fires when the cleaner actually takes the sign off.
+ *
+ * No push goes out — this is a "show on the dashboard" event, not a
+ * "wake up the team" event.
  */
-export async function acknowledgeAlertFromHardware(hangerId: string): Promise<void> {
-  const [alert] = await db
+export async function startCleaningSession(hangerId: string): Promise<void> {
+  const [hanger] = await db
+    .select()
+    .from(schema.hangers)
+    .where(eq(schema.hangers.id, hangerId))
+    .limit(1);
+  if (!hanger) return;
+
+  const [existing] = await db
     .select({
       id: schema.alerts.id,
-      organisationId: schema.alerts.organisationId,
       status: schema.alerts.status,
     })
     .from(schema.alerts)
     .where(and(eq(schema.alerts.hangerId, hangerId), isNull(schema.alerts.closedAt)))
     .limit(1);
-  if (!alert) return;
-  if (alert.status === "acknowledged") return;  // already there
 
-  await db
-    .update(schema.alerts)
-    .set({ status: "acknowledged", acknowledgedAt: new Date(), acknowledgedBy: null })
-    .where(eq(schema.alerts.id, alert.id));
-
-  // Ping on-duty admins/supervisors so they can see cleaning has started.
-  const watchers = await db
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .where(and(
-      eq(schema.users.organisationId, alert.organisationId),
-      eq(schema.users.onDuty, true),
-      isNull(schema.users.deactivatedAt),
-    ));
-  for (const w of watchers) {
-    await notifyPush({
-      orgId: alert.organisationId,
-      alertId: alert.id,
-      userId: w.id,
-      title: "🧽 Cleaning in progress",
-      body: "A cleaner has pressed the button on the hanger.",
-      kind: "rebroadcast",
-    });
+  if (existing) {
+    if (existing.status === "acknowledged") return; // already in-progress
+    await db
+      .update(schema.alerts)
+      .set({ status: "acknowledged", acknowledgedAt: new Date(), acknowledgedBy: null })
+      .where(eq(schema.alerts.id, existing.id));
+    eventBus.publish(hanger.organisationId, { type: "alert.acknowledged", alertId: existing.id });
+    return;
   }
 
-  eventBus.publish(alert.organisationId, { type: "alert.acknowledged", alertId: alert.id });
+  // Planned-cleaning path: create the alert pre-acknowledged.
+  const now = new Date();
+  const [alert] = await db
+    .insert(schema.alerts)
+    .values({
+      organisationId: hanger.organisationId,
+      hangerId,
+      status: "acknowledged",
+      openedAt: now,
+      acknowledgedAt: now,
+      acknowledgedBy: null,
+    })
+    .returning({ id: schema.alerts.id });
+
+  eventBus.publish(hanger.organisationId, { type: "alert.acknowledged", alertId: alert!.id });
 }
 
 export async function escalateAlert(alertId: string): Promise<void> {
