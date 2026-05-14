@@ -10,6 +10,10 @@ interface ActiveAlert {
   id: string;
   hangerId: string;
   status: "open" | "acknowledged" | "closed";
+  // "spill" = sign was lifted unexpectedly (shows in the alert list).
+  // "planned_cleaning" = cleaner pre-pressed the button to flag planned
+  // work (shows only as a blue pin on the floor plan; hidden from list).
+  kind: "spill" | "planned_cleaning";
   openedAt: string;
   acknowledgedAt: string | null;
   acknowledgedBy: string | null;
@@ -105,13 +109,15 @@ export function Dashboard() {
       </div>
       {alerts.isLoading && <div className="text-slate-500">Loading…</div>}
       {alerts.error && <div className="text-red-600">Could not load alerts.</div>}
-      {alerts.data && alerts.data.alerts.length === 0 && (
+      {/* Planned-cleaning sessions are blue pins on the map only — not list entries. */}
+      {(() => null)()}
+      {alerts.data && alerts.data.alerts.filter((a) => a.kind === "spill").length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 p-10 text-center text-slate-500">
           No active spill alerts.
         </div>
       )}
       <ul className="space-y-3">
-        {alerts.data?.alerts.map((a) => (
+        {alerts.data?.alerts.filter((a) => a.kind === "spill").map((a) => (
           <li key={a.id}>
             <Link
               to={`/alerts/${a.id}`}

@@ -22,10 +22,19 @@ enum AlertStatus: String, Codable {
     case open, acknowledged, closed
 }
 
+enum AlertKind: String, Codable {
+    case spill, plannedCleaning = "planned_cleaning"
+}
+
 struct ActiveAlert: Codable, Identifiable, Hashable {
     let id: String
     let hangerId: String
     let status: AlertStatus
+    /// `spill` = sign was lifted unexpectedly (shows in the alert list).
+    /// `plannedCleaning` = cleaner pre-pressed the button to flag planned
+    /// work (shows only as a blue pin on the floor plan; hidden from list).
+    /// Defaults to .spill so existing payloads without the field decode cleanly.
+    var kind: AlertKind = .spill
     let openedAt: Date
     let acknowledgedAt: Date?
     let acknowledgedBy: String?

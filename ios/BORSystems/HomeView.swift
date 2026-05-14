@@ -36,12 +36,17 @@ struct HomeView: View {
                         Text(error).foregroundStyle(.red).font(.footnote)
                     }
 
+                    // Only show genuine spills in the list. Planned cleaning
+                    // sessions (cleaner pressed the button first) still drive
+                    // a blue pin on the floor-plan feed below, but they don't
+                    // belong in the urgent-action list at the top.
+                    let spillAlerts = alerts.filter { $0.kind == .spill }
                     sectionHeader("Active alerts")
-                    if alerts.isEmpty {
+                    if spillAlerts.isEmpty {
                         emptyCard("No active spill alerts.")
                     } else {
                         let offlineSet = offlineHangerIds
-                        ForEach(alerts) { alert in
+                        ForEach(spillAlerts) { alert in
                             NavigationLink(value: alert) {
                                 AlertRow(alert: alert, hangerOffline: offlineSet.contains(alert.hangerId))
                             }

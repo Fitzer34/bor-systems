@@ -15,6 +15,9 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
         id: schema.alerts.id,
         hangerId: schema.alerts.hangerId,
         status: schema.alerts.status,
+        // `kind` lets clients show planned-cleaning sessions as blue pins on
+        // the floor plan while keeping them OUT of the Active alerts list.
+        kind: schema.alerts.kind,
         openedAt: schema.alerts.openedAt,
         acknowledgedAt: schema.alerts.acknowledgedAt,
         acknowledgedBy: schema.alerts.acknowledgedBy,

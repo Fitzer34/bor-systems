@@ -133,7 +133,9 @@ export async function startCleaningSession(hangerId: string): Promise<void> {
     return;
   }
 
-  // Planned-cleaning path: create the alert pre-acknowledged.
+  // Planned-cleaning path: create the alert pre-acknowledged and tagged
+  // as `planned_cleaning` so the Active alerts list can filter it out — it
+  // only appears as a blue pin on the floor plan.
   const now = new Date();
   const [alert] = await db
     .insert(schema.alerts)
@@ -141,6 +143,7 @@ export async function startCleaningSession(hangerId: string): Promise<void> {
       organisationId: hanger.organisationId,
       hangerId,
       status: "acknowledged",
+      kind: "planned_cleaning",
       openedAt: now,
       acknowledgedAt: now,
       acknowledgedBy: null,

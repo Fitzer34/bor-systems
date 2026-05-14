@@ -23,6 +23,12 @@ export const hangerStatus = pgEnum("hanger_status", [
 
 export const alertStatus = pgEnum("alert_status", ["open", "acknowledged", "closed"]);
 
+/// Differentiates a genuine spill (sign was lifted unexpectedly) from a
+/// cleaner pre-pressing the button to flag a planned cleaning session.
+/// Both render as blue pins on the floor plan, but only spills appear in
+/// the Active alerts list so supervisors aren't pinged for routine cleans.
+export const alertKind = pgEnum("alert_kind", ["spill", "planned_cleaning"]);
+
 export const closureReason = pgEnum("closure_reason", [
   "sign_returned",
   "sign_damaged",
@@ -189,6 +195,7 @@ export const alerts = pgTable(
       .references(() => hangers.id, { onDelete: "restrict" })
       .notNull(),
     status: alertStatus("status").notNull().default("open"),
+    kind: alertKind("kind").notNull().default("spill"),
     openedAt: timestamp("opened_at", { withTimezone: true }).defaultNow().notNull(),
     acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
     acknowledgedBy: uuid("acknowledged_by").references(() => users.id, {
