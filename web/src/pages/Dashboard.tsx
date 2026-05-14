@@ -28,6 +28,16 @@ interface DispatchRow {
   sentAt: string;
 }
 
+interface Hanger {
+  id: string;
+  status: "active" | "out_of_service" | "decommissioned";
+  lastSeenAt: string | null;
+}
+
+/** Match the 3-minute online window used elsewhere — WiFi-Pi hangers
+ *  heartbeat every 60 seconds, so 3 minutes is two missed beats. */
+const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+
 export function Dashboard() {
   const qc = useQueryClient();
 
@@ -42,6 +52,23 @@ export function Dashboard() {
     queryFn: () => api<{ dispatches: DispatchRow[] }>("/dispatches"),
     refetchInterval: 5_000,
   });
+
+  // Fetch hangers so each alert can show whether the reporting hanger has
+  // gone offline since (e.g. it sent "lifted" then died — the spill is still
+  // there but you can't rely on getting a "returned" event).
+  const hangers = useQuery({
+    queryKey: ["hangers"],
+    queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
+    refetchInterval: 30_000,
+  });
+
+  const offlineHangerIds = new Set<string>();
+  const now = Date.now();
+  for (const h of hangers.data?.hangers ?? []) {
+    if (h.status !== "active") continue;
+    const fresh = h.lastSeenAt != null && now - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
+    if (!fresh) offlineHangerIds.add(h.id);
+  }
 
   const ackDispatch = useMutation({
     mutationFn: (id: string) => api(`/dispatches/${id}/acknowledge`, { method: "POST" }),
@@ -77,8 +104,16 @@ export function Dashboard() {
               }`}
             >
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-slate-900">
-                  {a.floorName ?? "Unknown floor"} — {a.zoneName ?? "Unassigned zone"}
+                <div className="font-medium text-slate-900 flex items-center gap-2">
+                  <span>{a.floorName ?? "Unknown floor"} — {a.zoneName ?? "Unassigned zone"}</span>
+                  {offlineHangerIds.has(a.hangerId) && (
+                    <span
+                      className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700 border border-dashed border-slate-400"
+                      title="The hanger that reported this alert hasn't phoned home recently — assume it's offline"
+                    >
+                      HANGER OFFLINE
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm text-slate-500 mt-1">
                   Lifted {timeAgo(a.openedAt)} · Status: {a.status}

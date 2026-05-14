@@ -4,9 +4,24 @@ struct HomeView: View {
     @EnvironmentObject var auth: AuthStore
     @State private var alerts: [ActiveAlert] = []
     @State private var dispatches: [DispatchItem] = []
+    @State private var hangers: [Hanger] = []
     @State private var error: String?
     @State private var refreshTask: Task<Void, Never>?
     @State private var showProfile = false
+
+    /// 3-minute window matches the WiFi-Pi 60-second heartbeat (tolerates 2 misses).
+    private static let onlineWindow: TimeInterval = 3 * 60
+
+    private var offlineHangerIds: Set<String> {
+        let now = Date()
+        var out = Set<String>()
+        for h in hangers where h.status == .active {
+            let seen = h.lastSeenAt
+            let online = seen != nil && now.timeIntervalSince(seen!) <= Self.onlineWindow
+            if !online { out.insert(h.id) }
+        }
+        return out
+    }
 
     var body: some View {
         NavigationStack {
@@ -20,9 +35,10 @@ struct HomeView: View {
                     if alerts.isEmpty {
                         emptyCard("No active spill alerts.")
                     } else {
+                        let offlineSet = offlineHangerIds
                         ForEach(alerts) { alert in
                             NavigationLink(value: alert) {
-                                AlertRow(alert: alert)
+                                AlertRow(alert: alert, hangerOffline: offlineSet.contains(alert.hangerId))
                             }
                             .buttonStyle(.plain)
                         }
@@ -111,8 +127,13 @@ struct HomeView: View {
         do {
             async let alertsTask = APIClient.shared.activeAlerts()
             async let dispTask = APIClient.shared.dispatches()
+            async let hangersTask = APIClient.shared.hangers()
             self.alerts = try await alertsTask
             self.dispatches = try await dispTask
+            // Hangers are fetched only so we can flag "hanger offline" on
+            // an alert. If the fetch fails we just don't show the indicator
+            // — not worth blocking the whole refresh on.
+            self.hangers = (try? await hangersTask) ?? self.hangers
             self.error = nil
             // Fire local notifications for any new alerts/dispatches we haven't seen
             LocalAlertNotifier.shared.observe(alerts: self.alerts, dispatches: self.dispatches)
@@ -140,6 +161,7 @@ enum DispatchAction { case acknowledge, complete }
 
 private struct AlertRow: View {
     let alert: ActiveAlert
+    var hangerOffline: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -150,7 +172,19 @@ private struct AlertRow: View {
                 Text("Lifted \(alert.openedAt, style: .relative) ago · Status: \(alert.status.rawValue)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                statusBadge
+                HStack(spacing: 6) {
+                    statusBadge
+                    if hangerOffline {
+                        // The hanger that opened this alert hasn't phoned home
+                        // recently — the spill might still be there but no
+                        // automatic "returned" event will arrive to close it.
+                        Text("HANGER OFFLINE")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .overlay(Capsule().strokeBorder(Color.gray, style: StrokeStyle(lineWidth: 1, dash: [3])))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             Spacer(minLength: 8)
             AlertFloorPlanThumb(floorId: alert.floorId, alertedZoneId: alert.zoneId, status: alert.status)

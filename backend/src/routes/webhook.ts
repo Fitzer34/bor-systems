@@ -6,6 +6,7 @@ import { decodePayload, isPayloadDecodeError } from "../payload.js";
 import { closeAlertForHanger, openAlertForHanger } from "../services/alert-flow.js";
 import { getLowBatteryThreshold } from "../services/system-settings.js";
 import { notifyEmail, notifyPush, notifySms } from "../services/notifications.js";
+import { eventBus } from "../services/event-bus.js";
 
 interface TtsUplink {
   end_device_ids: { dev_eui: string };
@@ -97,6 +98,13 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
       type: decoded.eventType,
       batteryPct: decoded.batteryPct,
       rawPayload: frmPayload,
+    });
+
+    // Tell connected dashboards a hanger just phoned home so the Online
+    // indicator updates instantly without waiting for the 30s poll.
+    eventBus.publish(hanger.organisationId, {
+      type: "hanger.updated",
+      hangerId: hanger.id,
     });
 
     const hangerLabel = hanger.devEui;

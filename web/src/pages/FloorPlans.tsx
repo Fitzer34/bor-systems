@@ -6,6 +6,11 @@ interface Building { id: string; name: string }
 interface Floor { id: string; name: string; buildingId: string; floorPlanUrl: string | null; orderIndex: number }
 interface Zone { id: string; name: string; floorId: string; pinX: number | null; pinY: number | null }
 interface ActiveAlert { id: string; zoneId: string | null; status: "open" | "acknowledged" | "closed" }
+interface Hanger { id: string; zoneId: string | null; status: "active" | "out_of_service" | "decommissioned"; lastSeenAt: string | null }
+
+/** A zone is considered offline if it has at least one active hanger and
+ *  none of its active hangers have phoned home in the last 3 minutes. */
+const ONLINE_WINDOW_MS = 3 * 60 * 1000;
 
 export function FloorPlans() {
   const qc = useQueryClient();
@@ -31,9 +36,35 @@ export function FloorPlans() {
     queryFn: () => api<{ alerts: ActiveAlert[] }>("/alerts/active"),
     refetchInterval: 5_000,
   });
+  // Fetch hangers so we can flag offline zones on the floor plan. Refetch
+  // every 30s so the indicator stays live without a page refresh.
+  const hangers = useQuery({
+    queryKey: ["hangers"],
+    queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
+    refetchInterval: 30_000,
+  });
+
   const zoneStatusById = new Map<string, "open" | "acknowledged">();
   for (const a of activeAlerts.data?.alerts ?? []) {
     if (a.zoneId && a.status !== "closed") zoneStatusById.set(a.zoneId, a.status);
+  }
+
+  // A zone is "offline" when it has active hangers but none have phoned home
+  // recently. Decommissioned or out-of-service hangers don't count — those
+  // zones just have no monitoring rather than offline monitoring.
+  const offlineZoneIds = new Set<string>();
+  const now = Date.now();
+  const zoneHangers = new Map<string, Hanger[]>();
+  for (const h of hangers.data?.hangers ?? []) {
+    if (!h.zoneId || h.status !== "active") continue;
+    const list = zoneHangers.get(h.zoneId) ?? [];
+    list.push(h);
+    zoneHangers.set(h.zoneId, list);
+  }
+  for (const [zoneId, hs] of zoneHangers.entries()) {
+    const anyOnline = hs.some((h) => h.lastSeenAt != null
+      && now - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS);
+    if (!anyOnline) offlineZoneIds.add(zoneId);
   }
 
   const createBuilding = useMutation({
@@ -177,19 +208,42 @@ export function FloorPlans() {
               <img src={activeFloor.floorPlanUrl} alt="" className="block max-w-full max-h-[600px]" />
               {zones.data?.zones.filter((z) => z.pinX != null && z.pinY != null).map((z) => {
                 const status = zoneStatusById.get(z.id);
-                const color = status === "open" ? "bg-red-500 animate-pulse"
-                  : status === "acknowledged" ? "bg-blue-500 animate-pulse"
-                  : "bg-green-500";
-                const label = status === "open" ? " — ALERT"
-                  : status === "acknowledged" ? " — cleaning in progress"
-                  : "";
+                const isOffline = offlineZoneIds.has(z.id);
+
+                // Alert state always wins — an offline hanger that managed
+                // to send a "lifted" event before dying still needs cleaning.
+                let pinClass: string;
+                let label: string;
+                let inner: JSX.Element | null = null;
+
+                if (status === "open") {
+                  pinClass = "bg-red-500 animate-pulse";
+                  label = " — ALERT";
+                } else if (status === "acknowledged") {
+                  pinClass = "bg-blue-500 animate-pulse";
+                  label = " — cleaning in progress";
+                } else if (isOffline) {
+                  // Distinct visual: hollow grey with a dashed border + "?"
+                  // so it's obvious at a glance that the zone isn't reporting.
+                  pinClass = "bg-slate-300 border-dashed";
+                  label = " — hanger offline";
+                  inner = (
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-700 leading-none">?</span>
+                  );
+                } else {
+                  pinClass = "bg-green-500";
+                  label = "";
+                }
+
                 return (
                   <div
                     key={z.id}
                     title={`${z.name}${label}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white shadow ${color}`}
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white shadow ${pinClass}`}
                     style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
-                  />
+                  >
+                    {inner}
+                  </div>
                 );
               })}
             </div>

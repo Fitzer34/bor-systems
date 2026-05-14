@@ -24,7 +24,13 @@ export function Hangers() {
   const [devEui, setDevEui] = useState("");
   const [zoneId, setZoneId] = useState("");
 
-  const hangers = useQuery({ queryKey: ["hangers"], queryFn: () => api<{ hangers: Hanger[] }>("/hangers") });
+  const hangers = useQuery({
+    queryKey: ["hangers"],
+    queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
+    // Refetch every 30s so the Online/Offline badge stays accurate without
+    // requiring a manual refresh. Cheap — `/hangers` is a small JSON list.
+    refetchInterval: 30_000,
+  });
   const buildings = useQuery({ queryKey: ["buildings"], queryFn: () => api<{ buildings: Building[] }>("/buildings") });
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<{ lowBatteryThreshold: number }>("/settings"), enabled: isAdmin || user?.role === "supervisor" });
   const lowBatteryThreshold = settings.data?.lowBatteryThreshold ?? 20;
