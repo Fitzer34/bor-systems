@@ -59,28 +59,13 @@ export async function broadcastToOnDutyCleaners(
   alertId: string,
   kind: typeof schema.notificationKind.enumValues[number],
 ): Promise<void> {
-  const cleaners = await db
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .where(and(
-      eq(schema.users.organisationId, orgId),
-      eq(schema.users.role, "cleaner"),
-      eq(schema.users.onDuty, true),
-      isNull(schema.users.deactivatedAt),
-    ));
-
-  if (cleaners.length > 0) {
-    for (const c of cleaners) {
-      await notifyPush({ orgId, alertId, userId: c.id, title: "Spill alert", body: "A wet floor sign has been lifted.", kind });
-    }
-    return;
-  }
-
-  // Fallback: no on-duty cleaners means no one would otherwise hear about
-  // the spill until the escalation timer fires (typically 15 minutes).
-  // For small orgs and out-of-hours coverage, ping any on-duty supervisor
-  // or admin immediately so the spill doesn't sit unattended.
-  const fallback = await db
+  // Simple, reliable rule: every on-duty user in the org gets pinged.
+  // The old "cleaners-only with admin fallback" logic was a constant source
+  // of "I got one push then nothing" complaints because the audience kept
+  // flipping as users changed role or on-duty state.
+  //
+  // To opt out of pings, toggle yourself off-duty.
+  const audience = await db
     .select({ id: schema.users.id })
     .from(schema.users)
     .where(and(
@@ -89,13 +74,13 @@ export async function broadcastToOnDutyCleaners(
       isNull(schema.users.deactivatedAt),
     ));
 
-  for (const u of fallback) {
+  for (const u of audience) {
     await notifyPush({
       orgId,
       alertId,
       userId: u.id,
-      title: "Spill alert — no cleaner on duty",
-      body: "A wet floor sign has been lifted. No cleaner is on duty to respond.",
+      title: "🚨 Spill alert",
+      body: "A wet floor sign has been lifted. Tap to respond.",
       kind,
     });
   }

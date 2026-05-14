@@ -19,8 +19,9 @@ export function LiveEventsBridge(): null {
     const token = getToken();
     if (!token) return;
 
-    // Ask the browser for notification permission once. Browsers require
-    // a user-gesture chain to grant — login itself counts as a gesture.
+    // Ask the browser for notification permission. Browsers require a
+    // user-gesture chain to grant — login itself counts as a gesture, and
+    // we re-prompt every session until the user explicitly grants or denies.
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => undefined);
     }
@@ -28,13 +29,32 @@ export function LiveEventsBridge(): null {
     const es = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
 
     const showAlertNotification = (title: string, body: string) => {
+      // Play an audible "ping" regardless of browser-notification permission,
+      // so the dashboard makes a sound even when the tab is muted/in focus.
+      try {
+        // 880Hz, 200ms — short, attention-grabbing, gentle.
+        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      } catch { /* AudioContext may be blocked in some browsers */ }
+
       if (!("Notification" in window) || Notification.permission !== "granted") return;
       try {
+        // Use a unique tag per call so subsequent alerts don't replace the
+        // previous one. Was "bor-alert" before — same tag = OS collapses them.
         const n = new Notification(title, {
           body,
-          tag: "bor-alert",
+          tag: `bor-alert-${Date.now()}`,
           icon: "/favicon.ico",
           silent: false,
+          requireInteraction: true,
         });
         n.onclick = () => {
           window.focus();
