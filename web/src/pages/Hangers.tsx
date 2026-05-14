@@ -135,11 +135,25 @@ export function Hangers() {
                   </select>
                 </td>
                 <td className="p-2">
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    h.status === "active" ? "bg-green-100 text-green-700" :
-                    h.status === "out_of_service" ? "bg-amber-100 text-amber-700" :
-                    "bg-slate-200 text-slate-600"
-                  }`}>{h.status}</span>
+                  {(() => {
+                    // Lifecycle states (out of service / decommissioned) win
+                    // over real-time online state — a decommissioned hanger
+                    // shouldn't show "online" even if it just phoned home.
+                    if (h.status === "out_of_service") {
+                      return <span className="px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-700">out of service</span>;
+                    }
+                    if (h.status === "decommissioned") {
+                      return <span className="px-2 py-0.5 rounded text-xs bg-slate-200 text-slate-600">decommissioned</span>;
+                    }
+                    // Active: derive online/offline from lastSeenAt.
+                    // WiFi-Pi hangers heartbeat every 60s; allow 2 misses.
+                    const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+                    const isOnline = h.lastSeenAt != null
+                      && Date.now() - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
+                    return isOnline
+                      ? <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">Online</span>
+                      : <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">Offline</span>;
+                  })()}
                 </td>
                 <td className="p-2">
                   {h.batteryPct == null ? "—" : (

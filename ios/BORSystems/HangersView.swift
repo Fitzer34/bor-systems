@@ -127,13 +127,27 @@ private struct HangerRow: View {
         }
     }
 
+    /// "Online" if the hanger has phoned home within the last 3 minutes.
+    /// WiFi-Pi hangers heartbeat every 60 seconds, so 3 minutes tolerates
+    /// two missed beats without flapping. Battery LoRa hangers will need
+    /// a longer threshold once we ship them — read the configured interval
+    /// off the hanger record then.
+    private static let onlineWindow: TimeInterval = 3 * 60
+
     @ViewBuilder
     private var statusBadge: some View {
         let (label, color): (String, Color) = {
+            // Lifecycle states take priority — a decommissioned hanger
+            // shouldn't show "online" even if it just phoned home.
             switch hanger.status {
-            case .active:        return ("active", .green)
-            case .outOfService:  return ("out of service", .orange)
-            case .decommissioned:return ("decommissioned", .gray)
+            case .outOfService:   return ("out of service", .orange)
+            case .decommissioned: return ("decommissioned", .gray)
+            case .active:
+                if let seen = hanger.lastSeenAt,
+                   Date().timeIntervalSince(seen) <= Self.onlineWindow {
+                    return ("Online", .green)
+                }
+                return ("Offline", .red)
             }
         }()
         Text(label).font(.caption2.weight(.medium))

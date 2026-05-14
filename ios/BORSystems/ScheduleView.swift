@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ScheduleView: View {
+    @EnvironmentObject var auth: AuthStore
     @State private var shifts: [Shift] = []
     @State private var error: String?
     @State private var showCreate = false
@@ -11,6 +12,10 @@ struct ScheduleView: View {
         case past = "Past", current = "Now", upcoming = "Upcoming", all = "All"
         var id: String { rawValue }
     }
+
+    /// Cleaners only see their own shifts and can't create or edit them.
+    /// Admins and supervisors see everything and have the + button.
+    private var isReadOnly: Bool { auth.user?.role == .cleaner }
 
     var body: some View {
         let groups = grouped(shifts: filteredShifts)
@@ -27,7 +32,7 @@ struct ScheduleView: View {
                 }
 
                 if groups.isEmpty {
-                    EmptyScheduleHint().padding(.top, 60)
+                    EmptyScheduleHint(isReadOnly: isReadOnly).padding(.top, 60)
                 }
 
                 ForEach(groups, id: \.title) { group in
@@ -40,8 +45,10 @@ struct ScheduleView: View {
         .navigationTitle("Schedule")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showCreate = true } label: { Image(systemName: "plus") }
+            if !isReadOnly {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showCreate = true } label: { Image(systemName: "plus") }
+                }
             }
         }
         .sheet(isPresented: $showCreate) {
@@ -55,12 +62,20 @@ struct ScheduleView: View {
     }
 
     private var filteredShifts: [Shift] {
+        // Cleaners only ever see their own shifts so they know where they
+        // need to be, but can't snoop on the rest of the team's schedule.
+        let scoped: [Shift]
+        if isReadOnly, let myId = auth.user?.id {
+            scoped = shifts.filter { $0.userId == myId }
+        } else {
+            scoped = shifts
+        }
         let now = Date()
         switch filter {
-        case .past:     return shifts.filter { $0.endsAt <= now }
-        case .current:  return shifts.filter { $0.startsAt <= now && $0.endsAt > now }
-        case .upcoming: return shifts.filter { $0.startsAt > now }
-        case .all:      return shifts
+        case .past:     return scoped.filter { $0.endsAt <= now }
+        case .current:  return scoped.filter { $0.startsAt <= now && $0.endsAt > now }
+        case .upcoming: return scoped.filter { $0.startsAt > now }
+        case .all:      return scoped
         }
     }
 
@@ -103,8 +118,14 @@ struct ScheduleView: View {
 
             VStack(spacing: 0) {
                 ForEach(group.shifts) { s in
-                    Button { editingShift = s } label: { ShiftCard(shift: s) }
-                        .buttonStyle(.plain)
+                    if isReadOnly {
+                        // Cleaners: read-only — show the card with the
+                        // chevron suppressed and no tap action.
+                        ShiftCard(shift: s, showChevron: false)
+                    } else {
+                        Button { editingShift = s } label: { ShiftCard(shift: s, showChevron: true) }
+                            .buttonStyle(.plain)
+                    }
                     if s.id != group.shifts.last?.id { Divider().padding(.leading, 16) }
                 }
             }
@@ -121,6 +142,7 @@ struct ScheduleView: View {
 
 private struct ShiftCard: View {
     let shift: Shift
+    var showChevron: Bool = true
 
     var body: some View {
         let now = Date()
@@ -159,7 +181,9 @@ private struct ShiftCard: View {
                             .foregroundStyle(.white)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                    if showChevron {
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                    }
                 }
                 Label(coverage, systemImage: "mappin.and.ellipse")
                     .font(.caption).foregroundStyle(.secondary)
@@ -246,11 +270,21 @@ struct ShiftEditorSheet: View {
                         Task { await save() }
                     } label: {
                         HStack {
-                            if working { ProgressView() }
-                            Text(existing == nil ? "Add shift" : "Save changes").frame(maxWidth: .infinity)
+                            if working { ProgressView().tint(.white) }
+                            Text(existing == nil ? "Add shift" : "Save changes")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
                         }
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(canSave ? Color.accentColor : Color.gray.opacity(0.4))
+                        )
                     }
                     .disabled(!canSave)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                 }
                 if existing != nil {
                     Section {
@@ -342,13 +376,20 @@ struct ShiftEditorSheet: View {
 }
 
 private struct EmptyScheduleHint: View {
+    var isReadOnly: Bool = false
+
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: "calendar")
                 .font(.system(size: 38, weight: .light))
                 .foregroundStyle(.secondary)
-            Text("No shifts to show").font(.headline)
-            Text("Tap + to create one.").font(.footnote).foregroundStyle(.secondary)
+            Text(isReadOnly ? "No shifts scheduled" : "No shifts to show").font(.headline)
+            Text(isReadOnly
+                 ? "Your supervisor hasn't added any for this period yet."
+                 : "Tap + to create one.")
+                .font(.footnote).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity)
     }
