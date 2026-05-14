@@ -1,11 +1,17 @@
 import SwiftUI
 
 /// Renders a floor-plan image with coloured pins overlaid on each pinned zone.
-/// Pin colour: red = open alert, blue = acknowledged (cleaning in progress), green = idle.
+/// Pin styles:
+///   - red pulsing  → open alert
+///   - blue pulsing → acknowledged (cleaning in progress)
+///   - grey dashed  → hanger offline (no recent heartbeat)
+///   - green        → idle
+/// Alert state wins over offline state when both apply on the same zone.
 struct FloorPlanWithPins: View {
     let planURL: URL
     let zones: [Zone]
     let alertedStatusByZoneId: [String: AlertStatus]
+    var offlineZoneIds: Set<String> = []
 
     var body: some View {
         AsyncImage(url: planURL) { phase in
@@ -37,14 +43,21 @@ struct FloorPlanWithPins: View {
         }
     }
 
+    @ViewBuilder
     private func pin(for z: Zone, in size: CGSize) -> some View {
         let status = alertedStatusByZoneId[z.id]
-        let color: Color = status == .open ? .red : (status == .acknowledged ? .blue : .green)
-        let pulsing = (status == .open || status == .acknowledged)
         let x = CGFloat(z.pinX ?? 0) / 1000.0 * size.width
         let y = CGFloat(z.pinY ?? 0) / 1000.0 * size.height
-        return PulsingDot(color: color, animate: pulsing)
-            .position(x: x, y: y)
+        if let status = status {
+            let color: Color = status == .open ? .red : .blue
+            PulsingDot(color: color, animate: true)
+                .position(x: x, y: y)
+        } else if offlineZoneIds.contains(z.id) {
+            OfflinePin().position(x: x, y: y)
+        } else {
+            PulsingDot(color: .green, animate: false)
+                .position(x: x, y: y)
+        }
     }
 }
 
@@ -74,6 +87,25 @@ struct PulsingDot: View {
                 }
             }
         }
+    }
+}
+
+/// The pin shown when a zone's hanger has stopped phoning home.
+/// Distinct look so it doesn't get confused with the idle green dot.
+struct OfflinePin: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.gray.opacity(0.35))
+                .frame(width: 16, height: 16)
+            Circle()
+                .strokeBorder(Color.gray, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
+                .frame(width: 16, height: 16)
+            Text("?")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+        }
+        .shadow(radius: 1)
     }
 }
 

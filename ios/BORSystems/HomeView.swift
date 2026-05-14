@@ -53,6 +53,12 @@ struct HomeView: View {
                             }
                         }
                     }
+
+                    // Scrollable feed of every floor plan in the org, mirroring
+                    // the All-floor-plans block on the web dashboard. Pins use
+                    // the same legend (red/blue/grey-?/green).
+                    sectionHeader("Floor plans")
+                    SiteFloorPlansFeed()
                 }
                 .padding(16)
             }
