@@ -173,10 +173,18 @@ class HangerState:
             self.led_red.on()
 
     def _on_sign_lifted(self) -> None:
-        log.info("microswitch opened → sign lifted")
-        self.led_red.on()
-        if self.cfg.buzzer_enabled and self.buzzer:
-            self.buzzer.beep(on_time=0.2, off_time=0.0, n=1, background=True)
+        # If the cleaner pressed the button first (green LED on) then this
+        # is a planned cleaning lift, not a spill — DON'T light the red
+        # warning LED or fire the buzzer. Cloud-side, openAlertForHanger
+        # sees the existing planned_cleaning alert and absorbs the event,
+        # so no spill push goes out either.
+        if self.led_green.is_lit:
+            log.info("microswitch opened → sign lifted (planned cleaning, suppressing alert UI)")
+        else:
+            log.info("microswitch opened → sign lifted")
+            self.led_red.on()
+            if self.cfg.buzzer_enabled and self.buzzer:
+                self.buzzer.beep(on_time=0.2, off_time=0.0, n=1, background=True)
         with self.lock:
             send_uplink(self.cfg, EVT_LIFTED,
                         test_button=self.test_button_pressed_since_last_uplink)
