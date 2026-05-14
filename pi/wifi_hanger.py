@@ -185,6 +185,10 @@ class HangerState:
     def _on_sign_returned(self) -> None:
         log.info("microswitch closed → sign returned")
         self.led_red.off()
+        # Sign back on the hanger means any cleaning session is done too —
+        # snap the green LED off so the cleaner doesn't have to remember
+        # to press the button a second time after they finish.
+        self.led_green.off()
         with self.lock:
             send_uplink(self.cfg, EVT_RETURNED,
                         test_button=self.test_button_pressed_since_last_uplink)
@@ -193,17 +197,21 @@ class HangerState:
     def _on_test_button(self) -> None:
         """Cleaner pressed the button on the front of the hanger.
 
-        ALWAYS fires the `cleaning_started` event — this is a *proactive*
-        cleaning press, not a response to an existing alert. The cleaner
-        is announcing "I'm about to clean here, treat any sign-lift as
-        planned" before they take the sign off the hanger.
+        The button TOGGLES cleaning mode. Each press fires the same
+        `cleaning_started` event up to the cloud; the backend interprets it
+        as "start a planned-cleaning session" on first press and "stop it"
+        on the second press. The green LED tracks local state so the
+        cleaner sees feedback even before the cloud round-trips.
         """
         self.test_button_pressed_since_last_uplink = True
-        log.info("button pressed — cleaning started")
-        # Green LED stays lit while the cleaning session is active. The
-        # session ends when the sign goes back on the hanger or when the
-        # expected-cleaning-time window expires on the backend.
-        self.led_green.on()
+        # Toggle the local LED. `is_lit` is the gpiozero property for the
+        # current LED state — flip it.
+        if self.led_green.is_lit:
+            self.led_green.off()
+            log.info("button pressed — cleaning mode OFF (toggle)")
+        else:
+            self.led_green.on()
+            log.info("button pressed — cleaning mode ON (toggle)")
         with self.lock:
             send_uplink(self.cfg, EVT_CLEANING_STARTED,
                         test_button=self.test_button_pressed_since_last_uplink)

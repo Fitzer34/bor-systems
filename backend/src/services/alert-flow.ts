@@ -88,20 +88,13 @@ export async function broadcastToOnDutyCleaners(
 
 /**
  * Called when a cleaner presses the physical button on the hanger (Pi sends
- * `cleaning_started` event). Two scenarios:
+ * `cleaning_started` event). The button TOGGLES cleaning mode:
  *
- *   1. Sign was already lifted and an alert is open (someone slipped, the
- *      sign got moved, etc.) → flip that alert from "open" to "acknowledged"
- *      so the dashboards stop showing it as urgent.
- *
- *   2. Sign is still on the hanger (no open alert) → create a fresh alert
- *      directly in "acknowledged" status. This is the *planned-cleaning*
- *      case: the cleaner is about to lift the sign deliberately to mark a
- *      wet floor while they clean. The blue pin shows on every dashboard
- *      for the configured `expectedCleaningTimeMinutes` (or until the sign
- *      returns to the hanger, whichever comes first). Subsequent "lifted"
- *      events get absorbed by the existing open-alert guard, so no spurious
- *      spill alert fires when the cleaner actually takes the sign off.
+ *   1. No open alert → create a planned-cleaning alert (blue pin appears).
+ *   2. Planned-cleaning alert already open → close it (button pressed again
+ *      to turn cleaning mode off — pin returns to green).
+ *   3. Spill alert open (sign got lifted unexpectedly first) → flip it from
+ *      "open" to "acknowledged" so the dashboards stop showing red.
  *
  * No push goes out — this is a "show on the dashboard" event, not a
  * "wake up the team" event.
@@ -118,13 +111,24 @@ export async function startCleaningSession(hangerId: string): Promise<void> {
     .select({
       id: schema.alerts.id,
       status: schema.alerts.status,
+      kind: schema.alerts.kind,
     })
     .from(schema.alerts)
     .where(and(eq(schema.alerts.hangerId, hangerId), isNull(schema.alerts.closedAt)))
     .limit(1);
 
   if (existing) {
-    if (existing.status === "acknowledged") return; // already in-progress
+    if (existing.kind === "planned_cleaning") {
+      // Second press on an active planned-cleaning session → toggle OFF.
+      await db
+        .update(schema.alerts)
+        .set({ status: "closed", closedAt: new Date(), closureReason: "manual" })
+        .where(eq(schema.alerts.id, existing.id));
+      eventBus.publish(hanger.organisationId, { type: "alert.closed", alertId: existing.id, reason: "manual" });
+      return;
+    }
+    // Spill alert in progress — first press acknowledges it.
+    if (existing.status === "acknowledged") return;
     await db
       .update(schema.alerts)
       .set({ status: "acknowledged", acknowledgedAt: new Date(), acknowledgedBy: null })
@@ -133,9 +137,9 @@ export async function startCleaningSession(hangerId: string): Promise<void> {
     return;
   }
 
-  // Planned-cleaning path: create the alert pre-acknowledged and tagged
-  // as `planned_cleaning` so the Active alerts list can filter it out — it
-  // only appears as a blue pin on the floor plan.
+  // No open alert: this is the planned-cleaning case. Create a fresh alert
+  // pre-acknowledged and tagged as `planned_cleaning` so the Active alerts
+  // list filters it out — it only shows as a blue pin on the floor plan.
   const now = new Date();
   const [alert] = await db
     .insert(schema.alerts)
