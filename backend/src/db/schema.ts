@@ -35,6 +35,9 @@ export const eventType = pgEnum("event_type", [
   "returned",
   "heartbeat",
   "low_battery",
+  // Fired when a cleaner presses the physical "I'm cleaning" button on the
+  // hanger during an open alert — flips the alert to "acknowledged".
+  "cleaning_started",
 ]);
 
 export const notificationChannel = pgEnum("notification_channel", [

@@ -10,10 +10,14 @@ Same wire-protocol as the LoRaWAN hangers (4-byte payload), so the cloud
 backend doesn't care whether an event arrived via LoRa or WiFi.
 
   Pin map (BCM numbering):
-    GPIO 17  — microswitch (closed = sign present, open = sign lifted)
-    GPIO 22  — red LED   (lit while sign is off the hanger)
-    GPIO 27  — green LED (5s on test-button press; or breathing when on duty)
-    GPIO 23  — test button (momentary, pull-up)
+    GPIO 17  — microswitch         (closed = sign present, open = sign lifted)
+    GPIO 22  — red LED             (lit while sign is off the hanger)
+    GPIO 27  — green LED           (lit while cleaning is in progress;
+                                    also flashes for 5s on a test press
+                                    when no alert is open)
+    GPIO 23  — "I'm cleaning" button (momentary, pull-up)
+                                    pressed while sign is lifted → sends
+                                    cleaning_started, supervisor gets pushed
     GPIO 24  — buzzer    (optional)
 
   Required env vars (placed in /etc/bor-hanger.env by install.py):
@@ -44,6 +48,8 @@ EVT_LIFTED = 0x01
 EVT_RETURNED = 0x02
 EVT_HEARTBEAT = 0x03
 EVT_LOW_BATTERY = 0x04
+# Cleaner pressed the physical button on the hanger while the sign is lifted.
+EVT_CLEANING_STARTED = 0x05
 
 # --- Logging ---
 logging.basicConfig(
@@ -185,11 +191,30 @@ class HangerState:
             self.test_button_pressed_since_last_uplink = False
 
     def _on_test_button(self) -> None:
-        log.info("test button pressed")
+        """Cleaner pressed the button on the front of the hanger.
+
+        - If the sign is currently lifted (an alert is open in the cloud),
+          send `cleaning_started` so the dashboard flips to "in progress"
+          and the supervisor gets a "🧽 Cleaning in progress" push.
+        - If the sign is in place (no alert open), treat as a hardware test:
+          flash the green LED for 5 seconds, no uplink.
+        """
         self.test_button_pressed_since_last_uplink = True
-        # Green LED for 5 seconds
+        # Sign present = microswitch closed = no active alert. Just a test.
+        if self.microswitch.is_pressed:
+            log.info("button pressed (no active alert — flashing test LED)")
+            self.led_green.on()
+            threading.Timer(5.0, self.led_green.off).start()
+            return
+
+        # Otherwise, the sign is lifted — this is the cleaner saying "I'm
+        # on it". Tell the cloud and keep the green LED on while we work.
+        log.info("button pressed — cleaning started")
         self.led_green.on()
-        threading.Timer(5.0, self.led_green.off).start()
+        with self.lock:
+            send_uplink(self.cfg, EVT_CLEANING_STARTED,
+                        test_button=self.test_button_pressed_since_last_uplink)
+            self.test_button_pressed_since_last_uplink = False
 
     def heartbeat_loop(self) -> None:
         while True:

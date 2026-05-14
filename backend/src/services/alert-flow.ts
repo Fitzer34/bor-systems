@@ -86,6 +86,55 @@ export async function broadcastToOnDutyCleaners(
   }
 }
 
+/**
+ * Called when a cleaner presses the physical "I'm cleaning" button on the
+ * hanger (Pi sends `cleaning_started` event). Flips the most-recently-opened
+ * unclosed alert for that hanger from "open" to "acknowledged" and pings the
+ * sender / on-duty admins so they know the spill is being handled.
+ *
+ * No-op if the hanger has no open alert.
+ */
+export async function acknowledgeAlertFromHardware(hangerId: string): Promise<void> {
+  const [alert] = await db
+    .select({
+      id: schema.alerts.id,
+      organisationId: schema.alerts.organisationId,
+      status: schema.alerts.status,
+    })
+    .from(schema.alerts)
+    .where(and(eq(schema.alerts.hangerId, hangerId), isNull(schema.alerts.closedAt)))
+    .limit(1);
+  if (!alert) return;
+  if (alert.status === "acknowledged") return;  // already there
+
+  await db
+    .update(schema.alerts)
+    .set({ status: "acknowledged", acknowledgedAt: new Date(), acknowledgedBy: null })
+    .where(eq(schema.alerts.id, alert.id));
+
+  // Ping on-duty admins/supervisors so they can see cleaning has started.
+  const watchers = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(
+      eq(schema.users.organisationId, alert.organisationId),
+      eq(schema.users.onDuty, true),
+      isNull(schema.users.deactivatedAt),
+    ));
+  for (const w of watchers) {
+    await notifyPush({
+      orgId: alert.organisationId,
+      alertId: alert.id,
+      userId: w.id,
+      title: "🧽 Cleaning in progress",
+      body: "A cleaner has pressed the button on the hanger.",
+      kind: "rebroadcast",
+    });
+  }
+
+  eventBus.publish(alert.organisationId, { type: "alert.acknowledged", alertId: alert.id });
+}
+
 export async function escalateAlert(alertId: string): Promise<void> {
   const [alert] = await db.select().from(schema.alerts).where(eq(schema.alerts.id, alertId)).limit(1);
   if (!alert) return;

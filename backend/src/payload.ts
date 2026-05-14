@@ -13,15 +13,19 @@ export const EVENT_TYPE = {
   RETURNED: 2,
   HEARTBEAT: 3,
   LOW_BATTERY: 4,
+  // The cleaner pressed the physical button on the hanger during an open
+  // alert — translates into "alert is now acknowledged / cleaning in progress".
+  CLEANING_STARTED: 5,
 } as const;
 
-export type EventTypeName = "lifted" | "returned" | "heartbeat" | "low_battery";
+export type EventTypeName = "lifted" | "returned" | "heartbeat" | "low_battery" | "cleaning_started";
 
 const NAME_BY_CODE: Record<number, EventTypeName> = {
   [EVENT_TYPE.LIFTED]: "lifted",
   [EVENT_TYPE.RETURNED]: "returned",
   [EVENT_TYPE.HEARTBEAT]: "heartbeat",
   [EVENT_TYPE.LOW_BATTERY]: "low_battery",
+  [EVENT_TYPE.CLEANING_STARTED]: "cleaning_started",
 };
 
 export interface DecodedPayload {
