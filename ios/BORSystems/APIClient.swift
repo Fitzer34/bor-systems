@@ -87,7 +87,12 @@ final class APIClient {
             throw APIError.transport(URLError(.badServerResponse))
         }
         if http.statusCode == 401 {
-            self.token = nil
+            // DO NOT auto-clear the Keychain token here. A single transient
+            // 401 (server cold-start race, deploy rollover, brief network
+            // blip) used to nuke the session and throw the user back to the
+            // login screen mid-use. The token is only cleared in the
+            // explicit `bootstrap()` path on app launch or when the user
+            // logs out manually.
             throw APIError.unauthorized
         }
         guard (200..<300).contains(http.statusCode) else {

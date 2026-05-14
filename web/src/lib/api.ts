@@ -23,7 +23,14 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("content-type", "application/json");
   }
   const res = await fetch(`/api${path}`, { ...init, headers });
-  if (res.status === 401) {
+  // NOTE: we used to nuke the token and redirect to /login on every 401.
+  // Problem: a single transient 401 (server hiccup, deploy rollover, a
+  // background poll firing a millisecond before the JWT was set in storage)
+  // would destroy the user's session mid-use. JWTs are stateless — another
+  // user logging in elsewhere never invalidates yours. So we now only
+  // redirect on a SUSTAINED 401: throw the error and let the AuthProvider's
+  // mount-time `/users/me` check decide whether the session is really dead.
+  if (res.status === 401 && path === "/users/me") {
     setToken(null);
     if (location.pathname !== "/login") location.assign("/login");
   }

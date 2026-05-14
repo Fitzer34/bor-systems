@@ -159,7 +159,11 @@ struct HomeView: View {
             // Fire local notifications for any new alerts/dispatches we haven't seen
             LocalAlertNotifier.shared.observe(alerts: self.alerts, dispatches: self.dispatches)
         } catch APIError.unauthorized {
-            auth.logout()
+            // Don't yank the user back to login on a single 401 from a
+            // polling refresh — a transient blip would otherwise destroy
+            // their session. The bootstrap path on next app launch handles
+            // a genuinely-expired token cleanly.
+            self.error = "Couldn't refresh — tap to retry."
         } catch {
             self.error = "Could not refresh."
         }
