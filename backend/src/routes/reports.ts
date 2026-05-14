@@ -33,8 +33,10 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
         zoneName: schema.zones.name,
         floorName: schema.floors.name,
         buildingName: schema.buildings.name,
-        responseSeconds: sql<number>`EXTRACT(EPOCH FROM (${schema.alerts.acknowledgedAt} - ${schema.alerts.openedAt}))`,
-        resolutionSeconds: sql<number>`EXTRACT(EPOCH FROM (${schema.alerts.closedAt} - ${schema.alerts.openedAt}))`,
+        // Cast to float8 so postgres-js returns these as JS numbers rather than
+        // strings — iOS / web Codable expect Double, not String, here.
+        responseSeconds: sql<number>`EXTRACT(EPOCH FROM (${schema.alerts.acknowledgedAt} - ${schema.alerts.openedAt}))::float8`,
+        resolutionSeconds: sql<number>`EXTRACT(EPOCH FROM (${schema.alerts.closedAt} - ${schema.alerts.openedAt}))::float8`,
       })
       .from(schema.alerts)
       .leftJoin(schema.hangers, eq(schema.hangers.id, schema.alerts.hangerId))

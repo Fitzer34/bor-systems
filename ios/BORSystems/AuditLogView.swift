@@ -3,6 +3,7 @@ import SwiftUI
 struct AuditLogView: View {
     @State private var entries: [AuditEntry] = []
     @State private var error: String?
+    @State private var loaded = false
 
     var body: some View {
         List(entries) { e in
@@ -20,20 +21,49 @@ struct AuditLogView: View {
         }
         .navigationTitle("Audit log")
         .navigationBarTitleDisplayMode(.inline)
-        .overlay { if entries.isEmpty && error == nil { ProgressView() } }
+        .overlay {
+            // Distinguish "still loading" from "loaded but empty" so the
+            // spinner doesn't stay on screen forever when the org has no
+            // recorded actions yet.
+            if !loaded {
+                ProgressView()
+            } else if let err = error {
+                Text(err).foregroundStyle(.red).font(.footnote)
+            } else if entries.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 30, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Text("No audit entries yet")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("Actions like deactivating users or changing settings will show up here.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+            }
+        }
         .refreshable { await refresh() }
         .task { await refresh() }
     }
 
     private func refresh() async {
-        do { entries = try await APIClient.shared.auditLog() }
-        catch { self.error = "Could not load audit log." }
+        do {
+            entries = try await APIClient.shared.auditLog()
+            error = nil
+        } catch {
+            self.error = "Could not load audit log."
+        }
+        loaded = true
     }
 }
 
 struct NotificationsLogView: View {
     @State private var entries: [NotificationEntry] = []
     @State private var error: String?
+    @State private var loaded = false
 
     var body: some View {
         List(entries) { n in
@@ -64,13 +94,38 @@ struct NotificationsLogView: View {
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
-        .overlay { if entries.isEmpty && error == nil { ProgressView() } }
+        .overlay {
+            if !loaded {
+                ProgressView()
+            } else if let err = error {
+                Text(err).foregroundStyle(.red).font(.footnote)
+            } else if entries.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "bell.slash")
+                        .font(.system(size: 30, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Text("No notifications yet")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("Pushes, SMS and emails the system sends will show up here.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+            }
+        }
         .refreshable { await refresh() }
         .task { await refresh() }
     }
 
     private func refresh() async {
-        do { entries = try await APIClient.shared.notificationsLog() }
-        catch { self.error = "Could not load notifications log." }
+        do {
+            entries = try await APIClient.shared.notificationsLog()
+            error = nil
+        } catch {
+            self.error = "Could not load notifications log."
+        }
+        loaded = true
     }
 }
