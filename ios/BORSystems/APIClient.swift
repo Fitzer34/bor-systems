@@ -60,7 +60,16 @@ final class APIClient {
         method: String = "GET",
         body: Encodable? = nil
     ) async throws -> T {
-        var req = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent(path))
+        // Don't use URL.appendingPathComponent — it URL-encodes "?" and "&",
+        // breaking any endpoint that takes a query string (e.g. /reports/spills,
+        // /admin/audit-log?limit=…). Build the full URL string by hand so the
+        // query stays intact.
+        let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: ["/"])
+        let suffix = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: base + suffix) else {
+            throw APIError.transport(URLError(.badURL))
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         if let token = token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let body = body {
