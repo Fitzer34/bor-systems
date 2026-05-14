@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import argon2 from "argon2";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { validatePassword } from "../services/password-policy.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -18,9 +19,21 @@ const registerSchema = z.object({
   password: z.string().min(8).max(200),
 });
 
+// Tight per-IP rate-limit for credential endpoints. 10/min slows credential
+// stuffing to a crawl without inconveniencing real users.
+const authRateLimit = {
+  config: {
+    rateLimit: {
+      max: 10,
+      timeWindow: "1 minute",
+      keyGenerator: (req: any) => `auth:${req.ip}`,
+    },
+  },
+};
+
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
   // --------- Sign in ---------
-  app.post("/auth/login", async (req, reply) => {
+  app.post("/auth/login", authRateLimit, async (req, reply) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
     const email = parsed.data.email.toLowerCase();
@@ -66,6 +79,23 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(schema.organisations.id, user.organisationId))
       .limit(1);
 
+    // If the user has 2FA enabled, the password was the first factor —
+    // hand back a short-lived "challenge" token that /auth/login/2fa will
+    // exchange for a real session once the 6-digit code is verified.
+    if (user.totpSecret) {
+      const challenge = app.jwt.sign(
+        {
+          sub: user.id,
+          orgId: user.organisationId,
+          role: user.role,
+          name: user.name,
+          chal: "totp",
+        },
+        { expiresIn: "5m" },
+      );
+      return reply.send({ challenge: "totp", challengeToken: challenge });
+    }
+
     const token = app.jwt.sign({
       sub: user.id,
       orgId: user.organisationId,
@@ -87,11 +117,14 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // --------- Create new organisation ---------
-  app.post("/auth/register-organisation", async (req, reply) => {
+  app.post("/auth/register-organisation", authRateLimit, async (req, reply) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_input", details: parsed.error.flatten() });
     }
+
+    const pwCheck = validatePassword(parsed.data.password);
+    if (!pwCheck.ok) return reply.code(400).send({ error: pwCheck.reason });
 
     const email = parsed.data.email.toLowerCase();
     const passwordHash = await argon2.hash(parsed.data.password);

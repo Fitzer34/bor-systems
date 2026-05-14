@@ -30,6 +30,11 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>processing</string>
+		<string>location</string>
+		<string>external-accessory</string>
+		<string>bluetooth-peripheral</string>
+		<string>audio</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>

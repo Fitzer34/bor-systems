@@ -162,6 +162,15 @@ export const users = pgTable(
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by"),
+    // ---- 2FA (TOTP) ----
+    // Holds the base32 secret once enrolment is committed. Until then,
+    // setup happens in totpPendingSecret so a half-finished enrolment can't
+    // lock anyone out. recoveryCodes is a JSON array of argon2-hashed
+    // single-use codes.
+    totpSecret: text("totp_secret"),
+    totpPendingSecret: text("totp_pending_secret"),
+    totpEnrolledAt: timestamp("totp_enrolled_at", { withTimezone: true }),
+    recoveryCodes: jsonb("recovery_codes"),
   },
   (t) => ({ emailOrgUnique: uniqueIndex("users_org_email_unique").on(t.organisationId, t.email) }),
 );

@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import argon2 from "argon2";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { validatePassword } from "../services/password-policy.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -69,6 +70,8 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
       .object({ currentPassword: z.string().min(1), newPassword: z.string().min(8).max(200) })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+    const pwCheck = validatePassword(body.data.newPassword);
+    if (!pwCheck.ok) return reply.code(400).send({ error: pwCheck.reason });
     const c = ctx(req);
     const [user] = await db
       .select()
@@ -118,6 +121,9 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
       })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_input", details: body.error.flatten() });
+
+    const pwCheck = validatePassword(body.data.password);
+    if (!pwCheck.ok) return reply.code(400).send({ error: pwCheck.reason });
 
     const c = ctx(req);
     const passwordHash = await argon2.hash(body.data.password);

@@ -12,10 +12,15 @@ export interface CurrentUser {
   organisationName?: string;
 }
 
+export type LoginResult =
+  | { kind: "ok" }
+  | { kind: "totp"; challengeToken: string };
+
 interface AuthState {
   user: CurrentUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  completeTotpLogin: (challengeToken: string, code: string) => Promise<void>;
   logout: () => void;
   setOnDuty: (onDuty: boolean) => Promise<void>;
 }
@@ -37,10 +42,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const res = await api<{ token: string; user: CurrentUser }>("/auth/login", {
+  const login = async (email: string, password: string): Promise<LoginResult> => {
+    const res = await api<
+      | { token: string; user: CurrentUser }
+      | { challenge: "totp"; challengeToken: string }
+    >("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    });
+    if ("challenge" in res) {
+      return { kind: "totp", challengeToken: res.challengeToken };
+    }
+    setToken(res.token);
+    setUser(res.user);
+    return { kind: "ok" };
+  };
+
+  const completeTotpLogin = async (challengeToken: string, code: string) => {
+    const res = await api<{ token: string; user: CurrentUser }>("/auth/login/2fa", {
+      method: "POST",
+      body: JSON.stringify({ challengeToken, code }),
     });
     setToken(res.token);
     setUser(res.user);
@@ -56,7 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((u) => (u ? { ...u, onDuty } : u));
   };
 
-  return <Ctx.Provider value={{ user, loading, login, logout, setOnDuty }}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={{ user, loading, login, completeTotpLogin, logout, setOnDuty }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useAuth(): AuthState {

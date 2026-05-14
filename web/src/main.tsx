@@ -20,7 +20,12 @@ import { AuditLog } from "./pages/AuditLog";
 import { NotificationsLog } from "./pages/NotificationsLog";
 import { Schedule } from "./pages/Schedule";
 import { Dispatch } from "./pages/Dispatch";
+import { Privacy } from "./pages/Privacy";
+import { Terms } from "./pages/Terms";
+import { initWebSentry } from "./lib/sentry";
 import "./index.css";
+
+initWebSentry();
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000 } } });
 
@@ -42,6 +47,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             <Route
               path="/"
               element={

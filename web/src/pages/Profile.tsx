@@ -1,7 +1,174 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+
+interface TwoFactorStatus {
+  enrolled: boolean;
+  enrolledAt: string | null;
+  required: boolean;
+}
+
+interface EnrolResponse {
+  secret: string;
+  otpauth: string;
+  qrDataUrl: string;
+}
+
+function TwoFactorSection() {
+  const qc = useQueryClient();
+  const status = useQuery<TwoFactorStatus>({
+    queryKey: ["2fa-status"],
+    queryFn: () => api("/auth/2fa/status"),
+  });
+  const [enrol, setEnrol] = useState<EnrolResponse | null>(null);
+  const [code, setCode] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [disableCode, setDisableCode] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  const start = useMutation({
+    mutationFn: () => api<EnrolResponse>("/auth/2fa/enrol", { method: "POST" }),
+    onSuccess: (r) => { setEnrol(r); setErr(null); },
+    onError: () => setErr("Could not start enrolment. If you already have 2FA enabled, disable it first."),
+  });
+
+  const confirm = useMutation({
+    mutationFn: () =>
+      api<{ ok: true; recoveryCodes: string[] }>("/auth/2fa/enrol/confirm", {
+        method: "POST",
+        body: JSON.stringify({ code: code.trim() }),
+      }),
+    onSuccess: (r) => {
+      setRecoveryCodes(r.recoveryCodes);
+      setEnrol(null);
+      setCode("");
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["2fa-status"] });
+    },
+    onError: () => setErr("That code didn't match. Try the next one your app shows."),
+  });
+
+  const disable = useMutation({
+    mutationFn: () =>
+      api("/auth/2fa/disable", {
+        method: "POST",
+        body: JSON.stringify({ code: disableCode.trim() }),
+      }),
+    onSuccess: () => {
+      setDisableCode("");
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["2fa-status"] });
+    },
+    onError: () => setErr("Wrong code. Try a 6-digit code from your authenticator, or a recovery code."),
+  });
+
+  if (status.isLoading) return null;
+  const s = status.data;
+
+  return (
+    <div className="bg-white border rounded-lg p-6">
+      <div className="font-medium mb-1">Two-factor authentication</div>
+      <p className="text-sm text-slate-500 mb-4">
+        Use an authenticator app (Google Authenticator, 1Password, Authy, etc.)
+        for a 6-digit code on every sign-in.
+        {s?.required && !s.enrolled && (
+          <span className="text-orange-700 font-medium">
+            {" "}Admin accounts should enable this.
+          </span>
+        )}
+      </p>
+
+      {recoveryCodes && (
+        <div className="mb-4 p-3 border border-amber-400 bg-amber-50 rounded">
+          <div className="font-medium text-amber-900 mb-1">Save these recovery codes</div>
+          <p className="text-xs text-amber-800 mb-2">
+            Each works once if you lose your authenticator. We won't show them again.
+          </p>
+          <div className="grid grid-cols-2 gap-1 font-mono text-sm">
+            {recoveryCodes.map((c) => (<span key={c}>{c}</span>))}
+          </div>
+          <button
+            className="mt-3 text-xs underline"
+            onClick={() => setRecoveryCodes(null)}
+          >
+            I've saved them
+          </button>
+        </div>
+      )}
+
+      {s?.enrolled ? (
+        <div className="space-y-3">
+          <div className="text-sm text-green-700">
+            Enabled{s.enrolledAt ? ` since ${new Date(s.enrolledAt).toLocaleDateString()}` : ""}.
+          </div>
+          <div className="text-sm">
+            To turn off, enter a current 6-digit code (or a recovery code):
+          </div>
+          <input
+            value={disableCode}
+            onChange={(e) => setDisableCode(e.target.value)}
+            placeholder="123 456"
+            className="border rounded px-3 py-2 w-48 tracking-widest"
+          />
+          <div>
+            <button
+              onClick={() => { setErr(null); disable.mutate(); }}
+              disabled={!disableCode || disable.isPending}
+              className="bg-red-600 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {disable.isPending ? "Disabling…" : "Disable 2FA"}
+            </button>
+          </div>
+        </div>
+      ) : enrol ? (
+        <div className="space-y-3">
+          <p className="text-sm">
+            1. Scan this QR code with your authenticator app.
+          </p>
+          <img src={enrol.qrDataUrl} alt="Scan with authenticator app"
+               className="border rounded w-48 h-48" />
+          <details className="text-xs text-slate-500">
+            <summary className="cursor-pointer">Or type the secret manually</summary>
+            <code className="block mt-1 p-2 bg-slate-100 rounded">{enrol.secret}</code>
+          </details>
+          <p className="text-sm">2. Enter the 6-digit code your app shows to confirm:</p>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="123 456"
+            className="border rounded px-3 py-2 w-48 tracking-widest"
+          />
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setErr(null); confirm.mutate(); }}
+              disabled={code.length < 6 || confirm.isPending}
+              className="bg-slate-900 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {confirm.isPending ? "Confirming…" : "Confirm and enable"}
+            </button>
+            <button
+              onClick={() => { setEnrol(null); setCode(""); setErr(null); }}
+              className="text-sm text-slate-500"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => start.mutate()}
+          disabled={start.isPending}
+          className="bg-slate-900 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+        >
+          {start.isPending ? "Starting…" : "Enable two-factor auth"}
+        </button>
+      )}
+
+      {err && <div className="text-sm text-red-600 mt-3">{err}</div>}
+    </div>
+  );
+}
 
 export function Profile() {
   const { user } = useAuth();
@@ -75,9 +242,13 @@ export function Profile() {
         </div>
       </div>
 
+      <TwoFactorSection />
+
       <div className="bg-white border rounded-lg p-6">
         <div className="font-medium mb-1">Change password</div>
-        <p className="text-sm text-slate-500 mb-4">Minimum 8 characters.</p>
+        <p className="text-sm text-slate-500 mb-4">
+          Minimum 10 characters; must include at least three of: lowercase, uppercase, digit, symbol.
+        </p>
         <div className="space-y-3">
           <input type="password" placeholder="Current password" value={oldPwd}
             onChange={(e) => setOldPwd(e.target.value)} className="border rounded px-3 py-2 w-full" />
