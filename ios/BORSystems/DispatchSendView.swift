@@ -17,14 +17,18 @@ struct DispatchSendView: View {
     @State private var sentBanner: String?
     @State private var sending = false
 
+    /// Drives the keyboard dismissal — when this loses focus the keyboard
+    /// goes away. We tie it to the TextEditor below and the toolbar Done button.
+    @FocusState private var messageFocused: Bool
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Cleaner") {
-                    Picker("Cleaner", selection: $recipientId) {
-                        Text("— pick a cleaner —").tag("")
+                Section("Send to") {
+                    Picker("Person", selection: $recipientId) {
+                        Text("— pick someone —").tag("")
                         ForEach(cleaners) { c in
-                            Text(c.onDuty ? "\(c.name) (on duty)" : c.name).tag(c.id)
+                            Text("\(c.name) · \(c.role.rawValue)\(c.onDuty ? " · on duty" : "")").tag(c.id)
                         }
                     }
                 }
@@ -57,6 +61,7 @@ struct DispatchSendView: View {
                 Section("Message") {
                     TextEditor(text: $message)
                         .frame(minHeight: 100)
+                        .focused($messageFocused)
                 }
                 Section {
                     Toggle("Also send SMS", isOn: $alsoSms)
@@ -81,6 +86,18 @@ struct DispatchSendView: View {
             }
             .navigationTitle("Dispatch")
             .navigationBarTitleDisplayMode(.inline)
+            // Swipe down on the form (interactive) or tap the keyboard's
+            // "Done" toolbar button to dismiss the keyboard so the tab bar
+            // is reachable again.
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItem(placement: .keyboard) {
+                    HStack {
+                        Spacer()
+                        Button("Done") { messageFocused = false }
+                    }
+                }
+            }
             .task { await loadInitial() }
         }
     }
@@ -93,10 +110,12 @@ struct DispatchSendView: View {
         async let usersResult = APIClient.shared.users()
         async let buildingsResult = APIClient.shared.buildings()
         do {
-            cleaners = try await usersResult.filter { $0.role == .cleaner && $0.deactivatedAt == nil }
+            // Allow dispatch to anyone active. The picker shows their role so
+            // it's clear who you're sending to.
+            cleaners = try await usersResult.filter { $0.deactivatedAt == nil }
             buildings = try await buildingsResult
         } catch {
-            self.error = "Could not load cleaners."
+            self.error = "Could not load users."
         }
     }
 
@@ -111,6 +130,9 @@ struct DispatchSendView: View {
 
     private func send() async {
         guard canSend else { return }
+        // Drop the keyboard immediately so the tab bar is reachable and the
+        // "Sent" banner is visible while the request flies.
+        messageFocused = false
         sending = true; error = nil; sentBanner = nil
         do {
             try await APIClient.shared.sendDispatch(
@@ -121,12 +143,19 @@ struct DispatchSendView: View {
             )
             let recipient = cleaners.first(where: { $0.id == recipientId })?.name ?? "cleaner"
             sentBanner = "Sent to \(recipient)."
+            // Clear the form so a subsequent dispatch is a clean slate.
             message = ""
+            zoneId = ""
+            floorId = ""
+            buildingId = ""
+            sending = false
+            // Auto-clear the banner after 3 seconds — but keep `sending` false
+            // immediately so the button is usable again right away.
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             sentBanner = nil
         } catch {
             self.error = "Could not send dispatch."
+            sending = false
         }
-        sending = false
     }
 }
