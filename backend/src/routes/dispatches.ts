@@ -65,13 +65,18 @@ export default async function dispatchRoutes(app: FastifyInstance): Promise<void
         })
         .returning();
 
-      const title = zoneLabel ? `Dispatch — ${zoneLabel}` : "Dispatch";
+      // Title names the recipient so it's unambiguous on a shared device —
+      // and lets the recipient see at a glance the dispatch is for them.
+      const title = `📨 Dispatch for ${recipient.name}`;
+      const bodyText = zoneLabel
+        ? `${zoneLabel} — ${body.data.message}`
+        : body.data.message;
       const ctxN = {
         orgId: c.orgId,
         alertId: null,
         userId: body.data.recipientUserId,
         title,
-        body: body.data.message,
+        body: bodyText,
         kind: "alert" as const,
       };
       await notifyPush(ctxN);

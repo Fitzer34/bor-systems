@@ -49,9 +49,14 @@ struct HomeView: View {
                         }
                     }
 
-                    let active = dispatches.filter { $0.status != .completed }
+                    // Only your own action items on Home. Admins and supervisors
+                    // can still see the full org-wide list on the Dispatch tab.
+                    let myId = auth.user?.id ?? ""
+                    let active = dispatches.filter {
+                        $0.status != .completed && $0.recipientUserId == myId
+                    }
                     if !active.isEmpty {
-                        sectionHeader("Dispatches")
+                        sectionHeader("Your dispatches")
                         ForEach(active) { d in
                             DispatchRow(item: d) { kind in
                                 Task { await act(on: d, kind: kind) }

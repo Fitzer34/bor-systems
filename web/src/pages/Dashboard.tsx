@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { AlertFloorPlanThumb } from "../components/AlertFloorPlanThumb";
 import { SiteFloorPlansOverview } from "../components/SiteFloorPlansOverview";
 import { useTicker } from "../lib/ticker";
@@ -44,6 +45,7 @@ const ONLINE_WINDOW_MS = 15 * 1000;
 
 export function Dashboard() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   // Forces a re-render every second so the Online/Offline computation
   // (which depends on Date.now()) flips the instant the threshold is crossed,
   // even between React Query refetches.
@@ -88,7 +90,12 @@ export function Dashboard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dispatches"] }),
   });
 
-  const activeDispatches = (dispatches.data?.dispatches ?? []).filter((d) => d.status !== "completed");
+  // Only show dispatches assigned TO the current user on their Active alerts
+  // page. Admins and supervisors still see every dispatch in the full
+  // Dispatch tab, but the "what do I need to do right now" feed should be
+  // strictly their own action items.
+  const activeDispatches = (dispatches.data?.dispatches ?? [])
+    .filter((d) => d.status !== "completed" && d.recipientUserId === user?.id);
 
   return (
     <div>
