@@ -17,8 +17,12 @@ export function Layout() {
         </div>
         <nav className="flex-1 p-2 space-y-1 text-sm overflow-y-auto">
           <NavItem to="/" end>Active alerts</NavItem>
-          {isStaff && <NavItem to="/dispatch">Dispatch</NavItem>}
-          {isStaff && <NavItem to="/schedule">Schedule</NavItem>}
+          {/* Dispatch + Schedule are visible to everyone. Cleaners get
+              read-only views (their own shifts and dispatches sent to them)
+              so they know where they're meant to be. Backend enforces the
+              actual write permissions. */}
+          <NavItem to="/dispatch">Dispatch</NavItem>
+          <NavItem to="/schedule">Schedule</NavItem>
           {isStaff && <NavItem to="/hangers">Hangers</NavItem>}
           {isStaff && <NavItem to="/users">Users</NavItem>}
           {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}

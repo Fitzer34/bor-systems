@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
 
 interface Shift {
   id: string;
@@ -37,11 +38,28 @@ function defaultEnd(): string {
 export function Schedule() {
   const qc = useQueryClient();
 
-  const shifts = useQuery({ queryKey: ["shifts"], queryFn: () => api<{ shifts: Shift[] }>("/shifts") });
-  const users = useQuery({ queryKey: ["users"], queryFn: () => api<{ users: UserRow[] }>("/users") });
-  const buildings = useQuery({ queryKey: ["buildings"], queryFn: () => api<{ buildings: Building[] }>("/buildings") });
+  const { user } = useAuth();
+  // Cleaners get a read-only view filtered to their own shifts so they
+  // know where they're meant to be, but can't create/edit/delete.
+  const isReadOnly = user?.role === "cleaner";
 
-  const cleaners = (users.data?.users ?? []).filter((u) => u.role === "cleaner");
+  const shifts = useQuery({ queryKey: ["shifts"], queryFn: () => api<{ shifts: Shift[] }>("/shifts") });
+  const users = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api<{ users: UserRow[] }>("/users"),
+    // Backend rejects /users for cleaners; only fetch when staff.
+    enabled: !isReadOnly,
+  });
+  const buildings = useQuery({
+    queryKey: ["buildings"],
+    queryFn: () => api<{ buildings: Building[] }>("/buildings"),
+    enabled: !isReadOnly,
+  });
+
+  // Allow scheduling any active user — admins/supervisors in small orgs
+  // often do the rounds themselves, and restricting to role=cleaner makes
+  // the form unusable until you've hired your first dedicated cleaner.
+  const assignableUsers = (users.data?.users ?? []).filter((u) => !(u as { deactivatedAt?: string | null }).deactivatedAt);
 
   const [userId, setUserId] = useState("");
   const [startsAt, setStartsAt] = useState(defaultStart);
@@ -94,16 +112,21 @@ export function Schedule() {
   return (
     <div>
       <h1 className="text-2xl font-semibold mb-2">Schedule</h1>
-      <p className="text-sm text-slate-500 mb-6">Assign cleaners to shifts. The coverage area is optional — leave empty to assign someone to the whole site.</p>
+      <p className="text-sm text-slate-500 mb-6">
+        {isReadOnly
+          ? "Your upcoming shifts. Where you need to be and when."
+          : "Assign someone to a shift. The coverage area is optional — leave empty to assign them to the whole site."}
+      </p>
 
+      {!isReadOnly && (
       <div className="bg-white border rounded-lg p-4 mb-8">
         <div className="font-medium mb-3">New shift</div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Cleaner</label>
+            <label className="block text-xs text-slate-500 mb-1">Assigned to</label>
             <select value={userId} onChange={(e) => setUserId(e.target.value)} className="border rounded px-3 py-2 w-full">
-              <option value="">— pick a cleaner —</option>
-              {cleaners.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              <option value="">— pick someone —</option>
+              {assignableUsers.map((u) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
             </select>
           </div>
           <div></div>
@@ -151,6 +174,7 @@ export function Schedule() {
           </div>
         </div>
       </div>
+      )}
 
       <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
         <thead className="bg-slate-100 text-slate-600 text-left">
@@ -164,7 +188,9 @@ export function Schedule() {
           </tr>
         </thead>
         <tbody>
-          {shifts.data?.shifts.map((s) => {
+          {(shifts.data?.shifts ?? [])
+            .filter((s) => !isReadOnly || s.userId === user?.id)
+            .map((s) => {
             const start = new Date(s.startsAt).getTime();
             const end = new Date(s.endsAt).getTime();
             const status = end < now ? "past" : start <= now ? "now" : "upcoming";
@@ -180,7 +206,9 @@ export function Schedule() {
                 <td className="p-2">{coverage}</td>
                 <td className="p-2 text-slate-500">{s.notes ?? ""}</td>
                 <td className="p-2 text-right">
-                  <button onClick={() => { if (confirm("Delete this shift?")) remove.mutate(s.id); }} className="text-red-600 hover:underline">Delete</button>
+                  {!isReadOnly && (
+                    <button onClick={() => { if (confirm("Delete this shift?")) remove.mutate(s.id); }} className="text-red-600 hover:underline">Delete</button>
+                  )}
                 </td>
               </tr>
             );

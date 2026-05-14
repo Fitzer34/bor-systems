@@ -222,10 +222,12 @@ struct ShiftEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Cleaner") {
-                    Picker("Cleaner", selection: $userId) {
-                        Text("— pick a cleaner —").tag("")
-                        ForEach(cleaners) { c in Text(c.name).tag(c.id) }
+                Section("Assigned to") {
+                    Picker("Person", selection: $userId) {
+                        Text("— pick someone —").tag("")
+                        ForEach(cleaners) { c in
+                            Text("\(c.name)  ·  \(c.role.rawValue)").tag(c.id)
+                        }
                     }
                 }
                 Section("When") {
@@ -306,7 +308,11 @@ struct ShiftEditorSheet: View {
     private func loadInitial() async {
         async let users = APIClient.shared.users()
         async let buildings = APIClient.shared.buildings()
-        cleaners = ((try? await users) ?? []).filter { $0.role == .cleaner && $0.deactivatedAt == nil }
+        // Allow scheduling any active user, not just cleaners. In small orgs
+        // the admin often does the cleaning rounds themselves; restricting
+        // the picker to role=cleaner makes the form unusable when the org
+        // has no dedicated cleaner yet.
+        cleaners = ((try? await users) ?? []).filter { $0.deactivatedAt == nil }
         self.buildings = (try? await buildings) ?? []
 
         if let s = existing {

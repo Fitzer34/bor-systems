@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
 
 interface UserRow { id: string; name: string; role: "admin" | "supervisor" | "cleaner"; onDuty: boolean; deactivatedAt: string | null }
 interface Building { id: string; name: string }
@@ -21,8 +22,21 @@ interface DispatchRow {
 
 export function Dispatch() {
   const qc = useQueryClient();
-  const users = useQuery({ queryKey: ["users"], queryFn: () => api<{ users: UserRow[] }>("/users") });
-  const buildings = useQuery({ queryKey: ["buildings"], queryFn: () => api<{ buildings: Building[] }>("/buildings") });
+  const { user } = useAuth();
+  // Cleaners see a read-only inbox of dispatches sent to them — they can
+  // mark them complete (the "I've done it" action) but not send new ones.
+  const isReadOnly = user?.role === "cleaner";
+
+  const users = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api<{ users: UserRow[] }>("/users"),
+    enabled: !isReadOnly,
+  });
+  const buildings = useQuery({
+    queryKey: ["buildings"],
+    queryFn: () => api<{ buildings: Building[] }>("/buildings"),
+    enabled: !isReadOnly,
+  });
   const dispatches = useQuery({
     queryKey: ["dispatches"],
     queryFn: () => api<{ dispatches: DispatchRow[] }>("/dispatches"),
@@ -79,12 +93,16 @@ export function Dispatch() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-2">Dispatch a cleaner</h1>
+      <h1 className="text-2xl font-semibold mb-2">
+        {isReadOnly ? "My dispatches" : "Dispatch a cleaner"}
+      </h1>
       <p className="text-sm text-slate-500 mb-6">
-        Send a specific cleaner directly to a zone with a custom message. They get a push notification immediately.
-        Use this for tasks outside the spill-alert flow (planned cleans, manager requests, escorting visitors).
+        {isReadOnly
+          ? "Where your supervisor has asked you to go. Mark each one complete when you're done."
+          : "Send a specific cleaner directly to a zone with a custom message. They get a push notification immediately. Use this for tasks outside the spill-alert flow (planned cleans, manager requests, escorting visitors)."}
       </p>
 
+      {!isReadOnly && (
       <div className="bg-white border rounded-lg p-4 mb-8">
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -142,8 +160,11 @@ export function Dispatch() {
           {sentBanner && <div className="col-span-2 text-sm text-green-700">{sentBanner}</div>}
         </div>
       </div>
+      )}
 
-      <h2 className="text-lg font-semibold mb-2">Recent dispatches</h2>
+      <h2 className="text-lg font-semibold mb-2">
+        {isReadOnly ? "Pending and recent" : "Recent dispatches"}
+      </h2>
       <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
         <thead className="bg-slate-100 text-slate-600 text-left">
           <tr>

@@ -67,8 +67,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="settings" element={<RequireAuth role={["admin", "supervisor"]}><Settings /></RequireAuth>} />
               <Route path="audit-log" element={<RequireAuth role={["admin"]}><AuditLog /></RequireAuth>} />
               <Route path="notifications-log" element={<RequireAuth role={["admin", "supervisor"]}><NotificationsLog /></RequireAuth>} />
-              <Route path="schedule" element={<RequireAuth role={["admin", "supervisor"]}><Schedule /></RequireAuth>} />
-              <Route path="dispatch" element={<RequireAuth role={["admin", "supervisor"]}><Dispatch /></RequireAuth>} />
+              {/* Schedule + Dispatch are accessible to every role. The page
+                  itself renders different content based on role (read-only
+                  for cleaners, full-create for admin/supervisor). */}
+              <Route path="schedule" element={<Schedule />} />
+              <Route path="dispatch" element={<Dispatch />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
