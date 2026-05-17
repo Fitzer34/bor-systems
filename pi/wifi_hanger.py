@@ -156,6 +156,13 @@ class HangerState:
         self.test_button_pressed_since_last_uplink = False
         self.lock = threading.Lock()
 
+        # Track what state the cloud thinks we're in so we can reconcile if
+        # the microswitch has drifted (e.g. sign wasn't seated firmly so the
+        # `_on_sign_returned` callback never fired, or a one-off transient
+        # got lost). `None` means "we haven't sent any sign-state event yet,
+        # the next heartbeat will report whatever the switch reads."
+        self.last_reported_sign_present: bool | None = None
+
         # Wire up callbacks
         self.microswitch.when_pressed = self._on_sign_returned   # closed circuit = present
         self.microswitch.when_released = self._on_sign_lifted    # open = lifted off
@@ -186,9 +193,11 @@ class HangerState:
             if self.cfg.buzzer_enabled and self.buzzer:
                 self.buzzer.beep(on_time=0.2, off_time=0.0, n=1, background=True)
         with self.lock:
-            send_uplink(self.cfg, EVT_LIFTED,
-                        test_button=self.test_button_pressed_since_last_uplink)
+            ok = send_uplink(self.cfg, EVT_LIFTED,
+                             test_button=self.test_button_pressed_since_last_uplink)
             self.test_button_pressed_since_last_uplink = False
+            if ok:
+                self.last_reported_sign_present = False
 
     def _on_sign_returned(self) -> None:
         log.info("microswitch closed → sign returned")
@@ -198,9 +207,11 @@ class HangerState:
         # to press the button a second time after they finish.
         self.led_green.off()
         with self.lock:
-            send_uplink(self.cfg, EVT_RETURNED,
-                        test_button=self.test_button_pressed_since_last_uplink)
+            ok = send_uplink(self.cfg, EVT_RETURNED,
+                             test_button=self.test_button_pressed_since_last_uplink)
             self.test_button_pressed_since_last_uplink = False
+            if ok:
+                self.last_reported_sign_present = True
 
     def _on_test_button(self) -> None:
         """Cleaner pressed the button on the front of the hanger.
@@ -224,6 +235,29 @@ class HangerState:
         while True:
             time.sleep(self.cfg.heartbeat_seconds)
             with self.lock:
+                # Reconcile sign state on every heartbeat. Two cases:
+                #   - First-ever heartbeat (no transition has fired yet) →
+                #     declare current state so the cloud has a starting point.
+                #   - State drift (cloud's view doesn't match reality, e.g.
+                #     because a transition got lost or the sign was seated
+                #     too lightly to register a close) → send a corrective
+                #     transition event.
+                actually_present = self.microswitch.is_pressed
+                needs_correction = (
+                    self.last_reported_sign_present is None
+                    or actually_present != self.last_reported_sign_present
+                )
+                if needs_correction:
+                    corrective = EVT_RETURNED if actually_present else EVT_LIFTED
+                    log.info(
+                        "state %s — sending %s before heartbeat (switch reads %s)",
+                        "init" if self.last_reported_sign_present is None else "drift",
+                        "returned" if actually_present else "lifted",
+                        "present" if actually_present else "lifted",
+                    )
+                    if send_uplink(self.cfg, corrective):
+                        self.last_reported_sign_present = actually_present
+
                 send_uplink(self.cfg, EVT_HEARTBEAT)
 
 
