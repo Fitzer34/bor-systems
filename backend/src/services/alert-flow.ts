@@ -3,6 +3,12 @@ import { db, schema } from "../db/client.js";
 import { notifyEmail, notifyPush, notifySms } from "./notifications.js";
 import { eventBus } from "./event-bus.js";
 
+// Any open alert older than this is considered stale at the moment of the
+// next lift event — we force-close it and open a fresh alert. Stops "the
+// first lift after a few hours doesn't fire a notification" UX bug from
+// stale state lingering between the 30-second escalation-timer ticks.
+const STALE_OPEN_ALERT_MS = 2 * 60 * 60 * 1000;
+
 export async function openAlertForHanger(hangerId: string): Promise<string | null> {
   const [hanger] = await db
     .select()
@@ -11,12 +17,26 @@ export async function openAlertForHanger(hangerId: string): Promise<string | nul
     .limit(1);
   if (!hanger) return null;
 
-  const existing = await db
-    .select({ id: schema.alerts.id })
+  const [existing] = await db
+    .select({ id: schema.alerts.id, openedAt: schema.alerts.openedAt })
     .from(schema.alerts)
     .where(and(eq(schema.alerts.hangerId, hangerId), isNull(schema.alerts.closedAt)))
     .limit(1);
-  if (existing[0]) return existing[0].id;
+
+  if (existing) {
+    const ageMs = Date.now() - existing.openedAt.getTime();
+    if (ageMs <= STALE_OPEN_ALERT_MS) {
+      // Recent — absorb the lift event into the existing alert.
+      return existing.id;
+    }
+    // Stale — close it before opening a new one. Otherwise the next lift
+    // gets silently absorbed and the user sees no notification.
+    await db
+      .update(schema.alerts)
+      .set({ status: "closed", closedAt: new Date(), closureReason: "manual" })
+      .where(eq(schema.alerts.id, existing.id));
+    eventBus.publish(hanger.organisationId, { type: "alert.closed", alertId: existing.id, reason: "manual" });
+  }
 
   const [alert] = await db
     .insert(schema.alerts)

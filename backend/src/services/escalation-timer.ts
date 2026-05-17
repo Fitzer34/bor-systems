@@ -1,6 +1,7 @@
 import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { broadcastToOnDutyCleaners, escalateAlert } from "./alert-flow.js";
+import { eventBus } from "./event-bus.js";
 import {
   getAcknowledgementTimerMinutes,
   getExpectedCleaningTimeMinutes,
@@ -9,6 +10,11 @@ import {
 import { notifyPush } from "./notifications.js";
 
 const TICK_MS = 30_000;
+
+// Belt-and-braces: any alert older than this gets force-closed regardless of
+// status. Stops stale alerts (returned event lost, app crashed mid-handling,
+// admin forgot to manually close) from blocking the next fresh notification.
+const STALE_ALERT_HOURS = 2;
 
 export function startEscalationTimer(): NodeJS.Timeout {
   return setInterval(tick, TICK_MS).unref();
@@ -100,6 +106,29 @@ async function tick(): Promise<void> {
           .set({ status: "closed", closedAt: new Date(), closureReason: "manual" })
           .where(eq(schema.alerts.id, a.id));
       }
+    }
+
+    // Stale-alert cleanup. Any alert that's been open for more than
+    // STALE_ALERT_HOURS without resolution gets force-closed. The
+    // common cause is a "returned" event that was lost (Pi was offline,
+    // microswitch glitched) — without this cleanup, the stuck alert
+    // would absorb the next genuine lift event and the user would
+    // wonder why no notification fires.
+    const staleCutoff = new Date(now - STALE_ALERT_HOURS * 60 * 60 * 1000);
+    const stuck = await db
+      .select({ id: schema.alerts.id })
+      .from(schema.alerts)
+      .where(and(
+        eq(schema.alerts.organisationId, org.id),
+        isNull(schema.alerts.closedAt),
+        lte(schema.alerts.openedAt, staleCutoff),
+      ));
+    for (const a of stuck) {
+      await db
+        .update(schema.alerts)
+        .set({ status: "closed", closedAt: new Date(), closureReason: "manual" })
+        .where(eq(schema.alerts.id, a.id));
+      eventBus.publish(org.id, { type: "alert.closed", alertId: a.id, reason: "manual" });
     }
   }
 }
