@@ -2,6 +2,10 @@
 Description=BOR Systems WiFi hanger daemon
 After=network-online.target
 Wants=network-online.target
+# Don't start the main daemon until the customer has finished the BLE Wi-Fi
+# onboarding flow. setup_mode.py drops this sentinel file once nmcli has
+# successfully joined the home Wi-Fi.
+ConditionPathExists=/var/lib/bor-systems/wifi-configured
 
 [Service]
 Type=simple

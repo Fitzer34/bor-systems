@@ -48,6 +48,11 @@ APT_PACKAGES_GATEWAY = [
 APT_PACKAGES_HANGER = [
     "python3-gpiozero",
     "python3-lgpio",
+    # BLE first-boot Wi-Fi onboarding (setup_mode.py + bor-setup.service)
+    "bluez",
+    "python3-dbus",
+    "python3-gi",
+    "network-manager",
 ]
 
 
@@ -95,6 +100,9 @@ def setup_venv(install_gpiozero: bool = False) -> None:
         # Belt-and-braces: explicitly install gpiozero+lgpio into the venv too,
         # in case the apt versions are missing or out of date.
         run([str(pip), "install", "gpiozero", "lgpio"])
+        # BLE peripheral library for the first-boot Wi-Fi onboarding flow
+        # (setup_mode.py).
+        run([str(pip), "install", "bluezero"])
 
 
 def render_unit(src: Path, dst: Path, mapping: dict[str, str]) -> None:
@@ -177,9 +185,47 @@ def install_hanger_service() -> None:
             "__WORKDIR__": str(SCRIPT_DIR),
         },
     )
+
+    # First-boot Wi-Fi onboarding service. Runs at boot when no Wi-Fi is
+    # configured yet, advertises BLE so the iOS app can write credentials.
+    print("\n=== register bor-setup systemd service (BLE onboarding) ===")
+    render_unit(
+        SCRIPT_DIR / "services" / "bor-setup.service",
+        Path("/etc/systemd/system/bor-setup.service"),
+        {
+            "__PYTHON__": str(VENV_DIR / "bin" / "python3"),
+            "__SETUP_PY__": str(SCRIPT_DIR / "setup_mode.py"),
+            "__USER__": os.environ.get("SUDO_USER", "pi"),
+            "__WORKDIR__": str(SCRIPT_DIR),
+        },
+    )
+
     run(["systemctl", "daemon-reload"])
     run(["systemctl", "enable", "bor-hanger.service"])
-    run(["systemctl", "restart", "bor-hanger.service"])
+    run(["systemctl", "enable", "bor-setup.service"])
+
+    # Upgrade path: if this Pi is already on Wi-Fi (e.g. an existing install
+    # being upgraded), write the sentinel file so bor-hanger.service is
+    # allowed to start. New installs without Wi-Fi yet skip this and the
+    # BLE setup service takes over instead.
+    sentinel = Path("/var/lib/bor-systems/wifi-configured")
+    try:
+        nm = subprocess.run(
+            ["nmcli", "-t", "-f", "TYPE", "connection", "show"],
+            capture_output=True, text=True, check=False,
+        )
+        wifi_configured = any(line.strip() == "802-11-wireless" for line in nm.stdout.splitlines())
+    except FileNotFoundError:
+        wifi_configured = False
+
+    if wifi_configured or HANGER_ENV_FILE.exists():
+        sentinel.parent.mkdir(parents=True, exist_ok=True)
+        sentinel.write_text("ok\n")
+        print(f"wrote {sentinel} (upgrade path — existing Wi-Fi detected)")
+        run(["systemctl", "restart", "bor-hanger.service"])
+    else:
+        print("fresh install with no Wi-Fi yet — starting BLE setup service")
+        run(["systemctl", "restart", "bor-setup.service"])
 
 
 def show_status(service: str) -> None:

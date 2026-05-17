@@ -1,0 +1,26 @@
+[Unit]
+Description=BOR Hanger first-boot Wi-Fi onboarding (BLE)
+# Run before the main hanger daemon so the user can configure Wi-Fi via the
+# iOS app before bor-hanger.service ever tries to talk to the cloud.
+Before=bor-hanger.service
+# Only run if Wi-Fi hasn't already been configured. setup_mode.py writes this
+# flag file the first time the customer successfully joins their network.
+ConditionPathExists=!/var/lib/bor-systems/wifi-configured
+# Bluetooth has to be up before we can advertise.
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__WORKDIR__
+EnvironmentFile=-/etc/bor-hanger.env
+ExecStart=__PYTHON__ __SETUP_PY__
+Restart=on-failure
+RestartSec=10
+# Needs to call nmcli + write under /var/lib — granted via SupplementaryGroups
+# rather than running as root.
+SupplementaryGroups=netdev bluetooth
+
+[Install]
+WantedBy=multi-user.target
