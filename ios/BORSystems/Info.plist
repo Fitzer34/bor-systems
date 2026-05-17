@@ -27,6 +27,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>BOR Systems uses Bluetooth to connect to new hangers during first-time Wi-Fi setup.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

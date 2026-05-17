@@ -43,6 +43,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: YES
           NSAllowsArbitraryLoads: YES   # dev only — tighten in production
+        NSBluetoothAlwaysUsageDescription: "BOR Systems uses Bluetooth to connect to new hangers during first-time Wi-Fi setup."
         UIBackgroundModes:
           - remote-notification
         UIRequiredDeviceCapabilities:

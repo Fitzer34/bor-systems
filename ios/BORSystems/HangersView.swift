@@ -7,6 +7,7 @@ struct HangersView: View {
     @State private var zoneById: [String: (zone: Zone, floor: String, building: String)] = [:]
     @State private var error: String?
     @State private var showRegister = false
+    @State private var showAddHanger = false
     @State private var refreshTask: Task<Void, Never>?
     // Re-render every second so the Online/Offline badge flips the instant
     // the 15-second silence threshold is crossed.
@@ -39,13 +40,29 @@ struct HangersView: View {
         .toolbar {
             if auth.user?.role == .admin {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showRegister = true } label: { Image(systemName: "plus") }
+                    Menu {
+                        Button {
+                            showAddHanger = true
+                        } label: {
+                            Label("Set up a new hanger via Bluetooth", systemImage: "antenna.radiowaves.left.and.right")
+                        }
+                        Button {
+                            showRegister = true
+                        } label: {
+                            Label("Register an existing hanger (DevEUI)", systemImage: "number")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
                 }
             }
         }
         .sheet(isPresented: $showRegister) {
             RegisterHangerSheet { Task { await refresh() } }
                 .environmentObject(auth)
+        }
+        .sheet(isPresented: $showAddHanger) {
+            AddHangerView()
         }
         .refreshable { await refresh() }
         .task {
