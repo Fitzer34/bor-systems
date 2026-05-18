@@ -12,15 +12,16 @@ Requires=bluetooth.service
 
 [Service]
 Type=simple
-User=__USER__
+# Runs as root — it has to call `systemctl start bor-hanger.service` after a
+# successful Wi-Fi join, which non-root users can't do without an interactive
+# polkit prompt. It's a one-shot setup service (exits after handing off), so
+# the elevated privilege is bounded.
+User=root
 WorkingDirectory=__WORKDIR__
 EnvironmentFile=-/etc/bor-hanger.env
 ExecStart=__PYTHON__ __SETUP_PY__
 Restart=on-failure
 RestartSec=10
-# Needs to call nmcli + write under /var/lib — granted via SupplementaryGroups
-# rather than running as root.
-SupplementaryGroups=netdev bluetooth
 
 [Install]
 WantedBy=multi-user.target
