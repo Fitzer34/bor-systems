@@ -32,6 +32,10 @@ Required apt packages (handled in install.py):
 Environment overrides:
   - BOR_SETUP_NAME   override the advertised device name (default BOR-Setup-{last 4 chars of MAC})
   - BOR_SETUP_PIN    override the 6-digit pairing PIN (default derived from MAC)
+  - BOR_SETUP_FORCE  if set to 1, advertise BLE even when Wi-Fi is already
+                     configured. Used for testing on a deployed hanger, and
+                     for the future re-onboarding flow when a customer
+                     changes routers.
 """
 
 from __future__ import annotations
@@ -230,8 +234,11 @@ def _on_deveui_read(options):  # noqa: ARG001
 def main() -> int:
     # Skip BLE setup entirely if the Pi already has Wi-Fi configured. This
     # makes the service safe to leave enabled — it'll just exit on boot when
-    # nothing needs doing.
-    if WIFI_DONE_FLAG.exists() or is_wifi_already_configured():
+    # nothing needs doing. BOR_SETUP_FORCE=1 overrides this for testing and
+    # for the re-onboarding flow (customer changes their Wi-Fi router).
+    if os.environ.get("BOR_SETUP_FORCE") == "1":
+        log.info("BOR_SETUP_FORCE=1 — advertising BLE even though Wi-Fi may be configured")
+    elif WIFI_DONE_FLAG.exists() or is_wifi_already_configured():
         log.info("Wi-Fi already configured — exiting setup mode")
         hand_off_to_main_service()
         return 0
