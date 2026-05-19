@@ -1,13 +1,60 @@
+import { useState } from "react";
 import { Outlet, NavLink } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
 export function Layout() {
   const { user, logout, setOnDuty } = useAuth();
+  // Sidebar drawer state (mobile only — sidebar is always-visible on >= md).
+  // Default closed on every navigation so the drawer doesn't linger over the
+  // page the user just tapped to.
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   if (!user) return null;
   const isStaff = user.role === "admin" || user.role === "supervisor";
+
   return (
-    <div className="min-h-screen flex">
-      <aside className="w-60 bg-slate-900 text-slate-100 flex flex-col">
+    <div className="min-h-screen flex flex-col md:flex-row">
+      {/* ─── Mobile top bar (visible < md only) ─────────────────────────── */}
+      <div className="flex md:hidden items-center justify-between bg-slate-900 text-slate-100 px-3 py-3 sticky top-0 z-30">
+        <button
+          aria-label="Open menu"
+          onClick={() => setMobileOpen(true)}
+          className="p-2 -ml-2 rounded hover:bg-slate-800"
+        >
+          {/* 3-line hamburger — no icon library dep */}
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="3"  y1="6"  x2="21" y2="6" />
+            <line x1="3"  y1="12" x2="21" y2="12" />
+            <line x1="3"  y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <div className="font-semibold text-sm">BOR Systems</div>
+        {/* Spacer so the title stays centered between the hamburger and a
+            zero-width invisible right column. */}
+        <div className="w-10" />
+      </div>
+
+      {/* ─── Backdrop (mobile only, when drawer open) ──────────────────── */}
+      {mobileOpen && (
+        <button
+          aria-label="Close menu"
+          onClick={() => setMobileOpen(false)}
+          className="md:hidden fixed inset-0 z-30 bg-black/50"
+        />
+      )}
+
+      {/* ─── Sidebar ───────────────────────────────────────────────────────
+          On md+ this is a static column (always visible).
+          On smaller screens it becomes a fixed slide-out drawer that
+          appears when the hamburger is tapped. */}
+      <aside
+        className={
+          "w-60 bg-slate-900 text-slate-100 flex flex-col " +
+          "md:static md:translate-x-0 " +
+          "fixed inset-y-0 left-0 z-40 transition-transform duration-200 " +
+          (mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0")
+        }
+      >
         <div className="px-4 py-5 border-b border-slate-800">
           <div className="font-semibold tracking-wide">BOR Systems</div>
           {user.organisationName && (
@@ -15,7 +62,10 @@ export function Layout() {
           )}
           <div className="text-xs text-slate-400 mt-1">{user.name} · {user.role}</div>
         </div>
-        <nav className="flex-1 p-2 space-y-1 text-sm overflow-y-auto">
+        <nav
+          className="flex-1 p-2 space-y-1 text-sm overflow-y-auto"
+          onClick={() => setMobileOpen(false)}
+        >
           <NavItem to="/" end>Active alerts</NavItem>
           {/* Dispatch + Schedule are visible to everyone. Cleaners get
               read-only views (their own shifts and dispatches sent to them)
@@ -32,6 +82,7 @@ export function Layout() {
           {user.role === "admin" && <NavItem to="/audit-log">Audit log</NavItem>}
           <div className="pt-3 mt-3 border-t border-slate-800">
             <NavItem to="/profile">My profile</NavItem>
+            <NavItem to="/status">System status</NavItem>
           </div>
         </nav>
         <div className="p-3 border-t border-slate-800 text-sm">
@@ -46,7 +97,12 @@ export function Layout() {
           <button onClick={logout} className="mt-3 w-full text-left text-slate-400 hover:text-slate-200">Log out</button>
         </div>
       </aside>
-      <main className="flex-1 p-8 max-w-6xl">
+
+      {/* ─── Page content ───────────────────────────────────────────────
+          Phones: full width, compact padding.
+          Tablets and up: generous padding, capped width so very wide
+          monitors don't make long lines unreadable. */}
+      <main className="flex-1 p-4 md:p-8 md:max-w-6xl">
         <Outlet />
       </main>
     </div>

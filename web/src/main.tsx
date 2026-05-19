@@ -22,6 +22,7 @@ import { Schedule } from "./pages/Schedule";
 import { Dispatch } from "./pages/Dispatch";
 import { Privacy } from "./pages/Privacy";
 import { Terms } from "./pages/Terms";
+import { Status } from "./pages/Status";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
 
@@ -72,6 +73,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   for cleaners, full-create for admin/supervisor). */}
               <Route path="schedule" element={<Schedule />} />
               <Route path="dispatch" element={<Dispatch />} />
+              {/* System status — visible to every authed user. Backed by the
+                  public /status endpoint (also consumed by external uptime
+                  monitors). */}
+              <Route path="status" element={<Status />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
