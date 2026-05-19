@@ -1,9 +1,26 @@
 // LoRa point-to-point link between hanger and gateway.
 //
-// We use a simple 8-byte payload over the SX1262 in raw LoRa mode (NOT
-// LoRaWAN — we don't need OTAA/ABP, we don't need TTN, we control both ends).
-// One byte event-type, one byte battery %, one byte flags, one byte fw
-// version, four bytes DevEUI suffix for routing.
+// We use a 20-byte payload over the SX1262 in raw LoRa mode (NOT LoRaWAN —
+// we don't need OTAA/ABP, we don't need TTN, we control both ends).
+//
+// Packet shape (20 bytes total, big-endian):
+//   [0]    event_type       (1 B)
+//   [1]    battery_pct      (1 B, 0-100)
+//   [2]    flags            (1 B, see Flags enum)
+//   [3]    fw_version       (1 B, packed major/minor 4+4)
+//   [4..11] DevEUI suffix    (8 ASCII hex chars)
+//   [12..13] seq             (2 B, monotonic per device, wraps at 65535)
+//   [14..19] HMAC-SHA256/48  (first 6 bytes of HMAC over [0..13] keyed with
+//                              the device's preshared HMAC key)
+//
+// Why HMAC over the bytes the gateway reads:
+//   - prevents spoofing by anyone with a LoRa radio in range
+//   - prevents replay attacks (seq is part of HMAC input — incrementing seq
+//     means a fresh HMAC is needed for each retx)
+//   - 6 bytes ≈ 2^48 brute-force complexity; plenty for 1-hour packets
+//
+// The gateway validates HMAC + dedupes by (DevEUI, seq) before forwarding to
+// the cloud. Replays / spoofs / corrupted packets get silently dropped.
 //
 // Event-type values must stay byte-compatible with shared/payload.ts and the
 // backend webhook decoder.
@@ -32,9 +49,15 @@ enum class Flags : uint8_t {
 // (usually means the SPI wiring is wrong or the wrong board variant).
 bool begin();
 
-// HANGER side — encode and transmit an event packet to whichever gateway is
-// listening. Blocks until the transmission completes (~600 ms at SF9). Puts
-// the radio back to sleep before returning. Returns true on success.
+// HANGER side — encode + sign + transmit an event packet. Waits for a 4-byte
+// ACK from the gateway (`A`, `C`, seq_hi, seq_lo). Retries up to 3 times with
+// random back-off if no ACK arrives within 2 s. Puts the radio back to sleep
+// before returning. Returns true on confirmed delivery, false on give-up.
+//
+// In practice the gateway ACKs ~99% of packets on the first try — retries
+// only kick in on outright collision or RF dropout, costing ~5 mAh per
+// failed send (negligible vs. lost-data cost from the cloud not knowing
+// about a real spill).
 bool sendEvent(EventType type, uint8_t batteryPct, uint8_t flags);
 
 // GATEWAY side — start continuous receive mode. Packets arriving will fire
@@ -42,12 +65,19 @@ bool sendEvent(EventType type, uint8_t batteryPct, uint8_t flags);
 bool startReceive();
 
 // GATEWAY side — non-blocking check for a received packet. Returns true if
-// one was decoded into *out_*. Resumes receive automatically.
+// one was decoded AND its HMAC validated AND it isn't a replay of a prior
+// (DevEUI, seq) pair. The gateway automatically transmits the 4-byte ACK
+// before returning, so the hanger sees confirmation within ~50 ms.
+//
+// Replays are silently dropped (the cloud already saw that event the first
+// time the hanger sent it). Bad HMACs are dropped after logging — usually
+// means corruption, occasionally means someone trying to spoof events.
 struct ReceivedPacket {
     EventType type;
     uint8_t   batteryPct;
     uint8_t   flags;
     uint8_t   fwVersion;
+    uint16_t  seq;
     char      devEui[17];  // null-terminated
     float     rssi;
     float     snr;

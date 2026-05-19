@@ -1,5 +1,6 @@
 #include "setup_mode.h"
 #include "../config/nvs_store.h"
+#include "../display.h"
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -126,6 +127,14 @@ bool run() {
     log_i("entering BLE setup mode — advertising as %s (PIN %s)",
           name.c_str(), pin.c_str());
 
+    // Show the pairing PIN on the OLED so the customer doesn't need a sticker
+    // to read it — vastly better UX for self-install.
+    Display::begin();
+    Display::showStatus("BOR Setup Mode",
+                        name,
+                        "Pairing PIN:",
+                        pin);
+
     NimBLEDevice::init(name.c_str());
 
     // Bonded + MITM-protected + encrypted link. Forces iOS to prompt the
@@ -207,6 +216,9 @@ bool run() {
     }
 
     NimBLEDevice::deinit(/*clearAll=*/true);
+    Display::showStatus("Setup complete", "Wi-Fi connected", "", "");
+    delay(2000);
+    Display::off();
     log_i("BLE setup mode complete — Wi-Fi ready");
     return ok;
 }

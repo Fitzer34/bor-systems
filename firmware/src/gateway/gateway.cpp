@@ -1,7 +1,11 @@
 #include "gateway.h"
+#include "../button_handler.h"
 #include "../config/nvs_store.h"
+#include "../display.h"
 #include "../lora_link.h"
+#include "../ota.h"
 #include "../setup_mode/setup_mode.h"
+#include "../../include/pinout.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -88,16 +92,39 @@ void forwardToCloud(const LoraLink::ReceivedPacket& p) {
 
 }  // namespace
 
+namespace {
+
+uint32_t g_packetsForwarded = 0;
+uint32_t g_lastOtaCheckMs   = 0;
+constexpr uint32_t OTA_CHECK_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;  // 6h
+
+void refreshDisplay() {
+    char l1[32], l2[32], l3[32], l4[32];
+    const uint32_t uptimeMin = millis() / 60000;
+    snprintf(l1, sizeof(l1), "BOR Gateway");
+    snprintf(l2, sizeof(l2), "IP %s", WiFi.localIP().toString().c_str());
+    snprintf(l3, sizeof(l3), "RSSI %d dBm", WiFi.RSSI());
+    snprintf(l4, sizeof(l4), "pkts %lu  up %lum",
+             (unsigned long)g_packetsForwarded, (unsigned long)uptimeMin);
+    Display::showStatus(l1, l2, l3, l4);
+}
+
+}  // namespace
+
 namespace Gateway {
 
 void setup() {
     Config::begin();
+    pinMode(Pinout::TEST_BUTTON_PIN, INPUT_PULLUP);
 
     if (!Config::isOnboarded()) {
         log_w("gateway not onboarded — entering BLE setup mode");
         SetupMode::run();
         ESP.restart();
     }
+
+    Display::begin();
+    Display::showStatus("BOR Gateway", "Connecting Wi-Fi...", "", "");
 
     if (!connectWifi()) {
         log_e("could not connect to Wi-Fi — rebooting in 60s");
@@ -111,7 +138,13 @@ void setup() {
         ESP.restart();
     }
 
+    // Confirm the running OTA image works end-to-end before letting the
+    // bootloader stop rolling back. Without this call, a bad firmware
+    // crashing on boot would revert automatically — exactly what we want.
+    Ota::markRunningImageGood();
+
     log_i("gateway ready — listening for LoRa packets");
+    refreshDisplay();
 }
 
 void loop() {
@@ -124,7 +157,25 @@ void loop() {
     LoraLink::ReceivedPacket pkt;
     while (LoraLink::pollReceived(&pkt)) {
         forwardToCloud(pkt);
+        g_packetsForwarded++;
     }
+
+    // Long-press the test button (10 s) → factory reset, re-enter BLE setup.
+    ButtonHandler::checkLongPress();  // calls esp_restart() on trigger
+
+    // OTA check every 6 hours.
+    if (millis() - g_lastOtaCheckMs >= OTA_CHECK_INTERVAL_MS) {
+        g_lastOtaCheckMs = millis();
+        Ota::checkAndApply("heltec_v3_gateway", "stable");
+    }
+
+    // Refresh OLED ~once a second so customers see the packet counter ticking.
+    static uint32_t lastDispMs = 0;
+    if (millis() - lastDispMs > 1000) {
+        lastDispMs = millis();
+        refreshDisplay();
+    }
+
     delay(10);  // yield to RTOS — keeps watchdog happy without burning CPU
 }
 
