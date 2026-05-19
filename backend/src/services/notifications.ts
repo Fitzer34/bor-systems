@@ -91,6 +91,14 @@ export async function notifyPush(input: DispatchInput): Promise<void> {
         kind: input.kind,
       },
     });
+    // APNs told us this token is dead — null it in the DB so we stop
+    // wasting round-trips on every alert. The iOS app re-registers a fresh
+    // token on next login (see ContentView.swift).
+    if (result.tokenDead) {
+      await db.update(schema.users)
+        .set({ pushToken: null })
+        .where(eq(schema.users.id, user.id));
+    }
     await record(input, "push", result.ok, result.error);
     return;
   }

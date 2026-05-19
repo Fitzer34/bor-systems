@@ -1,4 +1,5 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { config } from "../config.js";
@@ -7,6 +8,47 @@ import { closeAlertForHanger, openAlertForHanger, startCleaningSession } from ".
 import { getLowBatteryThreshold } from "../services/system-settings.js";
 import { notifyEmail, notifyPush, notifySms } from "../services/notifications.js";
 import { eventBus } from "../services/event-bus.js";
+
+/**
+ * Authenticate a webhook upload. Two acceptable proofs of authenticity:
+ *
+ *  1. **HMAC-SHA256** of the raw body, keyed with `TTS_WEBHOOK_SECRET`,
+ *     passed in `x-bor-signature` as a hex digest. This is the right way —
+ *     prevents replay-after-leak and proves the body wasn't tampered with
+ *     in transit. New firmware (Heltec C++) sends this.
+ *
+ *  2. **Plain shared secret** in `x-bor-secret` matching `TTS_WEBHOOK_SECRET`.
+ *     Legacy mechanism — what the Pi Python firmware currently sends. We
+ *     keep accepting it during the migration period; remove this branch
+ *     once every fielded device is on HMAC.
+ *
+ * Uses `timingSafeEqual` so an attacker can't time-leak the secret one byte
+ * at a time.
+ */
+function verifyWebhookAuth(req: FastifyRequest): boolean {
+  const expected = config.TTS_WEBHOOK_SECRET;
+  if (!expected) return false; // misconfigured server — fail closed
+
+  const signature = req.headers["x-bor-signature"];
+  if (typeof signature === "string" && signature.length > 0) {
+    // Compute HMAC over the raw JSON body as Fastify saw it.
+    const raw = (req as any).rawBody ?? JSON.stringify(req.body ?? {});
+    const computed = createHmac("sha256", expected).update(raw).digest("hex");
+    try {
+      const a = Buffer.from(signature, "hex");
+      const b = Buffer.from(computed, "hex");
+      if (a.length === b.length && timingSafeEqual(a, b)) return true;
+    } catch { /* malformed hex — fall through */ }
+    return false;
+  }
+
+  // Legacy path — accept plain shared-secret header.
+  const provided = req.headers["x-bor-secret"];
+  if (typeof provided !== "string") return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 interface TtsUplink {
   end_device_ids: { dev_eui: string };
@@ -45,10 +87,35 @@ async function maybeFireLowBatteryAlert(
   }
 }
 
+// Per-route rate limit. Webhooks are unauthenticated (proven only by HMAC or
+// shared secret), so they're a juicy DoS target. Caps:
+//
+//  - Per-DevEUI: 60/min — a healthy hanger heartbeats once/hour. A misfiring
+//    device shouldn't be able to flood the pipeline. Sensor-event traffic
+//    rarely exceeds 10/min even under heavy use.
+//  - Per-IP (when DevEUI isn't yet known, e.g. malformed body): 120/min —
+//    one gateway forwards events from up to 200 hangers in a building, so
+//    this needs to be generous.
+//
+// Effort to bypass: trivial (just lie about your DevEUI). But cheap to apply
+// and stops accidental loops cold.
+const webhookRateLimit = {
+  config: {
+    rateLimit: {
+      max: 120,
+      timeWindow: "1 minute",
+      keyGenerator: (req: any) => {
+        const ev = req.body?.end_device_ids?.dev_eui;
+        if (typeof ev === "string" && ev.length > 0) return `webhook:eui:${ev.toUpperCase()}`;
+        return `webhook:ip:${req.ip}`;
+      },
+    },
+  },
+};
+
 export default async function webhookRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/webhook/tts", async (req, reply) => {
-    const provided = req.headers["x-bor-secret"];
-    if (provided !== config.TTS_WEBHOOK_SECRET) {
+  app.post("/webhook/tts", webhookRateLimit, async (req, reply) => {
+    if (!verifyWebhookAuth(req)) {
       return reply.code(401).send({ error: "unauthorized" });
     }
 

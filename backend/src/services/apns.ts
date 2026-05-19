@@ -65,15 +65,23 @@ export interface ApnsPayload {
   threadId?: string;
 }
 
+/**
+ * Result of sendApns. `tokenDead` is set when APNs says the token is no
+ * longer usable for this device (uninstall, reinstall, prod-vs-sandbox
+ * mismatch). Callers should null the token in the DB so we stop wasting
+ * round-trips. Apple's documented reasons:
+ *   - 410 Unregistered  → user uninstalled
+ *   - 400 BadDeviceToken → wrong env (sandbox vs prod) or never registered
+ */
 export async function sendApns(
   deviceToken: string,
   payload: ApnsPayload,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; tokenDead?: boolean }> {
   if (!apnsConfigured) return { ok: false, error: "apns_not_configured" };
 
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (r: { ok: boolean; error?: string }) => {
+    const finish = (r: { ok: boolean; error?: string; tokenDead?: boolean }) => {
       if (settled) return;
       settled = true;
       resolve(r);
@@ -106,8 +114,23 @@ export async function sendApns(
     req.on("response", (h) => { status = Number(h[":status"]); });
     req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
     req.on("end", () => {
-      if (status === 200) finish({ ok: true });
-      else finish({ ok: false, error: `HTTP ${status}: ${body.slice(0, 200)}` });
+      if (status === 200) {
+        finish({ ok: true });
+        return;
+      }
+      // Mark token as dead so callers can null it in the DB. APNs returns the
+      // reason string in JSON; we look for the documented terminal cases.
+      let tokenDead = false;
+      if (status === 410) tokenDead = true; // Unregistered — user uninstalled
+      try {
+        const parsed = JSON.parse(body);
+        const reason: string | undefined = parsed?.reason;
+        if (reason === "Unregistered" || reason === "BadDeviceToken" ||
+            reason === "DeviceTokenNotForTopic") {
+          tokenDead = true;
+        }
+      } catch { /* not JSON, leave tokenDead as inferred from status */ }
+      finish({ ok: false, error: `HTTP ${status}: ${body.slice(0, 200)}`, tokenDead });
     });
     req.on("error", (e) => finish({ ok: false, error: e.message }));
 
