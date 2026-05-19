@@ -63,6 +63,16 @@ export interface ApnsPayload {
   data?: Record<string, string>;
   /** Apple "thread-identifier" for grouping. */
   threadId?: string;
+  /**
+   * UNNotificationCategory identifier. The iOS app registers categories at
+   * launch with action buttons attached — setting this here makes those
+   * buttons appear on the lock screen, on the Apple Watch under the
+   * notification, and in the iOS notification banner. Known values:
+   *   "alert"    — spill alert: Acknowledge / Open
+   *   "dispatch" — dispatch:    On my way / Open
+   *   "battery"  — low battery: Open (informational only)
+   */
+  category?: string;
 }
 
 /**
@@ -151,6 +161,10 @@ export async function sendApns(
         "interruption-level": "time-sensitive",
         // Apple Watch reads this for the prominent title on the watch face.
         ...(payload.threadId ? { "thread-id": payload.threadId } : {}),
+        // Triggers the iOS app's UNNotificationCategory and the action
+        // buttons attached to it (Acknowledge / On my way / Open). The
+        // Apple Watch picks these up automatically — same code path.
+        ...(payload.category ? { category: payload.category } : {}),
       },
       ...(payload.data ?? {}),
     };

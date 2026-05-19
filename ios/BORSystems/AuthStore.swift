@@ -15,6 +15,7 @@ final class AuthStore: ObservableObject {
         do {
             isLoading = true
             user = try await APIClient.shared.currentUser()
+            syncWatch()
         } catch {
             // Token invalid — clear it so the login screen appears
             APIClient.shared.token = nil
@@ -30,6 +31,7 @@ final class AuthStore: ObservableObject {
             let res = try await APIClient.shared.login(email: email, password: password)
             APIClient.shared.token = res.token
             user = res.user
+            syncWatch()
         } catch {
             lastError = "Invalid email or password."
             APIClient.shared.token = nil
@@ -41,6 +43,16 @@ final class AuthStore: ObservableObject {
     func logout() {
         APIClient.shared.token = nil
         user = nil
+        syncWatch()  // pushes signedOut=true to the watch
+    }
+
+    /// Forward the current auth state to the paired Apple Watch so the watch
+    /// app can call the backend directly. Called on every login / logout /
+    /// bootstrap; the system de-dupes identical contexts.
+    private func syncWatch() {
+        WatchSync.shared.push(
+            token: APIClient.shared.token,
+            apiBase: AppConfig.apiBaseURL)
     }
 
     func setOnDuty(_ onDuty: Bool) async {

@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.borsystems
   deploymentTarget:
     iOS: "16.0"
+    watchOS: "9.0"
   createIntermediateGroups: true
   developmentLanguage: en
   groupSortPosition: top
@@ -10,8 +11,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
-    TARGETED_DEVICE_FAMILY: "1"   # 1 = iPhone only
+    TARGETED_DEVICE_FAMILY: "1"   # 1 = iPhone only (watch handled per-target below)
     GENERATE_INFOPLIST_FILE: NO
     SUPPORTS_MACCATALYST: NO
     ENABLE_PREVIEWS: YES
@@ -50,8 +50,46 @@ targets:
           - arm64
     settings:
       base:
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
         PRODUCT_BUNDLE_IDENTIFIER: com.borsystems.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: BORSystems/BORSystems.entitlements
+    dependencies:
+      - target: BORSystemsWatch
+
+  # ─── watchOS companion ──────────────────────────────────────────────
+  # Single-target SwiftUI watch app (watchOS 9+ style — no separate
+  # WatchKit Extension required). Glanceable active-alerts list, can
+  # acknowledge alerts and dispatches directly from the wrist, and a
+  # complication for the watch face showing the open-alert count.
+  BORSystemsWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: BORSystemsWatch
+    info:
+      path: BORSystemsWatch/Info.plist
+      properties:
+        CFBundleName: BOR Systems
+        CFBundleDisplayName: BOR Systems
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.borsystems.app
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: YES
+          NSAllowsArbitraryLoads: YES
+    settings:
+      base:
+        WATCHOS_DEPLOYMENT_TARGET: "9.0"
+        TARGETED_DEVICE_FAMILY: "4"   # 4 = Apple Watch
+        PRODUCT_BUNDLE_IDENTIFIER: com.borsystems.app.watchkitapp
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+        SUPPORTS_MACCATALYST: NO
