@@ -15,12 +15,16 @@ final class HangerSetupManager: NSObject, ObservableObject {
 
     // MARK: GATT UUIDs — same as pi/setup_mode.py
 
-    static let serviceUUID  = CBUUID(string: "b08e0001-d4e2-4f5a-9c01-3f25d3a7c2a1")
-    private static let chrSSID     = CBUUID(string: "b08e0002-d4e2-4f5a-9c01-3f25d3a7c2a1")
-    private static let chrPassword = CBUUID(string: "b08e0003-d4e2-4f5a-9c01-3f25d3a7c2a1")
-    private static let chrCommit   = CBUUID(string: "b08e0004-d4e2-4f5a-9c01-3f25d3a7c2a1")
-    private static let chrStatus   = CBUUID(string: "b08e0005-d4e2-4f5a-9c01-3f25d3a7c2a1")
-    private static let chrDevEui   = CBUUID(string: "b08e0006-d4e2-4f5a-9c01-3f25d3a7c2a1")
+    // These are constants and need to be readable from CoreBluetooth delegate
+    // callbacks (which run on the delegate's queue, not the main actor).
+    // `nonisolated` opts them out of the @MainActor isolation the class
+    // imposes — fine because CBUUID is immutable and these are just IDs.
+    nonisolated static let serviceUUID  = CBUUID(string: "b08e0001-d4e2-4f5a-9c01-3f25d3a7c2a1")
+    nonisolated private static let chrSSID     = CBUUID(string: "b08e0002-d4e2-4f5a-9c01-3f25d3a7c2a1")
+    nonisolated private static let chrPassword = CBUUID(string: "b08e0003-d4e2-4f5a-9c01-3f25d3a7c2a1")
+    nonisolated private static let chrCommit   = CBUUID(string: "b08e0004-d4e2-4f5a-9c01-3f25d3a7c2a1")
+    nonisolated private static let chrStatus   = CBUUID(string: "b08e0005-d4e2-4f5a-9c01-3f25d3a7c2a1")
+    nonisolated private static let chrDevEui   = CBUUID(string: "b08e0006-d4e2-4f5a-9c01-3f25d3a7c2a1")
 
     // MARK: Public state
 

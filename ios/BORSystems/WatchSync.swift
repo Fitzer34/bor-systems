@@ -46,14 +46,20 @@ final class WatchSync: NSObject, WCSessionDelegate {
     }
 
     // MARK: - WCSessionDelegate (stubs — we only push, never receive)
+    //
+    // These callbacks run on WCSession's internal queue (NOT the main actor),
+    // so they must be `nonisolated` to avoid Swift 6 strict-concurrency
+    // warnings. Anything they need to do on the main actor would have to
+    // dispatch via `Task { @MainActor in ... }` — these stubs don't, so the
+    // bare `nonisolated` is enough.
 
-    func session(_ session: WCSession,
+    nonisolated func session(_ session: WCSession,
                  activationDidCompleteWith activationState: WCSessionActivationState,
                  error: Error?) {}
 
     #if os(iOS)
-    func sessionDidBecomeInactive(_ session: WCSession) {}
-    func sessionDidDeactivate(_ session: WCSession) {
+    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
+    nonisolated func sessionDidDeactivate(_ session: WCSession) {
         // Required to support switching paired watches.
         session.activate()
     }
