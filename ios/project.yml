@@ -57,15 +57,23 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: BORSystems/BORSystems.entitlements
     dependencies:
-      # Watch app must be EMBEDDED inside the iPhone app bundle (copied
-      # into BORSystems.app/Watch/BORSystemsWatch.app) so iOS knows to
-      # offer it for install in the Apple Watch app on the iPhone.
-      # Without `embed: true` the watch app is built but never makes it
-      # into the iPhone bundle — Apple's Watch app then says "couldn't
-      # install app at this time" because there's nothing to install.
+      # Build the watch app before the iPhone app, but don't ask XcodeGen
+      # to auto-embed (its default phase doesn't match the watchOS 9+
+      # single-target layout). The explicit copyFiles phase below handles
+      # the embed reliably.
       - target: BORSystemsWatch
-        embed: true
-        codeSign: false
+        embed: false
+    # Explicit "Embed Watch Content" build phase: copies the built
+    # BORSystemsWatch.app into BORSystems.app/Watch/. This is the canonical
+    # place iOS looks for a paired watch app, and exactly what the Apple
+    # Watch app on iPhone scans to populate AVAILABLE APPS. Without this,
+    # Apple's Watch app says "couldn't install app at this time" because
+    # the iPhone bundle has no watch payload to push.
+    copyFiles:
+      - destination: wrapper
+        subpath: Watch
+        files:
+          - $(BUILT_PRODUCTS_DIR)/BORSystemsWatch.app
 
   # ─── watchOS companion ──────────────────────────────────────────────
   # Single-target SwiftUI watch app (watchOS 9+ style — no separate
