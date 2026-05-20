@@ -9,20 +9,32 @@ final class WatchAPIClient {
     private var token: String?    { WatchAuthStore.shared.token }
     private var apiBase: String   { WatchAuthStore.shared.apiBase }
 
+    /// Shape MUST match what backend/src/routes/alerts.ts returns for the
+    /// `/alerts/active` endpoint. Only fields we actually render are
+    /// declared — extras are ignored by JSONDecoder.
     struct Alert: Codable, Identifiable, Hashable {
         let id: String
+        let kind: String?           // "spill" or "planned_cleaning"
         let zoneName: String?
         let floorName: String?
-        let buildingName: String?
         let openedAt: String
         let acknowledgedAt: String?
-        let closedAt: String?
+    }
+
+    /// The backend wraps the array: `{ "alerts": [...] }`. Bare array decoding
+    /// was failing silently — the previous version of this method always
+    /// returned an empty list on the wire.
+    private struct AlertsResponse: Decodable {
+        let alerts: [Alert]
     }
 
     // MARK: - Active alerts
 
     func fetchActiveAlerts() async throws -> [Alert] {
-        try await get("/alerts/active", as: [Alert].self)
+        let res = try await get("/alerts/active", as: AlertsResponse.self)
+        // Hide planned-cleaning sessions from the watch — they're not real
+        // alerts the cleaner needs to react to. Web + iOS do the same.
+        return res.alerts.filter { ($0.kind ?? "spill") == "spill" }
     }
 
     // MARK: - Actions

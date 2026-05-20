@@ -80,8 +80,8 @@ struct AlertRow: View {
                     .font(.headline)
                     .lineLimit(1)
             }
-            if let building = alert.buildingName, let floor = alert.floorName {
-                Text("\(building) · \(floor)")
+            if let floor = alert.floorName {
+                Text(floor)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
