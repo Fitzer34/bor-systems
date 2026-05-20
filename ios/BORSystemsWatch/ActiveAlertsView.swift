@@ -1,5 +1,12 @@
 import SwiftUI
+import WatchKit
 
+/// The main view on the watch — list of active alerts with "I'm on it"
+/// (acknowledge) and "It's done" (close) buttons.
+///
+/// Visible error reporting: when something goes wrong (no token, decode
+/// failure, server error) the error message shows up in the UI so we can
+/// actually see what's broken instead of staring at "All clear".
 struct ActiveAlertsView: View {
     @State private var alerts: [WatchAPIClient.Alert] = []
     @State private var loading = true
@@ -8,15 +15,19 @@ struct ActiveAlertsView: View {
 
     var body: some View {
         Group {
-            if loading && alerts.isEmpty {
+            if let err = error, alerts.isEmpty {
+                ErrorState(message: err, onRetry: { Task { await refresh() } })
+            } else if loading && alerts.isEmpty {
                 ProgressView()
             } else if alerts.isEmpty {
                 EmptyState()
             } else {
                 List {
                     ForEach(alerts) { alert in
-                        AlertRow(alert: alert,
-                                 onAck: { Task { await acknowledge(alert.id) } })
+                        AlertRow(
+                            alert: alert,
+                            onAck:   { Task { await acknowledge(alert.id) } },
+                            onClose: { Task { await close(alert.id) } })
                     }
                 }
                 .listStyle(.plain)
@@ -25,13 +36,13 @@ struct ActiveAlertsView: View {
         .refreshable { await refresh() }
         .task {
             await refresh()
-            // Auto-refresh every 30 s while the view is on screen — keeps the
-            // wrist current without spamming the backend. Throttled to nothing
-            // when the watch screen turns off (iOS suspends the task).
+            // Auto-refresh every 15 s while view is on screen. Keeps the
+            // wrist current without spamming the backend. Suspended when
+            // the watch screen turns off.
             refreshTask?.cancel()
             refreshTask = Task {
                 while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                    try? await Task.sleep(nanoseconds: 15_000_000_000)
                     await refresh()
                 }
             }
@@ -39,43 +50,79 @@ struct ActiveAlertsView: View {
         .onDisappear { refreshTask?.cancel() }
     }
 
+    // MARK: - Networking
+
     private func refresh() async {
         loading = true
         defer { loading = false }
         do {
             alerts = try await WatchAPIClient.shared.fetchActiveAlerts()
             error = nil
+        } catch let e as WatchAPIError {
+            error = e.errorDescription
         } catch {
-            self.error = String(describing: error)
+            error = String(describing: error)
         }
     }
 
     private func acknowledge(_ id: String) async {
-        // Optimistic: remove from list immediately, recover on failure.
+        // Optimistic: flip local row to acknowledged immediately, fall back
+        // to server-truth on the next refresh.
+        if let i = alerts.firstIndex(where: { $0.id == id }) {
+            let cur = alerts[i]
+            alerts[i] = WatchAPIClient.Alert(
+                id: cur.id, kind: cur.kind, status: "acknowledged",
+                zoneName: cur.zoneName, floorName: cur.floorName)
+        }
+        do {
+            try await WatchAPIClient.shared.acknowledgeAlert(id)
+            WKInterfaceDevice.current().play(.success)
+            await refresh()
+        } catch let e as WatchAPIError {
+            error = e.errorDescription
+            WKInterfaceDevice.current().play(.failure)
+            await refresh()
+        } catch {
+            WKInterfaceDevice.current().play(.failure)
+        }
+    }
+
+    private func close(_ id: String) async {
+        // Optimistic: drop from the list immediately.
         let snapshot = alerts
         alerts.removeAll { $0.id == id }
         do {
-            try await WatchAPIClient.shared.acknowledgeAlert(id)
-            // Soft refresh to pick up server-truth.
+            try await WatchAPIClient.shared.closeAlert(id)
+            WKInterfaceDevice.current().play(.success)
             await refresh()
-            WKInterfaceHaptic.success()
+        } catch let e as WatchAPIError {
+            alerts = snapshot
+            error = e.errorDescription
+            WKInterfaceDevice.current().play(.failure)
         } catch {
             alerts = snapshot
-            WKInterfaceHaptic.failure()
+            WKInterfaceDevice.current().play(.failure)
         }
     }
 }
 
+// MARK: - Row
+
 struct AlertRow: View {
     let alert: WatchAPIClient.Alert
     let onAck: () -> Void
+    let onClose: () -> Void
+
+    private var isAcknowledged: Bool {
+        (alert.status ?? "open") == "acknowledged"
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(alert.acknowledgedAt == nil ? Color.red : Color.orange)
-                    .frame(width: 8, height: 8)
+                    .fill(isAcknowledged ? Color.orange : Color.red)
+                    .frame(width: 9, height: 9)
                 Text(alert.zoneName ?? "Unknown zone")
                     .font(.headline)
                     .lineLimit(1)
@@ -86,25 +133,34 @@ struct AlertRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            if alert.acknowledgedAt == nil {
+
+            if isAcknowledged {
                 Button {
-                    onAck()
+                    onClose()
                 } label: {
-                    Text("Acknowledge")
+                    Label("It's done", systemImage: "checkmark.circle.fill")
                         .font(.caption)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
             } else {
-                Text("Acknowledged")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                Button {
+                    onAck()
+                } label: {
+                    Label("I'm on it", systemImage: "hand.raised.fill")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
             }
         }
         .padding(.vertical, 4)
     }
 }
+
+// MARK: - States
 
 struct EmptyState: View {
     var body: some View {
@@ -122,15 +178,26 @@ struct EmptyState: View {
     }
 }
 
-// MARK: - Haptic helper
+struct ErrorState: View {
+    let message: String
+    let onRetry: () -> Void
 
-import WatchKit
-
-enum WKInterfaceHaptic {
-    static func success() {
-        WKInterfaceDevice.current().play(.success)
-    }
-    static func failure() {
-        WKInterfaceDevice.current().play(.failure)
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.orange)
+                Text("Couldn't load alerts")
+                    .font(.headline)
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding()
+        }
     }
 }

@@ -7,6 +7,11 @@ import WatchConnectivity
 /// Uses `updateApplicationContext` — guaranteed delivery, supersedes prior
 /// values, and is delivered even when the watch app isn't running (queued
 /// for next launch).
+///
+/// Timing-safe: if push() is called before WCSession.activate() has
+/// completed, we queue the context and replay it once activation lands.
+/// Without this, the very first push (right after iPhone app launch) was
+/// silently no-op'd because activation is asynchronous.
 @MainActor
 final class WatchSync: NSObject, WCSessionDelegate {
     static let shared = WatchSync()
@@ -15,6 +20,10 @@ final class WatchSync: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return nil }
         return WCSession.default
     }
+
+    /// Last context push that was attempted. If WCSession wasn't activated
+    /// yet, we hold onto this and re-send from the activation callback.
+    private var pendingContext: [String: Any]?
 
     override init() {
         super.init()
@@ -26,36 +35,55 @@ final class WatchSync: NSObject, WCSessionDelegate {
     /// logout, foreground, and duty-state change — the system de-dupes
     /// identical contexts.
     func push(token: String?, apiBase: URL) {
-        guard let s = session, s.activationState == .activated else { return }
-        var ctx: [String: Any] = [
-            "apiBase": apiBase.absoluteString,
-        ]
+        var ctx: [String: Any] = ["apiBase": apiBase.absoluteString]
         if let t = token, !t.isEmpty {
             ctx["token"] = t
         } else {
             // Explicit logout signal — the watch wipes its stored token.
             ctx["signedOut"] = true
         }
-        do {
-            try s.updateApplicationContext(ctx)
-        } catch {
-            // Reachable in rare cases (e.g. session not activated, watch not
-            // paired). Not fatal — next push will overwrite.
-            print("WatchSync push failed: \(error)")
+
+        guard let s = session else {
+            print("WatchSync: WCSession not supported (not on iPhone?)")
+            return
+        }
+
+        if s.activationState == .activated {
+            sendContext(ctx, on: s)
+        } else {
+            // Will be replayed from activationDidCompleteWith.
+            pendingContext = ctx
         }
     }
 
-    // MARK: - WCSessionDelegate (stubs — we only push, never receive)
+    private func sendContext(_ ctx: [String: Any], on s: WCSession) {
+        do {
+            try s.updateApplicationContext(ctx)
+            print("WatchSync: pushed context (\(ctx.keys.sorted().joined(separator: ", ")))")
+        } catch {
+            print("WatchSync: push failed — \(error)")
+        }
+    }
+
+    // MARK: - WCSessionDelegate
     //
-    // These callbacks run on WCSession's internal queue (NOT the main actor),
-    // so they must be `nonisolated` to avoid Swift 6 strict-concurrency
-    // warnings. Anything they need to do on the main actor would have to
-    // dispatch via `Task { @MainActor in ... }` — these stubs don't, so the
-    // bare `nonisolated` is enough.
+    // Methods are nonisolated because WCSession calls them on its internal
+    // queue, not the main actor. We hop back to the main actor inside if
+    // we need to touch @MainActor state.
 
     nonisolated func session(_ session: WCSession,
                  activationDidCompleteWith activationState: WCSessionActivationState,
-                 error: Error?) {}
+                 error: Error?) {
+        if let error {
+            print("WatchSync: activation error — \(error)")
+        }
+        // Replay any context that tried to push before activation.
+        Task { @MainActor in
+            guard activationState == .activated, let ctx = self.pendingContext else { return }
+            self.pendingContext = nil
+            self.sendContext(ctx, on: session)
+        }
+    }
 
     #if os(iOS)
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
