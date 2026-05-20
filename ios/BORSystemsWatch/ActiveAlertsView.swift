@@ -57,11 +57,13 @@ struct ActiveAlertsView: View {
         defer { loading = false }
         do {
             alerts = try await WatchAPIClient.shared.fetchActiveAlerts()
-            error = nil
+            self.error = nil
         } catch let e as WatchAPIError {
-            error = e.errorDescription
-        } catch {
-            error = String(describing: error)
+            // Swift's bare `catch` shadows the outer name `error` with the
+            // implicit any-Error binding — disambiguate with self.
+            self.error = e.errorDescription
+        } catch let other {
+            self.error = String(describing: other)
         }
     }
 
@@ -79,7 +81,7 @@ struct ActiveAlertsView: View {
             WKInterfaceDevice.current().play(.success)
             await refresh()
         } catch let e as WatchAPIError {
-            error = e.errorDescription
+            self.error = e.errorDescription
             WKInterfaceDevice.current().play(.failure)
             await refresh()
         } catch {
@@ -97,7 +99,7 @@ struct ActiveAlertsView: View {
             await refresh()
         } catch let e as WatchAPIError {
             alerts = snapshot
-            error = e.errorDescription
+            self.error = e.errorDescription
             WKInterfaceDevice.current().play(.failure)
         } catch {
             alerts = snapshot
