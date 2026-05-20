@@ -57,23 +57,40 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: BORSystems/BORSystems.entitlements
     dependencies:
-      # Build the watch app before the iPhone app, but don't ask XcodeGen
-      # to auto-embed (its default phase doesn't match the watchOS 9+
-      # single-target layout). The explicit copyFiles phase below handles
-      # the embed reliably.
+      # Build the watch app before the iPhone app. embed:false because
+      # XcodeGen's auto-embed phase doesn't reliably handle watchOS 9+
+      # single-target apps — the explicit post-build script below does
+      # the embed copy with zero ambiguity.
       - target: BORSystemsWatch
         embed: false
-    # Explicit "Embed Watch Content" build phase: copies the built
-    # BORSystemsWatch.app into BORSystems.app/Watch/. This is the canonical
-    # place iOS looks for a paired watch app, and exactly what the Apple
-    # Watch app on iPhone scans to populate AVAILABLE APPS. Without this,
-    # Apple's Watch app says "couldn't install app at this time" because
-    # the iPhone bundle has no watch payload to push.
-    copyFiles:
-      - destination: wrapper
-        subpath: Watch
-        files:
+    # Explicit embed of the watch app into the iPhone app bundle.
+    # Without this, the iPhone bundle has no Watch/ subdirectory and
+    # Apple's Watch app on the iPhone has nothing to install over BT,
+    # surfacing as "couldn't install app at this time".
+    #
+    # Runs after both apps are built. For dev installs (Debug, ad-hoc
+    # signing) this is sufficient. For App Store / TestFlight we may
+    # need to re-sign — flag for future work.
+    postBuildScripts:
+      - name: Embed Watch App
+        script: |
+          set -e
+          WATCH_APP="$BUILT_PRODUCTS_DIR/BORSystemsWatch.app"
+          DST="$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Watch"
+          if [ ! -d "$WATCH_APP" ]; then
+            echo "warning: BORSystemsWatch.app not at $WATCH_APP — skipping embed"
+            echo "warning: this usually means the watch target didn't build for this destination"
+            exit 0
+          fi
+          mkdir -p "$DST"
+          rm -rf "$DST/BORSystemsWatch.app"
+          cp -R "$WATCH_APP" "$DST/"
+          echo "Embedded watch app at $DST/BORSystemsWatch.app"
+        inputFiles:
           - $(BUILT_PRODUCTS_DIR)/BORSystemsWatch.app
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/Watch/BORSystemsWatch.app
+        basedOnDependencyAnalysis: false
 
   # ─── watchOS companion ──────────────────────────────────────────────
   # Single-target SwiftUI watch app (watchOS 9+ style — no separate
