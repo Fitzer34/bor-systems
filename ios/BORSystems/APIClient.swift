@@ -150,6 +150,22 @@ extension APIClient {
         let _: EmptyResponse = try await request("/alerts/\(id)/close", method: "POST", body: CloseBody(reason: reason.rawValue, note: note))
     }
 
+    // MARK: Sign-tag (UWB precision finding)
+
+    /// Look up the UWB tag paired to a specific alert's hanger. Returns
+    /// the BLE UUID + UWB MAC the iOS NearbyInteraction session needs to
+    /// connect to. Throws on no-paired-tag (404) → caller should fall
+    /// back to the floor-plan view.
+    struct SignTagInfo: Decodable {
+        let tagId: String
+        let bleUuid: String
+        let uwbAddress: String
+        let batteryPct: Int?
+    }
+    func fetchSignTagForAlert(alertId: String) async throws -> SignTagInfo {
+        try await request("/sign-tags/for-alert/\(alertId)")
+    }
+
     func dispatches() async throws -> [DispatchItem] {
         let res: DispatchesResponse = try await request("/dispatches")
         return res.dispatches

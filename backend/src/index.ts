@@ -22,6 +22,7 @@ import dispatchRoutes from "./routes/dispatches.js";
 import webhookRoutes from "./routes/webhook.js";
 import eventsRoutes from "./routes/events.js";
 import statusRoutes from "./routes/status.js";
+import signTagRoutes from "./routes/sign-tags.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { initSentry, Sentry, captureException } from "./services/observability.js";
 
@@ -124,6 +125,7 @@ async function main(): Promise<void> {
   await app.register(webhookRoutes);
   await app.register(eventsRoutes);
   await app.register(statusRoutes);
+  await app.register(signTagRoutes);
 
   startEscalationTimer();
 

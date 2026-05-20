@@ -312,3 +312,30 @@ export const dispatches = pgTable(
     recipientIdx: index("dispatches_recipient_idx").on(t.recipientUserId, t.status, t.sentAt),
   }),
 );
+
+// Sign-side UWB precision-finding tags. One tag is embedded in each wet
+// floor sign's handle (alongside the magnet that triggers the hanger's
+// Hall sensor). When an alert fires the mobile app uses the tag's BLE
+// UUID + UWB address to open an AirTag-style direction-finding session.
+// Phones without UWB fall back to the zone-pin floor plan view.
+export const signTags = pgTable(
+  "sign_tags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    bleUuid: text("ble_uuid").notNull(),
+    uwbAddress: text("uwb_address").notNull(),
+    pairedHangerId: uuid("paired_hanger_id").references(() => hangers.id, { onDelete: "set null" }),
+    batteryPct: smallint("battery_pct"),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    bleUuidUnique: uniqueIndex("sign_tags_ble_uuid_unique").on(t.bleUuid),
+    uwbAddrUnique: uniqueIndex("sign_tags_uwb_addr_unique").on(t.uwbAddress),
+    pairedHangerIdx: index("sign_tags_paired_hanger_idx").on(t.pairedHangerId),
+    orgIdx: index("sign_tags_org_idx").on(t.organisationId),
+  }),
+);
