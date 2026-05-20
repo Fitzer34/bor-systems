@@ -75,21 +75,35 @@ targets:
       - name: Embed Watch App
         script: |
           set -e
-          WATCH_APP="$BUILT_PRODUCTS_DIR/BORSystemsWatch.app"
-          DST="$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Watch"
-          if [ ! -d "$WATCH_APP" ]; then
-            echo "warning: BORSystemsWatch.app not at $WATCH_APP — skipping embed"
-            echo "warning: this usually means the watch target didn't build for this destination"
-            exit 0
+          # When the iPhone target builds, BUILT_PRODUCTS_DIR points at
+          # Debug-iphoneos/. The watch app builds into Debug-watchos/ as a
+          # sibling directory. Search both — Xcode places the watch artifact
+          # in the sibling dir, so the literal $BUILT_PRODUCTS_DIR/X.app
+          # won't find it.
+          WATCH_APP=""
+          for candidate in \
+              "$BUILT_PRODUCTS_DIR/BORSystemsWatch.app" \
+              "$BUILT_PRODUCTS_DIR/../${CONFIGURATION}-watchos/BORSystemsWatch.app" \
+              "$BUILD_DIR/${CONFIGURATION}-watchos/BORSystemsWatch.app"; do
+            if [ -d "$candidate" ]; then
+              WATCH_APP="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$WATCH_APP" ]; then
+            echo "error: BORSystemsWatch.app not found in any of:"
+            echo "  $BUILT_PRODUCTS_DIR/BORSystemsWatch.app"
+            echo "  $BUILT_PRODUCTS_DIR/../${CONFIGURATION}-watchos/BORSystemsWatch.app"
+            echo "  $BUILD_DIR/${CONFIGURATION}-watchos/BORSystemsWatch.app"
+            exit 1
           fi
+
+          DST="$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Watch"
           mkdir -p "$DST"
           rm -rf "$DST/BORSystemsWatch.app"
           cp -R "$WATCH_APP" "$DST/"
-          echo "Embedded watch app at $DST/BORSystemsWatch.app"
-        inputFiles:
-          - $(BUILT_PRODUCTS_DIR)/BORSystemsWatch.app
-        outputFiles:
-          - $(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/Watch/BORSystemsWatch.app
+          echo "Embedded watch app from $WATCH_APP to $DST/BORSystemsWatch.app"
         basedOnDependencyAnalysis: false
 
   # ─── watchOS companion ──────────────────────────────────────────────
