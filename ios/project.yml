@@ -57,7 +57,15 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: BORSystems/BORSystems.entitlements
     dependencies:
+      # Watch app must be EMBEDDED inside the iPhone app bundle (copied
+      # into BORSystems.app/Watch/BORSystemsWatch.app) so iOS knows to
+      # offer it for install in the Apple Watch app on the iPhone.
+      # Without `embed: true` the watch app is built but never makes it
+      # into the iPhone bundle — Apple's Watch app then says "couldn't
+      # install app at this time" because there's nothing to install.
       - target: BORSystemsWatch
+        embed: true
+        codeSign: false
 
   # ─── watchOS companion ──────────────────────────────────────────────
   # Single-target SwiftUI watch app (watchOS 9+ style — no separate
