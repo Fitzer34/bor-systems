@@ -17,9 +17,9 @@ Best value for batteries + boards. Ships to Ireland in 3-5 days.
 | Samsung INR21700-50E 5000mAh | 2 | https://www.tinytronics.nl/en/power/batteries/21700/samsung-inr21700-50e-5000mah-9.8a | €24 |
 | 21700 battery holder | 2 | https://www.tinytronics.nl/en/power/battery-holders | €4 |
 | Neodymium magnets 6×3mm | 1 pack (10) | https://www.tinytronics.nl/en/mechanics-and-actuators/magnets | €3 |
-| CR2032 coin cells + holders | 1 pack (5) | https://www.tinytronics.nl/en/power/batteries/coin-cells/cr2032-3v-coin-cell | €5 |
+| LiPo 500mAh with JST PH 2.0 (for UWB tags — rechargeable via USB-C on DWM3001CDK) | 3 | https://www.tinytronics.nl/en/power/batteries/lipo/lipo-battery-3.7v-500mah-jst-ph-connector | €21 |
 | Shipping to Ireland | — | — | €10 |
-| **Subtotal** | | | **€136** |
+| **Subtotal** | | | **€152** |
 
 ## Order #2 — Mouser Ireland — ~€175
 
