@@ -6,7 +6,7 @@ const schema = z.object({
   HOST: z.string().default("0.0.0.0"),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(32),
-  JWT_EXPIRY: z.string().default("8h"),
+  JWT_EXPIRY: z.string().default("30d"),
   TTS_WEBHOOK_SECRET: z.string().min(8),
   RESOLUTION_TIMER_MINUTES: z.coerce.number().int().positive().default(15),
   FCM_PROJECT_ID: z.string().optional(),

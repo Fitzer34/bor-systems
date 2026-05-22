@@ -113,6 +113,11 @@ object ApiClient {
         }
 
         response.use { r ->
+            // Sliding session: backend ships a refreshed token in this header
+            // when ours is more than a day old. Swap it in silently so the
+            // user never has to log in again as long as they keep using the app.
+            r.header("X-Refreshed-Token")?.takeIf { it.isNotEmpty() }?.let { token = it }
+
             val raw = r.body?.string().orEmpty()
             when {
                 r.code == 401 -> throw ApiException.Unauthorized()

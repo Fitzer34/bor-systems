@@ -96,6 +96,35 @@ async function main(): Promise<void> {
     } catch {
       return reply.code(401).send({ error: "unauthorized" });
     }
+
+    // ── Sliding session refresh ─────────────────────────────────────
+    // Goal: a user who keeps using the app never has to log in again.
+    // If the token is more than 1 day old, mint a fresh 30-day token
+    // and ship it back in the X-Refreshed-Token response header.
+    // Clients (web, iOS, Android, watch) all watch for that header and
+    // silently swap their stored token. Token never expires while the
+    // user is active; only stale-for-30-days tokens get bounced.
+    //
+    // Re-signing every request would be wasteful and burn CPU, so we
+    // gate on age. 1 day is enough churn to keep the token healthy
+    // without hammering the JWT signer on every single API call.
+    try {
+      const u = req.user as { iat?: number; sub?: string; orgId?: string; role?: string };
+      const ageSec = u?.iat ? Math.floor(Date.now() / 1000) - u.iat : 0;
+      if (ageSec > 24 * 60 * 60) {
+        const fresh = app.jwt.sign({
+          sub: u.sub,
+          orgId: u.orgId,
+          role: u.role,
+        });
+        reply.header("x-refreshed-token", fresh);
+        // CORS preflight allows custom headers, but the browser also needs
+        // to be told this one is exposed before JS can read it.
+        reply.header("access-control-expose-headers", "x-refreshed-token");
+      }
+    } catch {
+      // Never let refresh logic break an otherwise-valid request.
+    }
   });
 
   // ---- Error handler — funnels uncaught route errors to Sentry ----

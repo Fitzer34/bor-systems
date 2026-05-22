@@ -23,6 +23,13 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("content-type", "application/json");
   }
   const res = await fetch(`/api${path}`, { ...init, headers });
+
+  // Sliding session: the backend ships a refreshed token in this header
+  // when our current one is more than a day old. Swap it in silently so
+  // the user never sees a "session expired" prompt while they're active.
+  const refreshed = res.headers.get("x-refreshed-token");
+  if (refreshed) setToken(refreshed);
+
   // NOTE: we used to nuke the token and redirect to /login on every 401.
   // Problem: a single transient 401 (server hiccup, deploy rollover, a
   // background poll firing a millisecond before the JWT was set in storage)

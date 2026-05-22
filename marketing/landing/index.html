@@ -113,6 +113,86 @@
   .step h3 { font-size: 17px; margin: 0 0 6px; }
   .step p { font-size: 14px; color: var(--grey); margin: 0; }
 
+  /* Dashboard preview */
+  .dashboard { padding: 60px 0; background: var(--soft); }
+  .dashboard h2 { font-size: 32px; text-align: center; margin: 0 0 12px; }
+  .dashboard .lede {
+    text-align: center; color: var(--grey); max-width: 640px;
+    margin: 0 auto 40px; font-size: 17px;
+  }
+  .mockup {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+    margin: 0 auto 40px;
+    max-width: 980px;
+  }
+  .mockup .chrome {
+    background: #f1f5f9;
+    padding: 10px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .mockup .chrome .dot {
+    width: 12px; height: 12px; border-radius: 50%; background: #cbd5e1;
+  }
+  .mockup .chrome .dot.r { background: #ef4444; }
+  .mockup .chrome .dot.y { background: #f59e0b; }
+  .mockup .chrome .dot.g { background: #10b981; }
+  .mockup .chrome .url {
+    margin-left: 12px; font-size: 13px; color: var(--grey);
+    background: white; padding: 4px 12px; border-radius: 6px;
+    border: 1px solid #e2e8f0;
+  }
+  .mockup .body { display: grid; grid-template-columns: 200px 1fr; min-height: 380px; }
+  .mockup .side {
+    background: var(--ink); color: white; padding: 18px 14px;
+    font-size: 13px;
+  }
+  .mockup .side .brand {
+    font-weight: 700; margin-bottom: 18px; font-size: 15px;
+  }
+  .mockup .side ul { list-style: none; padding: 0; margin: 0; }
+  .mockup .side li {
+    padding: 7px 10px; border-radius: 6px; opacity: 0.7;
+    margin-bottom: 2px; cursor: pointer;
+  }
+  .mockup .side li.active { background: var(--orange); opacity: 1; font-weight: 600; }
+  .mockup .main { padding: 20px 24px; }
+  .mockup .main h4 { margin: 0 0 4px; font-size: 18px; }
+  .mockup .main .sub { color: var(--grey); font-size: 13px; margin-bottom: 16px; }
+  .alert-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
+    margin-bottom: 8px; font-size: 14px;
+  }
+  .alert-row.red { border-left: 4px solid var(--red); }
+  .alert-row.green { border-left: 4px solid var(--green); }
+  .alert-row .tag {
+    font-size: 11px; padding: 3px 8px; border-radius: 4px;
+    font-weight: 600;
+  }
+  .tag.live { background: #fee2e2; color: var(--red); }
+  .tag.done { background: #dcfce7; color: var(--green); }
+  .pages-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+  .pages-list .pg {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+  .pages-list .pg b { display: block; color: var(--ink); margin-bottom: 2px; font-size: 14px; }
+  .pages-list .pg span { color: var(--grey); }
+
   /* Pricing */
   .pricing { padding: 60px 0; background: var(--soft); }
   .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
@@ -153,7 +233,9 @@
     <nav>
       <a href="#features">Features</a>
       <a href="#how">How it works</a>
+      <a href="#dashboard">Dashboard</a>
       <a href="#pricing">Pricing</a>
+      <a href="https://app.hazardlink.ie" class="btn btn-ghost">Sign in</a>
       <a href="#contact" class="btn">Book a demo</a>
     </nav>
   </div>
@@ -192,6 +274,86 @@
       <div class="step"><div class="num">2</div><h3>Plug in the gateway</h3><p>One gateway per building. USB-C power. App walks you through Wi-Fi setup over Bluetooth.</p></div>
       <div class="step"><div class="num">3</div><h3>Hang your existing signs</h3><p>Drop your own wet-floor signs onto the hangers. We don't replace your signs — we make them smart.</p></div>
       <div class="step"><div class="num">4</div><h3>Cleaners install the app</h3><p>Free iPhone + Android app. Watch + Wear OS supported. Done.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="dashboard" class="dashboard">
+  <div class="container">
+    <h2>Your control centre</h2>
+    <p class="lede">Every customer gets a private dashboard at <strong>app.hazardlink.ie</strong>. Live alerts, multi-site rollups, compliance PDFs, staff scheduling, and analytics — all in one place.</p>
+
+    <div class="mockup">
+      <div class="chrome">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="url">app.hazardlink.ie/dashboard</span>
+      </div>
+      <div class="body">
+        <div class="side">
+          <div class="brand">⚠️ HazardLink</div>
+          <ul>
+            <li class="active">Live alerts</li>
+            <li>Sites</li>
+            <li>Hangers</li>
+            <li>Floor plans</li>
+            <li>Schedule</li>
+            <li>Reports</li>
+            <li>Analytics</li>
+            <li>Users</li>
+            <li>Audit log</li>
+            <li>Settings</li>
+          </ul>
+        </div>
+        <div class="main">
+          <h4>Live alerts — 2 active</h4>
+          <div class="sub">Mercy Hospital · Cork · updated 3 seconds ago</div>
+
+          <div class="alert-row red">
+            <div>
+              <strong>Ward 4B — corridor</strong><br>
+              <span style="color:var(--grey);font-size:13px;">Sign lifted 38 seconds ago · Nora McCarthy responding</span>
+            </div>
+            <span class="tag live">LIVE</span>
+          </div>
+          <div class="alert-row red">
+            <div>
+              <strong>Main entrance lobby</strong><br>
+              <span style="color:var(--grey);font-size:13px;">Sign lifted 2 minutes ago · awaiting acknowledge</span>
+            </div>
+            <span class="tag live">LIVE</span>
+          </div>
+          <div class="alert-row green">
+            <div>
+              <strong>Canteen — south door</strong><br>
+              <span style="color:var(--grey);font-size:13px;">Resolved 14:22 by Tomasz K · response time 1m 47s</span>
+            </div>
+            <span class="tag done">CLOSED</span>
+          </div>
+          <div class="alert-row green">
+            <div>
+              <strong>Pharmacy corridor</strong><br>
+              <span style="color:var(--grey);font-size:13px;">Resolved 13:05 by Aisling B · response time 52s</span>
+            </div>
+            <span class="tag done">CLOSED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="text-align:center;font-size:20px;margin:48px 0 16px;">19 pages built-in</h3>
+    <div class="pages-list">
+      <div class="pg"><b>Live alerts</b><span>Real-time map of every active spill</span></div>
+      <div class="pg"><b>Sites</b><span>Multi-building rollup view</span></div>
+      <div class="pg"><b>Hangers</b><span>Sensor inventory & health</span></div>
+      <div class="pg"><b>Floor plans</b><span>Upload plans, place sensors</span></div>
+      <div class="pg"><b>Schedule</b><span>Staff rota & on-duty roster</span></div>
+      <div class="pg"><b>Reports</b><span>Compliance PDFs for insurer</span></div>
+      <div class="pg"><b>Analytics</b><span>Heat maps & response times</span></div>
+      <div class="pg"><b>Dispatch</b><span>Send a job to a specific cleaner</span></div>
+      <div class="pg"><b>Users</b><span>Add staff & set roles</span></div>
+      <div class="pg"><b>Audit log</b><span>Every action timestamped</span></div>
+      <div class="pg"><b>Notifications</b><span>SMS / Slack / Teams routing</span></div>
+      <div class="pg"><b>Settings</b><span>Org, integrations, after-hours</span></div>
     </div>
   </div>
 </section>

@@ -86,6 +86,13 @@ final class APIClient {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.transport(URLError(.badServerResponse))
         }
+        // Sliding session: backend ships a refreshed token in this header
+        // when ours is more than a day old. Swap it in silently so the
+        // user never has to log in again as long as they keep using the app.
+        if let refreshed = http.value(forHTTPHeaderField: "X-Refreshed-Token"),
+           !refreshed.isEmpty {
+            self.token = refreshed
+        }
         if http.statusCode == 401 {
             // DO NOT auto-clear the Keychain token here. A single transient
             // 401 (server cold-start race, deploy rollover, brief network
