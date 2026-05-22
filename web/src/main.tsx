@@ -24,6 +24,7 @@ import { Privacy } from "./pages/Privacy";
 import { Terms } from "./pages/Terms";
 import { Status } from "./pages/Status";
 import { Sites } from "./pages/Sites";
+import { Analytics } from "./pages/Analytics";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
 
@@ -82,6 +83,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   multiple buildings. Admin + supervisor only. */}
               <Route path="sites" element={
                 <RequireAuth role={["admin", "supervisor"]}><Sites /></RequireAuth>
+              } />
+              <Route path="analytics" element={
+                <RequireAuth role={["admin", "supervisor"]}><Analytics /></RequireAuth>
               } />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

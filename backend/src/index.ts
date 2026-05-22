@@ -25,8 +25,10 @@ import statusRoutes from "./routes/status.js";
 import signTagRoutes from "./routes/sign-tags.js";
 import sitesRoutes from "./routes/sites.js";
 import analyticsRoutes from "./routes/analytics.js";
+import publicRoutes from "./routes/public.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
+import { startSignConditionWatcher } from "./services/sign-condition.js";
 import { initSentry, Sentry, captureException } from "./services/observability.js";
 
 declare module "fastify" {
@@ -131,9 +133,11 @@ async function main(): Promise<void> {
   await app.register(signTagRoutes);
   await app.register(sitesRoutes);
   await app.register(analyticsRoutes);
+  await app.register(publicRoutes);
 
   startEscalationTimer();
   startAntiTheftWatcher();
+  startSignConditionWatcher();
 
   // Graceful shutdown — flushes Sentry events on SIGTERM (Render restarts).
   const shutdown = async (sig: string) => {

@@ -115,6 +115,28 @@ export async function broadcastToOnDutyCleaners(
   alertId: string,
   kind: typeof schema.notificationKind.enumValues[number],
 ): Promise<void> {
+  const { isNightMode, getNightContactUserId } = await import("./system-settings.js");
+
+  // After-hours routing: if night mode is configured AND we're inside
+  // the night window, route the alert to the designated single contact
+  // (usually security guard or out-of-hours supervisor) instead of
+  // waking every on-duty cleaner.
+  if (await isNightMode(orgId)) {
+    const nightContactId = await getNightContactUserId(orgId);
+    if (nightContactId) {
+      await notifyPush({
+        orgId,
+        alertId,
+        userId: nightContactId,
+        title: "🌙 After-hours spill alert",
+        body: "Sign lifted. You're the night contact — tap to respond.",
+        kind,
+      });
+      return;
+    }
+    // No night contact configured — fall through to normal broadcast.
+  }
+
   // Simple, reliable rule: every on-duty user in the org gets pinged.
   // The old "cleaners-only with admin fallback" logic was a constant source
   // of "I got one push then nothing" complaints because the audience kept
