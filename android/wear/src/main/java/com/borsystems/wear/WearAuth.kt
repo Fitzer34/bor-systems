@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
  */
 object WearAuth : DataClient.OnDataChangedListener {
 
-    private const val PREFS = "bor_wear"
+    private const val PREFS = "zeroslip_wear"
     private const val K_TOKEN = "token"
     private const val K_API   = "api_base"
     private const val PATH    = "/bor-auth"

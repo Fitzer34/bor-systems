@@ -21,7 +21,10 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.borsystems.app"
+        // Play Store publish ID. The internal Kotlin package path stays
+        // com.borsystems.app to avoid a massive find-replace; applicationId
+        // and namespace can legitimately differ. Users only see this one.
+        applicationId = "com.zeroslip.app"
         minSdk = 26          // Android 8.0 — ~95% device coverage
         targetSdk = 34       // Android 14
         versionCode = 1

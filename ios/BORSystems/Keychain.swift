@@ -3,7 +3,7 @@ import Security
 
 /// Thin Keychain wrapper for the auth token.
 enum Keychain {
-    private static let service = "com.borsystems.app"
+    private static let service = "com.zeroslip.app"
 
     static func set(_ value: String, for key: String) {
         let data = Data(value.utf8)

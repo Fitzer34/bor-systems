@@ -19,7 +19,10 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.borsystems.app.wear"
+        // Wear OS apps must use the phone's applicationId + ".wear" suffix
+        // (or any prefix matching the phone). Kotlin package stays
+        // com.borsystems.wear internally to skip a large find-replace.
+        applicationId = "com.zeroslip.app.wear"
         minSdk = 30           // Wear OS 3.0
         targetSdk = 34
         versionCode = 1
