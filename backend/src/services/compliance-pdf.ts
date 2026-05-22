@@ -103,8 +103,8 @@ export async function generateComplianceReport(
       size: "A4",
       margin: 50,
       info: {
-        Title: `BOR Systems Compliance Report — ${organisationName}`,
-        Author: "BOR Systems",
+        Title: `ZeroSlip Compliance Report — ${organisationName}`,
+        Author: "ZeroSlip",
         Subject: `${formatDate(from)} to ${formatDate(to)}`,
       },
     });

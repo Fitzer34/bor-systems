@@ -1,4 +1,4 @@
-// BOR Systems — Wear OS companion app.
+// ZeroSlip — Wear OS companion app.
 //
 // Mirrors the Apple Watch app: glanceable active-alerts list with "I'm
 // on it" / "It's done" actions. Same backend, same FCM topics.

@@ -1,4 +1,4 @@
-# BOR Systems — iOS app
+# ZeroSlip — iOS app
 
 Native SwiftUI app for iPhone and iPad. Targets **iOS 16.0+**, which covers every iPhone from the **iPhone 8** onwards (including SE 2nd/3rd gen, iPhone X/XS/XR/11/12/13/14/15/16 in all sizes).
 

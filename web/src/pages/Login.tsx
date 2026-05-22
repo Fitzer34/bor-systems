@@ -91,7 +91,7 @@ export function Login() {
       ) : (
         <form onSubmit={onSubmit} className="bg-white shadow rounded-lg p-8 w-full max-w-sm space-y-4">
           <div>
-            <h1 className="text-xl font-semibold">BOR Systems</h1>
+            <h1 className="text-xl font-semibold">ZeroSlip</h1>
             <p className="text-sm text-slate-500">Sign in</p>
           </div>
           <input
@@ -120,7 +120,7 @@ export function Login() {
           </button>
 
           <div className="pt-3 border-t text-sm text-center text-slate-500">
-            New to BOR Systems?{" "}
+            New to ZeroSlip?{" "}
             <Link to="/signup" className="text-blue-600 underline font-medium">
               Create an organisation
             </Link>

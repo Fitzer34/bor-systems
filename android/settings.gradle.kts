@@ -1,4 +1,4 @@
-// BOR Systems — Android workspace
+// ZeroSlip — Android workspace
 //
 // Two modules:
 //   :app  — the phone app (Material 3 + Jetpack Compose, mirrors iOS)

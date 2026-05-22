@@ -34,7 +34,7 @@ fun LoginScreen() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("BOR Systems", style = MaterialTheme.typography.headlineLarge)
+            Text("ZeroSlip", style = MaterialTheme.typography.headlineLarge)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Sign in",

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BOR Systems Pi status server.
+ZeroSlip Pi status server.
 
 Tiny Flask app that runs on the Pi and serves a status page at
 http://<pi-hostname>.local:8080. Shows:
@@ -142,7 +142,7 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>BOR Systems — Pi Gateway</title>
+<title>ZeroSlip — Pi Gateway</title>
 <meta http-equiv="refresh" content="5" />
 <style>
   body {

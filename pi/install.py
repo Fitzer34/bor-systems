@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BOR Systems — Raspberry Pi installer.
+ZeroSlip — Raspberry Pi installer.
 
 Two roles supported:
 
@@ -284,7 +284,7 @@ Don't forget to register this hanger's DevEUI in the BOR web admin
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="BOR Systems Pi installer")
+    parser = argparse.ArgumentParser(description="ZeroSlip Pi installer")
     parser.add_argument("--role", choices=["gateway", "hanger"], help="Pi role")
     parser.add_argument("--skip-apt", action="store_true", help="Skip apt update + install")
     args = parser.parse_args()

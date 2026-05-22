@@ -170,8 +170,8 @@ struct AddHangerView: View {
         VStack(alignment: .leading, spacing: 18) {
             stepHeader(icon: "checkmark.circle.fill",
                        title: "Hanger is online!",
-                       subtitle: manager.devEui.map { "DevEUI: \($0)\n\nNext step: register this hanger to a zone in BOR Systems → Hangers → Register." }
-                           ?? "Next step: register this hanger to a zone in BOR Systems → Hangers → Register.",
+                       subtitle: manager.devEui.map { "DevEUI: \($0)\n\nNext step: register this hanger to a zone in ZeroSlip → Hangers → Register." }
+                           ?? "Next step: register this hanger to a zone in ZeroSlip → Hangers → Register.",
                        iconColor: .green)
 
             Spacer()

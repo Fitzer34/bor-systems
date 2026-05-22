@@ -1,4 +1,4 @@
-# BOR Systems — Firmware (Heltec WiFi LoRa 32 V3)
+# ZeroSlip — Firmware (Heltec WiFi LoRa 32 V3)
 
 C++ firmware targeting the **Heltec WiFi LoRa 32 V3** (ESP32-S3 + SX1262). One
 source tree, three build environments — selected via a PlatformIO build flag:

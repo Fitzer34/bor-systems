@@ -40,7 +40,7 @@ export default async function twoFactorRoutes(app: FastifyInstance): Promise<voi
       .set({ totpPendingSecret: secret })
       .where(eq(schema.users.id, c.sub));
 
-    const url = otpauthUrl({ secret, email: user.email, issuer: "BOR Systems" });
+    const url = otpauthUrl({ secret, email: user.email, issuer: "ZeroSlip" });
     const qr = await qrDataUrl(url);
     return { secret, otpauth: url, qrDataUrl: qr };
   });

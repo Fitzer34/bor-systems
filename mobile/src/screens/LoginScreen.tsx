@@ -24,7 +24,7 @@ export function LoginScreen() {
   return (
     <View style={{ flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#f1f5f9" }}>
       <View style={{ backgroundColor: "white", padding: 24, borderRadius: 12, gap: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: "600" }}>BOR Systems</Text>
+        <Text style={{ fontSize: 22, fontWeight: "600" }}>ZeroSlip</Text>
         <Text style={{ color: "#64748b" }}>Sign in</Text>
         <TextInput
           autoCapitalize="none"

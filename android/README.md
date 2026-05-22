@@ -1,4 +1,4 @@
-# BOR Systems — Android
+# ZeroSlip — Android
 
 Phone app + Wear OS companion. Mirrors the iOS app screen-for-screen.
 

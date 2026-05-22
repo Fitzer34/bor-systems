@@ -1,4 +1,4 @@
-# BOR Systems — Web Dashboard
+# ZeroSlip — Web Dashboard
 
 Vite + React + TypeScript + Tailwind. Talks to the backend over HTTPS.
 

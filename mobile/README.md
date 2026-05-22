@@ -1,4 +1,4 @@
-# BOR Systems — Mobile App (iOS + Android)
+# ZeroSlip — Mobile App (iOS + Android)
 
 Expo (React Native) + TypeScript. Single codebase for both platforms.
 

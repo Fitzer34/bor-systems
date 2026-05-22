@@ -25,8 +25,8 @@ targets:
     info:
       path: BORSystems/Info.plist
       properties:
-        CFBundleName: BOR Systems
-        CFBundleDisplayName: BOR Systems
+        CFBundleName: ZeroSlip
+        CFBundleDisplayName: ZeroSlip
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         UILaunchScreen:
@@ -43,7 +43,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: YES
           NSAllowsArbitraryLoads: YES   # dev only — tighten in production
-        NSBluetoothAlwaysUsageDescription: "BOR Systems uses Bluetooth to connect to new hangers during first-time Wi-Fi setup."
+        NSBluetoothAlwaysUsageDescription: "ZeroSlip uses Bluetooth to connect to new hangers during first-time Wi-Fi setup."
         UIBackgroundModes:
           - remote-notification
         UIRequiredDeviceCapabilities:
@@ -119,8 +119,8 @@ targets:
     info:
       path: BORSystemsWatch/Info.plist
       properties:
-        CFBundleName: BOR Systems
-        CFBundleDisplayName: BOR Systems
+        CFBundleName: ZeroSlip
+        CFBundleDisplayName: ZeroSlip
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         WKApplication: true

@@ -1,4 +1,4 @@
-# BOR Systems — Prototype shopping list
+# ZeroSlip — Prototype shopping list
 
 Updated 2026-05-21
 

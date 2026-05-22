@@ -5,7 +5,7 @@ import { useAuth } from "./auth";
 
 interface ActiveAlert { id: string; status: "open" | "acknowledged" | "closed" }
 
-const BASE_TITLE = "BOR Systems";
+const BASE_TITLE = "ZeroSlip";
 
 function playDing(): void {
   try {

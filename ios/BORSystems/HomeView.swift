@@ -112,7 +112,7 @@ struct HomeView: View {
     }
 
     private var navigationTitle: String {
-        guard let u = auth.user else { return "BOR Systems" }
+        guard let u = auth.user else { return "ZeroSlip" }
         return "\(u.name) · \(u.role.rawValue)"
     }
 

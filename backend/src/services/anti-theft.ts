@@ -82,7 +82,7 @@ async function tick(): Promise<void> {
         orgId,
         alertId: null,
         userId: a.id,
-        title: "BOR Systems — possible missing sign(s)",
+        title: "ZeroSlip — possible missing sign(s)",
         body: `${body}\n\nReview missing signs in the admin dashboard under Hangers.`,
         kind: "low_battery",
       });

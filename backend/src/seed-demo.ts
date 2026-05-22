@@ -23,7 +23,7 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 
 const DEMO_ORG_ID = "00000000-0000-0000-0000-000000000099";
-const DEMO_ORG_NAME = "Demo — BOR Systems Reviewer Org";
+const DEMO_ORG_NAME = "Demo — ZeroSlip Reviewer Org";
 
 async function main(): Promise<void> {
   const adminEmail = (process.env.DEMO_ADMIN_EMAIL ?? "reviewer@bor-systems.demo").toLowerCase();

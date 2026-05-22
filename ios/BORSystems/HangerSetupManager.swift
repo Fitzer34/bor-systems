@@ -170,7 +170,7 @@ extension HangerSetupManager: CBCentralManagerDelegate {
             case .poweredOff:
                 phase = .bluetoothOff
             case .unauthorized:
-                phase = .failed(message: "Bluetooth permission denied. Allow it in Settings → BOR Systems → Bluetooth.")
+                phase = .failed(message: "Bluetooth permission denied. Allow it in Settings → ZeroSlip → Bluetooth.")
             case .unsupported:
                 phase = .failed(message: "This device doesn't support Bluetooth.")
             default:
