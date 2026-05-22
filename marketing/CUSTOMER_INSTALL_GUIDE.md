@@ -1,7 +1,7 @@
 # HazardLink — Customer Install Guide
 
 For new customer sites. Hand-printable as a PDF, also lives at
-`hazardlink.com/install`.
+`hazardlink.ie/install`.
 
 Estimated time: **30 minutes per building** (5 hangers, 1 gateway,
 1 phone/tablet for the admin).
@@ -94,7 +94,7 @@ Test it:
 If the test alert doesn't fire:
 - Check the hanger is online in the **Hangers** screen
 - Check **Settings → Notifications** is enabled for HazardLink
-- Email **support@hazardlink.com** with the hanger ID
+- Email **support@hazardlink.ie** with the hanger ID
 
 ## Step 5 — Train your team
 
@@ -161,7 +161,7 @@ You don't lose any data during the charge — the gateway buffers events.
 
 ## Support
 
-- 📧 **Email**: support@hazardlink.com (within 24h, usually faster)
-- 💬 **Live chat**: hazardlink.com/support (business hours, 9-5 Irish time)
+- 📧 **Email**: support@hazardlink.ie (within 24h, usually faster)
+- 💬 **Live chat**: hazardlink.ie/support (business hours, 9-5 Irish time)
 - 📞 **Phone (emergencies)**: +353 (0)0 000 0000
-- 📄 **Status page**: hazardlink.com/status
+- 📄 **Status page**: hazardlink.ie/status

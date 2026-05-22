@@ -97,5 +97,5 @@ agree)
 15-minute demo on a live device — we show the alert flow on your own
 phone within the first 90 seconds.
 
-**Book**: hello@hazardlink.com | **Call**: +353 (0)0 000 0000
-**More**: https://hazardlink.com
+**Book**: hello@hazardlink.ie | **Call**: +353 (0)0 000 0000
+**More**: https://hazardlink.ie

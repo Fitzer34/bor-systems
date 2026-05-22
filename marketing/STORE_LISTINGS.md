@@ -91,7 +91,7 @@ LoRa for sign-to-gateway communication. BLE for first-time Wi-Fi setup.
 UWB for precision finding. Multi-tenant cloud with end-to-end HMAC.
 Sentry monitoring. Public status page.
 
-Questions? hello@hazardlink.com
+Questions? hello@hazardlink.ie
 ```
 
 ---
@@ -144,7 +144,7 @@ Data NOT collected:
 Data collected: email, device push token, photos uploaded by user
 Data shared: NO (we don't share data with third parties beyond service providers)
 Encryption in transit: YES (TLS 1.2+)
-Data deletion request: support@hazardlink.com
+Data deletion request: support@hazardlink.ie
 
 ---
 
@@ -188,13 +188,13 @@ Pair your first hanger via Bluetooth in 60 seconds.
 ---
 
 ## Support URL
-https://hazardlink.com/support
+https://hazardlink.ie/support
 
 ## Marketing URL
-https://hazardlink.com
+https://hazardlink.ie
 
 ## Privacy policy URL (REQUIRED both stores)
-https://hazardlink.com/privacy
+https://hazardlink.ie/privacy
 
 ---
 

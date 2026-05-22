@@ -4,7 +4,7 @@
 
 **STARTER TEMPLATE — review with a solicitor before publishing.** This
 document is GDPR-aligned but not legal advice. Get an Irish solicitor to
-review (€300–500 typically) before deploying to `hazardlink.com/privacy`.
+review (€300–500 typically) before deploying to `hazardlink.ie/privacy`.
 
 ---
 
@@ -13,8 +13,8 @@ review (€300–500 typically) before deploying to `hazardlink.com/privacy`.
 HazardLink ("we", "us", "our") is a real-time floor-safety monitoring
 service operated by HazardLink Ltd, registered in Ireland.
 
-- **Contact**: support@hazardlink.com
-- **Data Protection Contact**: dpo@hazardlink.com
+- **Contact**: support@hazardlink.ie
+- **Data Protection Contact**: dpo@hazardlink.ie
 - **Postal address**: [add your registered office address here]
 
 If you're a resident of the EU/UK, you have rights under the GDPR (EU) /
@@ -102,7 +102,7 @@ You can request earlier deletion (see section 8).
 
 ## 7. Cookies and tracking
 
-The HazardLink web app (`hazardlink.com`) uses:
+The HazardLink web app (`hazardlink.ie`) uses:
 - **Strictly necessary cookies**: auth session token, mobile-menu state
 - **No advertising cookies**
 - **No third-party analytics that track individuals**
@@ -121,7 +121,7 @@ Under GDPR / UK GDPR, you have the right to:
 - **Port** your data to another service
 - **Object** to processing based on legitimate interest
 
-To exercise any right, email **dpo@hazardlink.com**. We respond within
+To exercise any right, email **dpo@hazardlink.ie**. We respond within
 30 days. If we can't fulfil your request, we'll explain why.
 
 You also have the right to lodge a complaint with:
@@ -146,7 +146,7 @@ hours and report to the Data Protection Commission as required by GDPR.
 
 HazardLink is a B2B safety product for commercial cleaning teams. We do
 not knowingly collect data from anyone under 16. If you believe a child
-has provided us data, email dpo@hazardlink.com and we'll delete it.
+has provided us data, email dpo@hazardlink.ie and we'll delete it.
 
 ## 11. Changes to this policy
 
@@ -157,6 +157,6 @@ before the change takes effect.
 
 ## 12. Contact
 
-For any privacy question: **dpo@hazardlink.com**
+For any privacy question: **dpo@hazardlink.ie**
 
-For general support: **support@hazardlink.com**
+For general support: **support@hazardlink.ie**

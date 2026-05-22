@@ -39,7 +39,7 @@ of your organisation. You're responsible for:
 - Keeping your password confidential
 - All activity under your account
 - Notifying us immediately of any unauthorised use
-  (security@hazardlink.com)
+  (security@hazardlink.ie)
 
 ## 4. Acceptable use
 
@@ -72,7 +72,7 @@ service. The Service may be unavailable due to:
 - Third-party outages (Render, Apple APNs, Google FCM, cellular networks)
 - Force majeure events
 
-For service status, see **hazardlink.com/status**.
+For service status, see **hazardlink.ie/status**.
 
 ## 7. Fees
 
@@ -95,7 +95,7 @@ of Commercial Debts Regulations 2013).
 - **Your data** (alerts, dispatches, audit logs, customer-specific
   configuration) remains your property. You can export it at any time.
 - We hold a licence to use your data only to provide the Service to you.
-- See our Privacy Policy at hazardlink.com/privacy for details.
+- See our Privacy Policy at hazardlink.ie/privacy for details.
 
 ## 9. Intellectual property
 
@@ -161,6 +161,6 @@ law and the Courts of England and Wales.
 ## 15. Contact
 
 HazardLink Ltd
-support@hazardlink.com
+support@hazardlink.ie
 [Registered office address]
 [Company registration number]
