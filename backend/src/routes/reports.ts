@@ -100,4 +100,43 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     reply.header("content-disposition", `attachment; filename="spills-${from.toISOString().slice(0, 10)}-to-${to.toISOString().slice(0, 10)}.csv"`);
     return `${header}\n${body}\n`;
   });
+
+  // ─── Compliance PDF — insurance-grade audit report ─────────────────
+  //
+  // Generates a printable safety-compliance report customers can hand to
+  // their insurance broker for a slip-and-fall premium discount. Includes
+  // per-alert response/resolution times, photo evidence flag, and a
+  // cryptographic audit hash in the footer for tamper detection.
+  app.get(
+    "/reports/compliance.pdf",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    async (req, reply) => {
+      const q = querySchema.safeParse(req.query);
+      if (!q.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
+      const from = q.data.from ? new Date(q.data.from) : new Date(Date.now() - 30 * 24 * 3600 * 1000);
+      const to   = q.data.to   ? new Date(q.data.to)   : new Date();
+
+      const [org] = await db
+        .select({ name: schema.organisations.name })
+        .from(schema.organisations)
+        .where(eq(schema.organisations.id, c.orgId))
+        .limit(1);
+
+      const { generateComplianceReport } = await import("../services/compliance-pdf.js");
+      const pdf = await generateComplianceReport({
+        orgId: c.orgId,
+        organisationName: org?.name ?? "Organisation",
+        from,
+        to,
+      });
+
+      reply.header("content-type", "application/pdf");
+      reply.header(
+        "content-disposition",
+        `attachment; filename="compliance-${from.toISOString().slice(0, 10)}-to-${to.toISOString().slice(0, 10)}.pdf"`,
+      );
+      return reply.send(pdf);
+    },
+  );
 }

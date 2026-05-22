@@ -67,6 +67,7 @@ export function Layout() {
           onClick={() => setMobileOpen(false)}
         >
           <NavItem to="/" end>Active alerts</NavItem>
+          {isStaff && <NavItem to="/sites">Sites overview</NavItem>}
           {/* Dispatch + Schedule are visible to everyone. Cleaners get
               read-only views (their own shifts and dispatches sent to them)
               so they know where they're meant to be. Backend enforces the

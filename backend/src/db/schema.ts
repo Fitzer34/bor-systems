@@ -207,6 +207,11 @@ export const alerts = pgTable(
     closedBy: uuid("closed_by").references(() => users.id, { onDelete: "set null" }),
     closureReason: closureReason("closure_reason"),
     closureNote: text("closure_note"),
+    // Cleaner-uploaded proof-of-resolution photo. URL of an uploaded image
+    // stored via the existing /uploads/ static handler. Appears in compliance
+    // PDF reports and the admin's alert detail view — used to verify the
+    // area was actually cleaned, not just the sign moved.
+    closePhotoUrl: text("close_photo_url"),
     cleaningReminderSentAt: timestamp("cleaning_reminder_sent_at", { withTimezone: true }),
   },
   (t) => ({

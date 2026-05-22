@@ -6,6 +6,7 @@ import { closeAlertForHanger } from "../services/alert-flow.js";
 import { notifyEmail, notifyPush } from "../services/notifications.js";
 import { ctx } from "../services/auth-context.js";
 import { eventBus } from "../services/event-bus.js";
+import { uploadClosePhoto } from "../services/storage.js";
 
 export default async function alertRoutes(app: FastifyInstance): Promise<void> {
   app.get("/alerts/active", { preHandler: [app.authenticate] }, async (req) => {
@@ -52,6 +53,40 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  // Two-step photo upload — mobile app POSTs the image first, gets back a
+  // URL, then includes that URL in the /close payload. Keeps the close
+  // endpoint pure JSON and matches the floor-plan upload pattern.
+  app.post(
+    "/alerts/:id/close-photo",
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const c = ctx(req);
+
+      // Verify alert exists in this org before letting the photo land —
+      // stops cross-tenant photo uploads.
+      const [alert] = await db
+        .select({ id: schema.alerts.id })
+        .from(schema.alerts)
+        .where(and(eq(schema.alerts.id, id), eq(schema.alerts.organisationId, c.orgId)))
+        .limit(1);
+      if (!alert) return reply.code(404).send({ error: "not_found" });
+
+      const file = await (req as any).file();
+      if (!file) return reply.code(400).send({ error: "no_file" });
+      if (!["image/jpeg", "image/png", "image/heic", "image/heif"].includes(file.mimetype)) {
+        return reply.code(400).send({ error: "must_be_image" });
+      }
+      const buf = await file.toBuffer();
+      const { url } = await uploadClosePhoto({
+        filename: file.filename,
+        mimetype: file.mimetype,
+        body: buf,
+      });
+      return { url };
+    },
+  );
+
   app.post("/alerts/:id/close", { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);
@@ -60,6 +95,16 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
       .object({
         reason: z.enum(["sign_damaged", "sign_missing", "manual"]),
         note: z.string().max(500).optional(),
+        // URL of an image previously uploaded via /uploads/. The mobile app
+        // POSTs the photo first, gets back a URL, then includes it here on
+        // close. Server validates the URL is on our own /uploads path so
+        // a malicious client can't inject an arbitrary external link.
+        // Accept either a relative /uploads/close-photos/... path (local
+        // storage) or an absolute https URL on our R2 bucket. Anything else
+        // is rejected so a malicious client can't inject an arbitrary URL.
+        closePhotoUrl: z.string()
+          .regex(/^(\/uploads\/close-photos\/[A-Za-z0-9._-]+|https:\/\/[A-Za-z0-9.-]+\/close-photos\/[A-Za-z0-9._-]+)$/)
+          .optional(),
       })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -72,6 +117,16 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
     if (!alert) return reply.code(404).send({ error: "not_found" });
 
     await closeAlertForHanger(alert.hangerId, body.data.reason, c.sub, body.data.note);
+
+    // Persist the photo URL on the closed alert if one was supplied.
+    // Done as a post-update because closeAlertForHanger doesn't know about
+    // the photo (keeps the alert-flow service generic).
+    if (body.data.closePhotoUrl) {
+      await db
+        .update(schema.alerts)
+        .set({ closePhotoUrl: body.data.closePhotoUrl })
+        .where(and(eq(schema.alerts.id, id), eq(schema.alerts.organisationId, c.orgId)));
+    }
 
     if (body.data.reason === "sign_damaged" || body.data.reason === "sign_missing") {
       await db

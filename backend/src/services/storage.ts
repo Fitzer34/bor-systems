@@ -50,8 +50,21 @@ export interface UploadResult {
 }
 
 export async function uploadFloorPlan(input: UploadInput): Promise<UploadResult> {
+  return uploadInternal(input, "floorplans");
+}
+
+/**
+ * Proof-of-resolution photos uploaded by cleaners when closing alerts.
+ * Same storage backend as floor plans; separate prefix so admin URLs
+ * stay readable in the admin dashboard.
+ */
+export async function uploadClosePhoto(input: UploadInput): Promise<UploadResult> {
+  return uploadInternal(input, "close-photos");
+}
+
+async function uploadInternal(input: UploadInput, prefix: string): Promise<UploadResult> {
   const ext = extname(input.filename) || (input.mimetype === "image/png" ? ".png" : ".jpg");
-  const key = `floorplans/${randomUUID()}${ext}`;
+  const key = `${prefix}/${randomUUID()}${ext}`;
 
   if (usingR2) {
     await getR2().send(new PutObjectCommand({
@@ -64,8 +77,9 @@ export async function uploadFloorPlan(input: UploadInput): Promise<UploadResult>
     return { url: `${R2_PUBLIC_URL}/${key}` };
   }
 
-  await fs.mkdir(LOCAL_UPLOAD_DIR, { recursive: true });
-  const filename = key.replace(/^floorplans\//, "");
-  await fs.writeFile(join(LOCAL_UPLOAD_DIR, filename), input.body);
-  return { url: `/uploads/floorplans/${filename}` };
+  const localDir = join(process.cwd(), "uploads", prefix);
+  await fs.mkdir(localDir, { recursive: true });
+  const filename = key.slice(prefix.length + 1);
+  await fs.writeFile(join(localDir, filename), input.body);
+  return { url: `/uploads/${prefix}/${filename}` };
 }

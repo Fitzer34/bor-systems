@@ -23,6 +23,7 @@ import { Dispatch } from "./pages/Dispatch";
 import { Privacy } from "./pages/Privacy";
 import { Terms } from "./pages/Terms";
 import { Status } from "./pages/Status";
+import { Sites } from "./pages/Sites";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
 
@@ -77,6 +78,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   public /status endpoint (also consumed by external uptime
                   monitors). */}
               <Route path="status" element={<Status />} />
+              {/* Multi-site rollup for enterprise customers managing
+                  multiple buildings. Admin + supervisor only. */}
+              <Route path="sites" element={
+                <RequireAuth role={["admin", "supervisor"]}><Sites /></RequireAuth>
+              } />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
