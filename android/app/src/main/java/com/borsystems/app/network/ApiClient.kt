@@ -243,4 +243,16 @@ object ApiClient {
         val res = request<SitesSummaryResponse>("/sites/summary")
         return res.sites
     }
+
+    // ─── Sign-tag lookup (Find Sign UWB) ────────────────────────────
+
+    @kotlinx.serialization.Serializable
+    data class SignTagInfo(
+        val tagId: String,
+        val bleUuid: String,
+        val uwbAddress: String,
+        val batteryPct: Int? = null,
+    )
+    suspend fun fetchSignTagForAlert(alertId: String): SignTagInfo =
+        request("/sign-tags/for-alert/$alertId")
 }

@@ -53,16 +53,26 @@
             </intent-filter>
         </activity>
 
-        <!-- FCM message receiver. Will be wired up when google-services.json
-             lands; until then the service is registered but never called. -->
+        <!-- FCM message receiver. -->
         <service
             android:name=".notifications.BorMessagingService"
-            android:exported="false"
-            tools:ignore="MissingClass">
+            android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Background action receiver for notification action buttons
+             (Acknowledge / On my way) — fires API calls without opening
+             the app, matching iOS background UNNotificationAction. -->
+        <receiver
+            android:name=".notifications.AlertActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.borsystems.app.ACK_ALERT" />
+                <action android:name="com.borsystems.app.ACK_DISPATCH" />
+            </intent-filter>
+        </receiver>
 
     </application>
 </manifest>

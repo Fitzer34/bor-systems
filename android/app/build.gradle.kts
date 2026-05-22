@@ -115,11 +115,14 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     // ─── Firebase Cloud Messaging (Android's APNs equivalent) ─────────
-    // Uncomment + add google-services.json under app/ once you've set up
-    // a Firebase project. Backend already supports FCM via
-    // backend/src/services/notifications.ts (fcmReady()).
-    // implementation(platform("com.google.firebase:firebase-bom:33.2.0"))
-    // implementation("com.google.firebase:firebase-messaging-ktx")
+    // Backend already supports FCM via backend/src/services/notifications.ts
+    // The google-services plugin is gated below — uncomment after you've
+    // dropped google-services.json into app/ from the Firebase console.
+    implementation(platform("com.google.firebase:firebase-bom:33.2.0"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // ─── UWB (AirTag-style Find Sign) ──────────────────────────────────
+    implementation("androidx.core.uwb:uwb:1.0.0-alpha10")
 
     // ─── Bluetooth Low Energy (mirrors iOS CoreBluetooth) ─────────────
     // No external lib — Android's android.bluetooth.* package is fine.
