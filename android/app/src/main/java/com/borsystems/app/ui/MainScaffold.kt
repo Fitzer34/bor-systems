@@ -13,15 +13,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.borsystems.app.ui.dispatch.DispatchScreen
+import com.borsystems.app.ui.hangers.HangersScreen
 import com.borsystems.app.ui.home.HomeScreen
-import com.borsystems.app.ui.placeholder.PlaceholderScreen
+import com.borsystems.app.ui.more.MoreScreen
+import com.borsystems.app.ui.profile.ProfileScreen
+import com.borsystems.app.ui.schedule.ScheduleScreen
+import com.borsystems.app.ui.sites.SitesScreen
 
 /**
  * Bottom-navigation root — mirrors iOS MainTabView.swift.
  *
- * Five tabs in the same order as iOS. Cleaners and admins see different
- * tabs at the iOS layer; here we render all five and the per-screen
- * ViewModels filter based on role (matches backend enforcement).
+ * Five tabs in the same order as iOS. Cleaners and admins see the same
+ * tabs; each screen filters its content based on the user's role.
  */
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     Home    ("home",     "Alerts",    Icons.Default.Notifications),
@@ -39,20 +43,24 @@ fun MainScaffold() {
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                Tab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = currentRoute == tab.route,
-                        onClick = {
-                            nav.navigate(tab.route) {
-                                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
-                    )
+            // Hide the bottom bar on detail screens pushed beyond the tab roots.
+            val isRootTab = Tab.entries.any { it.route == currentRoute }
+            if (isRootTab) {
+                NavigationBar {
+                    Tab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = currentRoute == tab.route,
+                            onClick = {
+                                nav.navigate(tab.route) {
+                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            label = { Text(tab.label) },
+                        )
+                    }
                 }
             }
         }
@@ -63,10 +71,14 @@ fun MainScaffold() {
             modifier = Modifier.padding(padding),
         ) {
             composable(Tab.Home.route)     { HomeScreen() }
-            composable(Tab.Dispatch.route) { PlaceholderScreen("Dispatch") }
-            composable(Tab.Schedule.route) { PlaceholderScreen("Schedule") }
-            composable(Tab.Hangers.route)  { PlaceholderScreen("Hangers") }
-            composable(Tab.More.route)     { PlaceholderScreen("More") }
+            composable(Tab.Dispatch.route) { DispatchScreen() }
+            composable(Tab.Schedule.route) { ScheduleScreen() }
+            composable(Tab.Hangers.route)  { HangersScreen() }
+            composable(Tab.More.route)     { MoreScreen(nav) }
+
+            // Sub-screens reached from "More"
+            composable("sites")   { SitesScreen() }
+            composable("profile") { ProfileScreen() }
         }
     }
 }

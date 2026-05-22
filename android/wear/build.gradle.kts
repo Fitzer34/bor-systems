@@ -11,6 +11,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -46,4 +47,8 @@ dependencies {
 
     // Data layer between phone + watch (mirrors WatchConnectivity on iOS).
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
+
+    // Coroutines + serialization for the WearApi client.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.2")
 }

@@ -1,7 +1,10 @@
 package com.borsystems.app.auth
 
+import android.content.Context
+import com.borsystems.app.BuildConfig
 import com.borsystems.app.network.ApiClient
 import com.borsystems.app.network.CurrentUser
+import com.borsystems.app.wear.PhoneWatchSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +26,9 @@ import kotlinx.coroutines.launch
  */
 object AuthStore {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var appContext: Context? = null
+
+    fun setContext(ctx: Context) { appContext = ctx.applicationContext }
 
     private val _user = MutableStateFlow<CurrentUser?>(null)
     val user: StateFlow<CurrentUser?> = _user.asStateFlow()
@@ -39,6 +45,7 @@ object AuthStore {
             _isLoading.value = true
             try {
                 _user.value = ApiClient.currentUser()
+                syncWatch()
             } catch (e: ApiClient.ApiException.Unauthorized) {
                 ApiClient.token = null
                 _user.value = null
@@ -59,6 +66,7 @@ object AuthStore {
                 val resp = ApiClient.login(email = email, password = password)
                 ApiClient.token = resp.token
                 _user.value = resp.user
+                syncWatch()
             } catch (_: ApiClient.ApiException.Unauthorized) {
                 _lastError.value = "Invalid email or password."
                 ApiClient.token = null
@@ -74,6 +82,16 @@ object AuthStore {
     fun logout() {
         ApiClient.token = null
         _user.value = null
+        syncWatch()  // pushes signedOut=true to the watch
+    }
+
+    /**
+     * Forward the current session to the paired Wear OS watch.
+     * No-op if the watch app isn't installed or no watch is paired.
+     */
+    private fun syncWatch() {
+        val ctx = appContext ?: return
+        PhoneWatchSync.push(ctx, ApiClient.token, BuildConfig.API_BASE_URL)
     }
 
     fun setOnDuty(onDuty: Boolean) {

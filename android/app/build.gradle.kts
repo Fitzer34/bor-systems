@@ -35,6 +35,15 @@ android {
             "API_BASE_URL",
             "\"https://bor-systems-backend.onrender.com\""
         )
+        // The web admin URL — opened from the More menu for rarely-used
+        // screens (Reports, Audit log, etc.) where re-implementing them
+        // in Compose is more work than it's worth. Same hosting as the
+        // current production deploy.
+        buildConfigField(
+            "String",
+            "WEB_BASE_URL",
+            "\"https://bor-systems.onrender.com\""
+        )
     }
 
     buildFeatures {
@@ -115,4 +124,7 @@ dependencies {
     // ─── Bluetooth Low Energy (mirrors iOS CoreBluetooth) ─────────────
     // No external lib — Android's android.bluetooth.* package is fine.
     // Permissions declared in AndroidManifest.xml.
+
+    // ─── Wearable Data Layer (push auth token to Wear OS watch) ───────
+    implementation("com.google.android.gms:play-services-wearable:18.2.0")
 }

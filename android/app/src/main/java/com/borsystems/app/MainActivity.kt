@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         // Bootstrap any persisted session (token in EncryptedSharedPreferences).
+        AuthStore.setContext(this)
         AuthStore.bootstrap()
 
         setContent {

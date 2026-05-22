@@ -174,4 +174,73 @@ object ApiClient {
         )
         request<Unit>("/alerts/$id/close", "POST", body)
     }
+
+    // ─── Dispatches ─────────────────────────────────────────────────
+
+    @kotlinx.serialization.Serializable
+    private data class DispatchBody(val recipientUserId: String, val zoneId: String?, val message: String)
+
+    suspend fun listDispatches(): List<DispatchItem> {
+        val res = request<DispatchesResponse>("/dispatches")
+        return res.dispatches
+    }
+    suspend fun sendDispatch(recipientUserId: String, zoneId: String?, message: String): DispatchItem {
+        return request<DispatchItem>(
+            "/dispatches", "POST",
+            DispatchBody(recipientUserId, zoneId, message),
+        )
+    }
+    suspend fun acknowledgeDispatch(id: String) {
+        request<Unit>("/dispatches/$id/acknowledge", "POST")
+    }
+    suspend fun completeDispatch(id: String) {
+        request<Unit>("/dispatches/$id/complete", "POST")
+    }
+
+    // ─── Hangers ────────────────────────────────────────────────────
+
+    suspend fun listHangers(): List<Hanger> {
+        val res = request<HangersResponse>("/hangers")
+        return res.hangers
+    }
+
+    // ─── Buildings / floors / zones ─────────────────────────────────
+
+    suspend fun listBuildings(): List<Building> {
+        val res = request<BuildingsResponse>("/buildings")
+        return res.buildings
+    }
+    suspend fun listFloors(buildingId: String): List<Floor> {
+        val res = request<FloorsResponse>("/buildings/$buildingId/floors")
+        return res.floors
+    }
+    suspend fun listZones(floorId: String): List<Zone> {
+        val res = request<ZonesResponse>("/floors/$floorId/zones")
+        return res.zones
+    }
+
+    // ─── Schedule ───────────────────────────────────────────────────
+
+    suspend fun listShifts(): List<Shift> {
+        val res = request<ShiftsResponse>("/shifts")
+        return res.shifts
+    }
+
+    // ─── Settings ───────────────────────────────────────────────────
+
+    suspend fun appSettings(): AppSettings = request("/settings")
+
+    // ─── Users ──────────────────────────────────────────────────────
+
+    suspend fun listUsers(): List<UserSummary> {
+        val res = request<UsersResponse>("/users")
+        return res.users
+    }
+
+    // ─── Sites overview ─────────────────────────────────────────────
+
+    suspend fun sitesSummary(): List<SiteSummary> {
+        val res = request<SitesSummaryResponse>("/sites/summary")
+        return res.sites
+    }
 }
