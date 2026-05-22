@@ -6,8 +6,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BatteryFull
+import com.borsystems.app.auth.AuthStore
+import com.borsystems.app.network.UserRole
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +36,9 @@ import java.time.temporal.ChronoUnit
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HangersScreen() {
+fun HangersScreen(onAddHanger: () -> Unit = {}) {
+    val user by AuthStore.user.collectAsState()
+    val isAdmin = user?.role == UserRole.admin
     var hangers by remember { mutableStateOf<List<Hanger>>(emptyList()) }
     var threshold by remember { mutableStateOf(20) }
     var loading by remember { mutableStateOf(true) }
@@ -60,7 +65,18 @@ fun HangersScreen() {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Hangers") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Hangers") },
+                actions = {
+                    if (isAdmin) {
+                        IconButton(onClick = onAddHanger) {
+                            Icon(Icons.Default.Add, contentDescription = "Add hanger")
+                        }
+                    }
+                },
+            )
+        },
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             if (loading && hangers.isEmpty()) {

@@ -20,6 +20,7 @@ import com.borsystems.app.ui.more.MoreScreen
 import com.borsystems.app.ui.profile.ProfileScreen
 import com.borsystems.app.ui.schedule.ScheduleScreen
 import com.borsystems.app.ui.sites.SitesScreen
+import com.borsystems.app.ui.setup.HangerSetupScreen
 
 /**
  * Bottom-navigation root — mirrors iOS MainTabView.swift.
@@ -73,12 +74,13 @@ fun MainScaffold() {
             composable(Tab.Home.route)     { HomeScreen() }
             composable(Tab.Dispatch.route) { DispatchScreen() }
             composable(Tab.Schedule.route) { ScheduleScreen() }
-            composable(Tab.Hangers.route)  { HangersScreen() }
+            composable(Tab.Hangers.route)  { HangersScreen(onAddHanger = { nav.navigate("hanger-setup") }) }
             composable(Tab.More.route)     { MoreScreen(nav) }
 
             // Sub-screens reached from "More"
-            composable("sites")   { SitesScreen() }
-            composable("profile") { ProfileScreen() }
+            composable("sites")        { SitesScreen() }
+            composable("profile")      { ProfileScreen() }
+            composable("hanger-setup") { HangerSetupScreen(onDone = { nav.popBackStack() }) }
         }
     }
 }
