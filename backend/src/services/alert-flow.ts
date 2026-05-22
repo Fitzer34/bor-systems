@@ -49,7 +49,43 @@ export async function openAlertForHanger(hangerId: string): Promise<string | nul
     alertId: alert!.id,
     zoneId: hanger.zoneId ?? null,
   });
+
+  // Fire-and-forget chat-platform webhooks (Slack + MS Teams). Customers
+  // with the webhook URL configured under settings get a channel post.
+  // No-op if neither is configured.
+  void postChatAlertOpen(alert!.id, hanger.organisationId, hangerId);
+
   return alert!.id;
+}
+
+async function postChatAlertOpen(alertId: string, orgId: string, hangerId: string): Promise<void> {
+  try {
+    const { postToChatPlatforms } = await import("./chat-webhook.js");
+    const [loc] = await db
+      .select({
+        zoneName: schema.zones.name,
+        floorName: schema.floors.name,
+        buildingName: schema.buildings.name,
+      })
+      .from(schema.hangers)
+      .leftJoin(schema.zones,     eq(schema.zones.id,     schema.hangers.zoneId))
+      .leftJoin(schema.floors,    eq(schema.floors.id,    schema.zones.floorId))
+      .leftJoin(schema.buildings, eq(schema.buildings.id, schema.floors.buildingId))
+      .where(eq(schema.hangers.id, hangerId))
+      .limit(1);
+    const where = [loc?.buildingName, loc?.floorName, loc?.zoneName]
+      .filter(Boolean).join(" / ") || "(unassigned hanger)";
+    await postToChatPlatforms({
+      orgId,
+      title: "🚨 Spill alert",
+      body: `Sign lifted at ${where}.`,
+      colour: "ff0000",
+      fields: [{ label: "Location", value: where }],
+    });
+  } catch (e) {
+    // Never crash the alert flow because a webhook is misconfigured.
+    console.warn("chat-webhook post failed:", (e as Error).message);
+  }
 }
 
 export async function closeAlertForHanger(
