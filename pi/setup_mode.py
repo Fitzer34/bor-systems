@@ -3,7 +3,7 @@
 BOR Hanger first-time Wi-Fi onboarding via Bluetooth Low Energy.
 
 Runs at boot when the device has no Wi-Fi configured yet. Advertises a
-GATT service that the Zero Slip Systems iOS app can connect to over BLE, writes
+GATT service that the HazardLink iOS app can connect to over BLE, writes
 the user's Wi-Fi credentials in, and we then use NetworkManager to join
 the network. On success this script signals systemd to switch to the
 normal `bor-hanger` service.
@@ -11,7 +11,7 @@ normal `bor-hanger` service.
 UX from the customer's side:
 
   1. Plug in the hanger. A green LED breathes to say "I'm in setup mode".
-  2. Open Zero Slip Systems app → Hangers → Add a hanger.
+  2. Open HazardLink app → Hangers → Add a hanger.
   3. The app finds "BOR-Setup-XXXX" via Bluetooth, prompts the customer to
      enter the home Wi-Fi password, sends it over BLE.
   4. Pi joins the home Wi-Fi → status reads back "connected" → app says

@@ -1,4 +1,4 @@
-# Zero Slip Systems — Mobile App (iOS + Android)
+# HazardLink — Mobile App (iOS + Android)
 
 Expo (React Native) + TypeScript. Single codebase for both platforms.
 

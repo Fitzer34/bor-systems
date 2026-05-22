@@ -10,14 +10,14 @@ export function Terms() {
   return (
     <article className="prose mx-auto max-w-2xl px-6 py-12 text-slate-800">
       <p className="text-sm text-slate-500">
-        <Link to="/" className="underline">Back to Zero Slip Systems</Link>
+        <Link to="/" className="underline">Back to HazardLink</Link>
       </p>
       <h1>Terms of Service</h1>
       <p className="text-sm text-slate-500">Last updated: 14 May 2026</p>
 
       <h2>1. The deal</h2>
       <p>
-        These terms govern your use of the Zero Slip Systems smart wet-floor-sign
+        These terms govern your use of the HazardLink smart wet-floor-sign
         monitoring service ("the Service"), including the cloud dashboard,
         mobile apps, and the hangers themselves. By creating an organisation
         account, or using a device we have shipped you, you accept these
@@ -41,7 +41,7 @@ export function Terms() {
 
       <h2>4. The hangers</h2>
       <p>
-        Hangers remain Zero Slip Systems property under any rental plan. You agree
+        Hangers remain HazardLink property under any rental plan. You agree
         to install them in line with the supplied instructions, not to
         modify the firmware, and to return them on termination. Reasonable
         wear and tear is expected and not chargeable.
@@ -67,7 +67,7 @@ export function Terms() {
 
       <h2>7. Liability</h2>
       <p>
-        Zero Slip Systems is an aid to your cleaning operation. It does not
+        HazardLink is an aid to your cleaning operation. It does not
         replace your duty of care around slip-and-trip hazards. To the
         maximum extent permitted by law, our liability for any claim
         relating to the Service is capped at the fees you paid us in the
@@ -108,7 +108,7 @@ export function Terms() {
 
       <h2>12. Contact</h2>
       <p>
-        Zero Slip Systems Ltd., contact{" "}
+        HazardLink Ltd., contact{" "}
         <a href="mailto:hello@bor-systems.com">hello@bor-systems.com</a>.
       </p>
     </article>

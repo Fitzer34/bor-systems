@@ -103,7 +103,7 @@ async function postToTeams(msg: ChatMessage): Promise<void> {
     potentialAction: msg.url
       ? [{
           "@type": "OpenUri",
-          name: "Open in Zero Slip Systems",
+          name: "Open in HazardLink",
           targets: [{ os: "default", uri: msg.url }],
         }]
       : undefined,

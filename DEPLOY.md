@@ -1,4 +1,4 @@
-# Deploying Zero Slip Systems to Render
+# Deploying HazardLink to Render
 
 This deploys the backend (Node), web dashboard (React), and Postgres database
 to [Render](https://render.com) using the `render.yaml` blueprint at the root

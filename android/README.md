@@ -1,4 +1,4 @@
-# Zero Slip Systems — Android
+# HazardLink — Android
 
 Phone app + Wear OS companion. Mirrors the iOS app screen-for-screen.
 

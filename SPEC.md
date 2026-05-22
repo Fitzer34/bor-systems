@@ -1,11 +1,11 @@
-# Zero Slip Systems — Wet Floor Sign Hanger Notification System
+# HazardLink — Wet Floor Sign Hanger Notification System
 
 **Status:** Draft requirements (v0.1)
 **Last updated:** 2026-05-06
 
 ## 1. Problem and goal
 
-Cleaning staff in large buildings frequently leave wet floor signs on the floor after a spill is cleaned, where the signs themselves become the next trip hazard. Zero Slip Systems is an IoT product that holds wet floor signs in dedicated wall-mounted hangers; when a sign is lifted, the system notifies cleaners (with floor and zone) via mobile and web apps, and only closes the alert when the sign is physically returned.
+Cleaning staff in large buildings frequently leave wet floor signs on the floor after a spill is cleaned, where the signs themselves become the next trip hazard. HazardLink is an IoT product that holds wet floor signs in dedicated wall-mounted hangers; when a sign is lifted, the system notifies cleaners (with floor and zone) via mobile and web apps, and only closes the alert when the sign is physically returned.
 
 ## 2. Scope
 

@@ -1,4 +1,4 @@
-// Zero Slip Systems — phone app.
+// HazardLink — phone app.
 //
 // Material 3 + Jetpack Compose. Mirrors the iOS app screen-for-screen:
 //   LoginView    → ui/auth/LoginScreen.kt
@@ -24,13 +24,13 @@ android {
         // Play Store publish ID. The internal Kotlin package path stays
         // com.borsystems.app to avoid a massive find-replace; applicationId
         // and namespace can legitimately differ. Users only see this one.
-        applicationId = "com.zeroslipsystems.app"
+        applicationId = "com.hazardlink.app"
         minSdk = 26          // Android 8.0 — ~95% device coverage
         targetSdk = 34       // Android 14
         versionCode = 1
         versionName = "0.1.0"
 
-        // Zero Slip Systems backend URL is hard-coded to the production Render
+        // HazardLink backend URL is hard-coded to the production Render
         // service. To point at a local dev server, override in a
         // signing-config or via gradle -P arg in CI.
         buildConfigField(

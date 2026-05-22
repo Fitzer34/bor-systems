@@ -82,7 +82,7 @@ async function tick(): Promise<void> {
         orgId,
         alertId: null,
         userId: a.id,
-        title: "Zero Slip Systems — possible missing sign(s)",
+        title: "HazardLink — possible missing sign(s)",
         body: `${body}\n\nReview missing signs in the admin dashboard under Hangers.`,
         kind: "low_battery",
       });

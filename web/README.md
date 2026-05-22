@@ -1,4 +1,4 @@
-# Zero Slip Systems — Web Dashboard
+# HazardLink — Web Dashboard
 
 Vite + React + TypeScript + Tailwind. Talks to the backend over HTTPS.
 

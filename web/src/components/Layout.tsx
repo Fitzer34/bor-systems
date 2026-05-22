@@ -28,7 +28,7 @@ export function Layout() {
             <line x1="3"  y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <div className="font-semibold text-sm">Zero Slip Systems</div>
+        <div className="font-semibold text-sm">HazardLink</div>
         {/* Spacer so the title stays centered between the hamburger and a
             zero-width invisible right column. */}
         <div className="w-10" />
@@ -56,7 +56,7 @@ export function Layout() {
         }
       >
         <div className="px-4 py-5 border-b border-slate-800">
-          <div className="font-semibold tracking-wide">Zero Slip Systems</div>
+          <div className="font-semibold tracking-wide">HazardLink</div>
           {user.organisationName && (
             <div className="text-xs text-slate-300 mt-1 truncate">{user.organisationName}</div>
           )}

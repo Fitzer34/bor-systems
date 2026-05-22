@@ -1,5 +1,5 @@
 """
-Generates the Zero Slip Systems app icon at 1024x1024.
+Generates the HazardLink app icon at 1024x1024.
 Design: yellow caution background with a bold black exclamation mark,
 echoing the universal "Caution: Wet Floor" sign.
 """

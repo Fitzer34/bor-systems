@@ -5,7 +5,7 @@ import { useAuth } from "./auth";
 
 interface ActiveAlert { id: string; status: "open" | "acknowledged" | "closed" }
 
-const BASE_TITLE = "Zero Slip Systems";
+const BASE_TITLE = "HazardLink";
 
 function playDing(): void {
   try {

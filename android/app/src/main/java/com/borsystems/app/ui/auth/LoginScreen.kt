@@ -34,7 +34,7 @@ fun LoginScreen() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Zero Slip Systems", style = MaterialTheme.typography.headlineLarge)
+            Text("HazardLink", style = MaterialTheme.typography.headlineLarge)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Sign in",

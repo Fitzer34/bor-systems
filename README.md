@@ -1,4 +1,4 @@
-# Zero Slip Systems
+# HazardLink
 
 IoT wet-floor-sign hangers that notify cleaners when a sign is lifted, with floor + zone, via mobile and web apps.
 

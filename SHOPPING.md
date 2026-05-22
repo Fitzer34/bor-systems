@@ -1,4 +1,4 @@
-# Zero Slip Systems — Prototype shopping list
+# HazardLink — Prototype shopping list
 
 Updated 2026-05-21
 

@@ -1,4 +1,4 @@
-// Zero Slip Systems — Wear OS companion app.
+// HazardLink — Wear OS companion app.
 //
 // Mirrors the Apple Watch app: glanceable active-alerts list with "I'm
 // on it" / "It's done" actions. Same backend, same FCM topics.
@@ -22,7 +22,7 @@ android {
         // Wear OS apps must use the phone's applicationId + ".wear" suffix
         // (or any prefix matching the phone). Kotlin package stays
         // com.borsystems.wear internally to skip a large find-replace.
-        applicationId = "com.zeroslipsystems.app.wear"
+        applicationId = "com.hazardlink.app.wear"
         minSdk = 30           // Wear OS 3.0
         targetSdk = 34
         versionCode = 1

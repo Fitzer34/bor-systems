@@ -12,7 +12,7 @@ struct LoginView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
             VStack(spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Zero Slip Systems")
+                    Text("HazardLink")
                         .font(.title2.weight(.semibold))
                     Text("Sign in")
                         .foregroundStyle(.secondary)

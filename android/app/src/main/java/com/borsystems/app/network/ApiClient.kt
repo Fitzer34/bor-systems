@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit
  * rollover used to kick users out mid-use).
  */
 object ApiClient {
-    private const val PREFS = "zeroslipsystems_auth"
+    private const val PREFS = "hazardlink_auth"
     private const val K_TOKEN = "token"
 
     private lateinit var prefs: android.content.SharedPreferences

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Zero Slip Systems — WiFi-mode hanger daemon.
+HazardLink — WiFi-mode hanger daemon.
 
 Runs on a Raspberry Pi that is mounted *in/on the hanger itself*. Reads a
 microswitch on GPIO, drives status LEDs, and sends events directly to the

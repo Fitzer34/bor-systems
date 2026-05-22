@@ -103,8 +103,8 @@ export async function generateComplianceReport(
       size: "A4",
       margin: 50,
       info: {
-        Title: `Zero Slip Systems Compliance Report — ${organisationName}`,
-        Author: "Zero Slip Systems",
+        Title: `HazardLink Compliance Report — ${organisationName}`,
+        Author: "HazardLink",
         Subject: `${formatDate(from)} to ${formatDate(to)}`,
       },
     });
