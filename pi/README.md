@@ -1,4 +1,4 @@
-# ZeroSlip — Raspberry Pi
+# Zero Slip Systems — Raspberry Pi
 
 The same Pi codebase can run in **two roles**. Pick the one that fits the building.
 
@@ -67,7 +67,7 @@ It scans your local network and prints the Pi's IP address.
 
 You should now see a prompt like `owen@borpi:~$`. **You're on the Pi over WiFi.**
 
-## 3. Install ZeroSlip on the Pi
+## 3. Install Zero Slip Systems on the Pi
 
 On the Pi (i.e. through the SSH session you just opened):
 

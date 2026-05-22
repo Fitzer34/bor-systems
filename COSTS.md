@@ -1,4 +1,4 @@
-# ZeroSlip — Full project cost breakdown
+# Zero Slip Systems — Full project cost breakdown
 
 Updated 2026-05-21
 
@@ -137,7 +137,7 @@ At 10k+ hangers, add ~€50/mo for Postgres Pro + read replicas.
 | Product liability insurance | €1,000-3,000/yr | Before production |
 | Patent provisional (UK+IE via FRKelly) | €2,000-5,000 | BEFORE public demos |
 | Patent full filing (year 2) | €8,000-15,000 | 12 months after provisional |
-| Trademark "ZeroSlip" (UK+IE) | €500-1,000 | Before launch |
+| Trademark "Zero Slip Systems" (UK+IE) | €500-1,000 | Before launch |
 | Company incorporation | €50-300 | Before invoicing |
 | Accountant | €600-1,500/yr | Year 1+ |
 | **Pre-launch legal** | **~€4-8k** | |

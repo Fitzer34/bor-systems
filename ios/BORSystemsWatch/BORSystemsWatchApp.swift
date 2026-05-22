@@ -49,7 +49,7 @@ struct NotSignedInView: View {
             Image(systemName: "iphone.gen3")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
-            Text("Open the ZeroSlip iPhone app and sign in to use the watch.")
+            Text("Open the Zero Slip Systems iPhone app and sign in to use the watch.")
                 .font(.footnote)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

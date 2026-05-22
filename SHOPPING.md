@@ -1,4 +1,4 @@
-# ZeroSlip — Prototype shopping list
+# Zero Slip Systems — Prototype shopping list
 
 Updated 2026-05-21
 

@@ -1,4 +1,4 @@
-// ZeroSlip — Android workspace
+// Zero Slip Systems — Android workspace
 //
 // Two modules:
 //   :app  — the phone app (Material 3 + Jetpack Compose, mirrors iOS)

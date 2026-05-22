@@ -30,7 +30,7 @@ export function generateTotpSecret(): string {
 }
 
 export function otpauthUrl(args: { secret: string; email: string; issuer?: string }): string {
-  const issuer = args.issuer ?? "ZeroSlip";
+  const issuer = args.issuer ?? "Zero Slip Systems";
   return authenticator.keyuri(args.email, issuer, args.secret);
 }
 

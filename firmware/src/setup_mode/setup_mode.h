@@ -1,7 +1,7 @@
 // BLE Wi-Fi onboarding — C++ port of pi/setup_mode.py.
 //
 // Runs on first boot (and whenever the user requests re-onboarding by long-
-// pressing the test button). Advertises a GATT service that the ZeroSlip
+// pressing the test button). Advertises a GATT service that the Zero Slip Systems
 // iOS app connects to, receives Wi-Fi SSID + password over an encrypted-
 // authenticated BLE link, joins the network, persists the credentials, and
 // hands control back to the main firmware loop.

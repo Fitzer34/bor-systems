@@ -1,4 +1,4 @@
-# ZeroSlip — Android
+# Zero Slip Systems — Android
 
 Phone app + Wear OS companion. Mirrors the iOS app screen-for-screen.
 

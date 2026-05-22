@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 /**
- * Privacy notice for ZeroSlip.
+ * Privacy notice for Zero Slip Systems.
  *
  * This is a plain-English starting point — not a substitute for legal review.
  * Before signing the first paying customer, get this reviewed by a UK
@@ -11,14 +11,14 @@ export function Privacy() {
   return (
     <article className="prose mx-auto max-w-2xl px-6 py-12 text-slate-800">
       <p className="text-sm text-slate-500">
-        <Link to="/" className="underline">Back to ZeroSlip</Link>
+        <Link to="/" className="underline">Back to Zero Slip Systems</Link>
       </p>
       <h1>Privacy Policy</h1>
       <p className="text-sm text-slate-500">Last updated: 14 May 2026</p>
 
       <h2>1. Who we are</h2>
       <p>
-        ZeroSlip Ltd. ("ZeroSlip", "we", "us") provides smart
+        Zero Slip Systems Ltd. ("Zero Slip Systems", "we", "us") provides smart
         wet-floor-sign monitoring hardware and a cloud service that alerts
         cleaning teams when a sign has been lifted from its hanger. This
         notice explains what personal data we collect, why we collect it,

@@ -112,7 +112,7 @@ struct HomeView: View {
     }
 
     private var navigationTitle: String {
-        guard let u = auth.user else { return "ZeroSlip" }
+        guard let u = auth.user else { return "Zero Slip Systems" }
         return "\(u.name) · \(u.role.rawValue)"
     }
 

@@ -50,7 +50,7 @@ private fun NotSignedIn() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("ZeroSlip", style = MaterialTheme.typography.title3)
+            Text("Zero Slip Systems", style = MaterialTheme.typography.title3)
             Text(
                 "Open the phone app and sign in.",
                 style = MaterialTheme.typography.body2,

@@ -1,4 +1,4 @@
-// ZeroSlip firmware — entry point.
+// Zero Slip Systems firmware — entry point.
 //
 // Mode is selected by build flag (see platformio.ini). The unused mode's code
 // is excluded by the preprocessor so the binary stays small. One repo, three
@@ -20,7 +20,7 @@ void setup() {
     Serial.begin(115200);
     delay(50);  // let USB CDC enumerate
     Serial.println();
-    Serial.println(F("=== ZeroSlip firmware ==="));
+    Serial.println(F("=== Zero Slip Systems firmware ==="));
     Serial.printf("build: v%d.%d  mode: ", FW_MAJOR, FW_MINOR);
 #if defined(BOR_MODE_HANGER)
     Serial.println(F("hanger (battery / LoRa)"));

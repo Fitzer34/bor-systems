@@ -1,4 +1,4 @@
-# ZeroSlip — Web Dashboard
+# Zero Slip Systems — Web Dashboard
 
 Vite + React + TypeScript + Tailwind. Talks to the backend over HTTPS.
 

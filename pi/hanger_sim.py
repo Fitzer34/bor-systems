@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Hanger simulator for ZeroSlip.
+Hanger simulator for Zero Slip Systems.
 
 Sends a fake LoRaWAN uplink to your cloud backend's TTS webhook so you can
 exercise the alert pipeline end-to-end without real hardware.
@@ -78,7 +78,7 @@ def fire(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="ZeroSlip fake-hanger simulator")
+    parser = argparse.ArgumentParser(description="Zero Slip Systems fake-hanger simulator")
     parser.add_argument(
         "event",
         choices=["lift", "lifted", "return", "returned", "heartbeat", "low_battery", "cycle"],

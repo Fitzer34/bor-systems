@@ -45,7 +45,7 @@ class BorMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
         val category = data["category"] ?: data["kind"] ?: "alert"
-        val title = message.notification?.title ?: data["title"] ?: "ZeroSlip"
+        val title = message.notification?.title ?: data["title"] ?: "Zero Slip Systems"
         val body  = message.notification?.body  ?: data["body"]  ?: ""
         val alertId = data["alertId"]
 

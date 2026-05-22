@@ -8,7 +8,7 @@
  *   APNS_KEY_ID     — 10-char ID of your APNs auth key
  *   APNS_KEY_P8     — full contents of the .p8 file Apple gave you,
  *                     PEM-encoded, with real newlines or "\n" sequences
- *   APNS_TOPIC      — the iOS bundle ID (default: com.zeroslip.app)
+ *   APNS_TOPIC      — the iOS bundle ID (default: com.zeroslipsystems.app)
  *   APNS_PRODUCTION — "true" for App Store / TestFlight builds,
  *                     "false" (default) for development/sandbox builds
  *                     installed via Xcode.
@@ -23,7 +23,7 @@ import jwt from "jsonwebtoken";
 const APNS_TEAM_ID = process.env.APNS_TEAM_ID;
 const APNS_KEY_ID = process.env.APNS_KEY_ID;
 const APNS_KEY_P8 = process.env.APNS_KEY_P8?.replace(/\\n/g, "\n");
-const APNS_TOPIC = process.env.APNS_TOPIC ?? "com.zeroslip.app";
+const APNS_TOPIC = process.env.APNS_TOPIC ?? "com.zeroslipsystems.app";
 const APNS_PRODUCTION = (process.env.APNS_PRODUCTION ?? "false").toLowerCase() === "true";
 
 const APNS_HOST = APNS_PRODUCTION
