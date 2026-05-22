@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HazardLink — Smart wet-floor monitoring for commercial facilities</title>
+<meta name="description" content="Real-time spill alerts the moment a wet floor sign is lifted. Proves compliance to your insurer. €15/month per site.">
+<meta property="og:title" content="HazardLink — Smart wet-floor monitoring">
+<meta property="og:description" content="Real-time spill alerts. Cuts slip-and-fall insurance premiums.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://hazardlink.com">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E⚠️%3C/text%3E%3C/svg%3E">
+<style>
+  /* Single-file landing — no external deps. Deploys to Cloudflare Pages
+     or GitHub Pages by uploading just this file. */
+  :root {
+    --orange: #ff8800;
+    --red: #e53935;
+    --green: #2e7d32;
+    --ink: #0f172a;
+    --grey: #64748b;
+    --paper: #ffffff;
+    --soft: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    line-height: 1.5;
+    background: var(--paper);
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  header {
+    padding: 20px 0;
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky; top: 0; background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+  }
+  header .container { display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-weight: 700; font-size: 20px; letter-spacing: -0.5px; }
+  .logo::before { content: "⚠️ "; }
+  nav a { color: var(--ink); text-decoration: none; margin-left: 24px; font-size: 15px; }
+  nav a:hover { color: var(--orange); }
+  .btn {
+    display: inline-block;
+    background: var(--orange);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    border: 0; cursor: pointer;
+    font-size: 15px;
+  }
+  .btn:hover { background: #e67700; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid #cbd5e1;
+  }
+  .btn-ghost:hover { background: var(--soft); }
+
+  /* Hero */
+  .hero {
+    padding: 80px 0 60px;
+    text-align: center;
+  }
+  .hero h1 {
+    font-size: clamp(36px, 6vw, 56px);
+    line-height: 1.1; margin: 0 0 20px;
+    letter-spacing: -1px;
+  }
+  .hero h1 .accent { color: var(--orange); }
+  .hero p {
+    font-size: 20px;
+    color: var(--grey);
+    max-width: 640px;
+    margin: 0 auto 32px;
+  }
+  .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+  /* Features grid */
+  .features { padding: 60px 0; background: var(--soft); }
+  .features h2, .pricing h2, .contact h2 { font-size: 32px; text-align: center; margin: 0 0 40px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px;
+  }
+  .feat {
+    background: white;
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+  }
+  .feat .icon { font-size: 32px; margin-bottom: 12px; }
+  .feat h3 { font-size: 18px; margin: 0 0 8px; }
+  .feat p { font-size: 14px; color: var(--grey); margin: 0; }
+
+  /* How it works */
+  .how { padding: 60px 0; }
+  .how h2 { font-size: 32px; text-align: center; margin: 0 0 40px; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; }
+  .step { text-align: center; }
+  .step .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 48px; height: 48px;
+    background: var(--orange); color: white; font-weight: 700;
+    border-radius: 50%; margin: 0 auto 12px;
+  }
+  .step h3 { font-size: 17px; margin: 0 0 6px; }
+  .step p { font-size: 14px; color: var(--grey); margin: 0; }
+
+  /* Pricing */
+  .pricing { padding: 60px 0; background: var(--soft); }
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+  .plan {
+    background: white; padding: 28px;
+    border-radius: 12px; border: 1px solid #e2e8f0;
+  }
+  .plan.featured { border: 2px solid var(--orange); position: relative; }
+  .plan.featured::before {
+    content: "Most popular";
+    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+    background: var(--orange); color: white; font-size: 12px;
+    padding: 4px 12px; border-radius: 12px; font-weight: 600;
+  }
+  .plan h3 { margin: 0 0 4px; font-size: 22px; }
+  .plan .price { font-size: 36px; font-weight: 700; margin: 8px 0; }
+  .plan .price span { font-size: 14px; color: var(--grey); font-weight: 400; }
+  .plan ul { padding-left: 16px; color: var(--grey); font-size: 14px; }
+  .plan li { margin: 6px 0; }
+
+  /* Contact */
+  .contact { padding: 60px 0; text-align: center; }
+  .contact p { color: var(--grey); margin: 8px 0; }
+  .contact a { color: var(--orange); text-decoration: none; font-weight: 600; }
+
+  footer { padding: 40px 0; border-top: 1px solid #e2e8f0; }
+  footer .container { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  footer p { margin: 0; font-size: 14px; color: var(--grey); }
+  footer .links a { color: var(--grey); margin-left: 16px; text-decoration: none; font-size: 14px; }
+  footer .links a:hover { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="logo">HazardLink</div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#contact" class="btn">Book a demo</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container">
+    <h1>Spills detected the second they happen.<br><span class="accent">Insurance-ready audit trail.</span></h1>
+    <p>HazardLink puts a smart sensor inside every wet-floor sign. The moment one is lifted, your cleaning team gets a push notification, the location goes red on the dashboard, and a tamper-proof PDF goes to your insurer.</p>
+    <div class="cta">
+      <a class="btn" href="#contact">Book a 15-minute demo</a>
+      <a class="btn btn-ghost" href="#how">See how it works</a>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="features">
+  <div class="container">
+    <h2>Built for facility safety teams</h2>
+    <div class="grid">
+      <div class="feat"><div class="icon">🚨</div><h3>Instant alerts</h3><p>Phone, web, watch, and Slack notifications the moment a wet-floor sign is lifted. Response time becomes measurable.</p></div>
+      <div class="feat"><div class="icon">📍</div><h3>Find any sign</h3><p>AirTag-style precision finding (UWB) lets cleaners walk straight to the alert location. No more searching huge warehouses.</p></div>
+      <div class="feat"><div class="icon">📄</div><h3>Compliance PDF</h3><p>Auto-generated weekly reports with every spill, response time, and photo evidence. Hand it to your insurer for premium discounts.</p></div>
+      <div class="feat"><div class="icon">🔋</div><h3>2-year battery</h3><p>21700 lithium cells. Charge once a year via USB-C dock. Six languages, multi-site, dark mode.</p></div>
+      <div class="feat"><div class="icon">🌙</div><h3>After-hours mode</h3><p>Different escalation policy at night. Alerts route to your security guard instead of waking the cleaning team.</p></div>
+      <div class="feat"><div class="icon">🛡️</div><h3>Anti-theft</h3><p>Signs that go missing for 24 hours auto-alert you. Save €300–600/year in replacement costs.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="how">
+  <div class="container">
+    <h2>Setup in 30 minutes per site</h2>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><h3>Mount the hangers</h3><p>Screw a sign-hanger to the wall wherever you keep a wet-floor sign. 5 minutes per location.</p></div>
+      <div class="step"><div class="num">2</div><h3>Plug in the gateway</h3><p>One gateway per building. USB-C power. App walks you through Wi-Fi setup over Bluetooth.</p></div>
+      <div class="step"><div class="num">3</div><h3>Hang your existing signs</h3><p>Drop your own wet-floor signs onto the hangers. We don't replace your signs — we make them smart.</p></div>
+      <div class="step"><div class="num">4</div><h3>Cleaners install the app</h3><p>Free iPhone + Android app. Watch + Wear OS supported. Done.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing" class="pricing">
+  <div class="container">
+    <h2>Simple pricing</h2>
+    <div class="plans">
+      <div class="plan">
+        <h3>Small site</h3>
+        <p style="color:var(--grey)">Up to 10 sign-hangers + 1 building</p>
+        <div class="price">€30<span> / month</span></div>
+        <ul>
+          <li>Real-time alerts</li>
+          <li>iOS + Android apps</li>
+          <li>Compliance PDFs</li>
+          <li>Email support</li>
+        </ul>
+        <p style="color:var(--grey);font-size:13px;margin-top:16px;">+ €1,500 one-time hardware</p>
+      </div>
+      <div class="plan featured">
+        <h3>Multi-site</h3>
+        <p style="color:var(--grey)">Up to 50 hangers + 2 buildings</p>
+        <div class="price">€100<span> / month</span></div>
+        <ul>
+          <li>Everything in Small</li>
+          <li>UWB precision finding</li>
+          <li>Anti-theft monitoring</li>
+          <li>Slack / Teams integration</li>
+          <li>Heat-map analytics</li>
+        </ul>
+        <p style="color:var(--grey);font-size:13px;margin-top:16px;">+ €6,500 one-time hardware</p>
+      </div>
+      <div class="plan">
+        <h3>Enterprise</h3>
+        <p style="color:var(--grey)">Unlimited hangers, multiple buildings</p>
+        <div class="price">€350<span> / month</span></div>
+        <ul>
+          <li>Everything in Multi-site</li>
+          <li>Dedicated success manager</li>
+          <li>SLA: 99.9% uptime</li>
+          <li>Custom integrations</li>
+          <li>Insurance-broker partnership</li>
+        </ul>
+        <p style="color:var(--grey);font-size:13px;margin-top:16px;">+ €25,000+ one-time hardware</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="contact" class="contact">
+  <div class="container">
+    <h2>Book a 15-minute demo</h2>
+    <p>We'll walk through your building's safety needs and show the live alert flow on a real device.</p>
+    <p>Email <a href="mailto:hello@hazardlink.com">hello@hazardlink.com</a> or call <a href="tel:+353000000000">+353 (0)0 000 0000</a></p>
+    <p style="margin-top:32px;color:var(--grey);font-size:14px;">No-pressure call. We'll send a Calendar invite within 1 working day.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>© 2026 HazardLink Ltd · Made in Ireland</p>
+    <div class="links">
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/status">Status</a>
+      <a href="mailto:support@hazardlink.com">Support</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
