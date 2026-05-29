@@ -16,6 +16,17 @@
 name = "hazardlink-app"
 compatibility_date = "2025-05-29"
 
+# Bind app.hazardlink.ie directly to this worker. With `custom_domain = true`,
+# Cloudflare auto-creates the CNAME, issues the SSL cert, and routes traffic.
+# Prerequisite: hazardlink.ie must be on the same Cloudflare account as the
+# worker — which it is (we proxied it during the landing-page rollout).
+#
+# After `wrangler deploy`, https://app.hazardlink.ie loads the dashboard
+# alongside the existing https://hazardlink-app.owenfitz.workers.dev URL.
+routes = [
+  { pattern = "app.hazardlink.ie", custom_domain = true },
+]
+
 # Static assets — Vite's build output. Everything under here is served
 # directly; the Worker entrypoint below only kicks in for paths that
 # don't match a built asset.
