@@ -295,6 +295,32 @@ extension APIClient {
         let _: EmptyResponse = try await request("/hangers/\(id)/recommission", method: "POST")
     }
 
+    /// Unified hanger edit — name, location note, zone, audible alarm in
+    /// one call. Backend subsumes the older /relocate endpoint with this.
+    struct UpdateHangerBody: Encodable {
+        let name: String?
+        let locationNote: String?
+        let zoneId: String?
+        let audibleAlarmEnabled: Bool?
+    }
+    func updateHanger(
+        _ id: String,
+        name: String? = nil,
+        locationNote: String? = nil,
+        zoneId: String? = nil,
+        audibleAlarmEnabled: Bool? = nil,
+    ) async throws {
+        let _: EmptyResponse = try await request(
+            "/hangers/\(id)", method: "PATCH",
+            body: UpdateHangerBody(
+                name: name,
+                locationNote: locationNote,
+                zoneId: zoneId,
+                audibleAlarmEnabled: audibleAlarmEnabled,
+            ),
+        )
+    }
+
     // MARK: Gateways (admin/supervisor)
 
     func gateways() async throws -> [Gateway] {

@@ -19,17 +19,29 @@ struct HangersView: View {
                 Text("No hangers registered yet.").foregroundStyle(.secondary)
             }
             ForEach(hangers) { h in
-                HangerRow(hanger: h, lowBatteryThreshold: settings?.lowBatteryThreshold ?? 20,
-                          locationLabel: location(for: h))
-                    .swipeActions {
-                        if auth.user?.role == .admin {
-                            if h.status == .decommissioned {
-                                Button("Recommission") { Task { await recommission(h) } }.tint(.green)
-                            } else {
-                                Button("Decommission") { Task { await decommission(h) } }.tint(.red)
-                            }
+                NavigationLink {
+                    HangerDetailView(
+                        hanger: h,
+                        zoneById: zoneById,
+                        lowBatteryThreshold: settings?.lowBatteryThreshold ?? 20,
+                        onChange: { Task { await refresh() } },
+                    )
+                } label: {
+                    HangerRow(
+                        hanger: h,
+                        lowBatteryThreshold: settings?.lowBatteryThreshold ?? 20,
+                        locationLabel: location(for: h),
+                    )
+                }
+                .swipeActions {
+                    if auth.user?.role == .admin {
+                        if h.status == .decommissioned {
+                            Button("Recommission") { Task { await recommission(h) } }.tint(.green)
+                        } else {
+                            Button("Decommission") { Task { await decommission(h) } }.tint(.red)
                         }
                     }
+                }
             }
             if let err = error {
                 Section { Text(err).foregroundStyle(.red) }
@@ -127,11 +139,26 @@ private struct HangerRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(hanger.devEui).font(.system(.body, design: .monospaced))
+                // Friendly name takes top billing; DevEUI becomes the
+                // secondary identifier underneath.
+                Text(hanger.name?.isEmpty == false ? hanger.name! : hanger.devEui)
+                    .font(hanger.name?.isEmpty == false ? .body.weight(.medium) : .system(.body, design: .monospaced))
                 Spacer()
                 statusBadge
             }
+            if hanger.name?.isEmpty == false {
+                Text(hanger.devEui)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
             Text(locationLabel).font(.caption).foregroundStyle(.secondary)
+            if let note = hanger.locationNote, !note.isEmpty {
+                Text("📍 \(note)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .italic()
+                    .lineLimit(2)
+            }
             HStack(spacing: 14) {
                 if let pct = hanger.batteryPct {
                     let low = pct <= lowBatteryThreshold
@@ -190,6 +217,333 @@ private struct HangerRow: View {
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(color.opacity(0.18), in: Capsule())
             .foregroundStyle(color)
+    }
+}
+
+// MARK: - HangerDetailView ──────────────────────────────────────────────────
+//
+// Sister to GatewayDetailView. Tap a hanger in the list → land here. Lets
+// admins/supervisors edit the customer-facing name, re-assign to a
+// different zone (cascading building → floor → zone picker), add a
+// free-form note explaining where the hanger actually hangs, and toggle
+// the audible alarm. Read-only battery / firmware / last seen below.
+// Decommission / Recommission live in the footer (admin only) — same
+// destructive-action shape we use for gateways.
+
+struct HangerDetailView: View {
+    let hanger: Hanger
+    let zoneById: [String: (zone: Zone, floor: String, building: String)]
+    let lowBatteryThreshold: Int
+    let onChange: () -> Void
+
+    @EnvironmentObject var auth: AuthStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String
+    @State private var locationNote: String
+    @State private var audibleAlarm: Bool
+    @State private var zoneId: String  // empty == unassigned
+
+    // Cascade picker support — load lazily so the detail view opens fast
+    // even if there are many buildings/floors/zones.
+    @State private var buildings: [Building] = []
+    @State private var floors: [Floor] = []
+    @State private var zones: [Zone] = []
+    @State private var buildingId: String = ""   // empty == not chosen
+    @State private var floorId: String = ""
+
+    @State private var saving = false
+    @State private var error: String?
+    @State private var showDecommissionConfirm = false
+
+    init(
+        hanger: Hanger,
+        zoneById: [String: (zone: Zone, floor: String, building: String)],
+        lowBatteryThreshold: Int,
+        onChange: @escaping () -> Void,
+    ) {
+        self.hanger = hanger
+        self.zoneById = zoneById
+        self.lowBatteryThreshold = lowBatteryThreshold
+        self.onChange = onChange
+        _name = State(initialValue: hanger.name ?? "")
+        _locationNote = State(initialValue: hanger.locationNote ?? "")
+        _audibleAlarm = State(initialValue: hanger.audibleAlarmEnabled)
+        _zoneId = State(initialValue: hanger.zoneId ?? "")
+    }
+
+    private var canEdit: Bool {
+        auth.user?.role == .admin || auth.user?.role == .supervisor
+    }
+    private var isAdmin: Bool { auth.user?.role == .admin }
+
+    var body: some View {
+        Form {
+            Section("Identification") {
+                if canEdit {
+                    TextField("Name (e.g. Ward 4B main bathroom)", text: $name)
+                        .autocorrectionDisabled(false)
+                } else {
+                    LabeledContent("Name", value: name.isEmpty ? "—" : name)
+                }
+                LabeledContent("DevEUI", value: hanger.devEui)
+                    .font(.system(.body, design: .monospaced))
+            }
+
+            Section("Location") {
+                if canEdit {
+                    Picker("Building", selection: $buildingId) {
+                        Text("— Unassigned —").tag("")
+                        ForEach(buildings) { b in Text(b.name).tag(b.id) }
+                    }
+                    .onChange(of: buildingId) { newValue in
+                        floorId = ""; zoneId = ""
+                        floors = []; zones = []
+                        if !newValue.isEmpty {
+                            Task { await loadFloors(buildingId: newValue) }
+                        }
+                    }
+
+                    Picker("Floor", selection: $floorId) {
+                        Text("— Unassigned —").tag("")
+                        ForEach(floors) { f in Text(f.name).tag(f.id) }
+                    }
+                    .disabled(buildingId.isEmpty)
+                    .onChange(of: floorId) { newValue in
+                        zoneId = ""; zones = []
+                        if !newValue.isEmpty {
+                            Task { await loadZones(floorId: newValue) }
+                        }
+                    }
+
+                    Picker("Zone", selection: $zoneId) {
+                        Text("— Unassigned —").tag("")
+                        ForEach(zones) { z in Text(z.name).tag(z.id) }
+                    }
+                    .disabled(floorId.isEmpty)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Where in the zone?").font(.caption).foregroundStyle(.secondary)
+                        TextField("e.g. behind the first stall, on the wall by the sinks", text: $locationNote, axis: .vertical)
+                            .lineLimit(2...4)
+                    }
+                } else {
+                    LabeledContent("Location", value: locationLabel)
+                    if !locationNote.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Where in the zone?").font(.caption).foregroundStyle(.secondary)
+                            Text(locationNote)
+                        }
+                    }
+                }
+            }
+
+            Section("Alarm") {
+                if canEdit {
+                    Toggle("Audible alarm on lift", isOn: $audibleAlarm)
+                } else {
+                    LabeledContent("Audible alarm", value: audibleAlarm ? "On" : "Off")
+                }
+            }
+
+            Section("Live state") {
+                statusRow
+                batteryRow
+                if let fw = hanger.firmwareVersion {
+                    LabeledContent("Firmware", value: fw)
+                }
+                if let last = hanger.lastSeenAt {
+                    LabeledContent("Last seen", value: relativeTime(from: last))
+                } else {
+                    LabeledContent("Last seen", value: "Never")
+                }
+            }
+
+            if let err = error {
+                Section { Text(err).foregroundStyle(.red) }
+            }
+
+            if isAdmin {
+                Section {
+                    if hanger.status == .decommissioned {
+                        Button {
+                            Task { await recommission() }
+                        } label: {
+                            Label("Recommission hanger", systemImage: "arrow.up.bin")
+                        }
+                        .foregroundStyle(.green)
+                    } else {
+                        Button(role: .destructive) {
+                            showDecommissionConfirm = true
+                        } label: {
+                            Label("Decommission hanger", systemImage: "archivebox")
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Hanger")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if canEdit {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if saving { ProgressView() }
+                        else      { Text("Save").bold() }
+                    }
+                    .disabled(saving || !hasChanges)
+                }
+            }
+        }
+        .task { await bootstrap() }
+        .alert("Decommission this hanger?", isPresented: $showDecommissionConfirm) {
+            Button("Decommission", role: .destructive) {
+                Task { await decommission() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It will stop appearing in active alerts. You can recommission it any time — the device on the wall keeps working.")
+        }
+    }
+
+    // MARK: Derived
+
+    private var locationLabel: String {
+        guard !zoneId.isEmpty, let entry = zoneById[zoneId] else { return "Unassigned" }
+        return "\(entry.building) / \(entry.floor) / \(entry.zone.name)"
+    }
+
+    private var hasChanges: Bool {
+        name != (hanger.name ?? "") ||
+        locationNote != (hanger.locationNote ?? "") ||
+        audibleAlarm != hanger.audibleAlarmEnabled ||
+        zoneId != (hanger.zoneId ?? "")
+    }
+
+    @ViewBuilder
+    private var statusRow: some View {
+        HStack {
+            Text("Status")
+            Spacer()
+            statusBadgeInline
+        }
+    }
+
+    @ViewBuilder
+    private var statusBadgeInline: some View {
+        let (label, color): (String, Color) = {
+            switch hanger.status {
+            case .outOfService:   return ("Out of service", .orange)
+            case .decommissioned: return ("Decommissioned", .gray)
+            case .active:
+                if let seen = hanger.lastSeenAt,
+                   Date().timeIntervalSince(seen) <= 15 {
+                    return ("Online", .green)
+                }
+                return ("Offline", .orange)
+            }
+        }()
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(label).foregroundStyle(color)
+        }
+    }
+
+    @ViewBuilder
+    private var batteryRow: some View {
+        HStack {
+            Text("Battery")
+            Spacer()
+            if let pct = hanger.batteryPct {
+                let low = pct <= lowBatteryThreshold
+                Text("\(pct)%").foregroundStyle(low ? .red : .primary)
+            } else {
+                Text("—").foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: Loading
+
+    private func bootstrap() async {
+        // Load buildings always — fast.
+        buildings = (try? await APIClient.shared.buildings()) ?? []
+
+        // If we know the hanger's current zone, hydrate the cascade with
+        // the building/floor that zone belongs to so the user can see the
+        // current pick reflected in the picker without an extra tap.
+        if !zoneId.isEmpty, let entry = zoneById[zoneId] {
+            // Find the matching building by name (the map keys we have
+            // here are zones; we walk back via building name).
+            if let b = buildings.first(where: { $0.name == entry.building }) {
+                buildingId = b.id
+                await loadFloors(buildingId: b.id)
+                if let f = floors.first(where: { $0.name == entry.floor }) {
+                    floorId = f.id
+                    await loadZones(floorId: f.id)
+                }
+            }
+        }
+    }
+
+    private func loadFloors(buildingId: String) async {
+        do {
+            floors = try await APIClient.shared.floors(buildingId: buildingId)
+                .sorted { $0.orderIndex < $1.orderIndex }
+        } catch { /* ignore — error surfaces via empty list */ }
+    }
+
+    private func loadZones(floorId: String) async {
+        do {
+            zones = try await APIClient.shared.zones(floorId: floorId)
+        } catch { /* ignore */ }
+    }
+
+    // MARK: Actions
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        error = nil
+        do {
+            try await APIClient.shared.updateHanger(
+                hanger.id,
+                name: name.isEmpty ? nil : name,
+                locationNote: locationNote.trimmingCharacters(in: .whitespaces).isEmpty ? nil : locationNote,
+                zoneId: zoneId.isEmpty ? nil : zoneId,
+                audibleAlarmEnabled: audibleAlarm,
+            )
+            onChange()
+            dismiss()
+        } catch {
+            self.error = "Could not save changes."
+        }
+    }
+
+    private func decommission() async {
+        saving = true
+        defer { saving = false }
+        do {
+            try await APIClient.shared.decommissionHanger(hanger.id)
+            onChange()
+            dismiss()
+        } catch {
+            self.error = "Could not decommission."
+        }
+    }
+
+    private func recommission() async {
+        saving = true
+        defer { saving = false }
+        do {
+            try await APIClient.shared.recommissionHanger(hanger.id)
+            onChange()
+            dismiss()
+        } catch {
+            self.error = "Could not recommission."
+        }
     }
 }
 

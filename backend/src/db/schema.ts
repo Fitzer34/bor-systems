@@ -163,6 +163,14 @@ export const hangers = pgTable(
     devEui: text("dev_eui").notNull(),
     appEui: text("app_eui"),
     appKey: text("app_key"),
+    // Customer-facing label that admins set in the dashboard. Falls back to
+    // DevEUI when null. Lets the dispatcher see "Ward 4B main bathroom"
+    // instead of "BOR1234567890AB" in the alerts feed.
+    name: text("name"),
+    // Free-form note about where in the zone the hanger actually hangs —
+    // "on the wall by the sinks", "behind the first stall on the right".
+    // Used by cleaners + supervisors when responding to alerts.
+    locationNote: text("location_note"),
     zoneId: uuid("zone_id").references(() => zones.id, { onDelete: "set null" }),
     status: hangerStatus("status").notNull().default("active"),
     audibleAlarmEnabled: boolean("audible_alarm_enabled").notNull().default(false),

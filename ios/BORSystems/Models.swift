@@ -113,6 +113,10 @@ enum HangerStatus: String, Codable {
 struct Hanger: Codable, Identifiable, Hashable {
     let id: String
     let devEui: String
+    /// Customer-set label. Falls back to DevEUI in the UI when null.
+    let name: String?
+    /// Free-form text about where exactly the hanger hangs within its zone.
+    let locationNote: String?
     let zoneId: String?
     let status: HangerStatus
     let audibleAlarmEnabled: Bool
