@@ -1,6 +1,7 @@
 #include "hanger.h"
 #include "../battery.h"
 #include "../config/nvs_store.h"
+#include "../display.h"
 #include "../lora_link.h"
 #include "../setup_mode/setup_mode.h"
 #include "../../include/pinout.h"
@@ -10,10 +11,14 @@
 
 namespace {
 
-// Heartbeat cadence. Once an hour balances "online indicator stays fresh"
-// against battery life. See the BOM analysis: 1h cadence + 5000 mAh cell
-// = ~24 months between charges.
+// Heartbeat cadence on battery: once an hour balances "online indicator stays
+// fresh" against battery life. ~24 months on a 5000 mAh 21700.
 constexpr uint64_t HEARTBEAT_INTERVAL_US = 60ULL * 60ULL * 1000000ULL;
+
+// Heartbeat cadence on USB power: once a minute — same as the gateway. We're
+// not battery-constrained, and a 60 s "still alive" cadence makes the
+// dashboard's Online/Offline badge useful during install + bench testing.
+constexpr uint32_t USB_HEARTBEAT_INTERVAL_MS = 60UL * 1000UL;
 
 // Threshold for sending an EVT_LOW_BATTERY (1-shot) ahead of the scheduled
 // heartbeat. Kept aggressive — the cloud already has the % from every
@@ -43,21 +48,59 @@ uint8_t flagsForUplink() {
     return f;
 }
 
+LoraLink::EventType currentEventType() {
+    const uint8_t pct = Battery::readPercent();
+    const bool signPresent = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
+    if (pct <= LOW_BATTERY_PCT && !Battery::isCharging()) {
+        return LoraLink::EventType::LowBattery;
+    }
+    if (!signPresent) return LoraLink::EventType::Lifted;
+    return LoraLink::EventType::Heartbeat;
+}
+
 void sendCurrentState() {
     const uint8_t pct   = Battery::readPercent();
     const uint8_t flags = flagsForUplink();
-    const bool   signPresent = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
+    LoraLink::sendEvent(currentEventType(), pct, flags);
+}
 
-    LoraLink::EventType evt;
-    if (pct <= LOW_BATTERY_PCT) {
-        evt = LoraLink::EventType::LowBattery;
-    } else if (!signPresent) {
-        evt = LoraLink::EventType::Lifted;
+/// 4-line OLED status display. Used during install + bench testing while
+/// the hanger is USB-powered. Refreshes ~once a second.
+void showHangerStatus(uint32_t lastEventMs, LoraLink::EventType lastEvent) {
+    const String devEui = Config::getDevEui();
+    const String suffix = devEui.length() >= 4
+                              ? devEui.substring(devEui.length() - 4)
+                              : devEui;
+    const uint8_t pct = Battery::readPercent();
+    const bool charging = Battery::isCharging();
+    const bool signPresent = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
+
+    char l1[32], l2[32], l3[32], l4[32];
+    snprintf(l1, sizeof(l1), "HazardLink Hanger");
+    snprintf(l2, sizeof(l2), "ID %s  %s",
+             suffix.c_str(),
+             charging ? "USB" : "BATT");
+    snprintf(l3, sizeof(l3), "Battery %d%%  Sign %s",
+             pct, signPresent ? "ON" : "LIFTED");
+
+    // Bottom line shows time since last LoRa send + the event type.
+    const char* evtName = "—";
+    switch (lastEvent) {
+        case LoraLink::EventType::Lifted:          evtName = "lifted";        break;
+        case LoraLink::EventType::Returned:        evtName = "returned";      break;
+        case LoraLink::EventType::Heartbeat:       evtName = "heartbeat";     break;
+        case LoraLink::EventType::LowBattery:      evtName = "low_batt";      break;
+        case LoraLink::EventType::CleaningStarted: evtName = "cleaning";      break;
+    }
+    if (lastEventMs == 0) {
+        snprintf(l4, sizeof(l4), "Last —");
     } else {
-        evt = LoraLink::EventType::Heartbeat;
+        const uint32_t agoSec = (millis() - lastEventMs) / 1000;
+        snprintf(l4, sizeof(l4), "Last %s %lus ago",
+                 evtName, (unsigned long)agoSec);
     }
 
-    LoraLink::sendEvent(evt, pct, flags);
+    Display::showStatus(l1, l2, l3, l4);
 }
 
 }  // namespace
@@ -79,11 +122,7 @@ void setup() {
     if (!Config::isOnboarded()) {
         log_w("not onboarded — entering BLE setup mode");
         SetupMode::run();
-        // SetupMode::run() blocks until success. After it returns we have
-        // Wi-Fi credentials saved in NVS. We don't actually need Wi-Fi for
-        // normal operation (LoRa is enough) — but having creds means the
-        // hanger can do an OTA update later without a re-onboarding.
-        ESP.restart();  // clean state for the LoRa-only main loop
+        ESP.restart();
     }
 
     if (!LoraLink::begin()) {
@@ -92,15 +131,62 @@ void setup() {
         esp_deep_sleep_start();
     }
 
-    // On every wake (regardless of cause) send the current state. The cloud
-    // dedupes by event type so duplicate heartbeats are harmless.
+    // Always show the OLED briefly on boot — visible feedback to the
+    // installer that the hanger came up. If we end up going to deep sleep
+    // below (battery mode), the rail gets cut there.
+    Display::begin();
     sendCurrentState();
 }
 
 void loop() {
-    // The hanger's main loop is "sleep, wake briefly, sleep again". We never
-    // run a real loop() body — everything happens in setup() and then we go
-    // straight back into deep sleep.
+    // ── USB-powered path ──
+    //
+    // Stay awake, keep the OLED lit, refresh status once a second, send a
+    // LoRa heartbeat once a minute. Reacts to Hall sensor edges immediately
+    // by firing a Lifted / Returned event. Useful during bench testing +
+    // first-install commissioning so the customer can see the device is
+    // alive and reacting.
+    if (Battery::isCharging()) {
+        static uint32_t lastSendMs    = millis();
+        static uint32_t lastDispMs    = 0;
+        static uint32_t lastEventMs   = millis();
+        static LoraLink::EventType lastEvent = currentEventType();
+        static bool prevSignPresent   = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
+
+        // Edge-detect sign-on-hook changes for instant push.
+        const bool signPresent = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
+        if (signPresent != prevSignPresent) {
+            prevSignPresent = signPresent;
+            lastEvent = signPresent ? LoraLink::EventType::Returned
+                                    : LoraLink::EventType::Lifted;
+            LoraLink::sendEvent(lastEvent, Battery::readPercent(), flagsForUplink());
+            lastEventMs = millis();
+            lastSendMs  = millis();
+        }
+
+        // Scheduled heartbeat.
+        if (millis() - lastSendMs >= USB_HEARTBEAT_INTERVAL_MS) {
+            lastEvent = currentEventType();
+            LoraLink::sendEvent(lastEvent, Battery::readPercent(), flagsForUplink());
+            lastEventMs = millis();
+            lastSendMs  = millis();
+        }
+
+        // Refresh the OLED ~once a second.
+        if (millis() - lastDispMs > 1000) {
+            lastDispMs = millis();
+            showHangerStatus(lastEventMs, lastEvent);
+        }
+
+        delay(20);  // yield, keep watchdog happy
+        return;
+    }
+
+    // ── Battery path ──
+    //
+    // Already sent one packet from setup(). Time to sleep. We never enter
+    // a "real" loop body here — the hanger's main work happens in setup()
+    // after each wake from deep sleep.
     enterDeepSleep();
 }
 
