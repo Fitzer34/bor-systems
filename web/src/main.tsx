@@ -11,6 +11,7 @@ import { Layout } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
 import { AlertDetail } from "./pages/AlertDetail";
 import { Hangers } from "./pages/Hangers";
+import { Gateways } from "./pages/Gateways";
 import { Users } from "./pages/Users";
 import { FloorPlans } from "./pages/FloorPlans";
 import { Reports } from "./pages/Reports";
@@ -64,6 +65,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="alerts/:id" element={<AlertDetail />} />
               <Route path="profile" element={<Profile />} />
               <Route path="hangers" element={<RequireAuth role={["admin", "supervisor"]}><Hangers /></RequireAuth>} />
+              <Route path="gateways" element={<RequireAuth role={["admin", "supervisor"]}><Gateways /></RequireAuth>} />
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />
               <Route path="floor-plans" element={<RequireAuth role={["admin"]}><FloorPlans /></RequireAuth>} />
               <Route path="reports" element={<RequireAuth role={["admin", "supervisor"]}><Reports /></RequireAuth>} />

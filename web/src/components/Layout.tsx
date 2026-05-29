@@ -75,6 +75,7 @@ export function Layout() {
               actual write permissions. */}
           <NavItem to="/dispatch">Dispatch</NavItem>
           <NavItem to="/schedule">Schedule</NavItem>
+          {isStaff && <NavItem to="/gateways">Gateways</NavItem>}
           {isStaff && <NavItem to="/hangers">Hangers</NavItem>}
           {isStaff && <NavItem to="/users">Users</NavItem>}
           {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}
