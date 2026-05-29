@@ -46,22 +46,49 @@ uint8_t packedFwVersion() {
     return ((FW_MAJOR & 0x0F) << 4) | (FW_MINOR & 0x0F);
 }
 
-// ─── HMAC key — burned at first boot, never leaves the device ───────────────
-// The cloud is told the public part of this key (per-DevEUI) during initial
-// hanger provisioning. Both sides hold the same 32-byte secret.
+// ─── HMAC key ───────────────────────────────────────────────────────────────
+//
+// Priority order:
+//   1. BOR_LORA_HMAC_KEY_BUILD (baked in at compile time, ENV var). All
+//      devices in a fleet built with the same env var share the same key,
+//      so hangers and the gateway can sign + verify each other's packets.
+//      This is the production path — without it, packets get dropped.
+//   2. Fall back to a per-device random NVS key. Kept only for back-compat
+//      with prototype builds; doesn't actually work across devices because
+//      every device gets a different key.
+//
+// The original design called for per-device keys distributed via cloud at
+// provisioning time, but that mechanism was never wired up. The shared-key
+// approach is "good enough" while we're single-tenant: leaking it grants
+// the ability to spoof packets within one customer's deployment, not across
+// customers.
 String hmacKey() {
+#ifdef BOR_LORA_HMAC_KEY_BUILD
+    {
+        const String baked = String(BOR_LORA_HMAC_KEY_BUILD);
+        if (baked.length() >= 32) {
+            // Accept any length ≥ 32 chars so we're not strict about the
+            // 64-hex form — the HMAC library hashes whatever bytes we pass.
+            return baked;
+        }
+    }
+#endif
+
     Preferences p;
     p.begin("borhmac", /*readOnly=*/false);
     String key = p.getString("k", "");
     if (key.length() < 64) {
         // 32 bytes of hardware entropy → 64-char hex. One-time generation.
+        // WARNING: every device gets a different random key here, so this
+        // path can't actually verify cross-device packets. Build with
+        // BOR_LORA_HMAC_KEY set to actually link a fleet.
         char buf[65] = {0};
         for (int i = 0; i < 32; ++i) {
             snprintf(&buf[i*2], 3, "%02x", esp_random() & 0xff);
         }
         key = String(buf);
         p.putString("k", key);
-        log_w("HMAC key generated and stored (one-time)");
+        log_w("HMAC key generated and stored (one-time, RANDOM — NOT cross-device compatible)");
     }
     p.end();
     return key;

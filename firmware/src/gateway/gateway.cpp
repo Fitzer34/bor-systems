@@ -72,9 +72,24 @@ void forwardToCloud(const LoraLink::ReceivedPacket& p) {
     // is fine for production.
     WiFiClientSecure client;
     client.setInsecure();
+    // Cap the underlying socket at 4 s — without this, a stuck TLS handshake
+    // hangs the whole loop forever (no heartbeats, no OLED refresh, no LoRa
+    // ack delivery once the buffer drains). 4s gives Render a fair shake
+    // while keeping us responsive when the cell signal is flaky.
+    client.setTimeout(4);  // seconds (yes, seconds — WiFiClient takes secs)
 
     HTTPClient http;
-    http.begin(client, Config::getWebhookUrl());
+    // Total time we're willing to block on a single POST. Covers TCP connect
+    // + TLS handshake + send + response. 5 s is generous for a 200-byte
+    // payload to Render Frankfurt over a typical WiFi link.
+    http.setConnectTimeout(5000);
+    http.setTimeout(5000);
+    http.setReuse(false);
+
+    if (!http.begin(client, Config::getWebhookUrl())) {
+        log_w("http.begin() failed — skipping forward");
+        return;
+    }
     http.addHeader("Content-Type", "application/json");
     const String secret = Config::getWebhookSecret();
     if (!secret.isEmpty()) {
@@ -82,7 +97,12 @@ void forwardToCloud(const LoraLink::ReceivedPacket& p) {
     }
 
     const int code = http.POST(body);
-    if (code != 200 && code != 204) {
+    if (code <= 0) {
+        // Negative codes from HTTPClient mean transport-level failure
+        // (timeout, connection refused, TLS error). Don't try to read the
+        // body — it just produces another timeout.
+        log_w("webhook POST transport error: %d", code);
+    } else if (code != 200 && code != 204 && code != 202) {
         log_w("webhook POST failed: %d body=%s",
               code, http.getString().c_str());
     } else {
@@ -140,15 +160,23 @@ void sendHeartbeat() {
 
     WiFiClientSecure client;
     client.setInsecure();  // TODO: pin Render's CA
+    client.setTimeout(4);  // seconds — keep the socket short-fused too
     HTTPClient http;
-    http.setTimeout(8000);
-    http.begin(client, url);
+    http.setConnectTimeout(5000);
+    http.setTimeout(5000);
+    http.setReuse(false);
+    if (!http.begin(client, url)) {
+        log_w("heartbeat http.begin() failed");
+        return;
+    }
     http.addHeader("Content-Type", "application/json");
     const String secret = Config::getWebhookSecret();
     if (!secret.isEmpty()) http.addHeader("X-BOR-Secret", secret);
 
     const int code = http.POST(body);
-    if (code == 200) {
+    if (code <= 0) {
+        log_w("heartbeat transport error: %d", code);
+    } else if (code == 200) {
         log_i("heartbeat ok");
     } else {
         log_w("heartbeat HTTP %d — backend may not know this gateway yet", code);
