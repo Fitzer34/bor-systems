@@ -203,6 +203,36 @@ extension APIClient {
         return res.zones
     }
 
+    // ─── Inline create (used by the Add-Hanger location picker so the
+    //     customer can spin up a building/floor/zone without leaving the
+    //     onboarding wizard).
+    struct CreateNameBody: Encodable { let name: String }
+    struct CreateFloorBody: Encodable { let name: String; let orderIndex: Int }
+
+    struct CreateBuildingResponse: Decodable { let building: Building }
+    struct CreateFloorResponse: Decodable { let floor: Floor }
+    struct CreateZoneResponse: Decodable { let zone: Zone }
+
+    func createBuilding(name: String) async throws -> Building {
+        let res: CreateBuildingResponse = try await request(
+            "/buildings", method: "POST", body: CreateNameBody(name: name)
+        )
+        return res.building
+    }
+    func createFloor(buildingId: String, name: String, orderIndex: Int) async throws -> Floor {
+        let res: CreateFloorResponse = try await request(
+            "/buildings/\(buildingId)/floors", method: "POST",
+            body: CreateFloorBody(name: name, orderIndex: orderIndex)
+        )
+        return res.floor
+    }
+    func createZone(floorId: String, name: String) async throws -> Zone {
+        let res: CreateZoneResponse = try await request(
+            "/floors/\(floorId)/zones", method: "POST", body: CreateNameBody(name: name)
+        )
+        return res.zone
+    }
+
     // MARK: Users / dispatch sending (admin/supervisor)
 
     func users() async throws -> [UserRow] {

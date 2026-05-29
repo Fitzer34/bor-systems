@@ -31,6 +31,12 @@ struct AddDeviceView: View {
     @State private var showingQRScanner = false
     @State private var didAutofillOnce = false
 
+    /// True once the user has finished assigning the hanger to a zone (or
+    /// explicitly chosen to skip). Drives whether we show the location
+    /// picker or the success screen. Gateways short-circuit this — they
+    /// don't belong to a zone, so they go straight to success.
+    @State private var locationStepComplete = false
+
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
@@ -53,7 +59,26 @@ struct AddDeviceView: View {
                     progressStep(title: "Joining \(ssid.isEmpty ? "your Wi-Fi" : "“\(ssid)”")…",
                                  detail: "This takes 10–20 seconds.")
                 case .connected:
-                    successStep
+                    // Hangers go through one more step (pick a building/
+                    // floor/zone so the alert + dispatch flow knows where
+                    // the device lives). Gateways skip — they're not
+                    // tied to a single zone.
+                    if kind == .hanger && !locationStepComplete {
+                        if let devEui = manager.devEui {
+                            HangerLocationStep(
+                                devEui: devEui,
+                                onDone: { locationStepComplete = true }
+                            )
+                        } else {
+                            // No DevEUI = the firmware didn't expose it
+                            // over BLE. Shouldn't happen, but if it does
+                            // we just show success and let the user
+                            // register manually.
+                            successStep
+                        }
+                    } else {
+                        successStep
+                    }
                 case .failed(let message):
                     failureStep(message: message)
                 }
@@ -390,6 +415,345 @@ struct AddDeviceView: View {
         default:             bars = "strong signal"
         }
         return "\(bars) (\(rssi) dBm)"
+    }
+}
+
+// MARK: - HangerLocationStep ────────────────────────────────────────────────
+//
+// Shown after the WiFi handshake completes and we know the hanger's DevEUI.
+// Lets the installer pick a building / floor / zone — or create new ones
+// on the spot. On Save, POST /hangers/register so the alert + dispatch
+// pipeline knows where the device lives.
+//
+// Design notes:
+//   - All three levels are nested pickers backed by `/buildings`,
+//     `/buildings/:id/floors`, `/floors/:id/zones`.
+//   - "+ Create new" expands an inline name field rather than pushing a
+//     sheet — fewer screens, faster path through the wizard.
+//   - Picking a new building resets the floor and zone selection (they
+//     belong to the previous building). Same cascade for floor → zone.
+//   - The Skip button registers the hanger with no zone. The customer
+//     can finish the assignment later from More → Manage → Hangers.
+
+struct HangerLocationStep: View {
+    let devEui: String
+    let onDone: () -> Void
+
+    // Loaded lists for each level.
+    @State private var buildings: [Building] = []
+    @State private var floors: [Floor] = []
+    @State private var zones: [Zone] = []
+
+    // Current selection.
+    @State private var selectedBuilding: Building?
+    @State private var selectedFloor: Floor?
+    @State private var selectedZone: Zone?
+
+    // "Create new" expansion + draft text per level.
+    @State private var creatingBuilding = false
+    @State private var newBuildingName = ""
+    @State private var creatingFloor = false
+    @State private var newFloorName = ""
+    @State private var creatingZone = false
+    @State private var newZoneName = ""
+
+    // UI state.
+    @State private var saving = false
+    @State private var error: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Image(systemName: "map")
+                        .font(.system(size: 44, weight: .light))
+                        .foregroundStyle(.blue)
+                    Text("Where is this hanger?").font(.title3.weight(.semibold))
+                    Text("So alerts and dispatches know which area of the building to point at. You can change this later in Manage → Hangers.")
+                        .font(.body).foregroundStyle(.secondary)
+                }
+
+                buildingRow
+
+                if selectedBuilding != nil {
+                    floorRow
+                }
+
+                if selectedFloor != nil {
+                    zoneRow
+                }
+
+                if let err = error {
+                    Text(err).font(.footnote).foregroundStyle(.red)
+                }
+
+                Spacer(minLength: 12)
+
+                Button {
+                    Task { await saveAndRegister() }
+                } label: {
+                    HStack {
+                        if saving { ProgressView().tint(.white) }
+                        Text(selectedZone == nil ? "Skip — assign later" : "Register hanger here")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                }
+                .background(selectedZone == nil ? Color.gray : Color.blue,
+                            in: RoundedRectangle(cornerRadius: 10))
+                .foregroundStyle(.white)
+                .disabled(saving)
+            }
+            .padding(.horizontal, 4)
+        }
+        .task { await loadBuildings() }
+    }
+
+    // MARK: Rows
+
+    private var buildingRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Building").font(.caption).foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                ForEach(buildings) { b in
+                    RowChip(
+                        label: b.name,
+                        isSelected: selectedBuilding?.id == b.id,
+                        onTap: {
+                            selectedBuilding = b
+                            selectedFloor = nil
+                            selectedZone = nil
+                            floors = []; zones = []
+                            Task { await loadFloors(buildingId: b.id) }
+                        }
+                    )
+                }
+                createNewRow(
+                    expanded: $creatingBuilding,
+                    text: $newBuildingName,
+                    placeholder: "e.g. Mercy Hospital",
+                    label: "Add new building",
+                    action: { Task { await createBuilding() } }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var floorRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Floor").font(.caption).foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                ForEach(floors) { f in
+                    RowChip(
+                        label: f.name,
+                        isSelected: selectedFloor?.id == f.id,
+                        onTap: {
+                            selectedFloor = f
+                            selectedZone = nil
+                            zones = []
+                            Task { await loadZones(floorId: f.id) }
+                        }
+                    )
+                }
+                createNewRow(
+                    expanded: $creatingFloor,
+                    text: $newFloorName,
+                    placeholder: "e.g. Ground floor, 1st floor",
+                    label: "Add new floor",
+                    action: { Task { await createFloor() } }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var zoneRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Zone").font(.caption).foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                ForEach(zones) { z in
+                    RowChip(
+                        label: z.name,
+                        isSelected: selectedZone?.id == z.id,
+                        onTap: { selectedZone = z }
+                    )
+                }
+                createNewRow(
+                    expanded: $creatingZone,
+                    text: $newZoneName,
+                    placeholder: "e.g. Reception, Toilets, Canteen",
+                    label: "Add new zone",
+                    action: { Task { await createZone() } }
+                )
+            }
+        }
+    }
+
+    // MARK: Components
+
+    @ViewBuilder
+    private func createNewRow(
+        expanded: Binding<Bool>,
+        text: Binding<String>,
+        placeholder: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        if expanded.wrappedValue {
+            HStack {
+                TextField(placeholder, text: text)
+                    .padding(10)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .submitLabel(.done)
+                Button("Save") { action() }
+                    .disabled(text.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button {
+                    expanded.wrappedValue = false
+                    text.wrappedValue = ""
+                } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+            }
+            .padding(.vertical, 6)
+        } else {
+            Button {
+                expanded.wrappedValue = true
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill").foregroundStyle(.blue)
+                    Text(label).foregroundStyle(.blue)
+                    Spacer()
+                }
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: Actions
+
+    private func loadBuildings() async {
+        do {
+            buildings = try await APIClient.shared.buildings()
+        } catch {
+            self.error = "Could not load buildings."
+        }
+    }
+
+    private func loadFloors(buildingId: String) async {
+        do {
+            floors = try await APIClient.shared.floors(buildingId: buildingId)
+                .sorted { $0.orderIndex < $1.orderIndex }
+        } catch {
+            self.error = "Could not load floors."
+        }
+    }
+
+    private func loadZones(floorId: String) async {
+        do {
+            zones = try await APIClient.shared.zones(floorId: floorId)
+        } catch {
+            self.error = "Could not load zones."
+        }
+    }
+
+    private func createBuilding() async {
+        let name = newBuildingName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        error = nil
+        do {
+            let b = try await APIClient.shared.createBuilding(name: name)
+            buildings.append(b)
+            selectedBuilding = b
+            selectedFloor = nil
+            selectedZone = nil
+            floors = []; zones = []
+            creatingBuilding = false
+            newBuildingName = ""
+        } catch {
+            self.error = "Could not create building."
+        }
+    }
+
+    private func createFloor() async {
+        guard let b = selectedBuilding else { return }
+        let name = newFloorName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        error = nil
+        do {
+            // Tack new floors onto the end of the list — the customer can
+            // reorder them later in the Floor plans admin if they care.
+            let nextOrder = (floors.map { $0.orderIndex }.max() ?? -1) + 1
+            let f = try await APIClient.shared.createFloor(
+                buildingId: b.id, name: name, orderIndex: nextOrder
+            )
+            floors.append(f)
+            selectedFloor = f
+            selectedZone = nil
+            zones = []
+            creatingFloor = false
+            newFloorName = ""
+        } catch {
+            self.error = "Could not create floor."
+        }
+    }
+
+    private func createZone() async {
+        guard let f = selectedFloor else { return }
+        let name = newZoneName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        error = nil
+        do {
+            let z = try await APIClient.shared.createZone(floorId: f.id, name: name)
+            zones.append(z)
+            selectedZone = z
+            creatingZone = false
+            newZoneName = ""
+        } catch {
+            self.error = "Could not create zone."
+        }
+    }
+
+    private func saveAndRegister() async {
+        saving = true
+        error = nil
+        defer { saving = false }
+        do {
+            try await APIClient.shared.registerHanger(
+                devEui: devEui,
+                zoneId: selectedZone?.id,
+                audibleAlarmEnabled: false
+            )
+            onDone()
+        } catch {
+            self.error = "Could not register the hanger. Try again."
+        }
+    }
+}
+
+private struct RowChip: View {
+    let label: String
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Text(label).foregroundStyle(.primary)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.blue)
+                }
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.blue.opacity(0.12) : Color(.secondarySystemBackground))
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 2)
     }
 }
 
