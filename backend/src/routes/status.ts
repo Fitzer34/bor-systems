@@ -50,8 +50,8 @@ export default async function statusRoutes(app: FastifyInstance): Promise<void> 
       try {
         const [recent] = await db
           .select({
-            lastSeenAt: sql<Date>`MAX(${schema.events.createdAt})`,
-            last15min: sql<number>`COUNT(*) FILTER (WHERE ${schema.events.createdAt} >= ${fifteenMinAgo})::int`,
+            lastSeenAt: sql<Date>`MAX(${schema.events.receivedAt})`,
+            last15min: sql<number>`COUNT(*) FILTER (WHERE ${schema.events.receivedAt} >= ${fifteenMinAgo})::int`,
           })
           .from(schema.events);
         lastSeenAt = recent?.lastSeenAt ?? null;

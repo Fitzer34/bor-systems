@@ -133,8 +133,11 @@ export async function generateComplianceReport(
       ["Average resolution time", formatDuration(avgResolutionSec)],
     ];
     for (const [k, v] of summary) {
-      doc.text(`  ${k}: `, { continued: true });
-      doc.font("Helvetica-Bold").text(v).font("Helvetica");
+      // The summary tuples are always [string, string], but
+      // noUncheckedIndexedAccess types each element as string|undefined
+      // because TS can't prove the array length is exactly 2. Coerce.
+      doc.text(`  ${k ?? ""}: `, { continued: true });
+      doc.font("Helvetica-Bold").text(v ?? "").font("Helvetica");
     }
     doc.moveDown(1.5);
 

@@ -111,11 +111,11 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       const detail = parsed.data.note ?? "";
       await db.insert(schema.auditLog).values({
         organisationId: hanger.orgId,
-        userId: null,
+        actorUserId: null,
         action: tag,
-        entityType: "hanger",
-        entityId: hangerId,
-        detail,
+        targetType: "hanger",
+        targetId: hangerId,
+        metadata: { detail },
       });
 
       // If there's an active alert and the tenant says "still wet", flag

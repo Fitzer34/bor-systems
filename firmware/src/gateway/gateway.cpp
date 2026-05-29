@@ -150,7 +150,7 @@ void sendHeartbeat() {
 void refreshDisplay() {
     char l1[32], l2[32], l3[32], l4[32];
     const uint32_t uptimeMin = millis() / 60000;
-    snprintf(l1, sizeof(l1), "BOR Gateway");
+    snprintf(l1, sizeof(l1), "HazardLink Gateway");
     snprintf(l2, sizeof(l2), "IP %s", WiFi.localIP().toString().c_str());
     snprintf(l3, sizeof(l3), "RSSI %d dBm", WiFi.RSSI());
     snprintf(l4, sizeof(l4), "pkts %lu  up %lum",
@@ -173,7 +173,7 @@ void setup() {
     }
 
     Display::begin();
-    Display::showStatus("BOR Gateway", "Connecting Wi-Fi...", "", "");
+    Display::showStatus("HazardLink Gateway", "Connecting Wi-Fi...", "", "");
 
     if (!connectWifi()) {
         log_e("could not connect to Wi-Fi — rebooting in 60s");

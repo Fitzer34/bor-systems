@@ -86,10 +86,12 @@ export async function notifyPush(input: DispatchInput): Promise<void> {
     // the iOS app has pre-registered with action buttons (Acknowledge / On
     // my way / Open). The Apple Watch picks these buttons up automatically.
     const category =
-      input.kind === "dispatch"     ? "dispatch" :
       input.kind === "low_battery"  ? "battery"  :
       // alerts: spill_open / spill_resolved / overdue → all use the alert
       // category so the cleaner can ack from the watch with one tap.
+      // (Dispatch notifications are wired through the alert category too —
+      // we kept the older "dispatch" branch here, but it was never reachable
+      // because nothing in the codebase emits `kind: "dispatch"`.)
       "alert";
 
     const result = await sendApns(user.pushToken, {

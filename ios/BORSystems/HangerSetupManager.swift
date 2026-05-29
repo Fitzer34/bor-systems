@@ -13,12 +13,19 @@ enum SetupDeviceKind: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// Prefix used by `firmware/src/setup_mode/setup_mode.cpp::deviceName()`.
-    /// We accept the legacy `BOR-Setup-` prefix too so older devices in the
-    /// field can still be onboarded by a freshly-built app.
+    /// Branded as HazardLink-* on new builds. We also accept the older
+    /// BOR-* and `BOR-Setup-` prefixes so devices flashed before the
+    /// rebrand can still be onboarded by a freshly-built app.
     var bleNamePrefixes: [String] {
         switch self {
-        case .hanger:  return ["BOR-Hanger-", "BOR-HangerW-", "BOR-Setup-"]
-        case .gateway: return ["BOR-GW-"]
+        case .hanger:  return [
+            "HazardLink-Hanger-", "HazardLink-HangerW-",
+            "BOR-Hanger-", "BOR-HangerW-", "BOR-Setup-",
+        ]
+        case .gateway: return [
+            "HazardLink-GW-",
+            "BOR-GW-",
+        ]
         }
     }
 

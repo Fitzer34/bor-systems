@@ -118,15 +118,18 @@ String pairingPin() {
 }
 
 String deviceName() {
-    // Advertised BLE name varies by build so the iPhone app can show only the
-    // device class the user asked to add. Wire protocol + GATT UUIDs are
-    // identical across all three SKUs — only the human-readable label differs.
+    // Advertised BLE name. Varies by build so the iPhone app can show only
+    // the device class the user asked to add. Wire protocol + GATT UUIDs
+    // are identical across all three SKUs — only the human-readable label
+    // differs. Brand-aligned to HazardLink (was BOR-*; iOS keeps the old
+    // prefixes in its scan filter for backwards compatibility with any
+    // earlier-flashed devices still in the field).
 #if defined(BOR_MODE_GATEWAY)
-    return String("BOR-GW-")     + macSuffix();
+    return String("HazardLink-GW-")      + macSuffix();
 #elif defined(BOR_MODE_HANGER_WIFI)
-    return String("BOR-HangerW-") + macSuffix();
+    return String("HazardLink-HangerW-") + macSuffix();
 #else
-    return String("BOR-Hanger-") + macSuffix();
+    return String("HazardLink-Hanger-")  + macSuffix();
 #endif
 }
 
@@ -139,7 +142,7 @@ bool run() {
     // Show the pairing PIN on the OLED so the customer doesn't need a sticker
     // to read it — vastly better UX for self-install.
     Display::begin();
-    Display::showStatus("BOR Setup Mode",
+    Display::showStatus("HazardLink Setup",
                         name,
                         "Pairing PIN:",
                         pin);

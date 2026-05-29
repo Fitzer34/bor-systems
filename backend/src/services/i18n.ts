@@ -142,7 +142,9 @@ function resolveLocale(localeRaw: string | null | undefined): Locale {
   // Direct match.
   if ((SUPPORTED_LOCALES as string[]).includes(localeRaw)) return localeRaw as Locale;
   // Fall back to language-only match — "pl-PL" → "pl", "pt-PT" → "pt-BR".
-  const lang = localeRaw.split("-")[0];
+  // split() always yields at least one element so [0] is non-null at runtime,
+  // but tsconfig's noUncheckedIndexedAccess forces us to assert it.
+  const lang = localeRaw.split("-")[0] ?? "";
   if ((SUPPORTED_LOCALES as string[]).includes(lang)) return lang as Locale;
   if (lang === "pt") return "pt-BR";
   return "en-GB";
