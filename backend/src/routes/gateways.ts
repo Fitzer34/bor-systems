@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
@@ -102,6 +102,31 @@ export default async function gatewayRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
+  // The seed/demo org that comes with every fresh DB. Real customer orgs are
+  // created on /signup with random UUIDs, so the demo org is recognisable by
+  // its fixed all-zero UUID. We deliberately skip it when picking an org for
+  // gateways to land in — otherwise the test seed swallows real devices.
+  const DEMO_ORG_ID = "00000000-0000-0000-0000-000000000001";
+
+  /// Picks the best organisation for a self-registering gateway.
+  ///
+  /// Strategy: pick the most recently created NON-demo org. That's the org
+  /// the most recent signup created, which is almost always the customer
+  /// installing this gateway. In multi-tenant production this whole mechanism
+  /// will be replaced with a factory-baked org token; for the bootstrap
+  /// prototype the "newest non-demo org" heuristic is correct ~100% of the time.
+  ///
+  /// Falls back to the demo org only if it's the only org that exists at all.
+  async function pickHomeOrg(): Promise<string | null> {
+    const realOrgs = await db
+      .select({ id: schema.organisations.id, createdAt: schema.organisations.createdAt })
+      .from(schema.organisations)
+      .orderBy(sql`${schema.organisations.createdAt} DESC NULLS LAST`);
+    const nonDemo = realOrgs.find((o) => o.id !== DEMO_ORG_ID);
+    if (nonDemo) return nonDemo.id;
+    return realOrgs[0]?.id ?? null;
+  }
+
   // Device-facing self-registration / heartbeat. Called by gateway firmware
   // on every boot + periodically afterwards. NOT JWT-authed — devices don't
   // have user logins. Authed by the same shared secret as /webhook/tts.
@@ -131,32 +156,45 @@ export default async function gatewayRoutes(app: FastifyInstance): Promise<void>
       .where(eq(schema.gateways.devEui, devEui));
 
     if (existing) {
+      // Self-heal: if a gateway was previously misattributed to the demo
+      // org (by an older registration handler that just picked the first
+      // org it saw), move it to the real customer org on the next heartbeat.
+      // This is a one-time migration; once the row is in the right org,
+      // subsequent heartbeats are no-ops for the orgId field.
+      let targetOrgId = existing.organisationId;
+      if (existing.organisationId === DEMO_ORG_ID) {
+        const better = await pickHomeOrg();
+        if (better && better !== DEMO_ORG_ID) {
+          targetOrgId = better;
+          app.log.info(`gateway ${devEui} migrating from demo org → ${better}`);
+        }
+      }
+
       await db
         .update(schema.gateways)
         .set({
-          ipAddress:       body.data.ipAddress       ?? existing.ipAddress,
-          ssid:            body.data.ssid            ?? existing.ssid,
-          rssi:            body.data.rssi            ?? existing.rssi,
-          firmwareVersion: body.data.firmwareVersion ?? existing.firmwareVersion,
+          organisationId:   targetOrgId,
+          ipAddress:        body.data.ipAddress        ?? existing.ipAddress,
+          ssid:             body.data.ssid             ?? existing.ssid,
+          rssi:             body.data.rssi             ?? existing.rssi,
+          firmwareVersion:  body.data.firmwareVersion  ?? existing.firmwareVersion,
           packetsForwarded: body.data.packetsForwarded ?? existing.packetsForwarded,
-          uptimeSec:       body.data.uptimeSec       ?? existing.uptimeSec,
+          uptimeSec:        body.data.uptimeSec        ?? existing.uptimeSec,
           lastSeenAt: new Date(),
         })
         .where(eq(schema.gateways.id, existing.id));
-      return { status: "ok", gatewayId: existing.id, orgId: existing.organisationId };
+      return { status: "ok", gatewayId: existing.id, orgId: targetOrgId };
     }
 
-    // First time we've seen this DevEUI. Attach it to an organisation so
-    // it shows up somewhere in the dashboard. In production this will use
-    // a factory-baked org token; for the prototype, just attach to the
-    // single existing org (we're single-tenant in practice while bootstrapping).
-    const [firstOrg] = await db
-      .select({ id: schema.organisations.id })
-      .from(schema.organisations)
-      .limit(1);
-    if (!firstOrg) {
+    // First time we've seen this DevEUI. Attach it to the most recent
+    // non-demo org so it shows up in the right customer's dashboard.
+    const homeOrgId = await pickHomeOrg();
+    if (!homeOrgId) {
       return reply.code(409).send({ error: "no_organisation_to_attach_to" });
     }
+    // Synthesise an object shape matching what the original code expected
+    // so the .insert() block below stays unchanged.
+    const firstOrg = { id: homeOrgId };
 
     const inserted = await db
       .insert(schema.gateways)
