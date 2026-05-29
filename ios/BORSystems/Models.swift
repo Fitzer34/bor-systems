@@ -122,6 +122,25 @@ struct Hanger: Codable, Identifiable, Hashable {
 }
 struct HangersResponse: Codable { let hangers: [Hanger] }
 
+/// One row per HazardLink gateway installed at a customer site. Returned
+/// by GET /gateways. Self-registered by the firmware on boot — admins
+/// don't type DevEUIs for gateways the way they do for hangers.
+struct Gateway: Codable, Identifiable, Hashable {
+    let id: String
+    let devEui: String
+    let name: String?
+    let buildingId: String?
+    let ipAddress: String?
+    let ssid: String?
+    let rssi: Int?
+    let firmwareVersion: String?
+    let packetsForwarded: Int
+    let uptimeSec: Int?
+    let lastSeenAt: Date?
+    let createdAt: Date
+}
+struct GatewaysResponse: Codable { let gateways: [Gateway] }
+
 struct Shift: Codable, Identifiable, Hashable {
     let id: String
     let userId: String

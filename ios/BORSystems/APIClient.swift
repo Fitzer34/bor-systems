@@ -265,6 +265,24 @@ extension APIClient {
         let _: EmptyResponse = try await request("/hangers/\(id)/recommission", method: "POST")
     }
 
+    // MARK: Gateways (admin/supervisor)
+
+    func gateways() async throws -> [Gateway] {
+        let res: GatewaysResponse = try await request("/gateways")
+        return res.gateways
+    }
+    struct RenameGatewayBody: Encodable {
+        let name: String?
+        let buildingId: String?
+    }
+    func renameGateway(_ id: String, name: String? = nil, buildingId: String? = nil) async throws {
+        let _: EmptyResponse = try await request("/gateways/\(id)", method: "PATCH",
+            body: RenameGatewayBody(name: name, buildingId: buildingId))
+    }
+    func deleteGateway(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/gateways/\(id)", method: "DELETE")
+    }
+
     // MARK: Users management (admin)
 
     struct CreateUserBody: Encodable {

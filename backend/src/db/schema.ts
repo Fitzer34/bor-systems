@@ -109,6 +109,45 @@ export const zones = pgTable(
   (t) => ({ floorIdx: index("zones_floor_idx").on(t.floorId) }),
 );
 
+/// One row per HazardLink gateway device deployed on a customer site. A
+/// gateway is the box that listens for LoRa packets from hangers and
+/// forwards them up to /webhook/tts over WiFi. Gateways self-register on
+/// boot via /gateways/heartbeat — the customer never types a DevEUI for
+/// them, the device introduces itself the first time it joins WiFi.
+export const gateways = pgTable(
+  "gateways",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    devEui: text("dev_eui").notNull(),
+    // Label that admins can set ("Mercy Hospital basement gateway"). Auto-
+    // populated with a sensible default on first registration; editable
+    // afterwards via PATCH /gateways/:id.
+    name: text("name"),
+    // Building the gateway is physically installed in. Optional — useful
+    // for sites with multiple buildings sharing one cloud org.
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    // Last-known network state, refreshed every heartbeat.
+    ipAddress: text("ip_address"),
+    ssid: text("ssid"),
+    rssi: smallint("rssi"),
+    firmwareVersion: text("firmware_version"),
+    // Counts kept by the gateway so the dashboard can show "this gateway
+    // forwarded 1,247 packets in its lifetime" without needing to query
+    // the events table.
+    packetsForwarded: integer("packets_forwarded").notNull().default(0),
+    uptimeSec: integer("uptime_sec"),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    devEuiUnique: uniqueIndex("gateways_dev_eui_unique").on(t.devEui),
+    orgIdx: index("gateways_org_idx").on(t.organisationId),
+  }),
+);
+
 export const hangers = pgTable(
   "hangers",
   {

@@ -1,10 +1,42 @@
 import Foundation
 import CoreBluetooth
 import Combine
+import NetworkExtension
+import CoreLocation
 
-/// Drives the BLE side of "Add a hanger" first-time Wi-Fi onboarding.
+/// The class of hardware we're onboarding. Same BLE protocol on the wire —
+/// only the advertised name prefix and the UI copy differ.
+enum SetupDeviceKind: String, CaseIterable, Identifiable {
+    case hanger
+    case gateway
+
+    var id: String { rawValue }
+
+    /// Prefix used by `firmware/src/setup_mode/setup_mode.cpp::deviceName()`.
+    /// We accept the legacy `BOR-Setup-` prefix too so older devices in the
+    /// field can still be onboarded by a freshly-built app.
+    var bleNamePrefixes: [String] {
+        switch self {
+        case .hanger:  return ["BOR-Hanger-", "BOR-HangerW-", "BOR-Setup-"]
+        case .gateway: return ["BOR-GW-"]
+        }
+    }
+
+    var humanName: String {
+        switch self {
+        case .hanger:  return "hanger"
+        case .gateway: return "gateway"
+        }
+    }
+}
+
+/// Drives the BLE side of first-time Wi-Fi onboarding.
 ///
-/// Sister to `pi/setup_mode.py` — keep the UUIDs in sync byte-for-byte.
+/// One manager, used for both hangers and the building gateway — the wire
+/// protocol is identical, the only difference is which advertised name
+/// prefix we accept during the scan. Sister to `pi/setup_mode.py` — keep
+/// UUIDs in sync byte-for-byte.
+///
 /// State machine:
 ///   .idle → .scanning → .found → .connecting → .pairing → .ready →
 ///   (user fills SSID/password) → .joining → .connected | .failed(message)
@@ -12,6 +44,9 @@ import Combine
 /// Everything is published as @Published so SwiftUI can drive a clean flow.
 @MainActor
 final class HangerSetupManager: NSObject, ObservableObject {
+
+    /// What we're filtering the scan to. Set by `startScan(kind:)`.
+    private var deviceKind: SetupDeviceKind = .hanger
 
     // MARK: GATT UUIDs — same as pi/setup_mode.py
 
@@ -79,7 +114,8 @@ final class HangerSetupManager: NSObject, ObservableObject {
         // scan — that's the point at which iOS shows the permission prompt.
     }
 
-    func startScan() {
+    func startScan(kind: SetupDeviceKind = .hanger) {
+        deviceKind = kind
         if central == nil {
             central = CBCentralManager(delegate: self, queue: .main, options: nil)
         }
@@ -103,7 +139,11 @@ final class HangerSetupManager: NSObject, ObservableObject {
             guard let self = self else { return }
             if case .scanning = self.phase, self.discovered.isEmpty {
                 self.central.stopScan()
-                self.phase = .failed(message: "No hangers found nearby. Make sure the hanger is plugged in and the green LED is breathing.")
+                let kindName = self.deviceKind.humanName
+                let powerHint = self.deviceKind == .gateway
+                    ? "Make sure the gateway is plugged into mains power and the OLED is showing the pairing PIN."
+                    : "Make sure the hanger is powered and the green LED is breathing."
+                self.phase = .failed(message: "No \(kindName)s found nearby. \(powerHint)")
             }
         }
     }
@@ -185,10 +225,16 @@ extension HangerSetupManager: CBCentralManagerDelegate {
                                     rssi RSSI: NSNumber) {
         let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
             ?? peripheral.name
-            ?? "Unknown hanger"
+            ?? "Unknown device"
         let rssi = RSSI.intValue
         let id = peripheral.identifier
         Task { @MainActor in
+            // Only surface devices whose advertised name matches the kind the
+            // user actually asked to add. The BLE service UUID is identical
+            // across all SKUs, so we have to do the split at the name level.
+            let prefixes = deviceKind.bleNamePrefixes
+            guard prefixes.contains(where: { name.hasPrefix($0) }) else { return }
+
             if let idx = discovered.firstIndex(where: { $0.id == id }) {
                 discovered[idx] = DiscoveredHanger(id: id, name: name, rssi: rssi)
             } else {
@@ -220,6 +266,20 @@ extension HangerSetupManager: CBCentralManagerDelegate {
                                     error: Error?) {
         Task { @MainActor in
             if case .connected = phase { return }   // expected
+
+            // BLE notify() is fire-and-forget. The firmware fires "connected"
+            // before tearing the link down, but the notify can be dropped if
+            // the link is briefly busy. If we made it to .joining (commit
+            // succeeded), the device almost certainly joined Wi-Fi — the
+            // disconnect just beat the notify. Treat as success so the user
+            // sees the right UI; the cloud check on next dashboard load
+            // confirms it.
+            if case .joining = phase {
+                phase = .connected
+                return
+            }
+            // .sending or .ready disconnects are unambiguous failures —
+            // commit hadn't even been written yet.
             if let err = error {
                 phase = .failed(message: err.localizedDescription)
             }
@@ -326,5 +386,103 @@ extension HangerSetupManager: CBPeripheralDelegate {
         if reason.lowercased().contains("timeout") { return "Took too long to connect. Move the hanger closer to the router and retry." }
         if reason.contains("Secrets were required") { return "Wrong Wi-Fi password. Try again." }
         return reason.isEmpty ? "Couldn't join that Wi-Fi network." : reason
+    }
+}
+
+// MARK: - WiFi helpers ──────────────────────────────────────────────────────
+//
+// Cuts the WiFi typing in the onboarding flow as much as iOS allows. Things
+// we CAN do here:
+//   - Auto-detect the SSID the phone is currently joined to (with Location
+//     permission + Access WiFi Information entitlement).
+//   - Cache the WiFi password in-memory for the lifetime of the app session
+//     so onboarding multiple hangers only takes one password entry total.
+//   - Parse the standard `WIFI:S:...;T:WPA;P:...;;` QR code format used by
+//     iOS's "Share Wi-Fi password as QR code" and most routers' stickers.
+//
+// Things iOS doesn't let us do, no matter what we try:
+//   - Read the password of the currently-joined network. iCloud Keychain
+//     stores it, but Apple does not expose it to any third-party app. We
+//     have to ask the user (or get it from a QR code) at least once per
+//     session.
+
+/// In-memory password cache. Lives for the lifetime of the app process
+/// only — never written to disk, Keychain, or anywhere else. Cleared when
+/// the user signs out (call `WiFiSession.clear()` from AuthStore.logout).
+enum WiFiSession {
+    nonisolated(unsafe) static var lastSsid: String?
+    nonisolated(unsafe) static var lastPassword: String?
+
+    static func remember(ssid: String, password: String) {
+        lastSsid = ssid
+        lastPassword = password
+    }
+
+    static func clear() {
+        lastSsid = nil
+        lastPassword = nil
+    }
+}
+
+/// Asks iOS for the SSID of the network the phone is currently joined to.
+/// Requires the **Access WiFi Information** capability + a populated
+/// `NSLocationWhenInUseUsageDescription` in Info.plist + the user granting
+/// location permission. Returns nil if any of those preconditions fail —
+/// the calling view just leaves the SSID field empty in that case.
+enum WiFiCurrentNetwork {
+    /// Synchronous-feeling wrapper around `NEHotspotNetwork.fetchCurrent`.
+    /// Calls `completion` on the main thread.
+    static func fetchSSID(completion: @escaping (String?) -> Void) {
+        // Location permission is a hard prereq for current-SSID lookup
+        // on iOS 13+. Request it lazily here so the prompt appears at the
+        // moment the user opens the Add Hanger / Add Gateway sheet.
+        let locManager = CLLocationManager()
+        let status = locManager.authorizationStatus
+        if status == .notDetermined {
+            locManager.requestWhenInUseAuthorization()
+            // The callback isn't critical — we'll just return nil for now
+            // and the user can re-open the screen once they've granted.
+        }
+        guard status == .authorizedWhenInUse || status == .authorizedAlways else {
+            completion(nil)
+            return
+        }
+
+        NEHotspotNetwork.fetchCurrent { network in
+            DispatchQueue.main.async {
+                completion(network?.ssid)
+            }
+        }
+    }
+}
+
+/// Parses the WiFi QR code format used by iOS's "Share Wi-Fi password" and
+/// most consumer routers' stickers. The grammar is:
+///
+///     WIFI:S:<ssid>;T:<WPA|WEP|nopass>;P:<password>;H:<true|false>;;
+///
+/// Field order isn't fixed in the spec — we tokenise on `;` rather than
+/// assuming positions. Returns nil if the string isn't a WIFI: QR.
+enum WiFiQRCode {
+    static func parse(_ raw: String) -> (ssid: String, password: String)? {
+        guard raw.uppercased().hasPrefix("WIFI:") else { return nil }
+        let body = String(raw.dropFirst(5))   // strip "WIFI:"
+        var ssid = ""
+        var password = ""
+        // Split on unescaped semicolons. WIFI: spec lets `;` inside fields
+        // be backslash-escaped, but we keep it simple — almost no router
+        // ever does that.
+        for token in body.split(separator: ";", omittingEmptySubsequences: true) {
+            let parts = token.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { continue }
+            let key = parts[0].uppercased()
+            let value = parts[1]
+            switch key {
+            case "S": ssid = value
+            case "P": password = value
+            default:  break  // T (security type), H (hidden), R (reserved) — ignored
+            }
+        }
+        return ssid.isEmpty ? nil : (ssid, password)
     }
 }

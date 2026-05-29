@@ -4,5 +4,11 @@
 <dict>
     <key>aps-environment</key>
     <string>development</string>
+    <!-- "Access Wi-Fi Information" capability — required for
+         NEHotspotNetwork.fetchCurrent() to return a non-nil SSID on
+         iOS 13+. Without this entitlement the call silently returns nil
+         and we fall back to the user typing the SSID by hand. -->
+    <key>com.apple.developer.networking.wifi-info</key>
+    <true/>
 </dict>
 </plist>

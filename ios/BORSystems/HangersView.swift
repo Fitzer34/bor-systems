@@ -193,6 +193,143 @@ private struct HangerRow: View {
     }
 }
 
+// MARK: - GatewaysView ─────────────────────────────────────────────────────
+//
+// Sister to HangersView. Lists every gateway that's self-registered against
+// the current organisation. Unlike hangers, there's no "+ Register" entry
+// here — the firmware adds itself the first time it joins WiFi.
+
+struct GatewaysView: View {
+    @EnvironmentObject var auth: AuthStore
+    @State private var gateways: [Gateway] = []
+    @State private var error: String?
+    @State private var refreshTask: Task<Void, Never>?
+    /// Re-render every second so the Online/Offline badge flips the instant
+    /// the heartbeat window expires.
+    @State private var tick = 0
+
+    var body: some View {
+        List {
+            if gateways.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No gateways yet.").foregroundStyle(.secondary)
+                    Text("Plug in your Heltec gateway, run More → Add a gateway, and it'll appear here within ~60 seconds.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 6)
+            }
+            ForEach(gateways) { g in
+                GatewayRow(gateway: g)
+                    .swipeActions {
+                        if auth.user?.role == .admin {
+                            Button(role: .destructive) { Task { await delete(g) } } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
+                    }
+            }
+            if let err = error {
+                Section { Text(err).foregroundStyle(.red) }
+            }
+        }
+        .navigationTitle("Gateways")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await refresh() }
+        .task {
+            await refresh()
+            refreshTask?.cancel()
+            refreshTask = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    tick &+= 1
+                    // Heartbeats are every 60s, so refresh every 10s — we'll
+                    // see updated lastSeenAt within one tick of it arriving.
+                    if tick % 10 == 0 { await refresh() }
+                }
+            }
+        }
+        .onDisappear { refreshTask?.cancel() }
+    }
+
+    private func refresh() async {
+        do {
+            self.gateways = try await APIClient.shared.gateways()
+                .sorted { ($0.name ?? "") < ($1.name ?? "") }
+            self.error = nil
+        } catch {
+            self.error = "Could not load gateways."
+        }
+    }
+
+    private func delete(_ g: Gateway) async {
+        do { try await APIClient.shared.deleteGateway(g.id); await refresh() }
+        catch { self.error = "Failed to remove gateway." }
+    }
+}
+
+private struct GatewayRow: View {
+    let gateway: Gateway
+
+    /// Gateways heartbeat every 60 s, so 90 s tolerates one missed beat.
+    /// More forgiving than hangers because a single dropped TLS POST is
+    /// much more likely than a hanger missing two beats over LoRa.
+    private static let onlineWindow: TimeInterval = 90
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(gateway.name ?? gateway.devEui)
+                    .font(.body.weight(.medium))
+                Spacer()
+                statusBadge
+            }
+            Text(gateway.devEui)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 14) {
+                if let ip = gateway.ipAddress {
+                    Label(ip, systemImage: "network").font(.caption).foregroundStyle(.secondary)
+                }
+                if let ssid = gateway.ssid {
+                    Label(ssid, systemImage: "wifi").font(.caption).foregroundStyle(.secondary)
+                }
+                if let rssi = gateway.rssi {
+                    Label("\(rssi) dBm", systemImage: "antenna.radiowaves.left.and.right")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            HStack(spacing: 14) {
+                Label("\(gateway.packetsForwarded) pkts", systemImage: "arrow.up.arrow.down")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let last = gateway.lastSeenAt {
+                    Label(relativeTime(from: last), systemImage: "clock")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let fw = gateway.firmwareVersion {
+                    Label(fw, systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        let (label, color): (String, Color) = {
+            if let seen = gateway.lastSeenAt,
+               Date().timeIntervalSince(seen) <= Self.onlineWindow {
+                return ("Online", .green)
+            }
+            return ("Offline", .orange)
+        }()
+        Text(label).font(.caption2.weight(.medium))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.18), in: Capsule())
+            .foregroundStyle(color)
+    }
+}
+
 private struct RegisterHangerSheet: View {
     let onCreated: () -> Void
     @EnvironmentObject var auth: AuthStore

@@ -12,6 +12,7 @@ import authRoutes from "./routes/auth.js";
 import twoFactorRoutes from "./routes/two-factor.js";
 import alertRoutes from "./routes/alerts.js";
 import hangerRoutes from "./routes/hangers.js";
+import gatewayRoutes from "./routes/gateways.js";
 import userRoutes from "./routes/users.js";
 import buildingRoutes from "./routes/buildings.js";
 import reportRoutes from "./routes/reports.js";
@@ -150,6 +151,7 @@ async function main(): Promise<void> {
   await app.register(userRoutes);
   await app.register(alertRoutes);
   await app.register(hangerRoutes);
+  await app.register(gatewayRoutes);
   await app.register(buildingRoutes);
   await app.register(reportRoutes);
   await app.register(settingsRoutes);

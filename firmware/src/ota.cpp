@@ -86,10 +86,11 @@ bool applyUpdate(const Manifest& m) {
     httpCfg.keep_alive_enable = true;
     httpCfg.skip_cert_common_name_check = true;  // TODO: pin
 
-    esp_https_ota_config_t otaCfg = {};
-    otaCfg.http_config = &httpCfg;
-
-    const esp_err_t result = esp_https_ota(&otaCfg);
+    // Arduino-ESP32 2.0.x ships the older esp_https_ota() that takes the HTTP
+    // client config directly (not an esp_https_ota_config_t wrapper). The
+    // wrapper API came in IDF 4.4 / Arduino-ESP32 3.0+. When we bump the
+    // platform package, swap this for the wrapper form.
+    const esp_err_t result = esp_https_ota(&httpCfg);
     if (result != ESP_OK) {
         log_e("ota: esp_https_ota failed (%d)", result);
         return false;

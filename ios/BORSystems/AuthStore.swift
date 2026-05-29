@@ -43,6 +43,10 @@ final class AuthStore: ObservableObject {
     func logout() {
         APIClient.shared.token = nil
         user = nil
+        // Drop the in-memory WiFi password the device-setup wizard caches so
+        // the next user on a shared device doesn't inherit it. SSID isn't
+        // sensitive so we leave it.
+        WiFiSession.clear()
         syncWatch()  // pushes signedOut=true to the watch
     }
 

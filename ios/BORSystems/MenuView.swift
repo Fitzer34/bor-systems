@@ -3,6 +3,9 @@ import SwiftUI
 struct MenuView: View {
     @EnvironmentObject var auth: AuthStore
 
+    @State private var showAddHanger = false
+    @State private var showAddGateway = false
+
     var body: some View {
         NavigationStack {
             List {
@@ -28,7 +31,23 @@ struct MenuView: View {
                 }
 
                 if auth.user?.role == .admin || auth.user?.role == .supervisor {
+                    Section("Set up new hardware") {
+                        Button {
+                            showAddGateway = true
+                        } label: {
+                            Label("Add a gateway", systemImage: "wifi.router")
+                                .foregroundStyle(.primary)
+                        }
+                        Button {
+                            showAddHanger = true
+                        } label: {
+                            Label("Add a hanger", systemImage: "antenna.radiowaves.left.and.right")
+                                .foregroundStyle(.primary)
+                        }
+                    }
+
                     Section("Manage") {
+                        NavigationLink { GatewaysView() } label: { Label("Gateways", systemImage: "wifi.router") }
                         NavigationLink { HangersView() } label: { Label("Hangers", systemImage: "antenna.radiowaves.left.and.right") }
                         NavigationLink { UsersView() } label: { Label("Users", systemImage: "person.3") }
                         NavigationLink { ScheduleView() } label: { Label("Schedule", systemImage: "calendar") }
@@ -56,6 +75,8 @@ struct MenuView: View {
                 }
             }
             .navigationTitle("More")
+            .sheet(isPresented: $showAddHanger)  { AddHangerView() }
+            .sheet(isPresented: $showAddGateway) { AddGatewayView() }
         }
     }
 }

@@ -118,7 +118,16 @@ String pairingPin() {
 }
 
 String deviceName() {
-    return String("BOR-Setup-") + macSuffix();
+    // Advertised BLE name varies by build so the iPhone app can show only the
+    // device class the user asked to add. Wire protocol + GATT UUIDs are
+    // identical across all three SKUs — only the human-readable label differs.
+#if defined(BOR_MODE_GATEWAY)
+    return String("BOR-GW-")     + macSuffix();
+#elif defined(BOR_MODE_HANGER_WIFI)
+    return String("BOR-HangerW-") + macSuffix();
+#else
+    return String("BOR-Hanger-") + macSuffix();
+#endif
 }
 
 bool run() {
@@ -201,10 +210,15 @@ bool run() {
             if (tryJoin(g_pendingSsid, g_pendingPassword, &err)) {
                 Config::saveWifiCredentials(g_pendingSsid, g_pendingPassword);
                 Config::setOnboarded(true);
-                publishStatus("connected");
-                // Give iOS a couple of seconds to read the "connected" status
-                // before we tear BLE down.
-                delay(2500);
+                // BLE notify() is fire-and-forget — a single fire can be
+                // dropped if the link is briefly busy. Fire the "connected"
+                // status across a ~2.5s window so iOS has multiple chances
+                // to receive it before we tear BLE down. iOS de-dupes the
+                // value (string equality), so re-fires are harmless.
+                for (int i = 0; i < 6; ++i) {
+                    publishStatus("connected");
+                    delay(400);
+                }
                 ok = true;
                 break;
             } else {

@@ -53,6 +53,21 @@ void begin() {
         prefs.putString(K_WEBHOOK,
                         "https://bor-systems-backend.onrender.com/webhook/tts");
     }
+
+    // Webhook secret comes from the BOR_WEBHOOK_SECRET shell env var at
+    // build time (see platformio.ini). If the build was done without it
+    // set, BOR_WEBHOOK_SECRET_BUILD will be the empty string and we leave
+    // K_SECRET unset — heartbeats will get 401 until the BLE setup flow
+    // provisions one.
+#ifdef BOR_WEBHOOK_SECRET_BUILD
+    if (!prefs.isKey(K_SECRET)) {
+        const String baked = String(BOR_WEBHOOK_SECRET_BUILD);
+        if (baked.length() > 0) {
+            prefs.putString(K_SECRET, baked);
+            log_i("provisioned webhook secret from build flag (%d chars)", baked.length());
+        }
+    }
+#endif
 }
 
 String getWifiSsid()      { return prefs.getString(K_WIFI_SSID, ""); }

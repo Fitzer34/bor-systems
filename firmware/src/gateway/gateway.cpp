@@ -96,7 +96,56 @@ namespace {
 
 uint32_t g_packetsForwarded = 0;
 uint32_t g_lastOtaCheckMs   = 0;
-constexpr uint32_t OTA_CHECK_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;  // 6h
+uint32_t g_lastHeartbeatMs  = 0;
+uint32_t g_bootMs           = 0;
+constexpr uint32_t OTA_CHECK_INTERVAL_MS       = 6UL * 60UL * 60UL * 1000UL;  // 6h
+constexpr uint32_t HEARTBEAT_INTERVAL_MS       = 60UL * 1000UL;               // 60s — fast enough to flip the Online badge
+
+/// Tell the cloud "I'm alive". Sent once on boot (so the gateway shows up
+/// in the dashboard immediately) and then every 60 s after that. The
+/// backend uses these to keep `last_seen_at` fresh and surface the device
+/// in Manage → Gateways. Cheap: ~200-byte JSON over TLS, runs async.
+void sendHeartbeat() {
+    if (WiFi.status() != WL_CONNECTED) return;  // no point trying
+
+    JsonDocument doc;
+    doc["devEui"]           = Config::getDevEui();
+    doc["ipAddress"]        = WiFi.localIP().toString();
+    doc["ssid"]             = WiFi.SSID();
+    doc["rssi"]             = WiFi.RSSI();
+    char fwBuf[16];
+    snprintf(fwBuf, sizeof(fwBuf), "v%d.%d", FW_MAJOR, FW_MINOR);
+    doc["firmwareVersion"]  = fwBuf;
+    doc["packetsForwarded"] = g_packetsForwarded;
+    doc["uptimeSec"]        = (millis() - g_bootMs) / 1000UL;
+
+    String body;
+    serializeJson(doc, body);
+
+    // Derive heartbeat URL from the webhook URL: strip /webhook/tts, add
+    // /gateways/heartbeat. Lets us swap dev/prod targets without recompiling.
+    String url = Config::getWebhookUrl();
+    const int idx = url.indexOf("/webhook");
+    if (idx > 0) url.remove(idx);
+    url += "/gateways/heartbeat";
+
+    WiFiClientSecure client;
+    client.setInsecure();  // TODO: pin Render's CA
+    HTTPClient http;
+    http.setTimeout(8000);
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    const String secret = Config::getWebhookSecret();
+    if (!secret.isEmpty()) http.addHeader("X-BOR-Secret", secret);
+
+    const int code = http.POST(body);
+    if (code == 200) {
+        log_i("heartbeat ok");
+    } else {
+        log_w("heartbeat HTTP %d — backend may not know this gateway yet", code);
+    }
+    http.end();
+}
 
 void refreshDisplay() {
     char l1[32], l2[32], l3[32], l4[32];
@@ -144,6 +193,14 @@ void setup() {
     Ota::markRunningImageGood();
 
     log_i("gateway ready — listening for LoRa packets");
+
+    // Self-register / heartbeat immediately so the gateway pops up in the
+    // dashboard's Manage → Gateways list within seconds of joining WiFi.
+    // Repeats every HEARTBEAT_INTERVAL_MS thereafter (handled in loop()).
+    g_bootMs = millis();
+    sendHeartbeat();
+    g_lastHeartbeatMs = millis();
+
     refreshDisplay();
 }
 
@@ -162,6 +219,12 @@ void loop() {
 
     // Long-press the test button (10 s) → factory reset, re-enter BLE setup.
     ButtonHandler::checkLongPress();  // calls esp_restart() on trigger
+
+    // Heartbeat every 60 s so the dashboard knows the gateway is alive.
+    if (millis() - g_lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
+        g_lastHeartbeatMs = millis();
+        sendHeartbeat();
+    }
 
     // OTA check every 6 hours.
     if (millis() - g_lastOtaCheckMs >= OTA_CHECK_INTERVAL_MS) {
