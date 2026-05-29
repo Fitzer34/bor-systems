@@ -146,7 +146,19 @@ void loop() {
     // by firing a Lifted / Returned event. Useful during bench testing +
     // first-install commissioning so the customer can see the device is
     // alive and reacting.
-    if (Battery::isCharging()) {
+    //
+    // Decision: bare Heltec V3 boards without our custom PCB don't have the
+    // VBUS sense divider wired to GPIO 4 — `Battery::isCharging()` returns
+    // unreliable readings on those boards and the hanger silently falls into
+    // deep-sleep with the OLED cut. Until we have hangers deployed on actual
+    // batteries, force the awake path; once the production PCB lands we can
+    // flip BOR_HANGER_DEEP_SLEEP back on as a build flag.
+#ifdef BOR_HANGER_DEEP_SLEEP
+    const bool stayAwake = Battery::isCharging();
+#else
+    const bool stayAwake = true;
+#endif
+    if (stayAwake) {
         static uint32_t lastSendMs    = millis();
         static uint32_t lastDispMs    = 0;
         static uint32_t lastEventMs   = millis();
