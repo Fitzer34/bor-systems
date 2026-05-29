@@ -72,11 +72,14 @@ void forwardToCloud(const LoraLink::ReceivedPacket& p) {
     // is fine for production.
     WiFiClientSecure client;
     client.setInsecure();
-    // Cap the underlying socket at 4 s — without this, a stuck TLS handshake
-    // hangs the whole loop forever (no heartbeats, no OLED refresh, no LoRa
-    // ack delivery once the buffer drains). 4s gives Render a fair shake
-    // while keeping us responsive when the cell signal is flaky.
-    client.setTimeout(4);  // seconds (yes, seconds — WiFiClient takes secs)
+    // ── Three separate timeouts, three separate failure modes ──
+    //   setHandshakeTimeout: TLS handshake (default 120s!) — the actual
+    //     killer; sockets that get stuck mid-TLS hang the whole loop here
+    //     for two minutes per failed attempt without this set.
+    //   setTimeout: socket read after connection — established phase.
+    //   HTTPClient.setConnectTimeout: TCP connect (set below).
+    client.setHandshakeTimeout(5);  // seconds
+    client.setTimeout(4);            // seconds
 
     HTTPClient http;
     // Total time we're willing to block on a single POST. Covers TCP connect
@@ -160,7 +163,11 @@ void sendHeartbeat() {
 
     WiFiClientSecure client;
     client.setInsecure();  // TODO: pin Render's CA
-    client.setTimeout(4);  // seconds — keep the socket short-fused too
+    // setHandshakeTimeout is the critical one — default is 120s and a stuck
+    // TLS handshake will hang the whole gateway loop while it's waiting.
+    // 5s is plenty for Render Frankfurt over a healthy WiFi link.
+    client.setHandshakeTimeout(5);  // seconds
+    client.setTimeout(4);            // seconds — read after connect
     HTTPClient http;
     http.setConnectTimeout(5000);
     http.setTimeout(5000);
