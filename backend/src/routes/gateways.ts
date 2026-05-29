@@ -102,28 +102,60 @@ export default async function gatewayRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
-  // The seed/demo org that comes with every fresh DB. Real customer orgs are
-  // created on /signup with random UUIDs, so the demo org is recognisable by
-  // its fixed all-zero UUID. We deliberately skip it when picking an org for
-  // gateways to land in — otherwise the test seed swallows real devices.
-  const DEMO_ORG_ID = "00000000-0000-0000-0000-000000000001";
+  // Seeded demo orgs that come with every fresh DB.
+  //   0001 = seed.ts        (single-tenant prototype seed)
+  //   0099 = seed-demo.ts   (App Reviewer demo org with fake users)
+  // Real customer orgs are created on /signup with random UUIDs. We
+  // deliberately skip both demo orgs when picking a home for a new
+  // gateway — otherwise the seeds swallow real devices.
+  const DEMO_ORG_IDS = new Set([
+    "00000000-0000-0000-0000-000000000001",
+    "00000000-0000-0000-0000-000000000099",
+  ]);
 
   /// Picks the best organisation for a self-registering gateway.
   ///
-  /// Strategy: pick the most recently created NON-demo org. That's the org
-  /// the most recent signup created, which is almost always the customer
-  /// installing this gateway. In multi-tenant production this whole mechanism
-  /// will be replaced with a factory-baked org token; for the bootstrap
-  /// prototype the "newest non-demo org" heuristic is correct ~100% of the time.
+  /// Strategy: pick the org of the most recently CREATED user (excluding
+  /// seeded demo users / orgs). The most-recent user is almost always the
+  /// customer who just signed up and is now setting up their gateway. This
+  /// is a much stronger signal than "newest org" because seed scripts can
+  /// run after a user signs up, which would otherwise mess up the
+  /// timestamp-based heuristic.
   ///
-  /// Falls back to the demo org only if it's the only org that exists at all.
+  /// Fallback order:
+  ///   1. Most recent non-demo user → their org
+  ///   2. Most recent non-demo org (even if it has no users yet)
+  ///   3. The first demo org we find (last-resort during bootstrap)
+  ///
+  /// Long-term this whole mechanism gets replaced with a factory-baked
+  /// org token on the device. For the prototype phase this heuristic
+  /// is correct virtually 100% of the time.
   async function pickHomeOrg(): Promise<string | null> {
+    // Step 1: the most recently created user's org, skipping any user
+    // that lives in a seeded demo org.
+    const recentUsers = await db
+      .select({
+        userId: schema.users.id,
+        organisationId: schema.users.organisationId,
+        createdAt: schema.users.createdAt,
+      })
+      .from(schema.users)
+      .orderBy(sql`${schema.users.createdAt} DESC`)
+      .limit(20);  // small batch — we only need to find the newest non-demo one
+    const fromRecentUser = recentUsers.find(
+      (u) => !DEMO_ORG_IDS.has(u.organisationId),
+    );
+    if (fromRecentUser) return fromRecentUser.organisationId;
+
+    // Step 2: newest non-demo org, even if empty.
     const realOrgs = await db
-      .select({ id: schema.organisations.id, createdAt: schema.organisations.createdAt })
+      .select({ id: schema.organisations.id })
       .from(schema.organisations)
       .orderBy(sql`${schema.organisations.createdAt} DESC NULLS LAST`);
-    const nonDemo = realOrgs.find((o) => o.id !== DEMO_ORG_ID);
+    const nonDemo = realOrgs.find((o) => !DEMO_ORG_IDS.has(o.id));
     if (nonDemo) return nonDemo.id;
+
+    // Step 3: nothing real exists yet — land in whatever demo org we have.
     return realOrgs[0]?.id ?? null;
   }
 
@@ -162,9 +194,9 @@ export default async function gatewayRoutes(app: FastifyInstance): Promise<void>
       // This is a one-time migration; once the row is in the right org,
       // subsequent heartbeats are no-ops for the orgId field.
       let targetOrgId = existing.organisationId;
-      if (existing.organisationId === DEMO_ORG_ID) {
+      if (DEMO_ORG_IDS.has(existing.organisationId)) {
         const better = await pickHomeOrg();
-        if (better && better !== DEMO_ORG_ID) {
+        if (better && !DEMO_ORG_IDS.has(better)) {
           targetOrgId = better;
           app.log.info(`gateway ${devEui} migrating from demo org → ${better}`);
         }
