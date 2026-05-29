@@ -69,6 +69,9 @@ export default async function gatewayRoutes(app: FastifyInstance): Promise<void>
         .object({
           name: z.string().min(1).max(80).optional(),
           buildingId: z.string().uuid().nullable().optional(),
+          // Empty string clears the note (sent as `null` so the column
+          // goes back to NULL rather than holding an empty value).
+          locationNote: z.string().max(280).nullable().optional(),
         })
         .safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -76,6 +79,9 @@ export default async function gatewayRoutes(app: FastifyInstance): Promise<void>
       const updates: Record<string, unknown> = {};
       if (body.data.name !== undefined) updates.name = body.data.name;
       if (body.data.buildingId !== undefined) updates.buildingId = body.data.buildingId;
+      if (body.data.locationNote !== undefined) {
+        updates.locationNote = body.data.locationNote?.trim() || null;
+      }
       if (Object.keys(updates).length === 0) return { ok: true };
       await db
         .update(schema.gateways)

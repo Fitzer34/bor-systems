@@ -130,6 +130,9 @@ struct Gateway: Codable, Identifiable, Hashable {
     let devEui: String
     let name: String?
     let buildingId: String?
+    /// Free-form note about where in the building the gateway lives.
+    /// Used so a cleaner can find the device when it needs power-cycling.
+    let locationNote: String?
     let ipAddress: String?
     let ssid: String?
     let rssi: Int?

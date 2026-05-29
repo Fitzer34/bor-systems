@@ -12,6 +12,8 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <set>
+#include <string>
 
 namespace {
 
@@ -98,6 +100,13 @@ uint32_t g_packetsForwarded = 0;
 uint32_t g_lastOtaCheckMs   = 0;
 uint32_t g_lastHeartbeatMs  = 0;
 uint32_t g_bootMs           = 0;
+
+// Set of DevEUIs we've ever heard on LoRa during this boot session. Counted
+// up on the OLED ("N devices connected"). Reset on reboot — long-term we'd
+// also evict entries after N hours of silence so the count reflects "active
+// nearby" not "ever-seen", but for the prototype boot-scoped is fine.
+// Bounded to ~64 entries (~1 KB) to keep RAM use trivial.
+std::set<std::string> g_seenDevEuis;
 constexpr uint32_t OTA_CHECK_INTERVAL_MS       = 6UL * 60UL * 60UL * 1000UL;  // 6h
 constexpr uint32_t HEARTBEAT_INTERVAL_MS       = 60UL * 1000UL;               // 60s — fast enough to flip the Online badge
 
@@ -147,15 +156,41 @@ void sendHeartbeat() {
     http.end();
 }
 
+/// Map RSSI (negative dBm) to a 0-4 bar count, the way phones do.
+/// Boundaries chosen empirically from typical WiFi router setups in
+/// hospitals / restaurants:
+///   -45 dBm and above → 4 bars (right next to AP)
+///   -55 to -45        → 3 bars (same room as AP, good)
+///   -65 to -55        → 2 bars (next room over, fine)
+///   -75 to -65        → 1 bar  (across the building, marginal)
+///   below -75         → 0 bars (won't stay connected for long)
+int wifiBars(int rssi) {
+    if (rssi >= -45) return 4;
+    if (rssi >= -55) return 3;
+    if (rssi >= -65) return 2;
+    if (rssi >= -75) return 1;
+    return 0;
+}
+
 void refreshDisplay() {
-    char l1[32], l2[32], l3[32], l4[32];
-    const uint32_t uptimeMin = millis() / 60000;
+    char l1[32], l2[32], l3[32];
+    const int rssi = WiFi.RSSI();
+    const int bars = wifiBars(rssi);
+
+    // Filled pipes for active bars, dots for inactive. Renders cleanly in
+    // the SSD1306 default 10pt font (Unicode block chars don't).
+    char wifiBars[5] = "....";
+    for (int i = 0; i < bars && i < 4; ++i) wifiBars[i] = '|';
+
     snprintf(l1, sizeof(l1), "HazardLink Gateway");
-    snprintf(l2, sizeof(l2), "IP %s", WiFi.localIP().toString().c_str());
-    snprintf(l3, sizeof(l3), "RSSI %d dBm", WiFi.RSSI());
-    snprintf(l4, sizeof(l4), "pkts %lu  up %lum",
-             (unsigned long)g_packetsForwarded, (unsigned long)uptimeMin);
-    Display::showStatus(l1, l2, l3, l4);
+    snprintf(l2, sizeof(l2), "%u device%s connected",
+             (unsigned)g_seenDevEuis.size(),
+             g_seenDevEuis.size() == 1 ? "" : "s");
+    snprintf(l3, sizeof(l3), "WiFi %s %d dBm", wifiBars, rssi);
+
+    // Last slot left blank for visual breathing room — the customer doesn't
+    // need uptime or IP staring at them, those live in the dashboard.
+    Display::showStatus(l1, l2, l3, "");
 }
 
 }  // namespace
@@ -215,6 +250,14 @@ void loop() {
     while (LoraLink::pollReceived(&pkt)) {
         forwardToCloud(pkt);
         g_packetsForwarded++;
+
+        // Track the device count shown on the OLED. Cap the set to avoid
+        // unbounded memory growth in a busy environment — once we hit 64
+        // distinct devices we stop adding, the count just stays at 64+
+        // (which already says "this gateway is heavily loaded").
+        if (g_seenDevEuis.size() < 64) {
+            g_seenDevEuis.insert(std::string(pkt.devEui));
+        }
     }
 
     // Long-press the test button (10 s) → factory reset, re-enter BLE setup.

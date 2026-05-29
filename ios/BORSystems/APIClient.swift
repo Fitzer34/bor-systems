@@ -301,13 +301,19 @@ extension APIClient {
         let res: GatewaysResponse = try await request("/gateways")
         return res.gateways
     }
-    struct RenameGatewayBody: Encodable {
+    struct UpdateGatewayBody: Encodable {
         let name: String?
         let buildingId: String?
+        let locationNote: String?
     }
-    func renameGateway(_ id: String, name: String? = nil, buildingId: String? = nil) async throws {
+    func updateGateway(
+        _ id: String,
+        name: String? = nil,
+        buildingId: String? = nil,
+        locationNote: String? = nil,
+    ) async throws {
         let _: EmptyResponse = try await request("/gateways/\(id)", method: "PATCH",
-            body: RenameGatewayBody(name: name, buildingId: buildingId))
+            body: UpdateGatewayBody(name: name, buildingId: buildingId, locationNote: locationNote))
     }
     func deleteGateway(_ id: String) async throws {
         let _: EmptyResponse = try await request("/gateways/\(id)", method: "DELETE")

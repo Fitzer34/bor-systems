@@ -129,6 +129,11 @@ export const gateways = pgTable(
     // Building the gateway is physically installed in. Optional — useful
     // for sites with multiple buildings sharing one cloud org.
     buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    // Free-form text the admin can use to describe where in the building
+    // the gateway lives ("behind reception desk", "on shelf above fridge",
+    // "Floor 2 server cupboard"). Surfaces in the dashboard so the cleaner
+    // can find the device if it ever needs unplugging / power-cycling.
+    locationNote: text("location_note"),
     // Last-known network state, refreshed every heartbeat.
     ipAddress: text("ip_address"),
     ssid: text("ssid"),

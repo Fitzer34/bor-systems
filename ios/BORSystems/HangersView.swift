@@ -213,20 +213,24 @@ struct GatewaysView: View {
             if gateways.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("No gateways yet.").foregroundStyle(.secondary)
-                    Text("Plug in your Heltec gateway, run More → Add a gateway, and it'll appear here within ~60 seconds.")
+                    Text("Plug in your HazardLink gateway, run More → Add a gateway, and it'll appear here within ~60 seconds.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 6)
             }
             ForEach(gateways) { g in
-                GatewayRow(gateway: g)
-                    .swipeActions {
-                        if auth.user?.role == .admin {
-                            Button(role: .destructive) { Task { await delete(g) } } label: {
-                                Label("Remove", systemImage: "trash")
-                            }
+                NavigationLink {
+                    GatewayDetailView(gateway: g) { Task { await refresh() } }
+                } label: {
+                    GatewayRow(gateway: g)
+                }
+                .swipeActions {
+                    if auth.user?.role == .admin {
+                        Button(role: .destructive) { Task { await delete(g) } } label: {
+                            Label("Remove", systemImage: "trash")
                         }
                     }
+                }
             }
             if let err = error {
                 Section { Text(err).foregroundStyle(.red) }
@@ -264,6 +268,216 @@ struct GatewaysView: View {
     private func delete(_ g: Gateway) async {
         do { try await APIClient.shared.deleteGateway(g.id); await refresh() }
         catch { self.error = "Failed to remove gateway." }
+    }
+}
+
+// MARK: - GatewayDetailView ─────────────────────────────────────────────────
+//
+// Tap a row in GatewaysView → land here. Lets admins edit the customer-
+// facing name, change which building it's in, and add a free-form note
+// telling cleaners exactly where in the building the gateway sits ("behind
+// reception desk", "Floor 2 server cupboard").
+//
+// The bottom half shows the read-only network state straight from the
+// last heartbeat — useful for installer diagnostics but not editable.
+
+struct GatewayDetailView: View {
+    let gateway: Gateway
+    let onChange: () -> Void
+
+    @EnvironmentObject var auth: AuthStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String
+    @State private var buildingId: String   // empty string == no building
+    @State private var locationNote: String
+    @State private var buildings: [Building] = []
+    @State private var saving = false
+    @State private var error: String?
+    @State private var showDeleteConfirm = false
+
+    init(gateway: Gateway, onChange: @escaping () -> Void) {
+        self.gateway = gateway
+        self.onChange = onChange
+        _name = State(initialValue: gateway.name ?? "")
+        _buildingId = State(initialValue: gateway.buildingId ?? "")
+        _locationNote = State(initialValue: gateway.locationNote ?? "")
+    }
+
+    private var isAdmin: Bool { auth.user?.role == .admin }
+
+    var body: some View {
+        Form {
+            Section("Identification") {
+                if isAdmin {
+                    TextField("Name", text: $name)
+                        .autocorrectionDisabled()
+                } else {
+                    LabeledContent("Name", value: name.isEmpty ? "—" : name)
+                }
+                LabeledContent("DevEUI", value: gateway.devEui)
+                    .font(.system(.body, design: .monospaced))
+            }
+
+            Section("Location") {
+                if isAdmin {
+                    Picker("Building", selection: $buildingId) {
+                        Text("— Unassigned —").tag("")
+                        ForEach(buildings) { b in
+                            Text(b.name).tag(b.id)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Where in the building?").font(.caption).foregroundStyle(.secondary)
+                        TextField("e.g. behind reception desk, Floor 2 cupboard", text: $locationNote, axis: .vertical)
+                            .lineLimit(2...4)
+                            .autocorrectionDisabled(false)
+                    }
+                } else {
+                    LabeledContent("Building", value: buildingName)
+                    if !locationNote.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Where in the building?").font(.caption).foregroundStyle(.secondary)
+                            Text(locationNote)
+                        }
+                    }
+                }
+            }
+
+            Section("Live state") {
+                statusRow
+                if let ip = gateway.ipAddress    { LabeledContent("IP", value: ip) }
+                if let ssid = gateway.ssid       { LabeledContent("WiFi", value: ssid) }
+                if let rssi = gateway.rssi       { LabeledContent("Signal", value: "\(rssi) dBm \(signalLabel(rssi))") }
+                LabeledContent("Forwarded", value: "\(gateway.packetsForwarded) pkts")
+                if let up = gateway.uptimeSec    { LabeledContent("Uptime", value: formatUptime(up)) }
+                if let fw = gateway.firmwareVersion { LabeledContent("Firmware", value: fw) }
+                if let last = gateway.lastSeenAt {
+                    LabeledContent("Last heartbeat", value: relativeTime(from: last))
+                }
+            }
+
+            if let err = error {
+                Section { Text(err).foregroundStyle(.red) }
+            }
+
+            if isAdmin {
+                Section {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Remove gateway", systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .navigationTitle("Gateway")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if isAdmin {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if saving {
+                            ProgressView()
+                        } else {
+                            Text("Save").bold()
+                        }
+                    }
+                    .disabled(saving || !hasChanges)
+                }
+            }
+        }
+        .task {
+            buildings = (try? await APIClient.shared.buildings()) ?? []
+        }
+        .alert("Remove this gateway?", isPresented: $showDeleteConfirm) {
+            Button("Remove", role: .destructive) {
+                Task { await delete() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The device on the wall is still yours — it'll re-register itself on next boot. Removing here just deletes the dashboard record.")
+        }
+    }
+
+    @ViewBuilder
+    private var statusRow: some View {
+        let isOnline: Bool = {
+            guard let seen = gateway.lastSeenAt else { return false }
+            return Date().timeIntervalSince(seen) <= 90
+        }()
+        HStack {
+            Text("Status")
+            Spacer()
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isOnline ? Color.green : Color.orange)
+                    .frame(width: 8, height: 8)
+                Text(isOnline ? "Online" : "Offline")
+                    .foregroundStyle(isOnline ? .green : .orange)
+            }
+        }
+    }
+
+    private var buildingName: String {
+        if buildingId.isEmpty { return "Unassigned" }
+        return buildings.first(where: { $0.id == buildingId })?.name ?? "—"
+    }
+
+    private var hasChanges: Bool {
+        name != (gateway.name ?? "") ||
+        buildingId != (gateway.buildingId ?? "") ||
+        locationNote != (gateway.locationNote ?? "")
+    }
+
+    private func signalLabel(_ rssi: Int) -> String {
+        switch rssi {
+        case (-45)...: return "(excellent)"
+        case (-55)...: return "(strong)"
+        case (-65)...: return "(good)"
+        case (-75)...: return "(weak)"
+        default:       return "(very weak)"
+        }
+    }
+
+    private func formatUptime(_ sec: Int) -> String {
+        if sec < 60 { return "\(sec)s" }
+        if sec < 3600 { return "\(sec / 60)m" }
+        if sec < 86400 { return "\(sec / 3600)h \((sec % 3600) / 60)m" }
+        return "\(sec / 86400)d \((sec % 86400) / 3600)h"
+    }
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        error = nil
+        do {
+            try await APIClient.shared.updateGateway(
+                gateway.id,
+                name: name.isEmpty ? nil : name,
+                buildingId: buildingId.isEmpty ? nil : buildingId,
+                locationNote: locationNote.trimmingCharacters(in: .whitespaces).isEmpty ? nil : locationNote,
+            )
+            onChange()
+            dismiss()
+        } catch {
+            self.error = "Could not save changes."
+        }
+    }
+
+    private func delete() async {
+        saving = true
+        defer { saving = false }
+        do {
+            try await APIClient.shared.deleteGateway(gateway.id)
+            onChange()
+            dismiss()
+        } catch {
+            self.error = "Could not remove gateway."
+        }
     }
 }
 
