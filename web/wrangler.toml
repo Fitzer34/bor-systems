@@ -1,0 +1,28 @@
+# HazardLink web dashboard — Cloudflare Workers config.
+#
+# We deploy the built React SPA as a Workers Static Assets project
+# (Cloudflare's modern successor to Workers Sites + KV-asset-handler).
+# The crucial bit is `not_found_handling = "single-page-application"`,
+# which tells the runtime to serve `/index.html` for any path the asset
+# manifest doesn't have a file for — i.e. React-Router routes like
+# `/login`, `/gateways`, `/alerts/abc123`. Without this they all 404
+# even though the SPA can render them client-side.
+#
+# Deploy:
+#   cd web
+#   npm run build           # vite emits to dist/
+#   npx wrangler deploy     # picks up this file, uploads dist/ as assets
+
+name = "hazardlink-app"
+compatibility_date = "2025-05-29"
+
+# Static assets — Vite's build output. Everything under here is served
+# directly; the Worker entrypoint below only kicks in for paths that
+# don't match a built asset.
+[assets]
+directory = "./dist"
+# This is the line that fixes the /login 404. With "single-page-application",
+# any unmatched path falls back to /index.html with a 200, so React Router
+# can take over client-side. Default ("none") returns 404 — the bug we
+# were seeing.
+not_found_handling = "single-page-application"
