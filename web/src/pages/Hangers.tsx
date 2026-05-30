@@ -701,7 +701,27 @@ function RegisterHangerDialog({ buildings, onClose, onRegistered }: RegisterDial
         }),
       }),
     onSuccess: onRegistered,
-    onError: () => setError("Couldn't register — DevEUI may already exist or backend rejected."),
+    onError: (err: unknown) => {
+      // Surface the most useful message we can from the backend, falling
+      // through a few shapes (ApiError with a structured body, plain Error,
+      // anything else) so the customer sees the actual problem instead of
+      // a generic guess.
+      // ApiError shape from web/src/lib/api.ts: { status, payload }.
+      const e = err as { status?: number; payload?: { error?: string; details?: Record<string, string[]> } };
+      if (e?.status === 409) {
+        setError("That DevEUI is already registered to a hanger in your org.");
+        return;
+      }
+      if (e?.status === 400 && e.payload?.details) {
+        const first = Object.values(e.payload.details).flat()[0];
+        if (first) { setError(first); return; }
+      }
+      if (e?.payload?.error) {
+        setError(`Backend rejected: ${e.payload.error}`);
+        return;
+      }
+      setError("Couldn't register — try again.");
+    },
   });
 
   const devEuiValid = /^[0-9A-Za-z]{8,32}$/.test(devEui.trim());

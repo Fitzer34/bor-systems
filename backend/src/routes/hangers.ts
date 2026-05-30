@@ -22,12 +22,26 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
     async (req, reply) => {
       const body = z
         .object({
-          devEui: z.string().regex(/^[0-9A-Fa-f]{16}$/),
+          // Two accepted formats:
+          //   - 16 hex chars: legacy LoRaWAN DevEUI ("0011223344556677")
+          //   - "BOR" + 13 hex chars: our firmware's MAC-derived format
+          //     ("BOR3C0F02EADB342" — 3 letters + 6-byte MAC + 1-nibble checksum)
+          devEui: z.string().regex(
+            /^(BOR[0-9A-Fa-f]{13}|[0-9A-Fa-f]{16})$/,
+            "devEui must be 16 hex chars or BOR + 13 hex chars",
+          ),
           zoneId: z.string().uuid().optional(),
           audibleAlarmEnabled: z.boolean().default(false),
         })
         .safeParse(req.body);
-      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      if (!body.success) {
+        return reply.code(400).send({
+          error: "invalid_input",
+          // Surface Zod's per-field messages so the dashboard can show a
+          // useful hint instead of a generic "rejected" toast.
+          details: body.error.flatten().fieldErrors,
+        });
+      }
       const c = ctx(req);
 
       try {
