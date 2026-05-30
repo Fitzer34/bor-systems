@@ -256,6 +256,11 @@ bool sendEvent(EventType type, uint8_t batteryPct, uint8_t flags) {
 }
 
 bool startReceive() {
+    // Bring the radio to standby first. If it was sleeping (we sleep() it
+    // around the WiFi forward), calling startReceive() directly returns
+    // -705 (SPI cmd in invalid state). standby() is a no-op if already
+    // awake, so it's always safe to call here.
+    radio.standby();
     const int state = radio.startReceive();
     if (state != RADIOLIB_ERR_NONE) {
         log_e("startReceive failed: %d", state);
@@ -263,6 +268,15 @@ bool startReceive() {
     }
     log_i("LoRa rx mode active");
     return true;
+}
+
+void sleep() {
+    // Park the SX1262 so it releases the SPI bus / RF front-end while the
+    // ESP32-S3 does WiFi/TLS work. Clear any pending RX flag too — a packet
+    // that arrived right before sleep would otherwise be read against a
+    // sleeping radio after we re-arm.
+    radio.sleep();
+    g_rxFlag = false;
 }
 
 bool pollReceived(ReceivedPacket* out) {

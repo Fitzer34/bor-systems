@@ -84,4 +84,10 @@ struct ReceivedPacket {
 };
 bool pollReceived(ReceivedPacket* out);
 
+// GATEWAY side — put the radio to sleep. Call this before doing WiFi/TLS
+// work (e.g. forwarding a packet to the cloud) so the SX1262 isn't driving
+// the shared SPI bus / holding RF resources while the TLS stack runs on the
+// same ESP32-S3. Pair with startReceive() afterwards to re-arm.
+void sleep();
+
 }  // namespace LoraLink

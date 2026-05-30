@@ -53,16 +53,58 @@ bool connectWifi() {
     return true;
 }
 
+// Base64-encode 4 raw bytes (no padding edge cases — 4 bytes → 8 chars incl
+// one '=' pad). Tiny standalone encoder so we don't pull in a library.
+static String base64_4(const uint8_t in[4]) {
+    static const char* T =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    char out[9];
+    out[0] = T[(in[0] >> 2) & 0x3F];
+    out[1] = T[((in[0] & 0x03) << 4) | ((in[1] >> 4) & 0x0F)];
+    out[2] = T[((in[1] & 0x0F) << 2) | ((in[2] >> 6) & 0x03)];
+    out[3] = T[in[2] & 0x3F];
+    out[4] = T[(in[3] >> 2) & 0x3F];
+    out[5] = T[(in[3] & 0x03) << 4];
+    out[6] = '=';
+    out[7] = '=';
+    out[8] = '\0';
+    return String(out);
+}
+
 void forwardToCloud(const LoraLink::ReceivedPacket& p) {
+    // The backend webhook (/webhook/tts) decodes the TTN/LoRaWAN uplink
+    // shape: end_device_ids.dev_eui + a base64 frm_payload it then decodes
+    // as our 4-byte event packet (event, battery, fw, flags). We MUST send
+    // exactly that shape — an earlier flat {dev_eui, event, …} body was
+    // rejected with 400 "missing dev_eui or frm_payload" and silently lost
+    // every real hanger event.
+    //
+    // Re-encode the 4 payload bytes from the fields we decoded off LoRa:
+    //   byte0 = event type code (1=lifted … 5=cleaning_started)
+    //   byte1 = battery %
+    //   byte2 = fw version (already packed major<<4|minor)
+    //   byte3 = flags
+    uint8_t raw[4];
+    switch (p.type) {
+        case LoraLink::EventType::Lifted:          raw[0] = 1; break;
+        case LoraLink::EventType::Returned:        raw[0] = 2; break;
+        case LoraLink::EventType::Heartbeat:       raw[0] = 3; break;
+        case LoraLink::EventType::LowBattery:      raw[0] = 4; break;
+        case LoraLink::EventType::CleaningStarted: raw[0] = 5; break;
+        default:                                   raw[0] = 3; break;
+    }
+    raw[1] = p.batteryPct;
+    raw[2] = p.fwVersion;
+    raw[3] = p.flags;
+
     JsonDocument doc;
-    doc["dev_eui"]     = p.devEui;
-    doc["event"]       = eventName(p.type);
-    doc["battery_pct"] = p.batteryPct;
-    doc["is_charging"] =
-        (p.flags & static_cast<uint8_t>(LoraLink::Flags::IsCharging)) != 0;
-    doc["fw_version"]  = p.fwVersion;
-    doc["rssi"]        = p.rssi;
-    doc["snr"]         = p.snr;
+    doc["end_device_ids"]["dev_eui"] = p.devEui;
+    doc["uplink_message"]["f_port"]  = 1;
+    doc["uplink_message"]["frm_payload"] = base64_4(raw);
+    // Pass LoRa link quality through as extra fields — the webhook ignores
+    // unknown keys, but they're handy if we later log signal strength.
+    doc["uplink_message"]["rx_metadata"][0]["rssi"] = (int)p.rssi;
+    doc["uplink_message"]["rx_metadata"][0]["snr"]  = p.snr;
 
     String body;
     serializeJson(doc, body);
@@ -283,16 +325,28 @@ void loop() {
 
     LoraLink::ReceivedPacket pkt;
     while (LoraLink::pollReceived(&pkt)) {
-        forwardToCloud(pkt);
-        g_packetsForwarded++;
-
-        // Track the device count shown on the OLED. Cap the set to avoid
-        // unbounded memory growth in a busy environment — once we hit 64
-        // distinct devices we stop adding, the count just stays at 64+
-        // (which already says "this gateway is heavily loaded").
+        // Track the device count shown on the OLED *first* — this is purely
+        // local and must reflect "we heard it" even if the cloud forward
+        // later fails. Cap the set to bound RAM (≤64 distinct devices).
         if (g_seenDevEuis.size() < 64) {
             g_seenDevEuis.insert(std::string(pkt.devEui));
         }
+
+        // CRITICAL ordering: the SX1262 LoRa radio and the WiFi/TLS stack
+        // both run on the one ESP32-S3. pollReceived() just transmitted an
+        // ACK and re-armed the radio into continuous receive — leaving it
+        // actively driving the shared SPI + holding RF resources. Spinning
+        // up a TLS connection while the radio is in that state makes the
+        // HTTPS POST stall and fail (exactly the symptom: LoRa ack works,
+        // OLED counts the device, but the cloud forward never lands).
+        //
+        // Fix: park the radio in sleep before the forward, then re-arm
+        // receive afterwards. Heartbeats never hit this because they run
+        // when no packet just arrived (radio idle-listening, not mid-txn).
+        LoraLink::sleep();
+        forwardToCloud(pkt);
+        g_packetsForwarded++;
+        LoraLink::startReceive();  // re-arm for the next hanger packet
     }
 
     // Long-press the test button (10 s) → factory reset, re-enter BLE setup.
