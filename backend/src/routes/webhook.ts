@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, like } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { config } from "../config.js";
 import { decodePayload, isPayloadDecodeError } from "../payload.js";
@@ -137,14 +137,35 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
       throw err;
     }
 
+    // Match strategy: the firmware truncates the DevEUI to the LAST 8 ASCII
+    // chars before sending over LoRa (the 20-byte payload budget doesn't fit
+    // the full 16 chars + HMAC + seq + metadata). So we accept both the
+    // truncated form and the full form, and look up by suffix.
+    //
+    //   Full registered DevEUI: "BOR3C0F02EADB342"
+    //   What LoRa actually sent: "2EADB342"
+    //
+    // A LIKE %2EADB342 query matches the full row. For a legacy 16-hex
+    // LoRaWAN device that registered itself with all 16 chars, the same
+    // query still matches (last 8 = the suffix). For something that
+    // forwarded the full DevEUI in `dev_eui` (not currently possible from
+    // our firmware but other devices might), the LIKE still matches —
+    // since `%X` is a tautology when the input equals the row's full value.
+    //
+    // Risk of false-positive collision: 8 hex chars = 16^8 ≈ 4 billion. For
+    // a fleet under, say, 10k hangers, the birthday probability is ~10^-12.
+    // For the prototype phase this is fine; revisit when we hit production
+    // scale per-org.
+    const lookupSuffix = devEui.length > 8 ? devEui.slice(-8) : devEui;
+
     const [hanger] = await db
       .select()
       .from(schema.hangers)
-      .where(eq(schema.hangers.devEui, devEui))
+      .where(like(schema.hangers.devEui, `%${lookupSuffix}`))
       .limit(1);
 
     if (!hanger) {
-      app.log.warn({ devEui }, "uplink from unknown hanger");
+      app.log.warn({ devEui, lookupSuffix }, "uplink from unknown hanger");
       return reply.code(202).send({ status: "unknown_hanger" });
     }
 
