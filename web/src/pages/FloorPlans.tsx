@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { api, getToken } from "../lib/api";
+import { api, getToken, apiUrl, API_BASE } from "../lib/api";
 import { useTicker } from "../lib/ticker";
 
 interface Building { id: string; name: string }
@@ -117,7 +117,9 @@ export function FloorPlans() {
     mutationFn: async (file: File) => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`/api/floors/${activeFloorId}/floor-plan`, {
+      // Use apiUrl() so this hits the Render backend in prod (the hardcoded
+      // /api path only works behind the dev Vite proxy — it 404'd live).
+      const res = await fetch(apiUrl(`/floors/${activeFloorId}/floor-plan`), {
         method: "POST",
         headers: { authorization: `Bearer ${getToken() ?? ""}` },
         body: fd,
@@ -130,6 +132,14 @@ export function FloorPlans() {
 
   const [pinningZoneId, setPinningZoneId] = useState<string | null>(null);
   const activeFloor = floors.data?.floors.find((f) => f.id === activeFloorId);
+
+  // Floor-plan URLs come back either absolute (R2/CDN: "https://…") or
+  // relative ("/uploads/floorplans/…" when the backend stores to local disk).
+  // A relative path would resolve against app.hazardlink.ie (Cloudflare),
+  // but the file actually lives on the Render backend — so prefix relative
+  // paths with API_BASE. Absolute URLs pass through untouched.
+  const planSrc = (url: string): string =>
+    url.startsWith("http") ? url : `${API_BASE}${url}`;
 
   const handlePlanClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!pinningZoneId) return;
@@ -251,7 +261,7 @@ export function FloorPlans() {
               onClick={handlePlanClick}
               className={`relative inline-block ${pinningZoneId ? "cursor-crosshair" : ""}`}
             >
-              <img src={activeFloor.floorPlanUrl} alt="" className="block max-w-full max-h-[600px]" />
+              <img src={planSrc(activeFloor.floorPlanUrl)} alt="" className="block max-w-full max-h-[600px]" />
               {zones.data?.zones.filter((z) => z.pinX != null && z.pinY != null).map((z) => {
                 const status = zoneStatusById.get(z.id);
                 const isOffline = offlineZoneIds.has(z.id);
