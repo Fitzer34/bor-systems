@@ -51,11 +51,34 @@ uint8_t flagsForUplink() {
 LoraLink::EventType currentEventType() {
     const uint8_t pct = Battery::readPercent();
     const bool signPresent = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
-    if (pct <= LOW_BATTERY_PCT && !Battery::isCharging()) {
+    // Only treat as low-battery when we have a CONFIDENT low reading
+    // (1–LOW_BATTERY_PCT). A reading of exactly 0 almost always means the
+    // measurement failed (no cell wired, divider not populated) rather than
+    // a genuinely flat pack — a real LiPo would have already hit its cutoff
+    // long before reading a true 0. Don't spam low_battery alerts on a
+    // measurement glitch.
+    if (pct > 0 && pct <= LOW_BATTERY_PCT && !Battery::isCharging()) {
         return LoraLink::EventType::LowBattery;
     }
     if (!signPresent) return LoraLink::EventType::Lifted;
     return LoraLink::EventType::Heartbeat;
+}
+
+// Debounced read of the sign sensor (reed switch or Hall). The pin floats
+// noisily on a bare board and even a real reed switch bounces for a few ms
+// on each open/close. Require the level to be stable across DEBOUNCE_SAMPLES
+// consecutive reads before we trust it. Returns true == sign present
+// (magnet near == LOW with the internal pull-up).
+bool signPresentDebounced() {
+    constexpr int DEBOUNCE_SAMPLES = 5;
+    constexpr int SAMPLE_GAP_MS    = 8;   // 5 × 8ms ≈ 40ms of stability
+    int low = 0, high = 0;
+    for (int i = 0; i < DEBOUNCE_SAMPLES; ++i) {
+        if (digitalRead(Pinout::HALL_SENSOR_PIN) == LOW) low++; else high++;
+        delay(SAMPLE_GAP_MS);
+    }
+    // Majority wins; ties shouldn't happen with an odd sample count.
+    return low > high;
 }
 
 void sendCurrentState() {
@@ -163,10 +186,12 @@ void loop() {
         static uint32_t lastDispMs    = 0;
         static uint32_t lastEventMs   = millis();
         static LoraLink::EventType lastEvent = currentEventType();
-        static bool prevSignPresent   = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
+        static bool prevSignPresent   = signPresentDebounced();
 
-        // Edge-detect sign-on-hook changes for instant push.
-        const bool signPresent = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
+        // Edge-detect sign-on-hook changes for instant push. Debounced so
+        // one physical sign movement = exactly one event, not a burst of
+        // chatter from contact bounce / a floating pin.
+        const bool signPresent = signPresentDebounced();
         if (signPresent != prevSignPresent) {
             prevSignPresent = signPresent;
             lastEvent = signPresent ? LoraLink::EventType::Returned

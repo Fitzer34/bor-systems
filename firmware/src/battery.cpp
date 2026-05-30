@@ -56,20 +56,41 @@ void begin() {
     analogReadResolution(12);
 }
 
-float readVoltage() {
-    digitalWrite(Pinout::VBAT_CTRL, LOW);   // enable divider
-    delayMicroseconds(100);                  // let it settle
+// Read the divided VBAT pin (in millivolts, ESP32-calibrated) with the
+// ADC control pin driven to `ctrlLevel`. Averages 16 samples after a
+// settle delay.
+static float readDividedMv(int ctrlLevel) {
+    digitalWrite(Pinout::VBAT_CTRL, ctrlLevel);
+    delay(10);  // the rail needs ms, not µs, to settle — 100µs was too short
 
     uint32_t sum = 0;
-    for (int i = 0; i < 32; ++i) {
-        sum += analogRead(Pinout::VBAT_PIN);
+    for (int i = 0; i < 16; ++i) {
+        // analogReadMilliVolts applies the chip's factory ADC calibration —
+        // far more accurate than raw analogRead × 3.3/4095, which is wildly
+        // nonlinear on the ESP32-S3 especially near the low end.
+        sum += analogReadMilliVolts(Pinout::VBAT_PIN);
     }
+    return sum / 16.0f;
+}
 
-    digitalWrite(Pinout::VBAT_CTRL, HIGH);  // disable divider — save µA
+float readVoltage() {
+    // Heltec changed the ADC-enable polarity between board revisions:
+    //   - V3.0 / V3.1: drive ADC_Ctrl (GPIO37) LOW to connect the divider
+    //   - V3.2:        drive ADC_Ctrl HIGH to connect the divider
+    // Rather than hardcode one (and read 0% on the other), measure with
+    // BOTH polarities and keep the larger reading — the "disabled" polarity
+    // reads ~0 mV, the "enabled" one reads the real divided voltage. This
+    // makes the same firmware work across every V3 revision.
+    const float mvLow  = readDividedMv(LOW);
+    const float mvHigh = readDividedMv(HIGH);
+    const float adcMv  = mvLow > mvHigh ? mvLow : mvHigh;
 
-    const float adcMean   = sum / 32.0f;
-    const float adcVolts  = adcMean * ADC_REF_V / ADC_MAX;
-    return adcVolts * DIVIDER_RATIO;
+    // Leave the control pin in the LOW state afterwards (lowest quiescent
+    // on the revisions where LOW == disabled; harmless on V3.2).
+    digitalWrite(Pinout::VBAT_CTRL, LOW);
+
+    // adcMv is the divided pin voltage in mV; scale back to the battery.
+    return (adcMv / 1000.0f) * DIVIDER_RATIO;
 }
 
 uint8_t readPercent() {
