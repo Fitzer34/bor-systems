@@ -300,6 +300,7 @@ function HangerEditDialog({
   const [floorId, setFloorId] = useState(initialZone?.floorId ?? "");
   const [zoneId, setZoneId] = useState(hanger.zoneId ?? "");
   const [confirmingDecommission, setConfirmingDecommission] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Floors for the currently-picked building (filtered from the zones tree).
   const floorsForBuilding = (() => {
@@ -347,6 +348,14 @@ function HangerEditDialog({
 
   const recommission = useMutation({
     mutationFn: () => api(`/hangers/${hanger.id}/recommission`, { method: "POST" }),
+    onSuccess: onStatusChanged,
+  });
+
+  // Hard delete — fully removes the hanger + its alerts/events. For clearing
+  // test / seed / misregistered entries. Distinct from decommission (which
+  // archives a real device but keeps its history).
+  const remove = useMutation({
+    mutationFn: () => api(`/hangers/${hanger.id}`, { method: "DELETE" }),
     onSuccess: onStatusChanged,
   });
 
@@ -486,7 +495,21 @@ function HangerEditDialog({
 
         <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between gap-3">
           {isAdmin && (
-            confirmingDecommission ? (
+            confirmingDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-red-300">Permanently delete + all its alerts?</span>
+                <button
+                  onClick={() => remove.mutate()}
+                  disabled={remove.isPending}
+                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded text-white"
+                >
+                  {remove.isPending ? "…" : "Delete"}
+                </button>
+                <button onClick={() => setConfirmingDelete(false)} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">
+                  Cancel
+                </button>
+              </div>
+            ) : confirmingDecommission ? (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-300">Decommission this hanger?</span>
                 <button
@@ -500,21 +523,33 @@ function HangerEditDialog({
                   Cancel
                 </button>
               </div>
-            ) : hanger.status === "decommissioned" ? (
-              <button
-                onClick={() => recommission.mutate()}
-                disabled={recommission.isPending}
-                className="px-3 py-1.5 text-sm text-green-400 hover:text-green-300 hover:bg-green-950/30 rounded"
-              >
-                {recommission.isPending ? "…" : "Recommission"}
-              </button>
             ) : (
-              <button
-                onClick={() => setConfirmingDecommission(true)}
-                className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded"
-              >
-                Decommission
-              </button>
+              <div className="flex items-center gap-3">
+                {hanger.status === "decommissioned" ? (
+                  <button
+                    onClick={() => recommission.mutate()}
+                    disabled={recommission.isPending}
+                    className="px-3 py-1.5 text-sm text-green-400 hover:text-green-300 hover:bg-green-950/30 rounded"
+                  >
+                    {recommission.isPending ? "…" : "Recommission"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingDecommission(true)}
+                    className="px-3 py-1.5 text-sm text-amber-400 hover:text-amber-300 hover:bg-amber-950/30 rounded"
+                  >
+                    Decommission
+                  </button>
+                )}
+                {/* Hard delete — for test/seed/misregistered junk. Decommission
+                    is for real devices you're retiring (keeps history). */}
+                <button
+                  onClick={() => setConfirmingDelete(true)}
+                  className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded"
+                >
+                  Delete permanently
+                </button>
+              </div>
             )
           )}
           <div className="flex gap-2 ml-auto">

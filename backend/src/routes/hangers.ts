@@ -102,6 +102,45 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
     },
   );
 
+  // Hard-delete a hanger and everything that references it. Admin-only.
+  //
+  // Unlike decommission (which keeps the row + audit history), this fully
+  // removes the device — for clearing test/seed/misregistered entries.
+  // alerts.hangerId is onDelete:"restrict", so we must delete dependent
+  // alerts (and their events) first, inside a transaction, or the hanger
+  // delete errors out. events.hangerId is onDelete:"cascade" so those go
+  // automatically, but we delete explicitly for clarity + to also clear
+  // any alert-attached events.
+  app.delete(
+    "/hangers/:id",
+    { preHandler: [app.authenticate, requireRole(["admin"])] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const c = ctx(req);
+
+      // Confirm the hanger belongs to the caller's org before touching anything.
+      const [hanger] = await db
+        .select({ id: schema.hangers.id })
+        .from(schema.hangers)
+        .where(and(eq(schema.hangers.id, id), eq(schema.hangers.organisationId, c.orgId)))
+        .limit(1);
+      if (!hanger) return reply.code(404).send({ error: "not_found" });
+
+      await db.transaction(async (tx) => {
+        // alerts → restrict FK, must go first. (events cascade from both
+        // hanger and alert, but delete explicitly to be safe across schema
+        // variations.)
+        await tx.delete(schema.alerts).where(eq(schema.alerts.hangerId, id));
+        await tx.delete(schema.events).where(eq(schema.events.hangerId, id));
+        await tx
+          .delete(schema.hangers)
+          .where(and(eq(schema.hangers.id, id), eq(schema.hangers.organisationId, c.orgId)));
+      });
+
+      return { ok: true };
+    },
+  );
+
   // Unified edit — name, location note, zone, audible alarm in one call.
   // Subsumes the existing /relocate endpoint (which stays around for
   // back-compat with older app builds) and adds the new name + locationNote
