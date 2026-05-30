@@ -193,7 +193,7 @@ private struct HangerRow: View {
     /// two missed beats. Combined with the 1-second tick driven by the
     /// parent HangersView, the badge flips within ~16 seconds of going dark.
     /// Battery LoRa hangers will need a longer threshold once we ship them.
-    private static let onlineWindow: TimeInterval = 15
+    private static let onlineWindow: TimeInterval = 90
 
     @ViewBuilder
     private var statusBadge: some View {
@@ -439,7 +439,7 @@ struct HangerDetailView: View {
             case .decommissioned: return ("Decommissioned", .gray)
             case .active:
                 if let seen = hanger.lastSeenAt,
-                   Date().timeIntervalSince(seen) <= 15 {
+                   Date().timeIntervalSince(seen) <= 90 {
                     return ("Online", .green)
                 }
                 return ("Offline", .orange)

@@ -22,7 +22,7 @@ interface Zone     { id: string; name: string; floorId: string }
 interface Floor    { id: string; name: string; buildingId: string; orderIndex: number }
 interface Building { id: string; name: string }
 
-const ONLINE_WINDOW_MS = 30 * 1000;
+const ONLINE_WINDOW_MS = 90 * 1000;
 
 export function Hangers() {
   useTicker(1000);
