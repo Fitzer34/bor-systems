@@ -73,6 +73,7 @@ export function Hangers() {
   });
 
   const [editing, setEditing] = useState<Hanger | null>(null);
+  const [registering, setRegistering] = useState(false);
 
   if (hangers.isLoading) {
     return <div className="p-8 text-slate-400">Loading hangers…</div>;
@@ -85,12 +86,22 @@ export function Hangers() {
 
   return (
     <div className="p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-4">
         <h1 className="text-2xl font-semibold">Hangers</h1>
-        <p className="text-sm text-slate-400">
-          One per wet-floor sign. Onboard via the iOS app's{" "}
-          <span className="font-medium">Add a hanger</span> flow.
-        </p>
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-slate-400 hidden md:block">
+            One per wet-floor sign. Onboard via the iOS app or register
+            by DevEUI here.
+          </p>
+          {isStaff && (
+            <button
+              onClick={() => setRegistering(true)}
+              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium whitespace-nowrap"
+            >
+              + Register hanger
+            </button>
+          )}
+        </div>
       </div>
 
       {list.length === 0 ? (
@@ -131,6 +142,19 @@ export function Hangers() {
           onStatusChanged={() => {
             qc.invalidateQueries({ queryKey: ["hangers"] });
             setEditing(null);
+          }}
+        />
+      )}
+
+      {registering && (
+        <RegisterHangerDialog
+          buildings={buildings.data?.buildings ?? []}
+          onClose={() => setRegistering(false)}
+          onRegistered={() => {
+            qc.invalidateQueries({ queryKey: ["hangers"] });
+            qc.invalidateQueries({ queryKey: ["buildings"] });
+            qc.invalidateQueries({ queryKey: ["all-zones"] });
+            setRegistering(false);
           }}
         />
       )}
@@ -553,4 +577,329 @@ function relativeTime(iso: string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+
+// ─── Register hanger dialog ─────────────────────────────────────────────────
+//
+// Mirrors the iOS HangerLocationStep — DevEUI input on top, then a cascading
+// Building/Floor/Zone picker where each level offers a "+ Create new" row
+// that expands inline. The user can spin up a whole building tree from
+// scratch and register the hanger to a brand-new zone without leaving the
+// modal.
+
+interface RegisterDialogProps {
+  buildings: Building[];
+  onClose: () => void;
+  onRegistered: () => void;
+}
+
+function RegisterHangerDialog({ buildings, onClose, onRegistered }: RegisterDialogProps) {
+  const [devEui, setDevEui] = useState("");
+  const [audibleAlarm, setAudibleAlarm] = useState(false);
+
+  // Picker state — IDs only; the listings come from queries below.
+  const [buildingId, setBuildingId] = useState("");
+  const [floorId, setFloorId] = useState("");
+  const [zoneId, setZoneId] = useState("");
+
+  // Create-new inline expansion state — one per level.
+  const [creatingBuilding, setCreatingBuilding] = useState(false);
+  const [newBuildingName, setNewBuildingName] = useState("");
+  const [creatingFloor, setCreatingFloor] = useState(false);
+  const [newFloorName, setNewFloorName] = useState("");
+  const [creatingZone, setCreatingZone] = useState(false);
+  const [newZoneName, setNewZoneName] = useState("");
+
+  // Local copies — start from props, append after each successful create
+  // so the picker reflects the new entries without a refetch round-trip.
+  const [localBuildings, setLocalBuildings] = useState<Building[]>(buildings);
+  const [floors, setFloors] = useState<{ id: string; name: string; orderIndex: number }[]>([]);
+  const [zones, setZones] = useState<{ id: string; name: string }[]>([]);
+
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Load floors when building changes.
+  useEffect(() => {
+    setFloorId("");
+    setZoneId("");
+    setFloors([]);
+    setZones([]);
+    if (!buildingId) return;
+    api<{ floors: { id: string; name: string; orderIndex: number }[] }>(`/buildings/${buildingId}/floors`)
+      .then((r) => setFloors(r.floors.sort((a, b) => a.orderIndex - b.orderIndex)))
+      .catch(() => setError("Could not load floors."));
+  }, [buildingId]);
+
+  // Load zones when floor changes.
+  useEffect(() => {
+    setZoneId("");
+    setZones([]);
+    if (!floorId) return;
+    api<{ zones: { id: string; name: string }[] }>(`/floors/${floorId}/zones`)
+      .then((r) => setZones(r.zones))
+      .catch(() => setError("Could not load zones."));
+  }, [floorId]);
+
+  const createBuilding = useMutation({
+    mutationFn: (name: string) =>
+      api<{ building: Building }>("/buildings", { method: "POST", body: JSON.stringify({ name }) }),
+    onSuccess: (data) => {
+      setLocalBuildings((prev) => [...prev, data.building]);
+      setBuildingId(data.building.id);
+      setCreatingBuilding(false);
+      setNewBuildingName("");
+    },
+    onError: () => setError("Could not create building."),
+  });
+
+  const createFloor = useMutation({
+    mutationFn: ({ name }: { name: string }) => {
+      const nextOrder = (floors.map((f) => f.orderIndex).reduce((a, b) => Math.max(a, b), -1) + 1);
+      return api<{ floor: { id: string; name: string; orderIndex: number } }>(
+        `/buildings/${buildingId}/floors`,
+        { method: "POST", body: JSON.stringify({ name, orderIndex: nextOrder }) },
+      );
+    },
+    onSuccess: (data) => {
+      setFloors((prev) => [...prev, data.floor]);
+      setFloorId(data.floor.id);
+      setCreatingFloor(false);
+      setNewFloorName("");
+    },
+    onError: () => setError("Could not create floor."),
+  });
+
+  const createZone = useMutation({
+    mutationFn: ({ name }: { name: string }) =>
+      api<{ zone: { id: string; name: string } }>(
+        `/floors/${floorId}/zones`,
+        { method: "POST", body: JSON.stringify({ name }) },
+      ),
+    onSuccess: (data) => {
+      setZones((prev) => [...prev, data.zone]);
+      setZoneId(data.zone.id);
+      setCreatingZone(false);
+      setNewZoneName("");
+    },
+    onError: () => setError("Could not create zone."),
+  });
+
+  const register = useMutation({
+    mutationFn: () =>
+      api("/hangers/register", {
+        method: "POST",
+        body: JSON.stringify({
+          devEui: devEui.toUpperCase(),
+          zoneId: zoneId || undefined,
+          audibleAlarmEnabled: audibleAlarm,
+        }),
+      }),
+    onSuccess: onRegistered,
+    onError: () => setError("Couldn't register — DevEUI may already exist or backend rejected."),
+  });
+
+  const devEuiValid = /^[0-9A-Za-z]{8,32}$/.test(devEui.trim());
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-slate-900 rounded-xl w-full max-w-2xl border border-slate-700 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <h2 className="text-lg font-medium text-slate-100">Register hanger</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
+          <Section title="Device">
+            <FieldGroup label="DevEUI">
+              <input
+                type="text"
+                value={devEui}
+                onChange={(e) => setDevEui(e.target.value)}
+                autoFocus
+                placeholder="e.g. BOR3C0F02EADB342"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm font-mono"
+              />
+              <p className="mt-1.5 text-xs text-slate-500">
+                Read it off the OLED's first boot screen, the gateway's
+                "1 device connected" attribution, or the hanger's serial output.
+              </p>
+            </FieldGroup>
+          </Section>
+
+          <Section title="Location">
+            <PickerRow
+              label="Building"
+              options={localBuildings.map((b) => ({ id: b.id, name: b.name }))}
+              selectedId={buildingId}
+              onSelect={setBuildingId}
+              creating={creatingBuilding}
+              onStartCreate={() => setCreatingBuilding(true)}
+              onCancelCreate={() => { setCreatingBuilding(false); setNewBuildingName(""); }}
+              draftName={newBuildingName}
+              setDraftName={setNewBuildingName}
+              placeholder="e.g. Mercy Hospital"
+              saving={createBuilding.isPending}
+              onSave={() => {
+                const n = newBuildingName.trim();
+                if (n) createBuilding.mutate(n);
+              }}
+            />
+
+            {buildingId && (
+              <PickerRow
+                label="Floor"
+                options={floors.map((f) => ({ id: f.id, name: f.name }))}
+                selectedId={floorId}
+                onSelect={setFloorId}
+                creating={creatingFloor}
+                onStartCreate={() => setCreatingFloor(true)}
+                onCancelCreate={() => { setCreatingFloor(false); setNewFloorName(""); }}
+                draftName={newFloorName}
+                setDraftName={setNewFloorName}
+                placeholder="e.g. Ground floor, 1st floor"
+                saving={createFloor.isPending}
+                onSave={() => {
+                  const n = newFloorName.trim();
+                  if (n) createFloor.mutate({ name: n });
+                }}
+              />
+            )}
+
+            {floorId && (
+              <PickerRow
+                label="Zone"
+                options={zones.map((z) => ({ id: z.id, name: z.name }))}
+                selectedId={zoneId}
+                onSelect={setZoneId}
+                creating={creatingZone}
+                onStartCreate={() => setCreatingZone(true)}
+                onCancelCreate={() => { setCreatingZone(false); setNewZoneName(""); }}
+                draftName={newZoneName}
+                setDraftName={setNewZoneName}
+                placeholder="e.g. Reception, Toilets, Canteen"
+                saving={createZone.isPending}
+                onSave={() => {
+                  const n = newZoneName.trim();
+                  if (n) createZone.mutate({ name: n });
+                }}
+              />
+            )}
+          </Section>
+
+          <Section title="Alarm">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={audibleAlarm}
+                onChange={(e) => setAudibleAlarm(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-800 cursor-pointer"
+              />
+              <span className="text-slate-100 text-sm">Audible alarm on lift</span>
+            </label>
+          </Section>
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">Cancel</button>
+          <button
+            onClick={() => { setError(null); register.mutate(); }}
+            disabled={!devEuiValid || register.isPending}
+            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 rounded text-white font-medium"
+          >
+            {register.isPending
+              ? "Registering…"
+              : zoneId
+                ? "Register here"
+                : "Register — assign later"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One picker row — used for Building, Floor, Zone. Existing options render
+// as a vertical list of clickable chips; a "+ Create new" row at the bottom
+// expands inline into a name field + Save when clicked.
+
+interface PickerRowProps {
+  label: string;
+  options: { id: string; name: string }[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  creating: boolean;
+  onStartCreate: () => void;
+  onCancelCreate: () => void;
+  draftName: string;
+  setDraftName: (s: string) => void;
+  placeholder: string;
+  saving: boolean;
+  onSave: () => void;
+}
+
+function PickerRow({
+  label, options, selectedId, onSelect,
+  creating, onStartCreate, onCancelCreate,
+  draftName, setDraftName, placeholder, saving, onSave,
+}: PickerRowProps) {
+  return (
+    <div>
+      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      <div className="space-y-1">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => onSelect(o.id)}
+            className={
+              "w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between " +
+              (selectedId === o.id
+                ? "bg-blue-500/15 text-blue-200 border border-blue-500/40"
+                : "bg-slate-800 text-slate-200 hover:bg-slate-700 border border-transparent")
+            }
+          >
+            <span>{o.name}</span>
+            {selectedId === o.id && <span className="text-blue-300">✓</span>}
+          </button>
+        ))}
+        {creating ? (
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              type="text"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") onSave(); }}
+              autoFocus
+              placeholder={placeholder}
+              className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+            />
+            <button
+              onClick={onSave}
+              disabled={!draftName.trim() || saving}
+              className="px-3 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded text-white"
+            >
+              {saving ? "…" : "Save"}
+            </button>
+            <button onClick={onCancelCreate} className="px-2 text-slate-400 hover:text-white text-lg">×</button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onStartCreate}
+            className="w-full text-left px-3 py-2 rounded text-sm text-blue-400 hover:text-blue-300 hover:bg-blue-950/30 border border-dashed border-slate-700"
+          >
+            + Add new {label.toLowerCase()}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
