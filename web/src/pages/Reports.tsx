@@ -61,7 +61,7 @@ export function Reports() {
         <>
           <div className="text-sm text-slate-600 mb-3">{data.count} spill{data.count === 1 ? "" : "s"} in range</div>
           <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-            <thead className="bg-slate-100 text-slate-600 text-left">
+            <thead className="bg-slate-800/60 text-slate-300 text-left">
               <tr>
                 <th className="p-2">Opened</th>
                 <th className="p-2">Building / Floor / Zone</th>

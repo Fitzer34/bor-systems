@@ -162,7 +162,7 @@ export function FloorPlans() {
               <li key={b.id}>
                 <button
                   onClick={() => { setActiveBuildingId(b.id); setActiveFloorId(null); }}
-                  className={`block w-full text-left rounded px-2 py-1 ${activeBuildingId === b.id ? "bg-slate-200" : "hover:bg-slate-100"}`}
+                  className={`block w-full text-left rounded px-2 py-1 ${activeBuildingId === b.id ? "bg-slate-700" : "hover:bg-slate-100"}`}
                 >{b.name}</button>
               </li>
             ))}
@@ -188,19 +188,19 @@ export function FloorPlans() {
                     <li key={f.id} className="flex items-center gap-1">
                       <button
                         onClick={() => setActiveFloorId(f.id)}
-                        className={`flex-1 text-left rounded px-2 py-1 ${activeFloorId === f.id ? "bg-slate-200" : "hover:bg-slate-100"}`}
+                        className={`flex-1 text-left rounded px-2 py-1 ${activeFloorId === f.id ? "bg-slate-700" : "hover:bg-slate-100"}`}
                       >{f.name}</button>
                       <button
                         onClick={() => above && swapFloors.mutate({ a: f, b: above })}
                         disabled={!above || swapFloors.isPending}
                         title="Move up"
-                        className="px-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-30 disabled:hover:text-slate-400"
+                        className="px-1.5 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400"
                       >↑</button>
                       <button
                         onClick={() => below && swapFloors.mutate({ a: f, b: below })}
                         disabled={!below || swapFloors.isPending}
                         title="Move down"
-                        className="px-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-30 disabled:hover:text-slate-400"
+                        className="px-1.5 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400"
                       >↓</button>
                     </li>
                   );

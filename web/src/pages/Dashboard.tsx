@@ -105,7 +105,7 @@ export function Dashboard() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Active alerts</h1>
-        <button onClick={() => alerts.refetch()} className="text-sm text-slate-600 hover:text-slate-900">Refresh</button>
+        <button onClick={() => alerts.refetch()} className="text-sm text-slate-600 hover:text-white">Refresh</button>
       </div>
       {alerts.isLoading && <div className="text-slate-500">Loading…</div>}
       {alerts.error && <div className="text-red-600">Could not load alerts.</div>}
@@ -126,7 +126,7 @@ export function Dashboard() {
               }`}
             >
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-slate-900 flex items-center gap-2">
+                <div className="font-medium text-slate-100 flex items-center gap-2">
                   <span>{a.floorName ?? "Unknown floor"} — {a.zoneName ?? "Unassigned zone"}</span>
                   {offlineHangerIds.has(a.hangerId) && (
                     <span
@@ -184,7 +184,7 @@ export function Dashboard() {
                     )}
                     {d.status !== "completed" && (
                       <button onClick={() => completeDispatch.mutate(d.id)}
-                        className="px-3 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50">
+                        className="px-3 py-2 text-sm rounded border border-slate-700 hover:bg-slate-800">
                         Mark done
                       </button>
                     )}

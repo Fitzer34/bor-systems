@@ -156,7 +156,7 @@ export function AlertDetail() {
           </button>
         </div>
         <button onClick={() => close.mutate("manual")} disabled={close.isPending}
-          className="w-full text-sm text-slate-500 hover:text-slate-900 py-2">
+          className="w-full text-sm text-slate-500 hover:text-white py-2">
           Manually close (requires note)
         </button>
       </div>

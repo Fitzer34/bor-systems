@@ -126,14 +126,14 @@ export function Dispatch() {
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Floor (optional)</label>
-            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
+            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="border rounded px-3 py-2 w-full disabled:bg-slate-800/40">
               <option value="">—</option>
               {floors.data?.floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
           <div className="col-span-2">
             <label className="block text-xs text-slate-500 mb-1">Zone (optional)</label>
-            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
+            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-800/40">
               <option value="">—</option>
               {zones.data?.zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select>
@@ -166,7 +166,7 @@ export function Dispatch() {
         {isReadOnly ? "Pending and recent" : "Recent dispatches"}
       </h2>
       <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-        <thead className="bg-slate-100 text-slate-600 text-left">
+        <thead className="bg-slate-800/60 text-slate-300 text-left">
           <tr>
             <th className="p-2">Sent</th>
             <th className="p-2">Cleaner</th>

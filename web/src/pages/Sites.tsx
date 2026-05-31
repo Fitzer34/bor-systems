@@ -72,7 +72,7 @@ function SiteCard({ site }: { site: SiteSummary }) {
       to={`/floor-plans?building=${site.buildingId}`}
       className={
         "block p-4 rounded-lg border bg-slate-900/50 shadow-sm hover:shadow transition-shadow " +
-        (needsAttention ? "border-amber-300" : "border-slate-200")
+        (needsAttention ? "border-amber-400" : "border-slate-700")
       }
     >
       <div className="flex items-start justify-between">

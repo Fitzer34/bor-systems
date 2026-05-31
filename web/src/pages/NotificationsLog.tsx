@@ -34,7 +34,7 @@ export function NotificationsLog() {
 
       {data && (
         <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-          <thead className="bg-slate-100 text-slate-600 text-left">
+          <thead className="bg-slate-800/60 text-slate-300 text-left">
             <tr>
               <th className="p-2">Sent</th>
               <th className="p-2">Recipient</th>

@@ -51,7 +51,7 @@ export function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <form onSubmit={onSubmit} className="bg-slate-900/50 shadow rounded-lg p-8 w-full max-w-md space-y-4">
         <div>
           <h1 className="text-xl font-semibold">Create your HazardLink organisation</h1>

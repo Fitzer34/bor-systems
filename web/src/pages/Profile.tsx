@@ -130,7 +130,7 @@ function TwoFactorSection() {
                className="border rounded w-48 h-48" />
           <details className="text-xs text-slate-500">
             <summary className="cursor-pointer">Or type the secret manually</summary>
-            <code className="block mt-1 p-2 bg-slate-100 rounded">{enrol.secret}</code>
+            <code className="block mt-1 p-2 bg-slate-800 rounded">{enrol.secret}</code>
           </details>
           <p className="text-sm">2. Enter the 6-digit code your app shows to confirm:</p>
           <input

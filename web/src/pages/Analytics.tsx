@@ -93,7 +93,7 @@ export function Analytics() {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-slate-900/50 rounded-lg border border-slate-200 shadow-sm p-5">
+    <div className="bg-slate-900/50 rounded-lg border border-slate-800 shadow-sm p-5">
       <h2 className="text-lg font-medium mb-3">{title}</h2>
       {children}
     </div>
