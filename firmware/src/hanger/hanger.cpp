@@ -3,7 +3,6 @@
 #include "../config/nvs_store.h"
 #include "../display.h"
 #include "../lora_link.h"
-#include "../setup_mode/setup_mode.h"
 #include "../../include/pinout.h"
 
 #include <Arduino.h>
@@ -141,23 +140,49 @@ void setup() {
     const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
     log_i("wake cause: %d  (0=power-on, 2=ext0, 4=timer)", (int)wake);
 
-    // First-time setup: no Wi-Fi yet → BLE onboarding.
-    if (!Config::isOnboarded()) {
-        log_w("not onboarded — entering BLE setup mode");
-        SetupMode::run();
-        ESP.restart();
-    }
+    // ── NO Wi-Fi / BLE onboarding for hangers ──
+    //
+    // Hangers are LoRa-only by design: they get installed in the no-Wi-Fi
+    // dead zones (stairwells, basements, warehouse aisles, big tiled
+    // bathrooms) — that's the whole reason for the LoRa+gateway topology.
+    // LoRa carries ~km and punches through walls; the GATEWAY is the single
+    // device that needs Wi-Fi/internet.
+    //
+    // A hanger therefore needs NO runtime configuration:
+    //   - DevEUI    → auto-derived from the chip MAC (Config::begin)
+    //   - HMAC key  → baked in at flash time (BOR_LORA_HMAC_KEY)
+    //   - zone      → assigned in the dashboard ("+ Register hanger" by DevEUI)
+    //   - webhook   → gateway-only; the hanger never makes an HTTP call
+    //
+    // So we boot straight into LoRa. The previous build entered a BLE Wi-Fi
+    // setup flow here, which was pure friction (the creds it collected were
+    // never used — there's no hanger HTTP path) and contradicted the
+    // LoRa-in-no-Wi-Fi-places design. Removed.
+
+    Display::begin();
 
     if (!LoraLink::begin()) {
         log_e("LoRa init failed — sleeping 60s and retrying");
+        Display::showStatus("HazardLink Hanger", "LoRa init failed", "retrying in 60s", "");
+        delay(2000);
         esp_sleep_enable_timer_wakeup(60ULL * 1000000ULL);
         esp_deep_sleep_start();
     }
 
-    // Always show the OLED briefly on boot — visible feedback to the
-    // installer that the hanger came up. If we end up going to deep sleep
-    // below (battery mode), the rail gets cut there.
-    Display::begin();
+    // On a true first boot (power-on, never seen before), show the DevEUI on
+    // the OLED so the installer can register it in the dashboard. Mark the
+    // device "onboarded" so we don't keep treating every reboot as first-run
+    // (the flag no longer gates Wi-Fi — it just suppresses this splash).
+    if (!Config::isOnboarded()) {
+        const String devEui = Config::getDevEui();
+        log_i("first boot — DevEUI %s (register this in the dashboard)", devEui.c_str());
+        Display::showStatus("Register hanger:", devEui, "in the dashboard", "");
+        delay(8000);  // long enough to read + jot the DevEUI
+        Config::setOnboarded(true);
+    }
+
+    // Fire the current state immediately so a freshly-powered hanger shows
+    // up / updates in the cloud right away (via the gateway).
     sendCurrentState();
 }
 
