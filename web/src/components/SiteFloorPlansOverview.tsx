@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, API_BASE } from "../lib/api";
 import { useTicker } from "../lib/ticker";
 
 interface ActiveAlert {
@@ -131,7 +131,7 @@ function FloorPlanCard({
 
   return (
     <div
-      className={`bg-white border rounded-lg overflow-hidden shadow-sm ${
+      className={`bg-slate-900/50 border rounded-lg overflow-hidden shadow-sm ${
         hasOpen ? "border-red-300" : hasAck ? "border-blue-300" : "border-slate-200"
       }`}
     >
@@ -186,7 +186,7 @@ function FloorPlanCard({
                 >
                   ?
                 </div>
-                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 bg-white/90 px-1 rounded whitespace-nowrap">
+                <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 bg-slate-900/80 px-1 rounded whitespace-nowrap">
                   offline
                 </span>
               </div>
