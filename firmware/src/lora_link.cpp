@@ -42,6 +42,14 @@ SX1262 radio = new Module(Pinout::LORA_NSS, Pinout::LORA_DIO1,
 volatile bool g_rxFlag = false;
 void IRAM_ATTR onDio1() { g_rxFlag = true; }
 
+// ─── Link quality (hanger side) ──────────────────────────────────────────────
+// Captured from the gateway's ACK on each sendEvent(). Lets the hanger show a
+// real signal-strength reading without any extra radio traffic.
+bool     g_linkOk   = false;
+float    g_linkRssi = 0.0f;
+float    g_linkSnr  = 0.0f;
+uint32_t g_linkMs   = 0;     // millis() at last measurement (0 = never)
+
 uint8_t packedFwVersion() {
     return ((FW_MAJOR & 0x0F) << 4) | (FW_MINOR & 0x0F);
 }
@@ -231,8 +239,16 @@ bool sendEvent(EventType type, uint8_t batteryPct, uint8_t flags) {
                         if (ack[0] == 'A' && ack[1] == 'C' &&
                             ack[2] == ((seq >> 8) & 0xff) &&
                             ack[3] == ( seq       & 0xff)) {
-                            log_i("LoRa tx ack — evt=%d seq=%u attempt=%d",
-                                  (int)type, seq, attempt + 1);
+                            // Capture the ACK's signal BEFORE sleeping the
+                            // radio — getRSSI/getSNR read the last RX and are
+                            // only valid while the radio is awake. This is the
+                            // hanger's real link strength to the gateway.
+                            g_linkRssi = radio.getRSSI();
+                            g_linkSnr  = radio.getSNR();
+                            g_linkOk   = true;
+                            g_linkMs   = millis();
+                            log_i("LoRa tx ack — evt=%d seq=%u attempt=%d rssi=%.0f snr=%.1f",
+                                  (int)type, seq, attempt + 1, g_linkRssi, g_linkSnr);
                             radio.sleep();
                             return true;
                         }
@@ -251,8 +267,19 @@ bool sendEvent(EventType type, uint8_t batteryPct, uint8_t flags) {
     }
 
     log_w("LoRa tx gave up after %d attempts — evt=%d", MAX_TX_ATTEMPTS, (int)type);
+    g_linkOk = false;          // no ACK heard → link is down right now
+    g_linkMs = millis();
     radio.sleep();
     return false;
+}
+
+LinkQuality lastLink() {
+    LinkQuality q;
+    q.ok    = g_linkOk;
+    q.rssi  = g_linkRssi;
+    q.snr   = g_linkSnr;
+    q.ageMs = g_linkMs == 0 ? 0 : (millis() - g_linkMs);
+    return q;
 }
 
 bool startReceive() {

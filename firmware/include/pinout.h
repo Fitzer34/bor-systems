@@ -35,6 +35,16 @@ constexpr int VEXT_CTRL   = 36;
 constexpr int VBAT_PIN    = 1;   // ADC1_CH0
 constexpr int VBAT_CTRL   = 37;  // drive LOW to enable divider
 
+// ─── On-board PRG / USER button ──────────────────────────────────────────────
+// The button silk-screened "PRG" next to RST on the Heltec V3 is wired to
+// GPIO0 (the boot-strapping pin). Held during reset it enters the ROM
+// bootloader (how we flash); pressed during normal run it just reads LOW and
+// we use it as a user button — e.g. "wake the OLED for a minute to show the
+// DevEUI + link strength" while installing. It has an external pull-up, and we
+// also enable the internal one. RTC-capable (GPIO0 ≤ 21) so it can wake from
+// deep sleep later if needed.
+constexpr int PRG_BUTTON_PIN = 0;
+
 // ─── User LED ───────────────────────────────────────────────────────────────
 constexpr int LED_PIN     = 35;  // single user-visible LED on the board
 
@@ -47,15 +57,25 @@ constexpr int LED_PIN     = 35;  // single user-visible LED on the board
 //
 // On the ESP32-S3, RTC GPIOs are 0–21. Available after carving out the
 // LoRa/OLED/battery pins: 0, 2, 3, 4, 5, 6, 7, 15, 16, 19, 20.
-constexpr int HALL_SENSOR_PIN  = 7;   // DRV5032FA OUT — sign-presence sensor.
+constexpr int HALL_SENSOR_PIN  = 6;   // DRV5032FA OUT — sign-presence sensor.
                                        //   LOW  = magnet present (sign on hook)
                                        //   HIGH = magnet absent  (sign lifted)
                                        // Wakes ESP32 from deep sleep on edge.
+                                       //
+                                       // NB: GPIO7 is NOT broken out to a header
+                                       // pad on the Heltec V3 (it's used
+                                       // internally) — the original choice was
+                                       // unsolderable. GPIO6 IS exposed (bottom
+                                       // row, near the OLED end), RTC-capable,
+                                       // and not a strapping pin. Hall OUT
+                                       // solders here.
 
-constexpr int TEST_BUTTON_PIN  = 6;   // momentary button — used for the
+constexpr int TEST_BUTTON_PIN  = 3;   // momentary button — used for the
                                        // cleaning-mode start trigger and
                                        // factory-reset (long press → re-arm
-                                       // BLE setup mode for re-onboarding).
+                                       // BLE setup mode). Moved off GPIO6 to
+                                       // free that pad for the Hall sensor;
+                                       // GPIO3 is also exposed + RTC-capable.
 
 constexpr int VBUS_SENSE_PIN   = 4;   // USB VBUS sense (via resistor divider).
                                        // HIGH = plugged into USB → charging.

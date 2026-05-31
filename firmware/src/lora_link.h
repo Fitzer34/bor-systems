@@ -60,6 +60,21 @@ bool begin();
 // about a real spill).
 bool sendEvent(EventType type, uint8_t batteryPct, uint8_t flags);
 
+// HANGER side — quality of the link to the gateway, measured from the ACK the
+// gateway sends back on every send (no extra traffic). `ok` is whether the
+// most recent send was acknowledged at all; `rssi`/`snr` are that ACK's
+// signal as heard by THIS hanger (a real "how strong is my link" number, in
+// dBm / dB); `ageMs` is how long ago that measurement was taken. Used to show
+// signal strength on the OLED while commissioning. Before the first send,
+// `ok` is false and `ageMs` is 0.
+struct LinkQuality {
+    bool     ok;
+    float    rssi;
+    float    snr;
+    uint32_t ageMs;
+};
+LinkQuality lastLink();
+
 // GATEWAY side — start continuous receive mode. Packets arriving will fire
 // an interrupt; call pollReceived() from the main loop to get them out.
 bool startReceive();

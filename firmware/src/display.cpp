@@ -30,12 +30,15 @@ void on() {
     digitalWrite(Pinout::OLED_RST, HIGH);
     delay(20);
 
-    if (!g_initialised) {
-        oled.init();
-        oled.flipScreenVertically();   // labels are right-side-up
-        oled.setContrast(255);
-        g_initialised = true;
-    }
+    // Re-init on every power-on. off() cuts the Vext rail entirely, which
+    // wipes the SSD1306's RAM + config registers — so after a battery→USB
+    // transition a bare displayOn() would show garbage. Re-running init()
+    // restores the controller. It's a few ms and idempotent, so it's safe to
+    // run unconditionally rather than gating on g_initialised.
+    oled.init();
+    oled.flipScreenVertically();   // labels are right-side-up
+    oled.setContrast(255);
+    g_initialised = true;
     oled.displayOn();
 }
 
