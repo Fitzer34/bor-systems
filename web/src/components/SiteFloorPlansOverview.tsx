@@ -91,7 +91,7 @@ export function SiteFloorPlansOverview() {
   }
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+      <div className="rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-500">
         No floor plans uploaded yet. An admin can upload them on the Floor plans page.
       </div>
     );
@@ -132,10 +132,10 @@ function FloorPlanCard({
   return (
     <div
       className={`bg-slate-900/50 border rounded-lg overflow-hidden shadow-sm ${
-        hasOpen ? "border-red-300" : hasAck ? "border-blue-300" : "border-slate-200"
+        hasOpen ? "border-red-300" : hasAck ? "border-blue-300" : "border-slate-700"
       }`}
     >
-      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
         <div className="min-w-0">
           <div className="font-medium truncate">{item.floor.name}</div>
           <div className="text-xs text-slate-500 truncate">{item.building.name}</div>
