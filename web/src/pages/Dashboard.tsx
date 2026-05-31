@@ -121,7 +121,7 @@ export function Dashboard() {
           <li key={a.id}>
             <Link
               to={`/alerts/${a.id}`}
-              className={`flex items-center gap-4 rounded-lg border p-4 shadow-sm bg-white hover:shadow ${
+              className={`flex items-center gap-4 rounded-lg border p-4 shadow-sm bg-slate-900/50 hover:shadow ${
                 a.status === "open" ? "border-red-300" : "border-amber-300"
               }`}
             >
@@ -164,7 +164,7 @@ export function Dashboard() {
           <h2 className="text-2xl font-semibold mt-10 mb-3">Dispatches</h2>
           <ul className="space-y-3">
             {activeDispatches.map((d) => (
-              <li key={d.id} className="rounded-lg border border-blue-300 bg-white p-4 shadow-sm">
+              <li key={d.id} className="rounded-lg border border-blue-300 bg-slate-900/50 p-4 shadow-sm">
                 <div className="flex items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium">

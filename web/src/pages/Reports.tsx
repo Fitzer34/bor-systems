@@ -44,7 +44,7 @@ export function Reports() {
   return (
     <div>
       <h1 className="text-2xl font-semibold mb-6">Reports</h1>
-      <div className="bg-white border rounded-lg p-4 mb-6 flex gap-4 items-end">
+      <div className="bg-slate-900/50 border rounded-lg p-4 mb-6 flex gap-4 items-end">
         <div>
           <label className="block text-xs text-slate-500">From</label>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border rounded px-2 py-1" />
@@ -60,7 +60,7 @@ export function Reports() {
       {data && (
         <>
           <div className="text-sm text-slate-600 mb-3">{data.count} spill{data.count === 1 ? "" : "s"} in range</div>
-          <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+          <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
             <thead className="bg-slate-100 text-slate-600 text-left">
               <tr>
                 <th className="p-2">Opened</th>

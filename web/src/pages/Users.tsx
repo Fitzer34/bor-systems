@@ -71,7 +71,7 @@ export function Users() {
       <h1 className="text-2xl font-semibold mb-6">Users</h1>
 
       {isAdmin && (
-        <div className="mb-8 bg-white border rounded-lg p-4">
+        <div className="mb-8 bg-slate-900/50 border rounded-lg p-4">
           <div className="font-medium mb-3">Create user</div>
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="border rounded px-3 py-2" />
@@ -99,7 +99,7 @@ export function Users() {
         </div>
       )}
 
-      <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+      <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
         <thead className="bg-slate-100 text-slate-600 text-left">
           <tr>
             <th className="p-2">Name</th>

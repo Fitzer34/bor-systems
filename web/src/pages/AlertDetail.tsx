@@ -82,7 +82,7 @@ export function AlertDetail() {
         Opened {new Date(alert.openedAt).toLocaleString()} · Status: {alert.status}
       </div>
 
-      <div className="mt-6 bg-white border rounded-lg p-4">
+      <div className="mt-6 bg-slate-900/50 border rounded-lg p-4">
         <div className="font-medium mb-3">Location</div>
         {planUrl ? (
           <div className="relative inline-block">

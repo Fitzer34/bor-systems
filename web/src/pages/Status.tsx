@@ -18,7 +18,7 @@ interface StatusResponse {
 export function Status() {
   const { data, isError, isLoading } = useQuery<StatusResponse>({
     queryKey: ["status"],
-    queryFn: () => api.get<StatusResponse>("/status"),
+    queryFn: () => api<StatusResponse>("/status"),
     refetchInterval: 30_000,
   });
 
@@ -98,7 +98,7 @@ function Banner({
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="p-4 rounded-lg border bg-white shadow-sm">
+    <div className="p-4 rounded-lg border bg-slate-900/50 shadow-sm">
       <div className="text-sm font-medium text-slate-700 mb-2">{title}</div>
       <div className="space-y-1">{children}</div>
     </div>

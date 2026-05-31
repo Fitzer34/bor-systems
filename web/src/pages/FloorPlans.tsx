@@ -154,7 +154,7 @@ export function FloorPlans() {
     <div>
       <h1 className="text-2xl font-semibold mb-6">Floor plans</h1>
 
-      <div className="mb-6 bg-white border rounded-lg p-4 grid grid-cols-3 gap-4">
+      <div className="mb-6 bg-slate-900/50 border rounded-lg p-4 grid grid-cols-3 gap-4">
         <div>
           <div className="font-medium mb-2">Buildings</div>
           <ul className="space-y-1 text-sm">
@@ -240,7 +240,7 @@ export function FloorPlans() {
       </div>
 
       {activeFloorId && (
-        <div className="bg-white border rounded-lg p-4">
+        <div className="bg-slate-900/50 border rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="font-medium">{activeFloor?.name} plan</div>
             <div>
@@ -287,7 +287,7 @@ export function FloorPlans() {
                   inner = (
                     <>
                       <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-amber-900 leading-none">?</span>
-                      <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-white/90 px-1 rounded whitespace-nowrap">
+                      <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-slate-900/80 px-1 rounded whitespace-nowrap">
                         offline
                       </span>
                     </>

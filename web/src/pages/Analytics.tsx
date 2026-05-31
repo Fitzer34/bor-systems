@@ -34,17 +34,17 @@ interface Responder {
 export function Analytics() {
   const heatmap = useQuery<{ zones: HeatmapZone[] }>({
     queryKey: ["analytics-heatmap"],
-    queryFn: () => api.get<{ zones: HeatmapZone[] }>("/analytics/zone-heatmap?days=30"),
+    queryFn: () => api<{ zones: HeatmapZone[] }>("/analytics/zone-heatmap?days=30"),
     refetchInterval: 30_000,
   });
   const timeline = useQuery<{ buckets: TimelineBucket[] }>({
     queryKey: ["analytics-timeline"],
-    queryFn: () => api.get<{ buckets: TimelineBucket[] }>("/analytics/timeline?days=30"),
+    queryFn: () => api<{ buckets: TimelineBucket[] }>("/analytics/timeline?days=30"),
     refetchInterval: 30_000,
   });
   const responders = useQuery<{ responders: Responder[] }>({
     queryKey: ["analytics-responders"],
-    queryFn: () => api.get<{ responders: Responder[] }>("/analytics/responders?days=30"),
+    queryFn: () => api<{ responders: Responder[] }>("/analytics/responders?days=30"),
     refetchInterval: 30_000,
   });
 
@@ -93,7 +93,7 @@ export function Analytics() {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+    <div className="bg-slate-900/50 rounded-lg border border-slate-200 shadow-sm p-5">
       <h2 className="text-lg font-medium mb-3">{title}</h2>
       {children}
     </div>

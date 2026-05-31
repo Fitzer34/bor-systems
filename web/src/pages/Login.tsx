@@ -56,7 +56,7 @@ export function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100">
       {challengeToken ? (
-        <form onSubmit={onSubmitCode} className="bg-white shadow rounded-lg p-8 w-full max-w-sm space-y-4">
+        <form onSubmit={onSubmitCode} className="bg-slate-900/50 shadow rounded-lg p-8 w-full max-w-sm space-y-4">
           <div>
             <h1 className="text-xl font-semibold">Two-factor authentication</h1>
             <p className="text-sm text-slate-500">
@@ -89,7 +89,7 @@ export function Login() {
           </button>
         </form>
       ) : (
-        <form onSubmit={onSubmit} className="bg-white shadow rounded-lg p-8 w-full max-w-sm space-y-4">
+        <form onSubmit={onSubmit} className="bg-slate-900/50 shadow rounded-lg p-8 w-full max-w-sm space-y-4">
           <div>
             <h1 className="text-xl font-semibold">HazardLink</h1>
             <p className="text-sm text-slate-500">Sign in</p>

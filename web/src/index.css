@@ -1,3 +1,76 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─── Global dark theme foundation ──────────────────────────────────────────
+ *
+ * The dashboard sidebar was already dark (slate-900) but the content area had
+ * no theme, so each page rendered on whatever its own classes set — a mix of
+ * light cards (bg-white) and dark cards that looked half-finished. This sets
+ * one consistent dark base everywhere so every page "flows" the same, and
+ * gives us reusable .card / .btn / .input / .pill classes matching the
+ * polished Gateways/Hangers style.
+ */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html, body {
+    @apply bg-slate-950 text-slate-100;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Sensible dark defaults so any page that forgot to theme an element still
+     looks right instead of flashing white. */
+  h1, h2, h3, h4 { @apply text-slate-100; }
+  a { @apply text-blue-400; }
+
+  /* Native form controls inherit the dark palette by default. Pages can still
+     override per-element, but the baseline is no longer blinding-white. */
+  input, select, textarea {
+    @apply bg-slate-800 border border-slate-700 text-slate-100 rounded;
+  }
+  input::placeholder, textarea::placeholder { @apply text-slate-500; }
+
+  /* Tables — used by Users, AuditLog, Reports, etc. */
+  th { @apply text-slate-300; }
+  td { @apply text-slate-200; }
+}
+
+@layer components {
+  /* Standard surface — the dark card used across Gateways/Hangers. */
+  .card {
+    @apply rounded-lg border border-slate-800 bg-slate-900/50 p-4;
+  }
+  .card-hover {
+    @apply transition hover:bg-slate-900/80 hover:border-slate-700;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded
+           px-3 py-2 text-sm font-medium transition disabled:opacity-50
+           disabled:cursor-not-allowed;
+  }
+  .btn-primary  { @apply btn bg-blue-600 text-white hover:bg-blue-500; }
+  .btn-ghost    { @apply btn text-slate-300 hover:text-white hover:bg-slate-800; }
+  .btn-danger   { @apply btn text-red-400 hover:text-red-300 hover:bg-red-950/30; }
+
+  /* Form field wrapper label + control spacing */
+  .field-label { @apply block text-xs font-medium text-slate-400 mb-1; }
+
+  /* Status pills */
+  .pill         { @apply px-2 py-0.5 text-xs font-medium rounded-full; }
+  .pill-online  { @apply pill bg-emerald-500/15 text-emerald-300; }
+  .pill-offline { @apply pill bg-amber-500/15 text-amber-300; }
+  .pill-alert   { @apply pill bg-red-500/15 text-red-300; }
+  .pill-muted   { @apply pill bg-slate-700/40 text-slate-400; }
+
+  /* Section heading used above card groups */
+  .section-title {
+    @apply text-xs uppercase tracking-wider text-slate-400 mb-2;
+  }
+}

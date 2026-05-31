@@ -67,7 +67,7 @@ function TwoFactorSection() {
   const s = status.data;
 
   return (
-    <div className="bg-white border rounded-lg p-6">
+    <div className="bg-slate-900/50 border rounded-lg p-6">
       <div className="font-medium mb-1">Two-factor authentication</div>
       <p className="text-sm text-slate-500 mb-4">
         Use an authenticator app (Google Authenticator, 1Password, Authy, etc.)
@@ -212,7 +212,7 @@ export function Profile() {
     <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-semibold">Profile</h1>
 
-      <div className="bg-white border rounded-lg p-6">
+      <div className="bg-slate-900/50 border rounded-lg p-6">
         <div className="font-medium mb-1">Account details</div>
         <div className="text-sm text-slate-500 mb-4">
           {user.email} · {user.role}
@@ -244,7 +244,7 @@ export function Profile() {
 
       <TwoFactorSection />
 
-      <div className="bg-white border rounded-lg p-6">
+      <div className="bg-slate-900/50 border rounded-lg p-6">
         <div className="font-medium mb-1">Change password</div>
         <p className="text-sm text-slate-500 mb-4">
           Minimum 10 characters; must include at least three of: lowercase, uppercase, digit, symbol.

@@ -27,7 +27,7 @@ export function Sites() {
 
   const { data, isLoading, isError } = useQuery<{ sites: SiteSummary[] }>({
     queryKey: ["sites-summary"],
-    queryFn: () => api.get<{ sites: SiteSummary[] }>("/sites/summary"),
+    queryFn: () => api<{ sites: SiteSummary[] }>("/sites/summary"),
     refetchInterval: 5000,
   });
 
@@ -71,7 +71,7 @@ function SiteCard({ site }: { site: SiteSummary }) {
     <Link
       to={`/floor-plans?building=${site.buildingId}`}
       className={
-        "block p-4 rounded-lg border bg-white shadow-sm hover:shadow transition-shadow " +
+        "block p-4 rounded-lg border bg-slate-900/50 shadow-sm hover:shadow transition-shadow " +
         (needsAttention ? "border-amber-300" : "border-slate-200")
       }
     >

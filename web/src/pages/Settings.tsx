@@ -113,7 +113,7 @@ export function Settings() {
 
 function Card({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white border rounded-lg p-6">
+    <div className="bg-slate-900/50 border rounded-lg p-6">
       <div className="font-medium">{title}</div>
       <p className="text-sm text-slate-500 mt-1 mb-4">{description}</p>
       {children}

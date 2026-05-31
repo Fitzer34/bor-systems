@@ -119,7 +119,7 @@ export function Schedule() {
       </p>
 
       {!isReadOnly && (
-      <div className="bg-white border rounded-lg p-4 mb-8">
+      <div className="bg-slate-900/50 border rounded-lg p-4 mb-8">
         <div className="font-medium mb-3">New shift</div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -176,7 +176,7 @@ export function Schedule() {
       </div>
       )}
 
-      <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+      <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
         <thead className="bg-slate-100 text-slate-600 text-left">
           <tr>
             <th className="p-2">Cleaner</th>
