@@ -162,7 +162,7 @@ export function FloorPlans() {
               <li key={b.id}>
                 <button
                   onClick={() => { setActiveBuildingId(b.id); setActiveFloorId(null); }}
-                  className={`block w-full text-left rounded px-2 py-1 ${activeBuildingId === b.id ? "bg-slate-700" : "hover:bg-slate-100"}`}
+                  className={`block w-full text-left rounded px-2 py-1 ${activeBuildingId === b.id ? "bg-slate-700" : "hover:bg-slate-800"}`}
                 >{b.name}</button>
               </li>
             ))}
@@ -188,7 +188,7 @@ export function FloorPlans() {
                     <li key={f.id} className="flex items-center gap-1">
                       <button
                         onClick={() => setActiveFloorId(f.id)}
-                        className={`flex-1 text-left rounded px-2 py-1 ${activeFloorId === f.id ? "bg-slate-700" : "hover:bg-slate-100"}`}
+                        className={`flex-1 text-left rounded px-2 py-1 ${activeFloorId === f.id ? "bg-slate-700" : "hover:bg-slate-800"}`}
                       >{f.name}</button>
                       <button
                         onClick={() => above && swapFloors.mutate({ a: f, b: above })}
