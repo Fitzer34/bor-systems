@@ -9,22 +9,28 @@ interface Zone { id: string; name: string; floorId: string; pinX: number | null;
 interface ActiveAlert { id: string; zoneId: string | null; status: "open" | "acknowledged" | "closed" }
 interface Hanger { id: string; zoneId: string | null; status: "active" | "out_of_service" | "decommissioned"; lastSeenAt: string | null }
 
-/** A zone is considered offline if it has at least one active hanger and
- *  none of its active hangers have phoned home in the last 3 minutes. */
 const ONLINE_WINDOW_MS = 15 * 1000;
 
 export function FloorPlans() {
-  // 1-second ticker so offline pins appear within ~16s of a hanger going dark.
   useTicker(1000);
-
   const qc = useQueryClient();
+
+  // ── View vs edit ──
+  // Default is a clean monitoring view: pick a building + floor, see the plan
+  // with live pins. The Edit toggle reveals all the setup controls
+  // (add/rename/reorder buildings·floors·zones, upload plan, place pins).
+  const [editMode, setEditMode] = useState(false);
+
+  const [activeBuildingId, setActiveBuildingId] = useState<string | null>(null);
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
   const [buildingName, setBuildingName] = useState("");
   const [floorName, setFloorName] = useState("");
   const [zoneName, setZoneName] = useState("");
+  const [pinningZoneId, setPinningZoneId] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const buildings = useQuery({ queryKey: ["buildings"], queryFn: () => api<{ buildings: Building[] }>("/buildings") });
-  const [activeBuildingId, setActiveBuildingId] = useState<string | null>(null);
   const floors = useQuery({
     queryKey: ["floors", activeBuildingId],
     enabled: !!activeBuildingId,
@@ -40,37 +46,48 @@ export function FloorPlans() {
     queryFn: () => api<{ alerts: ActiveAlert[] }>("/alerts/active"),
     refetchInterval: 5_000,
   });
-  // Fetch hangers so we can flag offline zones on the floor plan. 5s polling
-  // so the indicator flips within seconds of a Pi going dark.
   const hangers = useQuery({
     queryKey: ["hangers"],
     queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
     refetchInterval: 5_000,
   });
 
+  // Auto-select the first building (and its first floor) so the page isn't
+  // blank on arrival — the most common case is one building.
+  const buildingList = buildings.data?.buildings ?? [];
+  if (!activeBuildingId && buildingList.length > 0) {
+    // setState during render is fine for this one-shot default (React bails
+    // out of the extra render once the value stops changing).
+    setActiveBuildingId(buildingList[0].id);
+  }
+
+  const sortedFloors = [...(floors.data?.floors ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
+  if (!activeFloorId && sortedFloors.length > 0) {
+    setActiveFloorId(sortedFloors[0].id);
+  }
+
   const zoneStatusById = new Map<string, "open" | "acknowledged">();
   for (const a of activeAlerts.data?.alerts ?? []) {
     if (a.zoneId && a.status !== "closed") zoneStatusById.set(a.zoneId, a.status);
   }
 
-  // A zone is "offline" when it has active hangers but none have phoned home
-  // recently. Decommissioned or out-of-service hangers don't count — those
-  // zones just have no monitoring rather than offline monitoring.
   const offlineZoneIds = new Set<string>();
-  const now = Date.now();
-  const zoneHangers = new Map<string, Hanger[]>();
-  for (const h of hangers.data?.hangers ?? []) {
-    if (!h.zoneId || h.status !== "active") continue;
-    const list = zoneHangers.get(h.zoneId) ?? [];
-    list.push(h);
-    zoneHangers.set(h.zoneId, list);
-  }
-  for (const [zoneId, hs] of zoneHangers.entries()) {
-    const anyOnline = hs.some((h) => h.lastSeenAt != null
-      && now - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS);
-    if (!anyOnline) offlineZoneIds.add(zoneId);
+  {
+    const now = Date.now();
+    const zoneHangers = new Map<string, Hanger[]>();
+    for (const h of hangers.data?.hangers ?? []) {
+      if (!h.zoneId || h.status !== "active") continue;
+      const list = zoneHangers.get(h.zoneId) ?? [];
+      list.push(h);
+      zoneHangers.set(h.zoneId, list);
+    }
+    for (const [zoneId, hs] of zoneHangers.entries()) {
+      const anyOnline = hs.some((h) => h.lastSeenAt != null && now - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS);
+      if (!anyOnline) offlineZoneIds.add(zoneId);
+    }
   }
 
+  // ── Mutations ──
   const createBuilding = useMutation({
     mutationFn: () => api("/buildings", { method: "POST", body: JSON.stringify({ name: buildingName }) }),
     onSuccess: () => { setBuildingName(""); qc.invalidateQueries({ queryKey: ["buildings"] }); },
@@ -91,55 +108,52 @@ export function FloorPlans() {
       api(`/zones/${z.id}`, { method: "PATCH", body: JSON.stringify({ pinX: z.pinX, pinY: z.pinY }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["zones", activeFloorId] }),
   });
-
-  /** Swap two floors' orderIndex values. This is what drives the order
-   *  they appear in the Active alerts dashboard feed. */
   const swapFloors = useMutation({
     mutationFn: async (args: { a: Floor; b: Floor }) => {
-      // Sequential rather than parallel so a transient unique-index conflict
-      // can't happen if we ever add one on (buildingId, orderIndex).
       await api(`/floors/${args.a.id}`, { method: "PATCH", body: JSON.stringify({ orderIndex: args.b.orderIndex }) });
       await api(`/floors/${args.b.id}`, { method: "PATCH", body: JSON.stringify({ orderIndex: args.a.orderIndex }) });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["floors", activeBuildingId] });
-      // Dashboard fetches via a different query key — refresh that too so
-      // the order updates without a page reload.
       qc.invalidateQueries({ queryKey: ["all-site-floors"] });
     },
   });
 
-  // Floors sorted by orderIndex (ascending) — same order the dashboard uses.
-  const sortedFloors = [...(floors.data?.floors ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
-
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadPlan = useMutation({
     mutationFn: async (file: File) => {
+      // Validate client-side so the user gets an instant, clear reason
+      // instead of a silent backend rejection.
+      if (!["image/png", "image/jpeg"].includes(file.type)) {
+        throw new Error("Please choose a PNG or JPEG image.");
+      }
+      if (file.size > 8 * 1024 * 1024) {
+        throw new Error("Image is too large (max 8 MB). Try a smaller export.");
+      }
       const fd = new FormData();
       fd.append("file", file);
-      // Use apiUrl() so this hits the Render backend in prod (the hardcoded
-      // /api path only works behind the dev Vite proxy — it 404'd live).
       const res = await fetch(apiUrl(`/floors/${activeFloorId}/floor-plan`), {
         method: "POST",
         headers: { authorization: `Bearer ${getToken() ?? ""}` },
         body: fd,
       });
-      if (!res.ok) throw new Error("upload failed");
+      if (!res.ok) {
+        let msg = `Upload failed (${res.status}).`;
+        try { const b = await res.json(); if (b?.error) msg = `Upload failed: ${b.error}`; } catch { /* ignore */ }
+        throw new Error(msg);
+      }
       return res.json();
     },
+    onMutate: () => setUploadError(null),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["floors", activeBuildingId] }),
+    onError: (e: unknown) => setUploadError(e instanceof Error ? e.message : "Upload failed."),
   });
 
-  const [pinningZoneId, setPinningZoneId] = useState<string | null>(null);
+  const handleFile = (f: File | undefined | null) => { if (f) uploadPlan.mutate(f); };
+
   const activeFloor = floors.data?.floors.find((f) => f.id === activeFloorId);
 
-  // Floor-plan URLs come back either absolute (R2/CDN: "https://…") or
-  // relative ("/uploads/floorplans/…" when the backend stores to local disk).
-  // A relative path would resolve against app.hazardlink.ie (Cloudflare),
-  // but the file actually lives on the Render backend — so prefix relative
-  // paths with API_BASE. Absolute URLs pass through untouched.
-  const planSrc = (url: string): string =>
-    url.startsWith("http") ? url : `${API_BASE}${url}`;
+  const planSrc = (url: string): string => (url.startsWith("http") ? url : `${API_BASE}${url}`);
 
   const handlePlanClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!pinningZoneId) return;
@@ -150,167 +164,243 @@ export function FloorPlans() {
     setPinningZoneId(null);
   };
 
+  const pinnedZones = (zones.data?.zones ?? []).filter((z) => z.pinX != null && z.pinY != null);
+  const unpinnedZones = (zones.data?.zones ?? []).filter((z) => z.pinX == null || z.pinY == null);
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold mb-6">Floor plans</h1>
+    <div className="max-w-5xl">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-2xl font-semibold">Floor plans</h1>
+        <button
+          onClick={() => { setEditMode((v) => !v); setPinningZoneId(null); }}
+          className={editMode ? "btn-primary" : "btn-ghost border border-slate-700"}
+        >
+          {editMode ? "✓ Done editing" : "✎ Edit"}
+        </button>
+      </div>
 
-      <div className="mb-6 bg-slate-900/50 border rounded-lg p-4 grid grid-cols-3 gap-4">
-        <div>
-          <div className="font-medium mb-2">Buildings</div>
-          <ul className="space-y-1 text-sm">
-            {buildings.data?.buildings.map((b) => (
-              <li key={b.id}>
-                <button
-                  onClick={() => { setActiveBuildingId(b.id); setActiveFloorId(null); }}
-                  className={`block w-full text-left rounded px-2 py-1 ${activeBuildingId === b.id ? "bg-slate-700" : "hover:bg-slate-800"}`}
-                >{b.name}</button>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-2 flex gap-2">
-            <input value={buildingName} onChange={(e) => setBuildingName(e.target.value)} placeholder="New building" className="border rounded px-2 py-1 text-sm flex-1" />
-            <button onClick={() => createBuilding.mutate()} disabled={!buildingName} className="text-sm bg-slate-900 text-white rounded px-3 py-1 disabled:opacity-50">Add</button>
-          </div>
+      {/* ── Building + floor selectors (always visible) ── */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="flex-1 min-w-[180px]">
+          <label className="field-label">Building</label>
+          <select
+            value={activeBuildingId ?? ""}
+            onChange={(e) => { setActiveBuildingId(e.target.value || null); setActiveFloorId(null); }}
+            className="w-full px-3 py-2 text-sm rounded"
+          >
+            <option value="">— Select building —</option>
+            {buildingList.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
         </div>
+        <div className="flex-1 min-w-[180px]">
+          <label className="field-label">Floor</label>
+          <select
+            value={activeFloorId ?? ""}
+            onChange={(e) => setActiveFloorId(e.target.value || null)}
+            disabled={!activeBuildingId}
+            className="w-full px-3 py-2 text-sm rounded disabled:opacity-50"
+          >
+            <option value="">— Select floor —</option>
+            {sortedFloors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+        </div>
+      </div>
 
-        <div>
-          <div className="font-medium mb-1">Floors</div>
-          <div className="text-xs text-slate-500 mb-2">
-            Order here controls the order on the Active alerts dashboard.
+      {/* ── EDIT PANEL ── */}
+      {editMode && (
+        <div className="card mb-5 space-y-5">
+          {/* Buildings */}
+          <div>
+            <div className="section-title">Buildings</div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {buildingList.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => { setActiveBuildingId(b.id); setActiveFloorId(null); }}
+                  className={"px-3 py-1.5 text-sm rounded " + (activeBuildingId === b.id ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-200 hover:bg-slate-700")}
+                >{b.name}</button>
+              ))}
+            </div>
+            <div className="flex gap-2 max-w-md">
+              <input value={buildingName} onChange={(e) => setBuildingName(e.target.value)} placeholder="New building name" className="flex-1 px-3 py-2 text-sm rounded" />
+              <button onClick={() => createBuilding.mutate()} disabled={!buildingName.trim() || createBuilding.isPending} className="btn-primary">
+                {createBuilding.isPending ? "…" : "Add"}
+              </button>
+            </div>
           </div>
-          {!activeBuildingId ? <div className="text-sm text-slate-500">Pick a building.</div> : (
-            <>
-              <ul className="space-y-1 text-sm">
+
+          {/* Floors */}
+          {activeBuildingId && (
+            <div>
+              <div className="section-title">Floors <span className="normal-case text-slate-500">— drag order sets the dashboard order</span></div>
+              <div className="space-y-1 mb-2">
                 {sortedFloors.map((f, idx) => {
                   const above = idx > 0 ? sortedFloors[idx - 1] : null;
                   const below = idx < sortedFloors.length - 1 ? sortedFloors[idx + 1] : null;
                   return (
-                    <li key={f.id} className="flex items-center gap-1">
+                    <div key={f.id} className="flex items-center gap-1">
                       <button
                         onClick={() => setActiveFloorId(f.id)}
-                        className={`flex-1 text-left rounded px-2 py-1 ${activeFloorId === f.id ? "bg-slate-700" : "hover:bg-slate-800"}`}
-                      >{f.name}</button>
-                      <button
-                        onClick={() => above && swapFloors.mutate({ a: f, b: above })}
-                        disabled={!above || swapFloors.isPending}
-                        title="Move up"
-                        className="px-1.5 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400"
-                      >↑</button>
-                      <button
-                        onClick={() => below && swapFloors.mutate({ a: f, b: below })}
-                        disabled={!below || swapFloors.isPending}
-                        title="Move down"
-                        className="px-1.5 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400"
-                      >↓</button>
-                    </li>
+                        className={"flex-1 text-left px-3 py-1.5 text-sm rounded " + (activeFloorId === f.id ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-200 hover:bg-slate-700")}
+                      >
+                        {f.name}
+                        {f.floorPlanUrl
+                          ? <span className="ml-2 text-xs text-emerald-400">● plan</span>
+                          : <span className="ml-2 text-xs text-slate-500">○ no plan</span>}
+                      </button>
+                      <button onClick={() => above && swapFloors.mutate({ a: f, b: above })} disabled={!above || swapFloors.isPending} title="Move up" className="px-2 py-1.5 text-slate-400 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800">↑</button>
+                      <button onClick={() => below && swapFloors.mutate({ a: f, b: below })} disabled={!below || swapFloors.isPending} title="Move down" className="px-2 py-1.5 text-slate-400 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800">↓</button>
+                    </div>
                   );
                 })}
-              </ul>
-              <div className="mt-2 flex gap-2">
-                <input value={floorName} onChange={(e) => setFloorName(e.target.value)} placeholder="New floor" className="border rounded px-2 py-1 text-sm flex-1" />
-                <button onClick={() => createFloor.mutate()} disabled={!floorName} className="text-sm bg-slate-900 text-white rounded px-3 py-1 disabled:opacity-50">Add</button>
               </div>
-            </>
-          )}
-        </div>
-
-        <div>
-          <div className="font-medium mb-2">Zones</div>
-          {!activeFloorId ? <div className="text-sm text-slate-500">Pick a floor.</div> : (
-            <>
-              <ul className="space-y-1 text-sm">
-                {zones.data?.zones.map((z) => (
-                  <li key={z.id} className="flex items-center justify-between">
-                    <span>{z.name}{z.pinX != null ? " · pinned" : ""}</span>
-                    {activeFloor?.floorPlanUrl && (
-                      <button onClick={() => setPinningZoneId(z.id)} className="text-xs text-blue-600 hover:underline">
-                        {pinningZoneId === z.id ? "click on plan…" : "place pin"}
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-2 flex gap-2">
-                <input value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="New zone" className="border rounded px-2 py-1 text-sm flex-1" />
-                <button onClick={() => createZone.mutate()} disabled={!zoneName} className="text-sm bg-slate-900 text-white rounded px-3 py-1 disabled:opacity-50">Add</button>
+              <div className="flex gap-2 max-w-md">
+                <input value={floorName} onChange={(e) => setFloorName(e.target.value)} placeholder="New floor name (e.g. Ground)" className="flex-1 px-3 py-2 text-sm rounded" />
+                <button onClick={() => createFloor.mutate()} disabled={!floorName.trim() || createFloor.isPending} className="btn-primary">
+                  {createFloor.isPending ? "…" : "Add"}
+                </button>
               </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {activeFloorId && (
-        <div className="bg-slate-900/50 border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-medium">{activeFloor?.name} plan</div>
-            <div>
-              <input
-                ref={fileInput}
-                type="file"
-                accept="image/png,image/jpeg"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPlan.mutate(f); }}
-              />
-              <button onClick={() => fileInput.current?.click()} className="text-sm bg-slate-900 text-white rounded px-3 py-1">
-                {activeFloor?.floorPlanUrl ? "Replace plan" : "Upload plan"}
-              </button>
             </div>
-          </div>
-          {activeFloor?.floorPlanUrl ? (
-            <div
-              onClick={handlePlanClick}
-              className={`relative inline-block ${pinningZoneId ? "cursor-crosshair" : ""}`}
-            >
-              <img src={planSrc(activeFloor.floorPlanUrl)} alt="" className="block max-w-full max-h-[600px]" />
-              {zones.data?.zones.filter((z) => z.pinX != null && z.pinY != null).map((z) => {
-                const status = zoneStatusById.get(z.id);
-                const isOffline = offlineZoneIds.has(z.id);
+          )}
 
-                // Alert state always wins — an offline hanger that managed
-                // to send a "lifted" event before dying still needs cleaning.
-                let pinClass: string;
-                let label: string;
-                let inner: JSX.Element | null = null;
-
-                if (status === "open") {
-                  pinClass = "bg-red-500 animate-pulse";
-                  label = " — ALERT";
-                } else if (status === "acknowledged") {
-                  pinClass = "bg-blue-500 animate-pulse";
-                  label = " — cleaning in progress";
-                } else if (isOffline) {
-                  // Amber pin with a dashed border so it stands out from the
-                  // calm green of healthy zones but doesn't compete with the
-                  // red/blue pulsing pins for active alerts.
-                  pinClass = "bg-amber-400 border-dashed border-amber-700";
-                  label = " — hanger offline";
-                  inner = (
-                    <>
-                      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-amber-900 leading-none">?</span>
-                      <span className="absolute left-full ml-1 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-slate-900/80 px-1 rounded whitespace-nowrap">
-                        offline
+          {/* Zones */}
+          {activeFloorId && (
+            <div>
+              <div className="section-title">Zones</div>
+              {(zones.data?.zones.length ?? 0) > 0 && (
+                <div className="space-y-1 mb-2">
+                  {zones.data?.zones.map((z) => (
+                    <div key={z.id} className="flex items-center justify-between bg-slate-800/50 rounded px-3 py-1.5 text-sm">
+                      <span>
+                        {z.name}
+                        {z.pinX != null
+                          ? <span className="ml-2 text-xs text-emerald-400">● pinned</span>
+                          : <span className="ml-2 text-xs text-amber-400">○ needs pin</span>}
                       </span>
-                    </>
-                  );
-                } else {
-                  pinClass = "bg-green-500";
-                  label = "";
-                }
+                      {activeFloor?.floorPlanUrl && (
+                        <button
+                          onClick={() => setPinningZoneId(pinningZoneId === z.id ? null : z.id)}
+                          className={"text-xs " + (pinningZoneId === z.id ? "text-amber-300 font-medium" : "text-blue-400 hover:underline")}
+                        >
+                          {pinningZoneId === z.id ? "click on the plan ↓" : (z.pinX != null ? "move pin" : "place pin")}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 max-w-md">
+                <input value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="New zone (e.g. Toilet, Reception)" className="flex-1 px-3 py-2 text-sm rounded" />
+                <button onClick={() => createZone.mutate()} disabled={!zoneName.trim() || createZone.isPending} className="btn-primary">
+                  {createZone.isPending ? "…" : "Add"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
-                return (
-                  <div
-                    key={z.id}
-                    title={`${z.name}${label}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white shadow ${pinClass}`}
-                    style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
-                  >
-                    {inner}
-                  </div>
-                );
-              })}
+      {/* ── PLAN AREA ── */}
+      {!activeBuildingId ? (
+        <div className="card text-center text-slate-400 py-10">
+          {buildingList.length === 0
+            ? <>No buildings yet. Tap <span className="text-slate-200 font-medium">✎ Edit</span> to add your first building, floor, and zones.</>
+            : "Select a building above to view its floor plans."}
+        </div>
+      ) : !activeFloorId ? (
+        <div className="card text-center text-slate-400 py-10">
+          {sortedFloors.length === 0
+            ? <>No floors in this building yet. Tap <span className="text-slate-200 font-medium">✎ Edit</span> to add one.</>
+            : "Select a floor above."}
+        </div>
+      ) : (
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-medium">{activeFloor?.name}</div>
+            {editMode && (
+              <button onClick={() => fileInput.current?.click()} disabled={uploadPlan.isPending} className="btn-primary">
+                {uploadPlan.isPending ? "Uploading…" : (activeFloor?.floorPlanUrl ? "Replace plan" : "Upload plan")}
+              </button>
+            )}
+          </div>
+
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/png,image/jpeg"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+
+          {uploadError && (
+            <div className="mb-3 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded px-3 py-2">
+              {uploadError}
+            </div>
+          )}
+
+          {activeFloor?.floorPlanUrl ? (
+            <>
+              {pinningZoneId && (
+                <div className="mb-2 text-sm text-amber-300">
+                  Click where the zone sits on the plan to drop its pin.
+                </div>
+              )}
+              <div
+                onClick={handlePlanClick}
+                className={"relative inline-block rounded overflow-hidden " + (pinningZoneId ? "cursor-crosshair ring-2 ring-amber-400" : "")}
+              >
+                <img src={planSrc(activeFloor.floorPlanUrl)} alt="" className="block max-w-full max-h-[600px]" />
+                {pinnedZones.map((z) => {
+                  const status = zoneStatusById.get(z.id);
+                  const isOffline = offlineZoneIds.has(z.id);
+                  let pinClass: string; let label: string; let inner: JSX.Element | null = null;
+                  if (status === "open") { pinClass = "bg-red-500 animate-pulse"; label = " — ALERT"; }
+                  else if (status === "acknowledged") { pinClass = "bg-blue-500 animate-pulse"; label = " — cleaning in progress"; }
+                  else if (isOffline) {
+                    pinClass = "bg-amber-400 border-dashed border-amber-700"; label = " — hanger offline";
+                    inner = <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-amber-900 leading-none">?</span>;
+                  } else { pinClass = "bg-green-500"; label = ""; }
+                  return (
+                    <div
+                      key={z.id}
+                      title={`${z.name}${label}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white shadow ${pinClass}`}
+                      style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
+                    >{inner}</div>
+                  );
+                })}
+              </div>
+              {editMode && unpinnedZones.length > 0 && (
+                <div className="mt-3 text-sm text-amber-300">
+                  {unpinnedZones.length} zone{unpinnedZones.length === 1 ? "" : "s"} still need a pin: use “place pin” above.
+                </div>
+              )}
+              {/* Legend */}
+              <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-400">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> OK</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Alert</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Cleaning</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Offline</span>
+              </div>
+            </>
+          ) : editMode ? (
+            // Drag-and-drop upload target (edit mode, no plan yet)
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
+              onClick={() => fileInput.current?.click()}
+              className={"cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition " +
+                (dragOver ? "border-blue-400 bg-blue-950/20" : "border-slate-700 hover:border-slate-600")}
+            >
+              <div className="text-slate-300 font-medium">Drop a floor-plan image here</div>
+              <div className="text-sm text-slate-500 mt-1">or click to choose a file · PNG or JPEG · up to 8 MB</div>
             </div>
           ) : (
-            <div className="text-sm text-slate-500">No plan uploaded for this floor yet.</div>
+            <div className="text-sm text-slate-400">
+              No plan uploaded for this floor yet. Tap <span className="text-slate-200 font-medium">✎ Edit</span> to upload one.
+            </div>
           )}
         </div>
       )}
