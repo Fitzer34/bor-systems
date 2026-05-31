@@ -3,7 +3,7 @@ import SwiftUI
 struct MenuView: View {
     @EnvironmentObject var auth: AuthStore
 
-    @State private var showAddHanger = false
+    @State private var showRegisterHanger = false
     @State private var showAddGateway = false
 
     var body: some View {
@@ -32,16 +32,20 @@ struct MenuView: View {
 
                 if auth.user?.role == .admin || auth.user?.role == .supervisor {
                     Section("Set up new hardware") {
+                        // Gateway: needs WiFi → BLE onboarding flow.
                         Button {
                             showAddGateway = true
                         } label: {
                             Label("Add a gateway", systemImage: "wifi.router")
                                 .foregroundStyle(.primary)
                         }
+                        // Hanger: LoRa-only, no WiFi/BLE setup. Just register
+                        // its DevEUI (shown on the hanger's OLED on first boot)
+                        // and pick a zone.
                         Button {
-                            showAddHanger = true
+                            showRegisterHanger = true
                         } label: {
-                            Label("Add a hanger", systemImage: "antenna.radiowaves.left.and.right")
+                            Label("Register a hanger", systemImage: "antenna.radiowaves.left.and.right")
                                 .foregroundStyle(.primary)
                         }
                     }
@@ -75,7 +79,10 @@ struct MenuView: View {
                 }
             }
             .navigationTitle("More")
-            .sheet(isPresented: $showAddHanger)  { AddHangerView() }
+            .sheet(isPresented: $showRegisterHanger) {
+                RegisterHangerSheet { }
+                    .environmentObject(auth)
+            }
             .sheet(isPresented: $showAddGateway) { AddGatewayView() }
         }
     }
