@@ -151,4 +151,17 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     await db.update(schema.zones).set(body.data).where(eq(schema.zones.id, id));
     return { ok: true };
   });
+
+  // Delete a zone. Safe to hard-delete: every table that references a zone
+  // (hangers, dispatches, alerts) uses onDelete:"set null", so any hanger
+  // sitting in this zone simply becomes unassigned rather than blocking the
+  // delete or cascading away. Used to clear orphaned zones (e.g. ones left
+  // behind after a mis-registered device was removed).
+  app.delete("/zones/:id", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    if (!(await assertZoneInOrg(id, c.orgId))) return reply.code(404).send({ error: "not_found" });
+    await db.delete(schema.zones).where(eq(schema.zones.id, id));
+    return { ok: true };
+  });
 }

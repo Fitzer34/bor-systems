@@ -105,6 +105,10 @@ export function FloorPlans() {
     mutationFn: () => api(`/floors/${activeFloorId}/zones`, { method: "POST", body: JSON.stringify({ name: zoneName }) }),
     onSuccess: () => { setZoneName(""); qc.invalidateQueries({ queryKey: ["zones", activeFloorId] }); },
   });
+  const deleteZone = useMutation({
+    mutationFn: (zoneId: string) => api(`/zones/${zoneId}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["zones", activeFloorId] }),
+  });
   const updateZonePin = useMutation({
     mutationFn: (z: { id: string; pinX: number; pinY: number }) =>
       api(`/zones/${z.id}`, { method: "PATCH", body: JSON.stringify({ pinX: z.pinX, pinY: z.pinY }) }),
@@ -280,14 +284,29 @@ export function FloorPlans() {
                           ? <span className="ml-2 text-xs text-emerald-400">● pinned</span>
                           : <span className="ml-2 text-xs text-amber-400">○ needs pin</span>}
                       </span>
-                      {activeFloor?.floorPlanUrl && (
+                      <div className="flex items-center gap-3">
+                        {activeFloor?.floorPlanUrl && (
+                          <button
+                            onClick={() => setPinningZoneId(pinningZoneId === z.id ? null : z.id)}
+                            className={"text-xs " + (pinningZoneId === z.id ? "text-amber-300 font-medium" : "text-blue-400 hover:underline")}
+                          >
+                            {pinningZoneId === z.id ? "click on the plan ↓" : (z.pinX != null ? "move pin" : "place pin")}
+                          </button>
+                        )}
                         <button
-                          onClick={() => setPinningZoneId(pinningZoneId === z.id ? null : z.id)}
-                          className={"text-xs " + (pinningZoneId === z.id ? "text-amber-300 font-medium" : "text-blue-400 hover:underline")}
+                          onClick={() => {
+                            if (confirm(`Delete the "${z.name}" zone? Any hanger in it becomes unassigned.`)) {
+                              if (pinningZoneId === z.id) setPinningZoneId(null);
+                              deleteZone.mutate(z.id);
+                            }
+                          }}
+                          disabled={deleteZone.isPending}
+                          title="Delete zone"
+                          className="text-xs text-red-400 hover:text-red-300"
                         >
-                          {pinningZoneId === z.id ? "click on the plan ↓" : (z.pinX != null ? "move pin" : "place pin")}
+                          🗑
                         </button>
-                      )}
+                      </div>
                     </div>
                   ))}
                 </div>
