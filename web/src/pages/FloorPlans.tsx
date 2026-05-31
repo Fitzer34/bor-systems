@@ -55,15 +55,17 @@ export function FloorPlans() {
   // Auto-select the first building (and its first floor) so the page isn't
   // blank on arrival — the most common case is one building.
   const buildingList = buildings.data?.buildings ?? [];
-  if (!activeBuildingId && buildingList.length > 0) {
+  const firstBuilding = buildingList[0];
+  if (!activeBuildingId && firstBuilding) {
     // setState during render is fine for this one-shot default (React bails
     // out of the extra render once the value stops changing).
-    setActiveBuildingId(buildingList[0].id);
+    setActiveBuildingId(firstBuilding.id);
   }
 
   const sortedFloors = [...(floors.data?.floors ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
-  if (!activeFloorId && sortedFloors.length > 0) {
-    setActiveFloorId(sortedFloors[0].id);
+  const firstFloor = sortedFloors[0];
+  if (!activeFloorId && firstFloor) {
+    setActiveFloorId(firstFloor.id);
   }
 
   const zoneStatusById = new Map<string, "open" | "acknowledged">();
