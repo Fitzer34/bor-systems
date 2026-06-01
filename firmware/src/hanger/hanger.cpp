@@ -12,6 +12,10 @@
 
 namespace {
 
+// Forward decl — defined below, but enterDeepSleep()/currentEventType() (which
+// appear earlier) need it to read the debounced sign state.
+bool signPresentDebounced();
+
 // Heartbeat cadence on battery: once a DAY. The hanger is event-driven — a
 // sign lift/return is a hardware (Hall) wake that fires an instant alert and
 // goes straight back to sleep. This daily timer is only the "still alive"
@@ -54,22 +58,31 @@ bool g_freshBoot = true;
 // drains the battery FASTER than no sleep at all (seen on the bench: a board
 // with no sensor wired wakes ~every 1.8 s).
 //
-// Guard: count Hall (ext1) wakes that occur with NO timer wake in between.
-// A person moves a sign at most a couple of times and then it's quiet — and
-// the hourly timer wake resets the count. Noise on a floating/absent/flaky pin
-// produces many ext1 wakes back-to-back with zero timer wakes in between.
-// After a run of those, stop arming the Hall wake and rely on the hourly timer
-// alone. Battery is then always safe; we lose only instant-lift latency on a
-// hanger whose sensor is misbehaving (the hourly heartbeat still reports state,
-// so a spill is still caught within the hour). This counts *consecutive ext1
-// wakes* rather than comparing pin levels, so it catches both the stuck-level
-// and the ping-pong noise patterns. A real sensor never produces a long run.
-RTC_DATA_ATTR int  g_rtcConsecHallWakes = 0;
+// Guard against a FLOATING/absent Hall pin wake-looping the device (seen on a
+// sensorless bench board: ext1 fires ~every 1.8 s, draining the battery worse
+// than no sleep). The signal that tells noise apart from a real sign movement:
+//
+//   • A REAL event changes the debounced sign state (on-hook ↔ lifted). We
+//     arm wake-on-change, so after a genuine lift the pin now reads the new
+//     level and stays there — the next arming watches for the *opposite*
+//     edge. State changes; the device settles.
+//   • NOISE on a floating pin trips ext1 but the debounced state reads the
+//     SAME as when we slept (the pin still floats around one level). That's
+//     the fingerprint of a bad/absent sensor.
+//
+// So we count ext1 wakes where the sign state did NOT change. A real sensor —
+// no matter how busy — flips state on every wake, so its counter never climbs.
+// Only a floating pin racks up no-change wakes; after a run of those we drop
+// the Hall wake and fall back to the daily timer (battery-safe; the daily
+// check-in still reports sign state). This does NOT penalise heavy real use:
+// 100 genuine lifts/day keep instant alerts fully armed.
+RTC_DATA_ATTR int  g_rtcNoChangeHallWakes = 0;
+RTC_DATA_ATTR int  g_rtcSleepSignLevel = -1;   // Hall level we last slept at (-1 = unset)
 RTC_DATA_ATTR bool g_rtcHallWakeDisabled = false;
 
-// After this many consecutive Hall wakes with no timer wake between them, treat
-// the pin as noisy and drop it as a wake source until the next power-on.
-constexpr int MAX_CONSEC_HALL_WAKES = 4;
+// After this many ext1 wakes that did NOT change the sign state (pure noise),
+// treat the pin as floating and drop it as a wake source until next power-on.
+constexpr int MAX_NOCHANGE_HALL_WAKES = 5;
 
 // Threshold for sending an EVT_LOW_BATTERY (1-shot) ahead of the scheduled
 // heartbeat. Kept aggressive — the cloud already has the % from every
@@ -116,26 +129,29 @@ void enterDeepSleep() {
     // installer interacts during the post-boot/awake window. A press while
     // asleep is simply ignored until the next timer/Hall wake.
     const gpio_num_t hallPin = static_cast<gpio_num_t>(Pinout::HALL_SENSOR_PIN);
-    const int hallLevelNow = digitalRead(hallPin);
+    // Use the DEBOUNCED sign level for both the wake polarity and the guard's
+    // remembered level, so they can never disagree (a single raw digitalRead
+    // could catch a transient and arm the wrong edge).
+    const bool signOnHook = signPresentDebounced();   // true == magnet present == LOW
+    g_rtcSleepSignLevel = signOnHook ? LOW : HIGH;
 
     if (!g_rtcHallWakeDisabled) {
-        // Wake on the level OPPOSITE the Hall pin's current level (wake-on-
-        // change): sign on (LOW) → wake when it goes HIGH (lifted); sign off
-        // (HIGH) → wake when it goes LOW (re-hung). Hold the matching internal
-        // pull so the pad rests at its current level and only a real movement
-        // crosses the threshold.
+        // Wake on the level OPPOSITE the sign's current level (wake-on-change):
+        // sign on (LOW) → wake when it goes HIGH (lifted); sign off (HIGH) →
+        // wake when it goes LOW (re-hung). Hold the matching internal pull so
+        // the pad rests at its current level and only a real movement crosses
+        // the threshold.
         const esp_sleep_ext1_wakeup_mode_t mode =
-            (hallLevelNow == LOW) ? ESP_EXT1_WAKEUP_ANY_HIGH
-                                  : ESP_EXT1_WAKEUP_ANY_LOW;
+            signOnHook ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ANY_LOW;
         rtc_gpio_pullup_dis(hallPin);
         rtc_gpio_pulldown_dis(hallPin);
-        if (hallLevelNow == LOW) rtc_gpio_pulldown_en(hallPin);  // hold LOW
-        else                     rtc_gpio_pullup_en(hallPin);    // hold HIGH
+        if (signOnHook) rtc_gpio_pulldown_en(hallPin);  // hold LOW until lifted
+        else            rtc_gpio_pullup_en(hallPin);    // hold HIGH until re-hung
         esp_sleep_enable_ext1_wakeup(1ULL << hallPin, mode);
-        log_i("entering deep sleep (%llu us timer + Hall wake; hall=%s, mode=%s)",
+        log_i("entering deep sleep (%llu us timer + Hall wake; sign=%s, mode=%s)",
               HEARTBEAT_INTERVAL_US,
-              hallLevelNow == LOW ? "LOW(on-hook)" : "HIGH(lifted)",
-              hallLevelNow == LOW ? "ANY_HIGH" : "ANY_LOW");
+              signOnHook ? "ON-HOOK" : "LIFTED",
+              signOnHook ? "ANY_HIGH" : "ANY_LOW");
     } else {
         // Hall wake suppressed (noisy/absent sensor) — timer-only. Battery-safe
         // fallback: still checks in hourly, just no instant-lift wake. The
@@ -158,18 +174,34 @@ uint8_t flagsForUplink() {
 
 LoraLink::EventType currentEventType() {
     const uint8_t pct = Battery::readPercent();
-    const bool signPresent = digitalRead(Pinout::HALL_SENSOR_PIN) == LOW;
-    // Only treat as low-battery when we have a CONFIDENT low reading
-    // (1–LOW_BATTERY_PCT). A reading of exactly 0 almost always means the
-    // measurement failed (no cell wired, divider not populated) rather than
-    // a genuinely flat pack — a real LiPo would have already hit its cutoff
-    // long before reading a true 0. Don't spam low_battery alerts on a
-    // measurement glitch.
+    const bool signPresent = signPresentDebounced();
+
+    // SAFETY FIRST: a lifted sign is the whole point of the product, so it
+    // ALWAYS wins. If the sign is off the hook we report Lifted regardless of
+    // battery — the spill alert must fire. (Battery % rides along in every
+    // packet anyway, and the daily heartbeat still surfaces a low cell, so we
+    // never lose the low-battery signal by prioritising the spill.)
+    if (!signPresent) return LoraLink::EventType::Lifted;
+
+    // Sign is on the hook. Only now is a low-battery heartbeat meaningful.
+    // Require a CONFIDENT low reading (1–LOW_BATTERY_PCT): a flat 0 almost
+    // always means the measurement failed (no cell / divider), not a truly
+    // dead pack, so don't spam low_battery on a glitch.
     if (pct > 0 && pct <= LOW_BATTERY_PCT && !Battery::isCharging()) {
         return LoraLink::EventType::LowBattery;
     }
-    if (!signPresent) return LoraLink::EventType::Lifted;
     return LoraLink::EventType::Heartbeat;
+}
+
+// Event to send on a Hall-sensor wake (or any time we need the exact sign
+// transition rather than a generic state report). On a real wake the sign just
+// moved, so report it explicitly: absent → Lifted (open the spill alert),
+// present → Returned (close it). currentEventType() can't express Returned —
+// it only ever reports the steady state — which is why re-hanging the sign was
+// silently sending Heartbeat and never closing the alert.
+LoraLink::EventType signTransitionEvent() {
+    return signPresentDebounced() ? LoraLink::EventType::Returned
+                                  : LoraLink::EventType::Lifted;
 }
 
 // Debounced read of the sign sensor (reed switch or Hall). The pin floats
@@ -254,24 +286,28 @@ void setup() {
     // the radio + BLE beacon up for a full minute on every single sign event
     // (needless drain). Only a true power-on (g_freshBoot) opens that window.
 
-    // ── Spurious Hall-wake detection (see RTC guard vars above) ──
+    // ── Floating-Hall detection (see RTC guard vars above) ──
     if (g_freshBoot) {
         // Fresh power-on wipes the guard: assume a good sensor until proven
         // otherwise, so a reset always re-enables instant-lift wake.
-        g_rtcConsecHallWakes  = 0;
-        g_rtcHallWakeDisabled = false;
+        g_rtcNoChangeHallWakes = 0;
+        g_rtcHallWakeDisabled  = false;
     } else if (wake == ESP_SLEEP_WAKEUP_EXT1) {
-        // Woke on the Hall pin. Count consecutive Hall wakes; a long run with
-        // no timer wake breaking it up means the pin is noisy, not a person.
-        if (++g_rtcConsecHallWakes >= MAX_CONSEC_HALL_WAKES) {
-            g_rtcHallWakeDisabled = true;
-            log_w("Hall pin noisy (%d consecutive wakes) — disabling Hall wake, "
-                  "timer-only until next power-on", g_rtcConsecHallWakes);
+        // Woke on the Hall pin. Did the sign state actually change vs the level
+        // we slept at? A real lift/return flips it (→ reset the counter, keep
+        // instant alerts armed no matter how busy). A no-change wake is pin
+        // noise; only a long run of those means the sensor is floating/absent.
+        const int nowLevel = signPresentDebounced() ? LOW : HIGH;
+        if (g_rtcSleepSignLevel != -1 && nowLevel == g_rtcSleepSignLevel) {
+            if (++g_rtcNoChangeHallWakes >= MAX_NOCHANGE_HALL_WAKES) {
+                g_rtcHallWakeDisabled = true;
+                log_w("Hall pin floating (%d no-change wakes) — disabling Hall "
+                      "wake, daily-timer-only until next power-on",
+                      g_rtcNoChangeHallWakes);
+            }
+        } else {
+            g_rtcNoChangeHallWakes = 0;   // real sign movement → trust the sensor
         }
-    } else if (wake == ESP_SLEEP_WAKEUP_TIMER) {
-        // The hourly timer fired → genuinely quiet between sign events. Reset
-        // the run counter so a couple of real lifts later don't accumulate.
-        g_rtcConsecHallWakes = 0;
     }
 
     // ── NO Wi-Fi / BLE onboarding for hangers ──
@@ -315,9 +351,16 @@ void setup() {
         Config::setOnboarded(true);
     }
 
-    // Fire the current state immediately so a freshly-powered hanger shows
-    // up / updates in the cloud right away (via the gateway).
-    sendCurrentState();
+    // Fire an uplink immediately on every boot/wake so the event reaches the
+    // cloud within ~1 s of the trigger — this IS the instant-alert path.
+    //   • Hall wake (sign moved) → send the exact transition (Lifted/Returned)
+    //     so the spill alert opens or closes right away.
+    //   • Power-on / timer wake  → send the current steady state.
+    if (wake == ESP_SLEEP_WAKEUP_EXT1) {
+        LoraLink::sendEvent(signTransitionEvent(), Battery::readPercent(), flagsForUplink());
+    } else {
+        sendCurrentState();
+    }
 }
 
 void loop() {
@@ -403,10 +446,10 @@ void loop() {
     // ── Sleep once the awake window closes (default, battery-saving path) ──
     //
     // When no one's looking at the screen and we're not mid-discovery, drop the
-    // CPU + radio into deep sleep until the hourly timer or a Hall/PRG wake.
+    // CPU + radio into deep sleep until the daily timer or a Hall (sign) wake.
     // This is THE battery fix: staying awake + beaconing LoRa every 60 s drains
-    // a cell in days; sleeping between events lasts ~1-2 years. The sign is
-    // still monitored — lifting it is an ext1 wake that fires an instant alert.
+    // a cell in days; sleeping between events lasts years. The sign is still
+    // monitored — lifting it is an ext1 wake that fires an instant alert.
     //
     // (Plug into USB to keep it awake for bench work: the USB 5 V holds the
     // rails up, but the chip still "sleeps" logically — it just wakes on the
@@ -414,15 +457,11 @@ void loop() {
     // serial console.)
 #ifndef BOR_HANGER_STAY_AWAKE
     if (!wantScreenOn) {
-        // Make sure this wake's heartbeat actually went out before sleeping.
-        // On a timer wake we haven't sent since boot, so send now; the
-        // sendCurrentState() in setup() already covered fresh/Hall/PRG boots,
-        // but a belt-and-braces send here costs one packet and guarantees the
-        // dashboard sees every hourly check-in.
-        if (millis() - lastSendMs >= 500) {
-            LoraLink::sendEvent(currentEventType(), Battery::readPercent(),
-                                flagsForUplink());
-        }
+        // setup() already fired this wake's uplink (the exact Lifted/Returned
+        // on a Hall wake, or the current state on a power-on/timer wake), so we
+        // do NOT re-send here — a second packet would be redundant and, on a
+        // Hall wake, could overwrite the transition with a generic state. Just
+        // go back to sleep; the next trigger or the daily timer sends again.
         enterDeepSleep();   // does not return
     }
 #else
