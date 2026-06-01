@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
 
 /**
  * Analytics dashboard — heat map, timeline, responder leaderboard.
@@ -48,6 +49,25 @@ export function Analytics() {
     refetchInterval: 30_000,
   });
 
+  // Admin-only sample data: populate this org with a month of sample spills so
+  // Analytics/Reports render before real history exists. Fully removable.
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const isAdmin = user?.role === "admin";
+  const refreshAnalytics = () => {
+    qc.invalidateQueries({ queryKey: ["analytics-heatmap"] });
+    qc.invalidateQueries({ queryKey: ["analytics-timeline"] });
+    qc.invalidateQueries({ queryKey: ["analytics-responders"] });
+  };
+  const loadSample = useMutation({
+    mutationFn: () => api("/analytics/sample-data", { method: "POST" }),
+    onSuccess: refreshAnalytics,
+  });
+  const clearSample = useMutation({
+    mutationFn: () => api("/analytics/sample-data", { method: "DELETE" }),
+    onSuccess: refreshAnalytics,
+  });
+
   // Window grows with the account's age for the first 30 days, then settles
   // into the normal rolling 30-day window (the backend caps it; we just label
   // it). So a week-old customer sees a focused "last 7 days" view, not a
@@ -66,6 +86,31 @@ export function Analytics() {
             ? " Your account is new, so this covers everything so far and grows to a rolling 30-day window."
             : " These charts fill in automatically as alerts are raised and closed."}
         </p>
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            <button
+              onClick={() => loadSample.mutate()}
+              disabled={loadSample.isPending}
+              className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white font-medium"
+            >
+              {loadSample.isPending ? "Loading…" : "Load sample data"}
+            </button>
+            <button
+              onClick={() => clearSample.mutate()}
+              disabled={clearSample.isPending}
+              className="px-3 py-1.5 text-xs rounded border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+            >
+              {clearSample.isPending ? "Clearing…" : "Clear sample data"}
+            </button>
+            {loadSample.isError && (
+              <span className="text-xs text-red-400">
+                {(loadSample.error as { payload?: { message?: string } })?.payload?.message ??
+                  "Couldn't load — register a hanger first."}
+              </span>
+            )}
+            <span className="text-xs text-slate-500">Sample data is tagged and removable.</span>
+          </div>
+        )}
       </div>
 
       {/* ─── Timeline ─── */}

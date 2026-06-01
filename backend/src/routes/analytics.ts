@@ -13,9 +13,12 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { sql } from "drizzle-orm";
-import { db } from "../db/client.js";
+import { sql, eq, and, isNull } from "drizzle-orm";
+import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+
+// Closure note used to tag (and later remove) admin-loaded sample spills.
+const SAMPLE_NOTE = "Sample data (preview)";
 
 const querySchema = z.object({
   days: z.coerce.number().int().min(1).max(365).default(30),
@@ -194,6 +197,89 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
           avgResponseSeconds: r.avg_response_seconds ? Math.round(Number(r.avg_response_seconds)) : null,
         })),
       };
+    },
+  );
+
+  // ─── Sample data (admin) ───────────────────────────────────────────
+  // Populate the caller's own org with a month of sample spills so Analytics
+  // and Reports render before real history exists. Clearly tagged (closureNote)
+  // and fully removable via DELETE. Spread across the org's hangers and
+  // attributed to its staff so the timeline, heatmap, and leaderboard all fill.
+  app.post(
+    "/analytics/sample-data",
+    { preHandler: [app.authenticate, requireRole(["admin"])] },
+    async (req, reply) => {
+      const c = ctx(req);
+      const hangers = await db
+        .select({ id: schema.hangers.id })
+        .from(schema.hangers)
+        .where(and(eq(schema.hangers.organisationId, c.orgId), eq(schema.hangers.status, "active")));
+      if (hangers.length === 0) {
+        return reply.code(400).send({ error: "no_hangers", message: "Register at least one hanger first." });
+      }
+      const users = await db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(and(eq(schema.users.organisationId, c.orgId), isNull(schema.users.deactivatedAt)));
+
+      // Backdate a young org so the age-based window shows the full 30 days.
+      const [org] = await db
+        .select({ createdAt: schema.organisations.createdAt })
+        .from(schema.organisations)
+        .where(eq(schema.organisations.id, c.orgId))
+        .limit(1);
+      if (org?.createdAt && Date.now() - new Date(org.createdAt).getTime() < 30 * 86_400_000) {
+        await db
+          .update(schema.organisations)
+          .set({ createdAt: new Date(Date.now() - 90 * 86_400_000) })
+          .where(eq(schema.organisations.id, c.orgId));
+      }
+
+      // Weight earlier hangers heavier so the heatmap shows repeat offenders.
+      const weighted: number[] = [];
+      hangers.forEach((_, idx) => {
+        const w = idx === 0 ? 4 : idx === 1 ? 3 : 2;
+        for (let k = 0; k < w; k++) weighted.push(idx);
+      });
+      const COUNT = 50;
+      const rows: (typeof schema.alerts.$inferInsert)[] = [];
+      for (let i = 0; i < COUNT; i++) {
+        const daysAgo = i % 30;
+        const hourOfDay = 7 + (i % 11);
+        const opened = new Date(Date.now() - daysAgo * 86_400_000 - (24 - hourOfDay) * 3_600_000);
+        const responder = users.length ? users[i % users.length] : undefined;
+        const ackSecs = 30 + (i % 10) * 18;
+        const closeMins = 6 + (i % 14);
+        const hanger = hangers[weighted[i % weighted.length]!]!;
+        rows.push({
+          organisationId: c.orgId,
+          hangerId: hanger.id,
+          status: "closed",
+          kind: "spill",
+          openedAt: opened,
+          acknowledgedAt: new Date(opened.getTime() + ackSecs * 1000),
+          acknowledgedBy: responder?.id ?? null,
+          closedAt: new Date(opened.getTime() + closeMins * 60_000),
+          closedBy: responder?.id ?? null,
+          closureReason: "sign_returned",
+          closureNote: SAMPLE_NOTE,
+        });
+      }
+      await db.insert(schema.alerts).values(rows);
+      return { ok: true, inserted: rows.length };
+    },
+  );
+
+  // Remove the sample spills this org loaded (matched by the tag note).
+  app.delete(
+    "/analytics/sample-data",
+    { preHandler: [app.authenticate, requireRole(["admin"])] },
+    async (req) => {
+      const c = ctx(req);
+      await db
+        .delete(schema.alerts)
+        .where(and(eq(schema.alerts.organisationId, c.orgId), eq(schema.alerts.closureNote, SAMPLE_NOTE)));
+      return { ok: true };
     },
   );
 }
