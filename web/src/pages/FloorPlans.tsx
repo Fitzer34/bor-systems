@@ -9,9 +9,9 @@ interface Zone { id: string; name: string; floorId: string; pinX: number | null;
 interface ActiveAlert { id: string; zoneId: string | null; status: "open" | "acknowledged" | "closed" }
 interface Hanger { id: string; zoneId: string | null; status: "active" | "out_of_service" | "decommissioned"; lastSeenAt: string | null }
 
-// Battery hangers deep-sleep and check in hourly: 75 min = one heartbeat + 15
-// min margin. (Was 15 s, tuned for the always-on Pi.)
-const ONLINE_WINDOW_MS = 75 * 60 * 1000;
+// Battery hangers deep-sleep and check in once a DAY (spill alerts instant +
+// separate): 26 h = one daily check-in + 2 h margin.
+const ONLINE_WINDOW_MS = 26 * 60 * 60 * 1000;
 
 export function FloorPlans() {
   useTicker(1000);

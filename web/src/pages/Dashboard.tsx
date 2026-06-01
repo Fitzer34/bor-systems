@@ -40,11 +40,11 @@ interface Hanger {
   lastSeenAt: string | null;
 }
 
-// Battery LoRa hangers deep-sleep and heartbeat hourly, so "online" must
-// tolerate a missed beat: 75 min = one hourly check-in + 15 min margin. (Was
-// 15 s, tuned for the always-on Pi that heartbeat every 5 s — that flagged
-// every healthy sleeping hanger as offline.)
-const ONLINE_WINDOW_MS = 75 * 60 * 1000;
+// Battery LoRa hangers deep-sleep and send a "still alive" check-in once a DAY
+// (spill alerts are instant + separate). "online" tolerates a missed daily
+// beat: 26 h = one daily check-in + 2 h margin. A lift event also refreshes
+// lastSeenAt, so the hanger reporting an active spill always reads online.
+const ONLINE_WINDOW_MS = 26 * 60 * 60 * 1000;
 
 export function Dashboard() {
   const qc = useQueryClient();

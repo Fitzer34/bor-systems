@@ -42,11 +42,12 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
         const c = ctx(req);
         const now = Date.now();
         const thirtyDaysAgo = new Date(now - 30 * 24 * 3600 * 1000);
-        // Battery hangers deep-sleep and heartbeat hourly, so "online" must
-        // tolerate a missed beat: 75 min = one hourly check-in + 15 min margin.
-        // (Was 5 min, tuned for the old always-on Pi — that flagged every
-        // healthy sleeping hanger as offline.)
-        const onlineCutoff = new Date(now - 75 * 60 * 1000);
+        // Battery hangers deep-sleep and send a "still alive" check-in once a
+        // DAY (spill alerts are instant + separate). So "online" must tolerate
+        // a missed daily beat: 26 h = one daily check-in + 2 h margin. (A lift
+        // event also refreshes lastSeenAt, so an actively-used hanger reads
+        // online continuously regardless.)
+        const onlineCutoff = new Date(now - 26 * 60 * 60 * 1000);
 
         // 1. Buildings in this org.
         const buildings = await db

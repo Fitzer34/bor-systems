@@ -179,12 +179,13 @@ private struct HangerRow: View {
         }
     }
 
-    /// "Online" if the hanger has checked in within the last 75 minutes.
-    /// Battery LoRa hangers deep-sleep and heartbeat hourly, so the window must
-    /// tolerate one missed beat: 75 min = one hourly check-in + 15 min margin.
-    /// (Lifting the sign is an instant wake+send, so spill alerts never wait on
-    /// this — it only governs the idle "still alive" badge.)
-    private static let onlineWindow: TimeInterval = 75 * 60
+    /// "Online" if the hanger has checked in within the last 26 hours.
+    /// Battery LoRa hangers deep-sleep and send a "still alive" check-in once a
+    /// DAY, so the window must tolerate one missed beat: 26 h = one daily
+    /// check-in + 2 h margin. (Lifting the sign is an instant wake+send that
+    /// also refreshes lastSeenAt, so spill alerts never wait on this — it only
+    /// governs the idle "still alive" badge.)
+    private static let onlineWindow: TimeInterval = 26 * 60 * 60
 
     @ViewBuilder
     private var statusBadge: some View {

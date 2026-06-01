@@ -12,10 +12,10 @@ struct HomeView: View {
     /// even when the polled data is identical.
     @State private var tick = 0
 
-    /// Battery LoRa hangers deep-sleep + heartbeat hourly, so "online" =
-    /// checked in within 75 min (one beat + 15 min margin). A lifted sign wakes
+    /// Battery LoRa hangers deep-sleep + check in once a DAY, so "online" =
+    /// checked in within 26 h (one daily beat + 2 h margin). A lifted sign wakes
     /// the hanger instantly, so spill alerts never wait on this idle window.
-    private static let onlineWindow: TimeInterval = 75 * 60
+    private static let onlineWindow: TimeInterval = 26 * 60 * 60
 
     private var offlineHangerIds: Set<String> {
         let now = Date()

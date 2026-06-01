@@ -22,10 +22,11 @@ interface Zone     { id: string; name: string; floorId: string }
 interface Floor    { id: string; name: string; buildingId: string; orderIndex: number }
 interface Building { id: string; name: string }
 
-// Battery hangers deep-sleep and check in hourly, so "Online" must tolerate a
-// missed beat: 75 min = one hourly heartbeat + 15 min margin. (Was 90 s, tuned
-// for the always-on Pi — that showed every healthy sleeping hanger as Offline.)
-const ONLINE_WINDOW_MS = 75 * 60 * 1000;
+// Battery hangers deep-sleep and send a "still alive" check-in once a DAY
+// (spill alerts are instant + separate). "Online" tolerates a missed daily
+// beat: 26 h = one daily check-in + 2 h margin. A lift/return event also
+// refreshes lastSeenAt, so an actively-used hanger reads Online continuously.
+const ONLINE_WINDOW_MS = 26 * 60 * 60 * 1000;
 
 export function Hangers() {
   useTicker(1000);

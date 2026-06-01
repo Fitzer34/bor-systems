@@ -12,11 +12,15 @@
 
 namespace {
 
-// Heartbeat cadence on battery: once an hour balances "online indicator stays
-// fresh" against battery life. ~1-2 years on an 18650/21700. The dashboard's
-// Online window is widened to match (see ONLINE_WINDOW on the backend), so an
-// hourly hanger doesn't look falsely offline.
-constexpr uint64_t HEARTBEAT_INTERVAL_US = 60ULL * 60ULL * 1000000ULL;
+// Heartbeat cadence on battery: once a DAY. The hanger is event-driven — a
+// sign lift/return is a hardware (Hall) wake that fires an instant alert and
+// goes straight back to sleep. This daily timer is only the "still alive"
+// check-in so the dashboard can tell a healthy-but-quiet hanger from a dead /
+// removed / flat one. Deep sleep (~tens of µA) dominates the energy budget, so
+// daily vs hourly is a negligible battery difference but a far longer life and
+// a calmer fleet. The dashboard's "online" window is widened to match (~26 h)
+// so a once-a-day hanger never looks falsely offline.
+constexpr uint64_t HEARTBEAT_INTERVAL_US = 24ULL * 60ULL * 60ULL * 1000000ULL;
 
 // Heartbeat cadence while AWAKE (USB / commission / button window) — once a
 // minute, same as the gateway, so the dashboard updates promptly during
