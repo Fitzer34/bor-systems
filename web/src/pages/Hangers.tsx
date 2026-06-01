@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTicker } from "../lib/ticker";
 
-interface Hanger {
+export interface Hanger {
   id: string;
   devEui: string;
   name: string | null;
@@ -17,16 +17,16 @@ interface Hanger {
   audibleAlarmEnabled: boolean;
 }
 
-interface ZoneFull { id: string; name: string; floorId: string; floorName: string; buildingName: string; buildingId: string }
+export interface ZoneFull { id: string; name: string; floorId: string; floorName: string; buildingName: string; buildingId: string }
 interface Zone     { id: string; name: string; floorId: string }
 interface Floor    { id: string; name: string; buildingId: string; orderIndex: number }
-interface Building { id: string; name: string }
+export interface Building { id: string; name: string }
 
 // Battery hangers deep-sleep and send a "still alive" check-in once a DAY
 // (spill alerts are instant + separate). "Online" tolerates a missed daily
 // beat: 26 h = one daily check-in + 2 h margin. A lift/return event also
 // refreshes lastSeenAt, so an actively-used hanger reads Online continuously.
-const ONLINE_WINDOW_MS = 26 * 60 * 60 * 1000;
+export const ONLINE_WINDOW_MS = 26 * 60 * 60 * 1000;
 
 export function Hangers() {
   useTicker(1000);
@@ -176,7 +176,7 @@ interface CardProps {
   onClick: () => void;
 }
 
-function HangerCard({ hanger, zone, lowBatteryThreshold, isStaff, onClick }: CardProps) {
+export function HangerCard({ hanger, zone, lowBatteryThreshold, isStaff, onClick }: CardProps) {
   const status = computeStatus(hanger);
   const locationLabel = zone
     ? `${zone.buildingName} / ${zone.floorName} / ${zone.name}`
@@ -286,7 +286,7 @@ interface DialogProps {
   onStatusChanged: () => void;
 }
 
-function HangerEditDialog({
+export function HangerEditDialog({
   hanger,
   buildings,
   allZones,
@@ -632,7 +632,7 @@ interface RegisterDialogProps {
   onRegistered: () => void;
 }
 
-function RegisterHangerDialog({ buildings, onClose, onRegistered }: RegisterDialogProps) {
+export function RegisterHangerDialog({ buildings, onClose, onRegistered }: RegisterDialogProps) {
   const [devEui, setDevEui] = useState("");
   const [audibleAlarm, setAudibleAlarm] = useState(false);
 

@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTicker } from "../lib/ticker";
 
-interface Gateway {
+export interface Gateway {
   id: string;
   devEui: string;
   name: string | null;
@@ -22,7 +22,7 @@ interface Gateway {
 
 interface Building { id: string; name: string }
 
-const ONLINE_WINDOW_SEC = 90;
+export const ONLINE_WINDOW_SEC = 90;
 
 export function Gateways() {
   useTicker(1000);
@@ -123,7 +123,7 @@ interface CardProps {
   onClick: () => void;
 }
 
-function GatewayCard({ gateway, buildingLabel, isAdmin, onClick }: CardProps) {
+export function GatewayCard({ gateway, buildingLabel, isAdmin, onClick }: CardProps) {
   const isOnline = gateway.lastSeenAt
     ? (Date.now() - new Date(gateway.lastSeenAt).getTime()) / 1000 <= ONLINE_WINDOW_SEC
     : false;
@@ -213,7 +213,7 @@ interface DialogProps {
   onRemoved: () => void;
 }
 
-function GatewayEditDialog({
+export function GatewayEditDialog({
   gateway,
   buildings,
   isAdmin,
