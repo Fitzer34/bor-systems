@@ -129,6 +129,66 @@ export function PpmReminderBanner() {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
+/**
+ * Compact list of PPMs that are due soon or overdue — rendered on the Active
+ * alerts dashboard so maintenance that needs booking sits beside live spills.
+ * Staff-only; renders nothing when there's nothing due.
+ */
+export function PpmDueList() {
+  const { user } = useAuth();
+  const isStaff = user?.role === "admin" || user?.role === "supervisor";
+  useTicker(60_000);
+
+  const { data } = useQuery({
+    queryKey: ["ppms"],
+    queryFn: () => api<{ ppms: Ppm[] }>("/ppms"),
+    enabled: isStaff,
+    refetchInterval: 60_000,
+  });
+  if (!isStaff || !data) return null;
+
+  const due = data.ppms
+    .filter((p) => p.active)
+    .map((p) => ({ p, s: ppmStatus(p) }))
+    .filter((x) => x.s.key === "overdue" || x.s.key === "due")
+    .sort((a, b) => a.p.nextDueDate.localeCompare(b.p.nextDueDate)); // most overdue / soonest first
+  if (due.length === 0) return null;
+
+  return (
+    <>
+      <h2 className="text-2xl font-semibold mt-10 mb-3">Maintenance due</h2>
+      <ul className="space-y-3">
+        {due.map(({ p, s }) => (
+          <li key={p.id}>
+            <Link
+              to="/ppms"
+              className={
+                "flex items-center justify-between gap-3 rounded-lg border bg-slate-900/50 p-4 shadow-sm hover:shadow " +
+                (s.key === "overdue" ? "border-red-500/40" : "border-amber-500/40")
+              }
+            >
+              <div className="min-w-0">
+                <div className="font-medium text-slate-100 truncate">{p.title}</div>
+                <div className="text-sm text-slate-400 mt-0.5 truncate">
+                  {p.contractorName ? `${p.contractorName} · ` : ""}{frequencyLabel(p.frequencyPerYear)}
+                </div>
+              </div>
+              <span
+                className={
+                  "px-2 py-0.5 text-xs font-medium rounded-full shrink-0 " +
+                  (s.key === "overdue" ? "bg-red-500/15 text-red-300" : "bg-amber-500/15 text-amber-300")
+                }
+              >
+                {s.label}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 export function Ppms() {
   useTicker(1000);
   const qc = useQueryClient();

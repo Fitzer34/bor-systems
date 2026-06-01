@@ -5,7 +5,7 @@ import { useAuth } from "../lib/auth";
 import { AlertFloorPlanThumb } from "../components/AlertFloorPlanThumb";
 import { SiteFloorPlansOverview } from "../components/SiteFloorPlansOverview";
 import { useTicker } from "../lib/ticker";
-import { PpmReminderBanner } from "./Ppms";
+import { PpmReminderBanner, PpmDueList } from "./Ppms";
 
 interface ActiveAlert {
   id: string;
@@ -173,6 +173,8 @@ export function Dashboard() {
           </li>
         ))}
       </ul>
+
+      <PpmDueList />
 
       <h2 className="text-2xl font-semibold mt-10 mb-3">All floor plans</h2>
       <p className="text-sm text-slate-500 mb-3">
