@@ -162,6 +162,27 @@ export function Devices() {
     Date.now() - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
   const hgLowBatt = (h: Hanger) => h.batteryPct !== null && h.batteryPct <= lowBatteryThreshold;
 
+  // Card renderers — shared across the linked / unassigned layouts below.
+  const renderGateway = (g: Gateway, label: string) => (
+    <GatewayCard
+      key={g.id}
+      gateway={g}
+      buildingLabel={label}
+      isAdmin={isAdmin}
+      onClick={() => setEditingGateway(g)}
+    />
+  );
+  const renderHanger = (h: Hanger) => (
+    <HangerCard
+      key={h.id}
+      hanger={h}
+      zone={h.zoneId ? zoneById.get(h.zoneId) : undefined}
+      lowBatteryThreshold={lowBatteryThreshold}
+      isStaff={isStaff}
+      onClick={() => setEditingHanger(h)}
+    />
+  );
+
   return (
     <div className="p-6 max-w-6xl">
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
@@ -245,25 +266,38 @@ export function Devices() {
 
                 {!isCollapsed && (
                   <div className="px-4 pb-4 pt-1 space-y-3">
-                    {grp.gateways.map((g) => (
-                      <GatewayCard
-                        key={g.id}
-                        gateway={g}
-                        buildingLabel={grp.name}
-                        isAdmin={isAdmin}
-                        onClick={() => setEditingGateway(g)}
-                      />
-                    ))}
-                    {grp.hangers.map((h) => (
-                      <HangerCard
-                        key={h.id}
-                        hanger={h}
-                        zone={h.zoneId ? zoneById.get(h.zoneId) : undefined}
-                        lowBatteryThreshold={lowBatteryThreshold}
-                        isStaff={isStaff}
-                        onClick={() => setEditingHanger(h)}
-                      />
-                    ))}
+                    {/* Gateways are the building's relay hub(s). */}
+                    {grp.gateways.map((g) => renderGateway(g, grp.name))}
+
+                    {/* Same building = connected: hangers relay through the
+                        building's gateway, so nest them beneath it with a
+                        connector line so the link is obvious. */}
+                    {grp.key !== UNASSIGNED && grp.hangers.length > 0 && grp.gateways.length > 0 && (
+                      <div className="ml-2 sm:ml-4 pl-4 border-l-2 border-slate-700/70 space-y-3 pt-1">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                          <span className="text-slate-500">↳</span>
+                          <span>
+                            {grp.hangers.length} hanger{grp.hangers.length === 1 ? "" : "s"} relayed through{" "}
+                            {grp.gateways.length === 1 ? "this gateway" : "this building's gateways"}
+                          </span>
+                        </div>
+                        {grp.hangers.map(renderHanger)}
+                      </div>
+                    )}
+
+                    {/* Hangers present but no gateway in the building to relay them. */}
+                    {grp.key !== UNASSIGNED && grp.hangers.length > 0 && grp.gateways.length === 0 && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-xs text-amber-300">
+                          <span>⚠</span>
+                          <span>No gateway in this building — these hangers can't relay until one is added.</span>
+                        </div>
+                        {grp.hangers.map(renderHanger)}
+                      </>
+                    )}
+
+                    {/* Unassigned bucket: not tied to a building, so no relay link. */}
+                    {grp.key === UNASSIGNED && grp.hangers.map(renderHanger)}
                   </div>
                 )}
               </section>
