@@ -37,8 +37,10 @@ interface DispatchRow {
 
 interface Hanger {
   id: string;
+  name: string | null;
   status: "active" | "out_of_service" | "decommissioned";
   lastSeenAt: string | null;
+  batteryPct: number | null;
 }
 
 // Battery LoRa hangers deep-sleep and send a "still alive" check-in once a DAY
@@ -77,6 +79,16 @@ export function Dashboard() {
     refetchInterval: 5_000,
   });
 
+  // Low-battery threshold comes from org settings (staff-only endpoint);
+  // everyone else falls back to the same 20% default the rest of the app uses.
+  const isStaff = user?.role === "admin" || user?.role === "supervisor";
+  const settings = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api<{ lowBatteryThreshold: number }>("/settings"),
+    enabled: isStaff,
+  });
+  const lowBatteryThreshold = settings.data?.lowBatteryThreshold ?? 20;
+
   const offlineHangerIds = new Set<string>();
   const now = Date.now();
   for (const h of hangers.data?.hangers ?? []) {
@@ -84,6 +96,12 @@ export function Dashboard() {
     const fresh = h.lastSeenAt != null && now - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS;
     if (!fresh) offlineHangerIds.add(h.id);
   }
+
+  // Active hangers whose battery is at/under the low threshold — surfaced as a
+  // banner so a dying hanger is noticed before it goes silent mid-spill.
+  const lowBatteryHangers = (hangers.data?.hangers ?? []).filter(
+    (h) => h.status === "active" && h.batteryPct != null && h.batteryPct <= lowBatteryThreshold,
+  );
 
   const ackDispatch = useMutation({
     mutationFn: (id: string) => api(`/dispatches/${id}/acknowledge`, { method: "POST" }),
@@ -104,6 +122,9 @@ export function Dashboard() {
   return (
     <div>
       <PpmReminderBanner />
+      {lowBatteryHangers.length > 0 && (
+        <LowBatteryBanner hangers={lowBatteryHangers} isStaff={isStaff} />
+      )}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Active alerts</h1>
         <button onClick={() => alerts.refetch()} className="text-sm text-slate-600 hover:text-white">Refresh</button>
@@ -197,6 +218,38 @@ export function Dashboard() {
         </>
       )}
     </div>
+  );
+}
+
+function LowBatteryBanner({
+  hangers,
+  isStaff,
+}: {
+  hangers: Hanger[];
+  isStaff: boolean;
+}) {
+  const n = hangers.length;
+  // Lowest batteries first, show a few inline.
+  const sorted = [...hangers].sort((a, b) => (a.batteryPct ?? 0) - (b.batteryPct ?? 0));
+  const detail = sorted
+    .slice(0, 4)
+    .map((h) => `${h.name || "Hanger"} (${h.batteryPct}%)`)
+    .join(", ");
+  const cls =
+    "flex items-center justify-between gap-3 mb-5 px-4 py-3 rounded-lg border text-sm bg-amber-500/10 border-amber-500/40 text-amber-200";
+  const body = (
+    <span className="min-w-0">
+      🪫 <span className="font-medium">{n} hanger{n === 1 ? "" : "s"} low on battery</span>
+      <span className="hidden sm:inline text-amber-300/90"> — {detail}{n > 4 ? "…" : ""}</span>
+    </span>
+  );
+  return isStaff ? (
+    <Link to="/devices" className={cls}>
+      {body}
+      <span className="shrink-0 text-xs opacity-80">View devices →</span>
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 
