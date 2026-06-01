@@ -19,8 +19,8 @@ pin on the uploaded floor plan.
 
 | Piece | URL / location | State |
 |---|---|---|
-| Web dashboard | https://app.hazardlink.ie | Live (Cloudflare Worker) |
-| Marketing site | https://hazardlink.ie | Live |
+| Web dashboard | https://app.hazardlink.ie | Live (Cloudflare Worker `hazardlink-app`; deploy: `cd web && npm run build && npx wrangler deploy`) |
+| Marketing site | https://hazardlink.ie | Live (Cloudflare Worker `hazardlink-marketing`; deploy: `cd marketing/landing && npx wrangler deploy`) |
 | Backend API | https://bor-systems-backend.onrender.com | Live (v0.1.7-suffix-match + later) |
 | iOS app | iPhone 16 Pro Max | Installed (older build — needs rebuild for newest screens) |
 

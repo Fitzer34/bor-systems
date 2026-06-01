@@ -1,0 +1,26 @@
+# HazardLink marketing landing page — Cloudflare Workers static-assets config.
+#
+# Serves the single-page marketing site (index.html) on the apex domain
+# hazardlink.ie, the same way web/ serves the dashboard on app.hazardlink.ie.
+#
+# Deploy:
+#   cd marketing/landing
+#   npx wrangler deploy
+#
+# Prerequisite: hazardlink.ie is on this Cloudflare account (it is — the apex
+# was proxied during the original landing-page rollout). With
+# custom_domain = true, Cloudflare creates/updates the route + SSL cert.
+
+name = "hazardlink-marketing"
+compatibility_date = "2025-05-29"
+
+routes = [
+  { pattern = "hazardlink.ie", custom_domain = true },
+]
+
+[assets]
+# Serve ONLY public/ (just index.html) so wrangler config + .wrangler cache
+# never get uploaded as public assets.
+directory = "./public"
+# Single static page: any unmatched path falls back to index.html.
+not_found_handling = "single-page-application"
