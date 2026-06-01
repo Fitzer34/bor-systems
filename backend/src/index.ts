@@ -147,7 +147,7 @@ async function main(): Promise<void> {
     reply.code(status).send({ error: err.message || "internal_error" });
   });
 
-  app.get("/health", async () => ({ ok: true, version: "0.3.0-demo-analytics" }));
+  app.get("/health", async () => ({ ok: true, version: "0.3.1-analytics-window" }));
 
   await app.register(authRoutes);
   await app.register(twoFactorRoutes);

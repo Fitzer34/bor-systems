@@ -32,14 +32,14 @@ interface Responder {
 }
 
 export function Analytics() {
-  const heatmap = useQuery<{ zones: HeatmapZone[] }>({
+  const heatmap = useQuery<{ zones: HeatmapZone[]; days: number }>({
     queryKey: ["analytics-heatmap"],
-    queryFn: () => api<{ zones: HeatmapZone[] }>("/analytics/zone-heatmap?days=30"),
+    queryFn: () => api<{ zones: HeatmapZone[]; days: number }>("/analytics/zone-heatmap?days=30"),
     refetchInterval: 30_000,
   });
-  const timeline = useQuery<{ buckets: TimelineBucket[] }>({
+  const timeline = useQuery<{ buckets: TimelineBucket[]; days: number }>({
     queryKey: ["analytics-timeline"],
-    queryFn: () => api<{ buckets: TimelineBucket[] }>("/analytics/timeline?days=30"),
+    queryFn: () => api<{ buckets: TimelineBucket[]; days: number }>("/analytics/timeline?days=30"),
     refetchInterval: 30_000,
   });
   const responders = useQuery<{ responders: Responder[] }>({
@@ -48,14 +48,23 @@ export function Analytics() {
     refetchInterval: 30_000,
   });
 
+  // Window grows with the account's age for the first 30 days, then settles
+  // into the normal rolling 30-day window (the backend caps it; we just label
+  // it). So a week-old customer sees a focused "last 7 days" view, not a
+  // mostly-empty 30-day chart.
+  const windowDays = timeline.data?.days ?? heatmap.data?.days ?? 30;
+  const youngAccount = windowDays < 30;
+
   return (
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Analytics</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Trends and accountability from the last 30 days of spill alerts — how
-          often spills happen, which areas spill most, and who responds fastest.
-          These charts fill in automatically as alerts are raised and closed.
+          Trends and accountability from the last {windowDays} day{windowDays === 1 ? "" : "s"} of
+          spill alerts — how often spills happen, which areas spill most, and who responds fastest.
+          {youngAccount
+            ? " Your account is new, so this covers everything so far and grows to a rolling 30-day window."
+            : " These charts fill in automatically as alerts are raised and closed."}
         </p>
       </div>
 

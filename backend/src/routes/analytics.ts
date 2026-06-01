@@ -30,6 +30,26 @@ const requireRole =
     }
   };
 
+// Cap the analytics window to the org's age so a brand-new customer gets a
+// day-by-day view that grows toward 30 days, instead of a mostly-empty fixed
+// 30-day window. Once the org is older than the requested window this is a
+// no-op and the normal rolling window applies.
+async function effectiveWindow(
+  orgId: string,
+  requestedDays: number,
+): Promise<{ days: number; since: Date }> {
+  const rows = await db.execute<{ created_at: string | Date }>(
+    sql`SELECT created_at FROM organisations WHERE id = ${orgId} LIMIT 1`,
+  );
+  const raw = rows[0]?.created_at;
+  const createdAt = raw ? new Date(raw as string) : null;
+  const ageDays = createdAt
+    ? Math.ceil((Date.now() - createdAt.getTime()) / 86_400_000)
+    : requestedDays;
+  const days = Math.max(1, Math.min(requestedDays, ageDays));
+  return { days, since: new Date(Date.now() - days * 24 * 3600 * 1000) };
+}
+
 export default async function analyticsRoutes(app: FastifyInstance): Promise<void> {
   // ─── Zone heat map ─────────────────────────────────────────────────
   // Returns one row per zone with spill count + avg response time over the
@@ -42,7 +62,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
       const q = querySchema.safeParse(req.query);
       if (!q.success) return reply.code(400).send({ error: "invalid_input" });
       const c = ctx(req);
-      const since = new Date(Date.now() - q.data.days * 24 * 3600 * 1000);
+      const { days, since } = await effectiveWindow(c.orgId, q.data.days);
 
       const rows = await db.execute<{
         zone_id: string;
@@ -76,7 +96,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
       `);
 
       return {
-        days: q.data.days,
+        days,
         zones: rows.map((r) => ({
           zoneId:             r.zone_id,
           zoneName:           r.zone_name,
@@ -101,7 +121,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
       const q = querySchema.safeParse(req.query);
       if (!q.success) return reply.code(400).send({ error: "invalid_input" });
       const c = ctx(req);
-      const since = new Date(Date.now() - q.data.days * 24 * 3600 * 1000);
+      const { days, since } = await effectiveWindow(c.orgId, q.data.days);
 
       const rows = await db.execute<{ day: string; spill_count: number }>(sql`
         SELECT
@@ -116,7 +136,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
       `);
 
       return {
-        days: q.data.days,
+        days,
         buckets: rows.map((r) => ({
           day: r.day,
           spillCount: Number(r.spill_count) || 0,
@@ -135,7 +155,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
       const q = querySchema.safeParse(req.query);
       if (!q.success) return reply.code(400).send({ error: "invalid_input" });
       const c = ctx(req);
-      const since = new Date(Date.now() - q.data.days * 24 * 3600 * 1000);
+      const { days, since } = await effectiveWindow(c.orgId, q.data.days);
 
       const rows = await db.execute<{
         user_id: string;
@@ -165,7 +185,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
       `);
 
       return {
-        days: q.data.days,
+        days,
         responders: rows.map((r) => ({
           userId:             r.user_id,
           userName:           r.user_name,
