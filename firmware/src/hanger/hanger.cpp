@@ -230,6 +230,42 @@ LoraLink::EventType signTransitionEvent() {
                                   : LoraLink::EventType::Lifted;
 }
 
+// Last sign state we REPORTED to the cloud, persisted across deep sleep.
+//   1 = on hook (reported Returned/Heartbeat),  0 = lifted (reported Lifted),
+//  -1 = unknown (first boot — send the current state to establish a baseline).
+// This is the key to never missing a close: on EVERY wake we compare the live
+// sign state to what the cloud last heard. If it differs we send the exact
+// transition — so even if the Hall wake was disarmed during a noise backoff,
+// or the return happened to land on a timer wake, the next wake of ANY kind
+// still sends Returned and closes the alert. Without this, a return that
+// didn't land on a clean Hall-wake silently became a Heartbeat and the alert
+// stayed open forever (the reported bug).
+RTC_DATA_ATTR int g_rtcReportedOnHook = -1;
+
+// Decide what to send on this wake by reconciling the live sign state with the
+// last state the cloud heard. Returns true + sets *ev if an uplink is needed.
+bool reconcileSignEvent(LoraLink::EventType* ev) {
+    const bool onHook = signPresentDebounced();
+    const int  nowState = onHook ? 1 : 0;
+
+    if (g_rtcReportedOnHook == -1) {
+        // First boot: establish the baseline with the current steady state.
+        *ev = currentEventType();
+        g_rtcReportedOnHook = nowState;
+        return true;
+    }
+    if (nowState != g_rtcReportedOnHook) {
+        // State changed since the cloud last heard — send the exact transition.
+        *ev = onHook ? LoraLink::EventType::Returned : LoraLink::EventType::Lifted;
+        g_rtcReportedOnHook = nowState;
+        return true;
+    }
+    // No change vs what the cloud knows. Only the periodic heartbeat / low-batt
+    // needs to go out; let the caller decide via currentEventType().
+    *ev = currentEventType();
+    return false;   // no state-change uplink required
+}
+
 // Debounced read of the sign sensor (reed switch or Hall). The pin floats
 // noisily on a bare board and even a real reed switch bounces for a few ms
 // on each open/close. Require the level to be stable across DEBOUNCE_SAMPLES
@@ -378,18 +414,25 @@ void setup() {
         Config::setOnboarded(true);
     }
 
-    // Fire an uplink immediately on every boot/wake so the event reaches the
-    // cloud within ~1 s of the trigger — this IS the instant-alert path.
-    //   • Hall wake + real change → send the exact transition (Lifted/Returned)
-    //     so the spill alert opens or closes right away.
-    //   • Hall wake but NOISE      → send nothing; the loop re-sleeps, still armed.
-    //   • Power-on / timer wake    → send the current steady state.
-    if (g_noiseWake) {
-        // no-op: don't spend a packet on pin noise
-    } else if (wake == ESP_SLEEP_WAKEUP_EXT1) {
-        LoraLink::sendEvent(signTransitionEvent(), Battery::readPercent(), flagsForUplink());
+    // Fire an uplink on every wake, reconciling the live sign state against
+    // what the cloud last heard. This is the instant-alert path AND the
+    // guaranteed alert-CLOSE path:
+    //   • State changed (lift or return) → send the exact Lifted/Returned, so
+    //     the alert opens or CLOSES — even if this is a timer wake or the wake
+    //     right after a noise backoff (the return that was missed earlier).
+    //   • State unchanged on a Hall/noise wake → send nothing (pin noise).
+    //   • State unchanged on a power-on/timer wake → send the heartbeat so the
+    //     daily "still alive" check-in + low-battery still report.
+    LoraLink::EventType ev;
+    const bool stateChanged = reconcileSignEvent(&ev);
+    if (stateChanged) {
+        // A real lift or return — always send it (this is what closes alerts).
+        LoraLink::sendEvent(ev, Battery::readPercent(), flagsForUplink());
+    } else if (g_noiseWake) {
+        // Genuine noise, state matches cloud — skip the packet, re-sleep.
     } else {
-        sendCurrentState();
+        // Power-on / timer wake, no change — send the steady-state heartbeat.
+        LoraLink::sendEvent(ev, Battery::readPercent(), flagsForUplink());
     }
 }
 
@@ -583,6 +626,9 @@ void loop() {
         lastEvent = signPresent ? LoraLink::EventType::Returned
                                 : LoraLink::EventType::Lifted;
         LoraLink::sendEvent(lastEvent, Battery::readPercent(), flagsForUplink());
+        // Keep the cloud-state baseline in sync so the next deep-sleep wake
+        // doesn't re-report a transition that already went out while awake.
+        g_rtcReportedOnHook = signPresent ? 1 : 0;
         lastSendMs = millis();
     }
 
