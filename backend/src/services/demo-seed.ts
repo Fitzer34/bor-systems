@@ -298,13 +298,19 @@ export async function seedDemoOrg(): Promise<DemoCredentials> {
   }
 
   // ----- Shifts (recomputed relative to "now" each fresh seed) -----
+  // Top up when the demo org has no shift ending in the future — otherwise an
+  // old/stale shift (e.g. a leftover test row dated weeks ago) would make the
+  // Schedule page show only past shifts. Scoped to the demo org's own rows, so
+  // it never touches a real customer's schedule.
   if (cleanerUser) {
-    const existing = await db
-      .select()
+    const existingShifts = await db
+      .select({ endsAt: schema.shifts.endsAt })
       .from(schema.shifts)
-      .where(eq(schema.shifts.organisationId, DEMO_ORG_ID))
-      .limit(1);
-    if (existing.length === 0) {
+      .where(eq(schema.shifts.organisationId, DEMO_ORG_ID));
+    const hasFutureShift = existingShifts.some(
+      (s) => s.endsAt instanceof Date && s.endsAt.getTime() > Date.now(),
+    );
+    if (!hasFutureShift) {
       const startToday = new Date(); startToday.setHours(8, 0, 0, 0);
       const endToday = new Date();   endToday.setHours(16, 0, 0, 0);
       const startTom = new Date(Date.now() + 86_400_000); startTom.setHours(8, 0, 0, 0);
