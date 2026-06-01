@@ -33,6 +33,7 @@ export function NotificationsLog() {
       {error && <div className="text-red-600">Could not load notifications log.</div>}
 
       {data && (
+        <div className="table-wrap">
         <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
           <thead className="bg-slate-800/60 text-slate-300 text-left">
             <tr>
@@ -66,6 +67,7 @@ export function NotificationsLog() {
             )}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

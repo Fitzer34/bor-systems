@@ -32,6 +32,7 @@ export function AuditLog() {
       {error && <div className="text-red-600">Could not load audit log.</div>}
 
       {data && (
+        <div className="table-wrap">
         <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
           <thead className="bg-slate-800/60 text-slate-300 text-left">
             <tr>
@@ -52,7 +53,7 @@ export function AuditLog() {
                   {e.targetType ? `${e.targetType}: ${e.targetId ?? ""}` : ""}
                 </td>
                 <td className="p-2 text-xs text-slate-500">
-                  {e.metadata ? <pre className="whitespace-pre-wrap break-all max-w-md">{JSON.stringify(e.metadata)}</pre> : ""}
+                  {e.metadata ? <pre className="whitespace-pre-wrap break-all max-w-[240px]">{JSON.stringify(e.metadata)}</pre> : ""}
                 </td>
               </tr>
             ))}
@@ -61,6 +62,7 @@ export function AuditLog() {
             )}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

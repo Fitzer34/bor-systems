@@ -104,8 +104,8 @@ export function Dispatch() {
 
       {!isReadOnly && (
       <div className="bg-slate-900/50 border rounded-lg p-4 mb-8">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
             <label className="block text-xs text-slate-500 mb-1">Cleaner</label>
             <select value={recipientUserId} onChange={(e) => setRecipientUserId(e.target.value)} className="border rounded px-3 py-2 w-full">
               <option value="">— pick a cleaner —</option>
@@ -116,7 +116,6 @@ export function Dispatch() {
               ))}
             </select>
           </div>
-          <div></div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Building (optional)</label>
             <select value={buildingId} onChange={(e) => { setBuildingId(e.target.value); setFloorId(""); setZoneId(""); }} className="border rounded px-3 py-2 w-full">
@@ -131,14 +130,14 @@ export function Dispatch() {
               {floors.data?.floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="block text-xs text-slate-500 mb-1">Zone (optional)</label>
             <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-800/40">
               <option value="">—</option>
               {zones.data?.zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="block text-xs text-slate-500 mb-1">Message</label>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} maxLength={500}
               placeholder="e.g. Please bring a mop and check the toilets on Floor 2."
@@ -165,6 +164,7 @@ export function Dispatch() {
       <h2 className="text-lg font-semibold mb-2">
         {isReadOnly ? "Pending and recent" : "Recent dispatches"}
       </h2>
+      <div className="table-wrap">
       <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
         <thead className="bg-slate-800/60 text-slate-300 text-left">
           <tr>
@@ -202,6 +202,7 @@ export function Dispatch() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

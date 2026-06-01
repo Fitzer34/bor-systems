@@ -99,6 +99,7 @@ export function Users() {
         </div>
       )}
 
+      <div className="table-wrap">
       <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
         <thead className="bg-slate-800/60 text-slate-300 text-left">
           <tr>
@@ -132,6 +133,7 @@ export function Users() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

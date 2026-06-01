@@ -121,15 +121,14 @@ export function Schedule() {
       {!isReadOnly && (
       <div className="bg-slate-900/50 border rounded-lg p-4 mb-8">
         <div className="font-medium mb-3">New shift</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
             <label className="block text-xs text-slate-500 mb-1">Assigned to</label>
             <select value={userId} onChange={(e) => setUserId(e.target.value)} className="border rounded px-3 py-2 w-full">
               <option value="">— pick someone —</option>
               {assignableUsers.map((u) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
             </select>
           </div>
-          <div></div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Starts</label>
             <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className="border rounded px-3 py-2 w-full" />
@@ -163,7 +162,7 @@ export function Schedule() {
             <label className="block text-xs text-slate-500 mb-1">Notes (optional)</label>
             <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. focus on toilets" className="border rounded px-3 py-2 w-full" />
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <button
               onClick={() => create.mutate()}
               disabled={!valid || create.isPending}
@@ -176,6 +175,7 @@ export function Schedule() {
       </div>
       )}
 
+      <div className="table-wrap">
       <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
         <thead className="bg-slate-800/60 text-slate-300 text-left">
           <tr>
@@ -218,6 +218,7 @@ export function Schedule() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

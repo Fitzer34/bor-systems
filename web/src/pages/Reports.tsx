@@ -60,6 +60,7 @@ export function Reports() {
       {data && (
         <>
           <div className="text-sm text-slate-600 mb-3">{data.count} spill{data.count === 1 ? "" : "s"} in range</div>
+          <div className="table-wrap">
           <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
             <thead className="bg-slate-800/60 text-slate-300 text-left">
               <tr>
@@ -82,6 +83,7 @@ export function Reports() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </div>

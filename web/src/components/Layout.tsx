@@ -105,7 +105,7 @@ export function Layout() {
           Phones: full width, compact padding.
           Tablets and up: generous padding, capped width so very wide
           monitors don't make long lines unreadable. */}
-      <main className="flex-1 p-4 md:p-8 md:max-w-6xl">
+      <main className="flex-1 min-w-0 p-4 md:p-8 md:max-w-6xl">
         <Outlet />
       </main>
     </div>

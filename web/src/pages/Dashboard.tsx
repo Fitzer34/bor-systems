@@ -164,26 +164,26 @@ export function Dashboard() {
           <ul className="space-y-3">
             {activeDispatches.map((d) => (
               <li key={d.id} className="rounded-lg border border-blue-300 bg-slate-900/50 p-4 shadow-sm">
-                <div className="flex items-start gap-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3 sm:gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium">
                       {d.zoneName ? `Go to: ${d.zoneName}` : "Dispatch"}
                     </div>
-                    <p className="text-slate-700 mt-1 whitespace-pre-wrap">{d.message}</p>
+                    <p className="text-slate-300 mt-1 whitespace-pre-wrap break-words">{d.message}</p>
                     <div className="text-xs text-slate-500 mt-2">
                       Sent {timeAgo(d.sentAt)} · Status: {d.status}
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2 shrink-0">
+                  <div className="flex flex-row sm:flex-col gap-2 shrink-0">
                     {d.status === "sent" && (
                       <button onClick={() => ackDispatch.mutate(d.id)}
-                        className="px-3 py-2 text-sm rounded bg-blue-600 text-white">
+                        className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-sm rounded bg-blue-600 text-white">
                         On my way
                       </button>
                     )}
                     {d.status !== "completed" && (
                       <button onClick={() => completeDispatch.mutate(d.id)}
-                        className="px-3 py-2 text-sm rounded border border-slate-700 hover:bg-slate-800">
+                        className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-sm rounded border border-slate-700 hover:bg-slate-800">
                         Mark done
                       </button>
                     )}
