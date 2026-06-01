@@ -234,6 +234,51 @@ export async function seedDemoOrg(): Promise<DemoCredentials> {
         closureNote: "Sample alert — closed automatically.",
       });
     }
+
+    // ----- 30-day spill history so Analytics actually renders -----
+    // Without a body of closed spills, the timeline / repeat-offender heatmap /
+    // responder leaderboard are all empty. Seed ~50 closed spills spread over
+    // the last 30 days, weighted so the first zones look like repeat offenders,
+    // acknowledged + closed by the demo cleaner/supervisor with varied response
+    // times. Idempotent: only runs while the org still has just the samples
+    // above (existingAlerts is the pre-run count).
+    if (existingAlerts.length < 10 && allHangers.length > 0) {
+      const responders = [cleanerUser, supervisorUser].filter(
+        (u): u is NonNullable<typeof u> => Boolean(u),
+      );
+      // Weight earlier zones heavier → clear "repeat offender" ranking.
+      const weighted: number[] = [];
+      allHangers.forEach((_, idx) => {
+        const w = idx === 0 ? 4 : idx === 1 ? 3 : 2;
+        for (let k = 0; k < w; k++) weighted.push(idx);
+      });
+      const COUNT = 50;
+      const rows: (typeof schema.alerts.$inferInsert)[] = [];
+      for (let i = 0; i < COUNT; i++) {
+        const daysAgo = i % 30;                       // cover every day in the window
+        const hourOfDay = 7 + (i % 11);               // spread 07:00–17:00
+        const opened = new Date(
+          Date.now() - daysAgo * 86_400_000 - (24 - hourOfDay) * 3_600_000,
+        );
+        const responder = responders.length ? responders[i % responders.length] : undefined;
+        const ackSecs = 30 + (i % 10) * 18;           // ~30s – 3min response
+        const closeMins = 6 + (i % 14);               // ~6 – 20min to clear
+        const hanger = allHangers[weighted[i % weighted.length]!]!;
+        rows.push({
+          organisationId: DEMO_ORG_ID,
+          hangerId: hanger.id,
+          status: "closed",
+          kind: "spill",
+          openedAt: opened,
+          acknowledgedAt: new Date(opened.getTime() + ackSecs * 1000),
+          acknowledgedBy: responder?.id ?? null,
+          closedAt: new Date(opened.getTime() + closeMins * 60_000),
+          closedBy: responder?.id ?? null,
+          closureReason: "sign_returned",
+        });
+      }
+      await db.insert(schema.alerts).values(rows);
+    }
   }
 
   // ----- Events: lifted/returned/heartbeat history -----
