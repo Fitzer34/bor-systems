@@ -84,7 +84,7 @@ function SiteCard({ site }: { site: SiteSummary }) {
         )}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
+      <div className="mt-3 grid grid-cols-3 gap-2 sm:gap-3 text-sm">
         <Stat
           label="Hangers"
           value={`${site.onlineCount}/${site.hangerCount} online`}

@@ -192,6 +192,7 @@ function ResponderTable({ responders }: { responders: Responder[] }) {
     return <div className="text-slate-400 text-sm">No responder activity yet.</div>;
   }
   return (
+    <div className="table-wrap">
     <table className="w-full text-sm">
       <thead>
         <tr className="text-left text-slate-500 border-b">
@@ -219,6 +220,7 @@ function ResponderTable({ responders }: { responders: Responder[] }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 

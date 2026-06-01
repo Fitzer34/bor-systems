@@ -43,6 +43,45 @@
   .logo::before { content: "⚠️ "; }
   nav a { color: var(--ink); text-decoration: none; margin-left: 24px; font-size: 15px; }
   nav a:hover { color: var(--orange); }
+
+  /* ── Mobile hamburger + slide-in side menu ───────────────────────────── */
+  .nav-toggle {
+    display: none;               /* hidden on desktop; shown in @media below */
+    flex-direction: column; justify-content: center; gap: 5px;
+    width: 44px; height: 44px; padding: 10px;
+    background: none; border: 0; cursor: pointer;
+  }
+  .nav-toggle span {
+    display: block; height: 2px; width: 100%;
+    background: var(--ink); border-radius: 2px;
+    transition: transform .2s, opacity .2s;
+  }
+  /* Animate to an X when open. */
+  .nav-toggle.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .nav-toggle.open span:nth-child(2) { opacity: 0; }
+  .nav-toggle.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+  .nav-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(15,23,42,0.5); z-index: 14;
+  }
+  .nav-backdrop.show { display: block; }
+
+  @media (max-width: 720px) {
+    .nav-toggle { display: flex; }
+    /* Turn the nav into a right-side slide-in drawer. */
+    nav {
+      position: fixed; top: 0; right: 0; height: 100vh; width: 80%; max-width: 300px;
+      background: #fff; box-shadow: -8px 0 24px rgba(15,23,42,0.15);
+      flex-direction: column; align-items: flex-start;
+      padding: 80px 24px 24px; gap: 4px;
+      transform: translateX(100%); transition: transform .22s ease;
+      z-index: 15; display: flex;
+    }
+    nav.open { transform: translateX(0); }
+    nav a { margin-left: 0; padding: 12px 0; font-size: 17px; width: 100%; }
+    nav .btn { margin-top: 8px; width: 100%; text-align: center; }
+  }
   .btn {
     display: inline-block;
     background: var(--orange);
@@ -158,8 +197,31 @@
   .mockup .side li {
     padding: 7px 10px; border-radius: 6px; opacity: 0.7;
     margin-bottom: 2px; cursor: pointer;
+    transition: background 120ms ease, opacity 120ms ease;
   }
+  .mockup .side li:hover { opacity: 1; background: rgba(255, 136, 0, 0.18); }
   .mockup .side li.active { background: var(--orange); opacity: 1; font-weight: 600; }
+  .mockup .side li.active:hover { background: var(--orange); }
+  .mockup .main { transition: opacity 180ms ease; }
+  .mockup .main.swapping { opacity: 0; }
+  /* Demo-page-specific helpers */
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0; }
+  .stat-card { background: var(--soft); border-radius: 8px; padding: 12px; }
+  .stat-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--grey); }
+  .stat-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .stat-card .value.up { color: var(--green); }
+  .stat-card .value.down { color: var(--red); }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: var(--grey); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .data-table td { padding: 10px; border-bottom: 1px solid #f1f5f9; }
+  .data-table tr:hover td { background: var(--soft); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .pill.green { background: #dcfce7; color: var(--green); }
+  .pill.amber { background: #fef3c7; color: #92400e; }
+  .pill.red { background: #fee2e2; color: var(--red); }
+  .pill.grey { background: #e2e8f0; color: var(--grey); }
+  .heatmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin: 12px 0; }
+  .heatmap .cell { aspect-ratio: 1; border-radius: 4px; }
   .mockup .main { padding: 20px 24px; }
   .mockup .main h4 { margin: 0 0 4px; font-size: 18px; }
   .mockup .main .sub { color: var(--grey); font-size: 13px; margin-bottom: 16px; }
@@ -230,7 +292,11 @@
 <header>
   <div class="container">
     <div class="logo">HazardLink</div>
-    <nav>
+    <!-- Hamburger — only visible on phones (see @media below). -->
+    <button id="navToggle" class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+      <span></span><span></span><span></span>
+    </button>
+    <nav id="siteNav">
       <a href="#features">Features</a>
       <a href="#how">How it works</a>
       <a href="#dashboard">Dashboard</a>
@@ -239,6 +305,8 @@
       <a href="#contact" class="btn">Book a demo</a>
     </nav>
   </div>
+  <!-- Dim backdrop behind the slide-in menu on mobile. -->
+  <div id="navBackdrop" class="nav-backdrop"></div>
 </header>
 
 <section class="hero">
@@ -283,59 +351,32 @@
     <h2>Your control centre</h2>
     <p class="lede">Every customer gets a private dashboard at <strong>app.hazardlink.ie</strong>. Live alerts, multi-site rollups, compliance PDFs, staff scheduling, and analytics — all in one place.</p>
 
+    <p style="text-align:center;color:var(--grey);font-size:14px;margin-top:-20px;margin-bottom:24px;">
+      👇 <strong>Try the demo</strong> — click any item in the sidebar
+    </p>
     <div class="mockup">
       <div class="chrome">
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-        <span class="url">app.hazardlink.ie/dashboard</span>
+        <span class="url" id="demo-url">app.hazardlink.ie/alerts</span>
       </div>
       <div class="body">
         <div class="side">
           <div class="brand">⚠️ HazardLink</div>
-          <ul>
-            <li class="active">Live alerts</li>
-            <li>Sites</li>
-            <li>Hangers</li>
-            <li>Floor plans</li>
-            <li>Schedule</li>
-            <li>Reports</li>
-            <li>Analytics</li>
-            <li>Users</li>
-            <li>Audit log</li>
-            <li>Settings</li>
+          <ul id="demo-nav">
+            <li class="active" data-page="alerts">Live alerts</li>
+            <li data-page="sites">Sites</li>
+            <li data-page="hangers">Hangers</li>
+            <li data-page="floorplans">Floor plans</li>
+            <li data-page="schedule">Schedule</li>
+            <li data-page="reports">Reports</li>
+            <li data-page="analytics">Analytics</li>
+            <li data-page="users">Users</li>
+            <li data-page="audit">Audit log</li>
+            <li data-page="settings">Settings</li>
           </ul>
         </div>
-        <div class="main">
-          <h4>Live alerts — 2 active</h4>
-          <div class="sub">Mercy Hospital · Cork · updated 3 seconds ago</div>
-
-          <div class="alert-row red">
-            <div>
-              <strong>Ward 4B — corridor</strong><br>
-              <span style="color:var(--grey);font-size:13px;">Sign lifted 38 seconds ago · Nora McCarthy responding</span>
-            </div>
-            <span class="tag live">LIVE</span>
-          </div>
-          <div class="alert-row red">
-            <div>
-              <strong>Main entrance lobby</strong><br>
-              <span style="color:var(--grey);font-size:13px;">Sign lifted 2 minutes ago · awaiting acknowledge</span>
-            </div>
-            <span class="tag live">LIVE</span>
-          </div>
-          <div class="alert-row green">
-            <div>
-              <strong>Canteen — south door</strong><br>
-              <span style="color:var(--grey);font-size:13px;">Resolved 14:22 by Tomasz K · response time 1m 47s</span>
-            </div>
-            <span class="tag done">CLOSED</span>
-          </div>
-          <div class="alert-row green">
-            <div>
-              <strong>Pharmacy corridor</strong><br>
-              <span style="color:var(--grey);font-size:13px;">Resolved 13:05 by Aisling B · response time 52s</span>
-            </div>
-            <span class="tag done">CLOSED</span>
-          </div>
+        <div class="main" id="demo-main">
+          <!-- Populated by JS on load + on sidebar click -->
         </div>
       </div>
     </div>
@@ -424,6 +465,422 @@
     </div>
   </div>
 </footer>
+
+<script>
+  // Interactive dashboard demo — click sidebar items to see different pages.
+  // All mock data baked into this script. No backend, no fetches — works
+  // standalone on Cloudflare Workers/Pages.
+  (function () {
+    // ─── Reusable floor plan SVG ─────────────────────────────────────
+    // Top-down view of Mercy Hospital ground floor — 6 hanger positions.
+    // Different "modes" change what gets overlaid on top of the rooms.
+    //   mode='alerts'    → red dots for active spills, green for resolved
+    //   mode='hangers'   → all hangers shown with battery-tint backgrounds
+    //   mode='heatmap'   → tinted regions showing spill density
+    //   mode='planview'  → all hangers with labels (used on Floor plans page)
+    function floorPlanSVG(mode) {
+      // Helper — render a hanger dot at a position with the right styling
+      function dot(x, y, status) {
+        const colors = {
+          live:   { fill: '#e53935', pulse: true },
+          stale:  { fill: '#fb923c', pulse: false },
+          ok:     { fill: '#2e7d32', pulse: false },
+          lowbat: { fill: '#f59e0b', pulse: false },
+          off:    { fill: '#94a3b8', pulse: false },
+        };
+        const c = colors[status] || colors.ok;
+        const pulse = c.pulse
+          ? `<circle cx="${x}" cy="${y}" r="14" fill="${c.fill}" opacity="0.25">
+               <animate attributeName="r" values="8;16;8" dur="1.6s" repeatCount="indefinite" />
+               <animate attributeName="opacity" values="0.45;0.05;0.45" dur="1.6s" repeatCount="indefinite" />
+             </circle>`
+          : '';
+        return `${pulse}<circle cx="${x}" cy="${y}" r="6" fill="${c.fill}" stroke="#fff" stroke-width="2" />`;
+      }
+
+      // Heat-map tint per room (light → dark = more spills)
+      const heat = mode === 'heatmap' ? {
+        ward4b:   'rgba(229, 57, 53, 0.32)',    // hot
+        pharmacy: 'rgba(251, 146, 60, 0.22)',
+        canteen:  'rgba(245, 158, 11, 0.18)',
+        lobby:    'rgba(229, 57, 53, 0.20)',
+        ward4a:   'rgba(245, 158, 11, 0.10)',
+        storage:  'rgba(245, 158, 11, 0.06)',
+      } : {
+        ward4b: '#fff', pharmacy: '#fff', canteen: '#fff',
+        lobby: '#fff', ward4a: '#fff', storage: '#fff',
+      };
+
+      // Per-mode hanger statuses
+      const status = {
+        alerts: {
+          ward4b: 'live', lobby: 'live',
+          canteen: 'ok', pharmacy: 'ok',
+          ward4a: 'ok', storage: 'ok',
+        },
+        hangers: {
+          ward4b: 'ok', lobby: 'ok', canteen: 'ok',
+          pharmacy: 'ok', ward4a: 'lowbat', storage: 'off',
+        },
+        heatmap: {
+          ward4b: 'ok', lobby: 'ok', canteen: 'ok',
+          pharmacy: 'ok', ward4a: 'ok', storage: 'ok',
+        },
+        planview: {
+          ward4b: 'live', lobby: 'live',
+          canteen: 'ok', pharmacy: 'ok',
+          ward4a: 'ok', storage: 'ok',
+        },
+      }[mode] || {};
+
+      return `
+        <svg viewBox="0 0 600 280" xmlns="http://www.w3.org/2000/svg"
+             style="width:100%;height:auto;display:block;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+          <!-- Outer building outline -->
+          <rect x="20" y="20" width="560" height="240" fill="#fff"
+                stroke="#0f172a" stroke-width="2" />
+
+          <!-- Internal rooms (filled depending on heat-map mode) -->
+          <!-- Top-left: Ward 4B -->
+          <rect x="20" y="20" width="180" height="100" fill="${heat.ward4b}"
+                stroke="#cbd5e1" stroke-width="1" />
+          <text x="35" y="45" font-size="11" fill="#475569" font-weight="600">Ward 4B</text>
+          <text x="35" y="58" font-size="9" fill="#94a3b8">corridor</text>
+
+          <!-- Top-middle: Reception -->
+          <rect x="200" y="20" width="200" height="60" fill="#fff"
+                stroke="#cbd5e1" stroke-width="1" />
+          <text x="215" y="45" font-size="11" fill="#475569" font-weight="600">Reception</text>
+
+          <!-- Top-right: Pharmacy -->
+          <rect x="400" y="20" width="180" height="100" fill="${heat.pharmacy}"
+                stroke="#cbd5e1" stroke-width="1" />
+          <text x="415" y="45" font-size="11" fill="#475569" font-weight="600">Pharmacy</text>
+          <text x="415" y="58" font-size="9" fill="#94a3b8">corridor</text>
+
+          <!-- Middle: Main corridor -->
+          <rect x="200" y="80" width="200" height="40" fill="#fff"
+                stroke="#cbd5e1" stroke-width="1" />
+          <text x="280" y="105" font-size="9" fill="#94a3b8">main corridor</text>
+
+          <!-- Bottom-left: Ward 4A -->
+          <rect x="20" y="120" width="180" height="140" fill="${heat.ward4a}"
+                stroke="#cbd5e1" stroke-width="1" />
+          <text x="35" y="145" font-size="11" fill="#475569" font-weight="600">Ward 4A</text>
+
+          <!-- Bottom-middle: Lobby (main entrance) -->
+          <rect x="200" y="120" width="200" height="140" fill="${heat.lobby}"
+                stroke="#cbd5e1" stroke-width="1" />
+          <text x="215" y="145" font-size="11" fill="#475569" font-weight="600">Main entrance lobby</text>
+
+          <!-- Bottom-right top half: Canteen -->
+          <rect x="400" y="120" width="180" height="80" fill="${heat.canteen}"
+                stroke="#cbd5e1" stroke-width="1" />
+          <text x="415" y="145" font-size="11" fill="#475569" font-weight="600">Canteen</text>
+          <text x="415" y="158" font-size="9" fill="#94a3b8">south door</text>
+
+          <!-- Bottom-right bottom half: Storage -->
+          <rect x="400" y="200" width="180" height="60" fill="${heat.storage}"
+                stroke="#cbd5e1" stroke-width="1" />
+          <text x="415" y="225" font-size="11" fill="#475569" font-weight="600">Storage</text>
+
+          <!-- Door cut-outs (visual hint of openings between rooms) -->
+          <line x1="280" y1="120" x2="320" y2="120" stroke="#fff" stroke-width="3" />
+          <line x1="200" y1="180" x2="200" y2="220" stroke="#fff" stroke-width="3" />
+          <line x1="400" y1="160" x2="400" y2="180" stroke="#fff" stroke-width="3" />
+
+          <!-- Hanger dots (positions chosen so they land inside each room) -->
+          ${dot(110, 70,  status.ward4b)}
+          ${dot(300, 200, status.lobby)}
+          ${dot(490, 70,  status.pharmacy)}
+          ${dot(490, 160, status.canteen)}
+          ${dot(110, 190, status.ward4a)}
+          ${dot(490, 230, status.storage)}
+
+          <!-- Compass + scale -->
+          <g transform="translate(545, 245)">
+            <circle r="10" fill="#fff" stroke="#cbd5e1" />
+            <text x="0" y="3" font-size="9" fill="#475569" text-anchor="middle" font-weight="600">N</text>
+            <line x1="0" y1="-6" x2="0" y2="-2" stroke="#e53935" stroke-width="1.5" />
+          </g>
+        </svg>
+        ${mode === 'planview' || mode === 'alerts' ? `
+          <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--grey);">
+            <span><span style="display:inline-block;width:8px;height:8px;background:#e53935;border-radius:50%;vertical-align:middle;"></span> Active alert</span>
+            <span><span style="display:inline-block;width:8px;height:8px;background:#2e7d32;border-radius:50%;vertical-align:middle;"></span> Standby</span>
+          </div>
+        ` : ''}
+        ${mode === 'hangers' ? `
+          <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--grey);flex-wrap:wrap;">
+            <span><span style="display:inline-block;width:8px;height:8px;background:#2e7d32;border-radius:50%;vertical-align:middle;"></span> Healthy</span>
+            <span><span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;vertical-align:middle;"></span> Low battery</span>
+            <span><span style="display:inline-block;width:8px;height:8px;background:#94a3b8;border-radius:50%;vertical-align:middle;"></span> Offline</span>
+          </div>
+        ` : ''}
+        ${mode === 'heatmap' ? `
+          <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--grey);">
+            Spill density:
+            <span><span style="display:inline-block;width:14px;height:8px;background:rgba(245,158,11,0.1);vertical-align:middle;border:1px solid #e2e8f0;"></span> Low</span>
+            <span><span style="display:inline-block;width:14px;height:8px;background:rgba(245,158,11,0.22);vertical-align:middle;border:1px solid #e2e8f0;"></span> Medium</span>
+            <span><span style="display:inline-block;width:14px;height:8px;background:rgba(229,57,53,0.32);vertical-align:middle;border:1px solid #e2e8f0;"></span> High</span>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    const PAGES = {
+      alerts: {
+        url: 'app.hazardlink.ie/alerts',
+        html: `
+          <h4>Live alerts — 2 active</h4>
+          <div class="sub">Mercy Hospital · ground floor · updated 3 seconds ago</div>
+          ${floorPlanSVG('alerts')}
+
+          <div class="alert-row red" style="margin-top:14px;">
+            <div>
+              <strong>Ward 4B — corridor</strong><br>
+              <span style="color:var(--grey);font-size:13px;">Sign lifted 38 seconds ago · Nora McCarthy responding</span>
+            </div>
+            <span class="tag live">LIVE</span>
+          </div>
+          <div class="alert-row red">
+            <div>
+              <strong>Main entrance lobby</strong><br>
+              <span style="color:var(--grey);font-size:13px;">Sign lifted 2 minutes ago · awaiting acknowledge</span>
+            </div>
+            <span class="tag live">LIVE</span>
+          </div>
+          <div class="alert-row green">
+            <div>
+              <strong>Canteen — south door</strong><br>
+              <span style="color:var(--grey);font-size:13px;">Resolved 14:22 by Tomasz K · response time 1m 47s</span>
+            </div>
+            <span class="tag done">CLOSED</span>
+          </div>
+          <div class="alert-row green">
+            <div>
+              <strong>Pharmacy corridor</strong><br>
+              <span style="color:var(--grey);font-size:13px;">Resolved 13:05 by Aisling B · response time 52s</span>
+            </div>
+            <span class="tag done">CLOSED</span>
+          </div>
+        `
+      },
+      sites: {
+        url: 'app.hazardlink.ie/sites',
+        html: `
+          <h4>Sites overview — 3 buildings</h4>
+          <div class="sub">Roll-up across your portfolio · last 30 days</div>
+          <table class="data-table" style="margin-top:8px;">
+            <thead><tr><th>Site</th><th>Hangers</th><th>Open</th><th>Spills (30d)</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Mercy Hospital</strong><br><span style="color:var(--grey);font-size:11px;">Cork · 4 floors</span></td><td>24</td><td>2</td><td>47</td><td><span class="pill red">2 active</span></td></tr>
+              <tr><td><strong>Penneys Henry St</strong><br><span style="color:var(--grey);font-size:11px;">Dublin · 5 floors</span></td><td>18</td><td>0</td><td>23</td><td><span class="pill green">All clear</span></td></tr>
+              <tr><td><strong>Trinity Sports Complex</strong><br><span style="color:var(--grey);font-size:11px;">Dublin · 2 floors</span></td><td>9</td><td>0</td><td>12</td><td><span class="pill green">All clear</span></td></tr>
+            </tbody>
+          </table>
+        `
+      },
+      hangers: {
+        url: 'app.hazardlink.ie/hangers',
+        html: `
+          <h4>Hangers — 51 devices</h4>
+          <div class="sub">Battery, signal, and firmware health · Mercy ground floor</div>
+          ${floorPlanSVG('hangers')}
+          <table class="data-table" style="margin-top:14px;">
+            <thead><tr><th>Device</th><th>Location</th><th>Battery</th><th>Last seen</th><th>FW</th></tr></thead>
+            <tbody>
+              <tr><td>HL-0042</td><td>Mercy · Ward 4B</td><td><span class="pill green">94%</span></td><td>2s ago</td><td>v0.4.1</td></tr>
+              <tr><td>HL-0043</td><td>Mercy · Lobby</td><td><span class="pill green">88%</span></td><td>3s ago</td><td>v0.4.1</td></tr>
+              <tr><td>HL-0044</td><td>Mercy · Canteen</td><td><span class="pill green">79%</span></td><td>1s ago</td><td>v0.4.1</td></tr>
+              <tr><td>HL-0045</td><td>Mercy · Pharmacy</td><td><span class="pill green">91%</span></td><td>4s ago</td><td>v0.4.1</td></tr>
+              <tr><td>HL-0046</td><td>Mercy · Ward 4A</td><td><span class="pill amber">18%</span></td><td>1s ago</td><td>v0.4.1</td></tr>
+              <tr><td>HL-0047</td><td>Mercy · Storage</td><td><span class="pill grey">—</span></td><td>2d ago</td><td>v0.4.0</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:14px;font-size:12px;color:var(--grey);">+ 45 more hangers · 1 low battery · 1 offline</div>
+        `
+      },
+      floorplans: {
+        url: 'app.hazardlink.ie/floor-plans',
+        html: `
+          <h4>Floor plans — Mercy Hospital · Ground floor</h4>
+          <div class="sub">Live device positions on the uploaded building plan</div>
+          ${floorPlanSVG('planview')}
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button style="padding:6px 12px;background:var(--soft);border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">Ground floor ✓</button>
+            <button style="padding:6px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">1st floor</button>
+            <button style="padding:6px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">2nd floor</button>
+            <button style="padding:6px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;color:var(--orange);">+ Upload plan</button>
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:var(--grey);">Tap a dot to see hanger history. Drag-place new hangers as they arrive.</div>
+        `
+      },
+      schedule: {
+        url: 'app.hazardlink.ie/schedule',
+        html: `
+          <h4>Schedule — this week</h4>
+          <div class="sub">Mercy Hospital · 6 cleaners on rotation</div>
+          <table class="data-table" style="margin-top:8px;">
+            <thead><tr><th>Staff</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Nora McCarthy</strong></td><td><span class="pill green">06–14</span></td><td><span class="pill green">06–14</span></td><td>—</td><td><span class="pill green">06–14</span></td><td><span class="pill green">06–14</span></td></tr>
+              <tr><td><strong>Tomasz Krawczyk</strong></td><td><span class="pill amber">14–22</span></td><td><span class="pill amber">14–22</span></td><td><span class="pill amber">14–22</span></td><td>—</td><td><span class="pill amber">14–22</span></td></tr>
+              <tr><td><strong>Aisling Byrne</strong></td><td>—</td><td><span class="pill grey">22–06</span></td><td><span class="pill grey">22–06</span></td><td><span class="pill grey">22–06</span></td><td><span class="pill grey">22–06</span></td></tr>
+              <tr><td><strong>Mihai Popescu</strong></td><td><span class="pill green">06–14</span></td><td>—</td><td><span class="pill green">06–14</span></td><td><span class="pill green">06–14</span></td><td>—</td></tr>
+            </tbody>
+          </table>
+        `
+      },
+      reports: {
+        url: 'app.hazardlink.ie/reports',
+        html: `
+          <h4>Compliance reports</h4>
+          <div class="sub">Insurance-ready PDFs with cryptographic audit hash</div>
+          <table class="data-table" style="margin-top:8px;">
+            <thead><tr><th>Report</th><th>Period</th><th>Spills</th><th>Avg response</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><strong>April 2026</strong></td><td>30 days</td><td>52</td><td>1m 43s</td><td><span style="color:var(--orange);font-weight:600;cursor:pointer;">↓ Download</span></td></tr>
+              <tr><td><strong>March 2026</strong></td><td>31 days</td><td>61</td><td>1m 51s</td><td><span style="color:var(--orange);font-weight:600;cursor:pointer;">↓ Download</span></td></tr>
+              <tr><td><strong>February 2026</strong></td><td>28 days</td><td>44</td><td>2m 02s</td><td><span style="color:var(--orange);font-weight:600;cursor:pointer;">↓ Download</span></td></tr>
+              <tr><td><strong>Q1 2026 summary</strong></td><td>91 days</td><td>157</td><td>1m 52s</td><td><span style="color:var(--orange);font-weight:600;cursor:pointer;">↓ Download</span></td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:14px;font-size:12px;color:var(--grey);">Each PDF includes spill log, response times, photos, and a tamper-proof SHA-256 hash for insurer verification.</div>
+        `
+      },
+      analytics: {
+        url: 'app.hazardlink.ie/analytics',
+        html: `
+          <h4>Analytics — last 30 days</h4>
+          <div class="sub">Where spills happen most + how fast you respond</div>
+          <div class="stat-grid">
+            <div class="stat-card"><div class="label">Avg response</div><div class="value up">1m 43s</div></div>
+            <div class="stat-card"><div class="label">Total spills</div><div class="value">52</div></div>
+            <div class="stat-card"><div class="label">Anti-theft saves</div><div class="value">3</div></div>
+          </div>
+          <strong style="font-size:13px;display:block;margin-top:14px;margin-bottom:6px;">Spill heat-map — Ward 4B is your hotspot</strong>
+          ${floorPlanSVG('heatmap')}
+        `
+      },
+      users: {
+        url: 'app.hazardlink.ie/users',
+        html: `
+          <h4>Users — 12 active</h4>
+          <div class="sub">Cleaners, supervisors, admin</div>
+          <table class="data-table" style="margin-top:8px;">
+            <thead><tr><th>Name</th><th>Role</th><th>Sites</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Nora McCarthy</strong><br><span style="color:var(--grey);font-size:11px;">nora.m@mercy.ie</span></td><td>Cleaner</td><td>Mercy</td><td><span class="pill green">● On duty</span></td></tr>
+              <tr><td><strong>Tomasz Krawczyk</strong><br><span style="color:var(--grey);font-size:11px;">tomasz.k@mercy.ie</span></td><td>Cleaner</td><td>Mercy</td><td><span class="pill green">● On duty</span></td></tr>
+              <tr><td><strong>Aisling Byrne</strong><br><span style="color:var(--grey);font-size:11px;">aisling.b@mercy.ie</span></td><td>Supervisor</td><td>Mercy</td><td><span class="pill grey">Off duty</span></td></tr>
+              <tr><td><strong>Mihai Popescu</strong><br><span style="color:var(--grey);font-size:11px;">mihai.p@penneys.ie</span></td><td>Cleaner</td><td>Penneys</td><td><span class="pill green">● On duty</span></td></tr>
+              <tr><td><strong>Sarah O'Brien</strong><br><span style="color:var(--grey);font-size:11px;">sarah.o@hazardlink.ie</span></td><td>Admin</td><td>All</td><td><span class="pill grey">Off duty</span></td></tr>
+            </tbody>
+          </table>
+        `
+      },
+      audit: {
+        url: 'app.hazardlink.ie/audit-log',
+        html: `
+          <h4>Audit log</h4>
+          <div class="sub">Every privileged action, timestamped and signed</div>
+          <table class="data-table" style="margin-top:8px;">
+            <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th></tr></thead>
+            <tbody>
+              <tr><td>14:38</td><td><strong>Sarah O'Brien</strong></td><td>changed ack-timer</td><td>5min → 7min</td></tr>
+              <tr><td>11:02</td><td><strong>Sarah O'Brien</strong></td><td>added user</td><td>Mihai Popescu (cleaner)</td></tr>
+              <tr><td>09:14</td><td><strong>system</strong></td><td>generated report</td><td>April 2026 PDF</td></tr>
+              <tr><td>Yesterday</td><td><strong>Aisling Byrne</strong></td><td>deactivated user</td><td>jhansel@old.ie</td></tr>
+              <tr><td>Yesterday</td><td><strong>Sarah O'Brien</strong></td><td>uploaded floor plan</td><td>Mercy · Ground floor</td></tr>
+            </tbody>
+          </table>
+        `
+      },
+      settings: {
+        url: 'app.hazardlink.ie/settings',
+        html: `
+          <h4>Settings</h4>
+          <div class="sub">Operational thresholds — same on iOS, Android, web</div>
+          <div style="margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--soft);border-radius:8px;margin-bottom:6px;">
+              <span><strong>Acknowledgement timer</strong><br><span style="color:var(--grey);font-size:12px;">If no cleaner taps "I'm on it" → escalate to supervisors</span></span>
+              <span style="font-weight:600;align-self:center;">7 min</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--soft);border-radius:8px;margin-bottom:6px;">
+              <span><strong>Resolution timer</strong><br><span style="color:var(--grey);font-size:12px;">If sign isn't replaced in time → rebroadcast + escalate</span></span>
+              <span style="font-weight:600;align-self:center;">20 min</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--soft);border-radius:8px;margin-bottom:6px;">
+              <span><strong>Low-battery threshold</strong><br><span style="color:var(--grey);font-size:12px;">Push admins when a hanger drops below this %</span></span>
+              <span style="font-weight:600;align-self:center;">20%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--soft);border-radius:8px;margin-bottom:6px;">
+              <span><strong>Default audible alarm</strong><br><span style="color:var(--grey);font-size:12px;">Buzz the hanger when the sign is lifted</span></span>
+              <span style="font-weight:600;align-self:center;">On</span>
+            </div>
+          </div>
+        `
+      },
+    };
+
+    const nav = document.getElementById('demo-nav');
+    const main = document.getElementById('demo-main');
+    const urlEl = document.getElementById('demo-url');
+
+    function render(pageKey) {
+      const page = PAGES[pageKey];
+      if (!page) return;
+      // Fade out → swap → fade in (200ms total — feels snappy)
+      main.classList.add('swapping');
+      setTimeout(function () {
+        main.innerHTML = page.html;
+        urlEl.textContent = page.url;
+        main.classList.remove('swapping');
+      }, 150);
+      // Update sidebar active state
+      nav.querySelectorAll('li').forEach(function (li) {
+        li.classList.toggle('active', li.getAttribute('data-page') === pageKey);
+      });
+    }
+
+    // Bind click handlers
+    nav.addEventListener('click', function (e) {
+      const li = e.target.closest('li[data-page]');
+      if (li) render(li.getAttribute('data-page'));
+    });
+
+    // Initial render — Live alerts (matches the highlighted sidebar item)
+    render('alerts');
+  })();
+
+  // ── Mobile nav: hamburger toggles the slide-in side menu ──────────────
+  (function () {
+    var toggle = document.getElementById('navToggle');
+    var nav = document.getElementById('siteNav');
+    var backdrop = document.getElementById('navBackdrop');
+    if (!toggle || !nav) return;
+    function setOpen(open) {
+      nav.classList.toggle('open', open);
+      toggle.classList.toggle('open', open);
+      backdrop.classList.toggle('show', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.style.overflow = open ? 'hidden' : '';
+    }
+    toggle.addEventListener('click', function () {
+      setOpen(!nav.classList.contains('open'));
+    });
+    backdrop.addEventListener('click', function () { setOpen(false); });
+    // Tapping any link closes the menu (they're in-page anchors).
+    nav.querySelectorAll('a').forEach(function (a) {
+      a.addEventListener('click', function () { setOpen(false); });
+    });
+    // Reset when resizing back up to desktop.
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 720) setOpen(false);
+    });
+  })();
+</script>
 
 </body>
 </html>
