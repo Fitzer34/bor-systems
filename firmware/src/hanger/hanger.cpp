@@ -41,12 +41,31 @@ constexpr uint32_t SCREEN_WAKE_MS = 60UL * 1000UL;
 // first powered up, not on every wake.
 bool g_freshBoot = true;
 
-// True when this boot was caused by an ext1 (Hall sensor or PRG button) wake
-// from deep sleep — as opposed to the hourly timer. On a button wake we light
-// the screen + BLE beacon so the installer who pressed it gets feedback; on a
-// plain timer wake we send the heartbeat and go straight back to sleep, screen
-// dark, to save the battery.
-bool g_buttonWake = false;
+// ── Self-healing Hall-wake guard (survives deep sleep in RTC memory) ──
+//
+// The Hall pin is an ext1 deep-sleep wake source so a lifted sign fires an
+// instant alert. But if the Hall sensor is unpopulated, unpowered during
+// sleep, or flaky, GPIO6 can float across the wake threshold and trigger a
+// spurious ext1 wake — which, left unchecked, becomes a reboot loop that
+// drains the battery FASTER than no sleep at all (seen on the bench: a board
+// with no sensor wired wakes ~every 1.8 s).
+//
+// Guard: count Hall (ext1) wakes that occur with NO timer wake in between.
+// A person moves a sign at most a couple of times and then it's quiet — and
+// the hourly timer wake resets the count. Noise on a floating/absent/flaky pin
+// produces many ext1 wakes back-to-back with zero timer wakes in between.
+// After a run of those, stop arming the Hall wake and rely on the hourly timer
+// alone. Battery is then always safe; we lose only instant-lift latency on a
+// hanger whose sensor is misbehaving (the hourly heartbeat still reports state,
+// so a spill is still caught within the hour). This counts *consecutive ext1
+// wakes* rather than comparing pin levels, so it catches both the stuck-level
+// and the ping-pong noise patterns. A real sensor never produces a long run.
+RTC_DATA_ATTR int  g_rtcConsecHallWakes = 0;
+RTC_DATA_ATTR bool g_rtcHallWakeDisabled = false;
+
+// After this many consecutive Hall wakes with no timer wake between them, treat
+// the pin as noisy and drop it as a wake source until the next power-on.
+constexpr int MAX_CONSEC_HALL_WAKES = 4;
 
 // Threshold for sending an EVT_LOW_BATTERY (1-shot) ahead of the scheduled
 // heartbeat. Kept aggressive — the cloud already has the % from every
@@ -54,7 +73,6 @@ bool g_buttonWake = false;
 constexpr uint8_t LOW_BATTERY_PCT = 15;
 
 void enterDeepSleep() {
-    log_i("entering deep sleep (%llu us timer + Hall/PRG wake)", HEARTBEAT_INTERVAL_US);
     Serial.flush();
 
     // Park the LoRa radio so it isn't burning ~10 mA in the SX1262 RX/idle
@@ -68,40 +86,61 @@ void enterDeepSleep() {
 
     // ── Wake sources (ESP32-S3) ──
     //
-    // NB: the S3 has NO ext0 — that's ESP32-classic only. The S3 wake-on-GPIO
-    // primitive is ext1 (a bitmask of RTC-capable pins). We wake on:
-    //   • the Hall sensor pin   → sign lifted/returned = instant spill alert
-    //   • the PRG button pin    → installer wants the screen/beacon
-    //   • the hourly timer       → scheduled "still alive" heartbeat
+    // The S3 has NO ext0 (that's ESP32-classic only); the wake-on-GPIO
+    // primitive is ext1 — a bitmask of RTC pins with ONE shared trigger
+    // polarity (ANY_HIGH or ANY_LOW) for the whole mask.
     //
-    // ext1 with ANY_HIGH fires when any listed pin goes HIGH. Both pins idle
-    // HIGH (INPUT_PULLUP) and go LOW when active, so we can't simply watch for
-    // HIGH. Instead we keep internal pulls alive in sleep and watch the level
-    // each pin will transition TO. Simplest robust choice on the S3: wake on
-    // the rising edge back to idle is useless, so we hold the pulls and use
-    // ANY_LOW-equivalent via inverted logic isn't supported — so we configure
-    // each RTC pad with a pull-up and trigger on the pin going LOW using the
-    // ANY_HIGH mask on the *complement* isn't available either. Therefore we
-    // use the supported pattern: enable pull-ups, and trigger ext1 ANY_HIGH on
-    // a transition by momentarily relying on the pins' active-low pulses being
-    // long enough — both the Hall sensor change and a button press hold LOW
-    // well beyond the wake latency.
+    // We wake the radio on TWO things:
+    //   • the hourly timer        → scheduled "still alive" heartbeat
+    //   • the Hall sensor CHANGING → sign lifted or re-hung = instant alert
     //
-    // Concretely: configure both pads as RTC inputs with pull-ups, then arm
-    // ext1 in ALL_LOW mode (ESP_EXT1_WAKEUP_ALL_LOW is deprecated on S3 —
-    // the supported modes are ANY_HIGH and ANY_LOW). ANY_LOW wakes the moment
-    // either pin is pulled LOW, which is exactly "sign moved" or "button
-    // pressed".
+    // The subtlety that bit the first version: the Hall pin is NOT always
+    // idle-HIGH. With the sign on the hook (the normal resting state) the
+    // magnet is present and the pin reads LOW. So a fixed "wake on LOW" fires
+    // immediately and the device wake-loops forever — draining the battery
+    // worse than no sleep at all (observed: woke in <1 s, wake cause = ext1).
+    //
+    // Correct approach: wake on the level OPPOSITE to the Hall pin's CURRENT
+    // level — i.e. wake-on-change. If the sign is on (LOW now) we arm ANY_HIGH
+    // so lifting it (→HIGH) wakes us; if it's off (HIGH now) we arm ANY_LOW so
+    // re-hanging it (→LOW) wakes us. Either way the very next sign movement is
+    // an instant wake + LoRa send.
+    //
+    // The PRG button is deliberately NOT an ext1 wake source: it idles HIGH
+    // (opposite the common sign-on-hook LOW), so it can't share the Hall pin's
+    // single polarity, and waking from deep sleep on it isn't needed — the
+    // installer interacts during the post-boot/awake window. A press while
+    // asleep is simply ignored until the next timer/Hall wake.
     const gpio_num_t hallPin = static_cast<gpio_num_t>(Pinout::HALL_SENSOR_PIN);
-    const gpio_num_t prgPin  = static_cast<gpio_num_t>(Pinout::PRG_BUTTON_PIN);
+    const int hallLevelNow = digitalRead(hallPin);
 
-    rtc_gpio_pullup_en(hallPin);
-    rtc_gpio_pulldown_dis(hallPin);
-    rtc_gpio_pullup_en(prgPin);
-    rtc_gpio_pulldown_dis(prgPin);
+    if (!g_rtcHallWakeDisabled) {
+        // Wake on the level OPPOSITE the Hall pin's current level (wake-on-
+        // change): sign on (LOW) → wake when it goes HIGH (lifted); sign off
+        // (HIGH) → wake when it goes LOW (re-hung). Hold the matching internal
+        // pull so the pad rests at its current level and only a real movement
+        // crosses the threshold.
+        const esp_sleep_ext1_wakeup_mode_t mode =
+            (hallLevelNow == LOW) ? ESP_EXT1_WAKEUP_ANY_HIGH
+                                  : ESP_EXT1_WAKEUP_ANY_LOW;
+        rtc_gpio_pullup_dis(hallPin);
+        rtc_gpio_pulldown_dis(hallPin);
+        if (hallLevelNow == LOW) rtc_gpio_pulldown_en(hallPin);  // hold LOW
+        else                     rtc_gpio_pullup_en(hallPin);    // hold HIGH
+        esp_sleep_enable_ext1_wakeup(1ULL << hallPin, mode);
+        log_i("entering deep sleep (%llu us timer + Hall wake; hall=%s, mode=%s)",
+              HEARTBEAT_INTERVAL_US,
+              hallLevelNow == LOW ? "LOW(on-hook)" : "HIGH(lifted)",
+              hallLevelNow == LOW ? "ANY_HIGH" : "ANY_LOW");
+    } else {
+        // Hall wake suppressed (noisy/absent sensor) — timer-only. Battery-safe
+        // fallback: still checks in hourly, just no instant-lift wake. The
+        // hourly heartbeat reports sign state, so a spill is caught within the
+        // hour even here.
+        log_w("entering deep sleep (%llu us timer ONLY — Hall wake disabled)",
+              HEARTBEAT_INTERVAL_US);
+    }
 
-    const uint64_t mask = (1ULL << hallPin) | (1ULL << prgPin);
-    esp_sleep_enable_ext1_wakeup(mask, ESP_EXT1_WAKEUP_ANY_LOW);
     esp_sleep_enable_timer_wakeup(HEARTBEAT_INTERVAL_US);
 
     esp_deep_sleep_start();   // does not return — boots fresh through setup()
@@ -200,13 +239,36 @@ void setup() {
     pinMode(Pinout::TEST_BUTTON_PIN, INPUT_PULLUP);
     pinMode(Pinout::PRG_BUTTON_PIN,  INPUT_PULLUP);  // on-board "wake screen" button
 
-    // Identify the wake reason — first boot vs sensor/button wake vs timer.
+    // Identify the wake reason — first boot vs Hall wake vs timer.
     const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
-    log_i("wake cause: %d  (0=power-on, 7=timer, ext1=GPIO/Hall/PRG)", (int)wake);
+    log_i("wake cause: %d  (0=power-on, 7=timer, 6=ext1/Hall-sign)", (int)wake);
     g_freshBoot = (wake == ESP_SLEEP_WAKEUP_UNDEFINED);  // true power-on only
-    // A button (PRG/Hall) wake should light the screen + beacon just like a
-    // fresh boot, so the installer who pressed it sees something.
-    g_buttonWake = (wake == ESP_SLEEP_WAKEUP_EXT1);
+    // NB: an ext1 wake now means ONLY "the sign moved" (Hall pin) — PRG isn't a
+    // deep-sleep wake source. sendCurrentState() below reports the new sign
+    // state on this wake, then the loop re-sleeps immediately. We deliberately
+    // DON'T open the 60s commissioning window on a Hall wake — that would keep
+    // the radio + BLE beacon up for a full minute on every single sign event
+    // (needless drain). Only a true power-on (g_freshBoot) opens that window.
+
+    // ── Spurious Hall-wake detection (see RTC guard vars above) ──
+    if (g_freshBoot) {
+        // Fresh power-on wipes the guard: assume a good sensor until proven
+        // otherwise, so a reset always re-enables instant-lift wake.
+        g_rtcConsecHallWakes  = 0;
+        g_rtcHallWakeDisabled = false;
+    } else if (wake == ESP_SLEEP_WAKEUP_EXT1) {
+        // Woke on the Hall pin. Count consecutive Hall wakes; a long run with
+        // no timer wake breaking it up means the pin is noisy, not a person.
+        if (++g_rtcConsecHallWakes >= MAX_CONSEC_HALL_WAKES) {
+            g_rtcHallWakeDisabled = true;
+            log_w("Hall pin noisy (%d consecutive wakes) — disabling Hall wake, "
+                  "timer-only until next power-on", g_rtcConsecHallWakes);
+        }
+    } else if (wake == ESP_SLEEP_WAKEUP_TIMER) {
+        // The hourly timer fired → genuinely quiet between sign events. Reset
+        // the run counter so a couple of real lifts later don't accumulate.
+        g_rtcConsecHallWakes = 0;
+    }
 
     // ── NO Wi-Fi / BLE onboarding for hangers ──
     //
@@ -305,14 +367,14 @@ void loop() {
     // wake reasons that a human triggers should show the screen so the
     // installer gets feedback for the press they just made.
     const bool inCommissionWindow =
-        (g_freshBoot || g_buttonWake) && millis() < SCREEN_COMMISSION_MS;
+        g_freshBoot && millis() < SCREEN_COMMISSION_MS;
     const bool inButtonWake       = millis() < screenWakeUntil;
     const bool wantScreenOn       = inCommissionWindow || inButtonWake;
 
     // Keep the OLED rail in sync. Toggle only on a real transition so we don't
     // re-pulse the panel every iteration. off() cuts the Vext rail entirely
-    // (true power saving); on() re-inits the controller (see display.cpp) so a
-    // battery→USB / button wake relights it cleanly.
+    // (true power saving); on() re-inits the controller (see display.cpp) so an
+    // in-session PRG press relights it cleanly.
     const int wantScreen = wantScreenOn ? 1 : 0;
     if (wantScreen != screenState) {
         if (wantScreen) Display::on(); else Display::off();
