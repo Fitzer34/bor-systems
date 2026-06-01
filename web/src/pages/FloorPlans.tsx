@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, getToken, apiUrl, API_BASE } from "../lib/api";
 import { useTicker } from "../lib/ticker";
 
@@ -16,6 +17,9 @@ const ONLINE_WINDOW_MS = 26 * 60 * 60 * 1000;
 export function FloorPlans() {
   useTicker(1000);
   const qc = useQueryClient();
+  // Deep-link support: Sites overview links here as /floor-plans?building=<id>.
+  const [searchParams] = useSearchParams();
+  const requestedBuilding = searchParams.get("building");
 
   // ── View vs edit ──
   // Default is a clean monitoring view: pick a building + floor, see the plan
@@ -54,14 +58,32 @@ export function FloorPlans() {
     refetchInterval: 5_000,
   });
 
+  // If the ?building=<id> param changes after mount — e.g. navigating here a
+  // second time from Sites overview without a remount — switch to it and reset
+  // the floor so the new building's first floor is shown.
+  useEffect(() => {
+    if (!requestedBuilding) return;
+    const exists = (buildings.data?.buildings ?? []).some((b) => b.id === requestedBuilding);
+    if (exists && requestedBuilding !== activeBuildingId) {
+      setActiveBuildingId(requestedBuilding);
+      setActiveFloorId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedBuilding, buildings.data]);
+
   // Auto-select the first building (and its first floor) so the page isn't
   // blank on arrival — the most common case is one building.
   const buildingList = buildings.data?.buildings ?? [];
   const firstBuilding = buildingList[0];
   if (!activeBuildingId && firstBuilding) {
     // setState during render is fine for this one-shot default (React bails
-    // out of the extra render once the value stops changing).
-    setActiveBuildingId(firstBuilding.id);
+    // out of the extra render once the value stops changing). Honour a
+    // ?building=<id> deep-link from Sites overview; otherwise default to the
+    // first building.
+    const wanted = requestedBuilding && buildingList.some((b) => b.id === requestedBuilding)
+      ? requestedBuilding
+      : firstBuilding.id;
+    setActiveBuildingId(wanted);
   }
 
   const sortedFloors = [...(floors.data?.floors ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
