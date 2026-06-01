@@ -54,47 +54,55 @@ constexpr uint32_t SCREEN_WAKE_MS = 60UL * 1000UL;
 // first powered up, not on every wake.
 bool g_freshBoot = true;
 
-// ── Self-healing Hall-wake guard (survives deep sleep in RTC memory) ──
-//
-// The Hall pin is an ext1 deep-sleep wake source so a lifted sign fires an
-// instant alert. But if the Hall sensor is unpopulated, unpowered during
-// sleep, or flaky, GPIO6 can float across the wake threshold and trigger a
-// spurious ext1 wake — which, left unchecked, becomes a reboot loop that
-// drains the battery FASTER than no sleep at all (seen on the bench: a board
-// with no sensor wired wakes ~every 1.8 s).
-//
-// Guard against a FLOATING/absent Hall pin wake-looping the device (seen on a
-// sensorless bench board: ext1 fires ~every 1.8 s, draining the battery worse
-// than no sleep). The signal that tells noise apart from a real sign movement:
-//
-//   • A REAL event changes the debounced sign state (on-hook ↔ lifted). We
-//     arm wake-on-change, so after a genuine lift the pin now reads the new
-//     level and stays there — the next arming watches for the *opposite*
-//     edge. State changes; the device settles.
-//   • NOISE on a floating pin trips ext1 but the debounced state reads the
-//     SAME as when we slept (the pin still floats around one level). That's
-//     the fingerprint of a bad/absent sensor.
-//
-// So we count ext1 wakes where the sign state did NOT change. A real sensor —
-// no matter how busy — flips state on every wake, so its counter never climbs.
-// Only a floating pin racks up no-change wakes; after a run of those we drop
-// the Hall wake and fall back to the daily timer (battery-safe; the daily
-// check-in still reports sign state). This does NOT penalise heavy real use:
-// 100 genuine lifts/day keep instant alerts fully armed.
-RTC_DATA_ATTR int  g_rtcNoChangeHallWakes = 0;
-RTC_DATA_ATTR int  g_rtcSleepSignLevel = -1;   // Hall level we last slept at (-1 = unset)
-RTC_DATA_ATTR bool g_rtcHallWakeDisabled = false;
+// Set in setup() when this wake was an ext1 (Hall) wake whose debounced sign
+// state did NOT change vs the level we slept at — i.e. electrical noise on a
+// floating pin, not a real lift/return. The loop uses it to go straight back
+// to sleep without spending a LoRa packet, while staying armed for the next
+// genuine transition.
+bool g_noiseWake = false;
 
-// After this many ext1 wakes that did NOT change the sign state (pure noise),
-// treat the pin as floating and drop it as a wake source until next power-on.
-constexpr int MAX_NOCHANGE_HALL_WAKES = 5;
+// ── Hall-wake handling (state survives deep sleep in RTC memory) ──
+//
+// The Hall pin is an ext1 deep-sleep wake source so a sign lift/return fires an
+// instant alert. Two realities we must handle TOGETHER:
+//
+//   1. A REAL event changes the debounced sign state (on-hook ↔ lifted) → send
+//      the exact Lifted/Returned transition, then re-arm for the opposite edge.
+//   2. NOISE on a floating/flaky pin trips ext1 but the debounced state reads
+//      the SAME as when we slept. A bare/dangling wire on the high-impedance
+//      pull-up behaves like an antenna and does this; a real DRV5032 drives the
+//      line hard and won't.
+//
+// CRITICAL: a no-change (noise) wake must NOT permanently disable the Hall
+// wake — doing so was a real bug: after the sign was lifted, floating-pin noise
+// disabled the wake, so plugging the sign back ("Returned") never woke the
+// device and the alert never closed. Instead, a no-change wake is simply
+// CHEAP: we skip the LoRa send and go straight back to sleep (~ms, negligible
+// battery), STILL ARMED. So the genuine next transition is always caught.
+//
+// g_rtcSleepSignLevel = the debounced level we slept at, so a wake can tell a
+// real transition (level changed → send) from noise (level same → re-sleep).
+RTC_DATA_ATTR int g_rtcSleepSignLevel = -1;   // -1 = unset (first boot)
+
+// Consecutive noise wakes (Hall wake, no state change) — drives an escalating
+// backoff so a floating/broken sensor wire can't spin the CPU+radio every ~0.5s
+// and drain the battery. Each noise wake re-sleeps for a SHORT timer instead of
+// re-arming bare; the backoff grows 2s→4s→…→cap so worst-case floating settles
+// to a few wakes/min, not a few/sec. A REAL transition (or a normal timer wake)
+// resets it to 0 so instant alerts are never slowed by past noise.
+RTC_DATA_ATTR int g_rtcNoiseRun = 0;
+constexpr uint32_t NOISE_BACKOFF_BASE_S = 2;     // first noise re-sleep
+constexpr uint32_t NOISE_BACKOFF_MAX_S  = 64;    // cap (~1 wake/min worst case)
 
 // Threshold for sending an EVT_LOW_BATTERY (1-shot) ahead of the scheduled
 // heartbeat. Kept aggressive — the cloud already has the % from every
 // heartbeat, this is a "wake the operator up" signal.
 constexpr uint8_t LOW_BATTERY_PCT = 15;
 
-void enterDeepSleep() {
+// timerOverrideUs: if non-zero, use this as the timer-wake interval instead of
+// the normal daily heartbeat. Used for the short noise-backoff re-sleep so a
+// floating pin can't spin the radio; the Hall wake is still armed either way.
+void enterDeepSleep(uint64_t timerOverrideUs = 0) {
     Serial.flush();
 
     // Park the LoRa radio so it isn't burning ~10 mA in the SX1262 RX/idle
@@ -140,33 +148,26 @@ void enterDeepSleep() {
     const bool signOnHook = signPresentDebounced();   // true == magnet present == LOW
     g_rtcSleepSignLevel = signOnHook ? LOW : HIGH;
 
-    if (!g_rtcHallWakeDisabled) {
-        // Wake on the level OPPOSITE the sign's current level (wake-on-change):
-        // sign on (LOW) → wake when it goes HIGH (lifted); sign off (HIGH) →
-        // wake when it goes LOW (re-hung). Hold the matching internal pull so
-        // the pad rests at its current level and only a real movement crosses
-        // the threshold.
-        const esp_sleep_ext1_wakeup_mode_t mode =
-            signOnHook ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ANY_LOW;
-        rtc_gpio_pullup_dis(hallPin);
-        rtc_gpio_pulldown_dis(hallPin);
-        if (signOnHook) rtc_gpio_pulldown_en(hallPin);  // hold LOW until lifted
-        else            rtc_gpio_pullup_en(hallPin);    // hold HIGH until re-hung
-        esp_sleep_enable_ext1_wakeup(1ULL << hallPin, mode);
-        log_i("entering deep sleep (%llu us timer + Hall wake; sign=%s, mode=%s)",
-              HEARTBEAT_INTERVAL_US,
-              signOnHook ? "ON-HOOK" : "LIFTED",
-              signOnHook ? "ANY_HIGH" : "ANY_LOW");
-    } else {
-        // Hall wake suppressed (noisy/absent sensor) — timer-only. Battery-safe
-        // fallback: still checks in hourly, just no instant-lift wake. The
-        // hourly heartbeat reports sign state, so a spill is caught within the
-        // hour even here.
-        log_w("entering deep sleep (%llu us timer ONLY — Hall wake disabled)",
-              HEARTBEAT_INTERVAL_US);
-    }
-
-    esp_sleep_enable_timer_wakeup(HEARTBEAT_INTERVAL_US);
+    // ALWAYS arm the Hall wake (we never disable it — that broke alert-close).
+    // Wake on the level OPPOSITE the sign's current level (wake-on-change):
+    // sign on (LOW) → wake when it goes HIGH (lifted); sign off (HIGH) → wake
+    // when it goes LOW (re-hung). Hold the matching internal pull so the pad
+    // rests at its current level and only a real movement crosses the
+    // threshold. A floating pin may still trip it on noise, but that's now a
+    // cheap re-sleep (see g_noiseWake), not a battery-killing reboot loop.
+    const esp_sleep_ext1_wakeup_mode_t mode =
+        signOnHook ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ANY_LOW;
+    rtc_gpio_pullup_dis(hallPin);
+    rtc_gpio_pulldown_dis(hallPin);
+    if (signOnHook) rtc_gpio_pulldown_en(hallPin);  // hold LOW until lifted
+    else            rtc_gpio_pullup_en(hallPin);    // hold HIGH until re-hung
+    esp_sleep_enable_ext1_wakeup(1ULL << hallPin, mode);
+    const uint64_t timerUs = timerOverrideUs ? timerOverrideUs : HEARTBEAT_INTERVAL_US;
+    esp_sleep_enable_timer_wakeup(timerUs);
+    log_i("entering deep sleep (%llu us timer + Hall wake; sign=%s, mode=%s)",
+          HEARTBEAT_INTERVAL_US,
+          signOnHook ? "ON-HOOK" : "LIFTED",
+          signOnHook ? "ANY_HIGH" : "ANY_LOW");
 
     esp_deep_sleep_start();   // does not return — boots fresh through setup()
 }
@@ -297,28 +298,27 @@ void setup() {
     // the radio + BLE beacon up for a full minute on every single sign event
     // (needless drain). Only a true power-on (g_freshBoot) opens that window.
 
-    // ── Floating-Hall detection (see RTC guard vars above) ──
-    if (g_freshBoot) {
-        // Fresh power-on wipes the guard: assume a good sensor until proven
-        // otherwise, so a reset always re-enables instant-lift wake.
-        g_rtcNoChangeHallWakes = 0;
-        g_rtcHallWakeDisabled  = false;
-    } else if (wake == ESP_SLEEP_WAKEUP_EXT1) {
-        // Woke on the Hall pin. Did the sign state actually change vs the level
-        // we slept at? A real lift/return flips it (→ reset the counter, keep
-        // instant alerts armed no matter how busy). A no-change wake is pin
-        // noise; only a long run of those means the sensor is floating/absent.
+    // ── Real-transition vs noise on a Hall wake (see notes above) ──
+    g_noiseWake = false;
+    if (wake == ESP_SLEEP_WAKEUP_EXT1) {
+        // Woke on the Hall pin. Did the debounced sign state actually change vs
+        // the level we slept at? If YES → a real lift/return; fall through and
+        // send the transition. If NO → electrical noise on a floating pin; mark
+        // it so the loop re-sleeps WITHOUT spending a packet, but stays armed —
+        // so the genuine next transition (e.g. the sign going back on the hook)
+        // is never missed. We do NOT disable the wake here; disabling it was
+        // what made the alert fail to close.
         const int nowLevel = signPresentDebounced() ? LOW : HIGH;
         if (g_rtcSleepSignLevel != -1 && nowLevel == g_rtcSleepSignLevel) {
-            if (++g_rtcNoChangeHallWakes >= MAX_NOCHANGE_HALL_WAKES) {
-                g_rtcHallWakeDisabled = true;
-                log_w("Hall pin floating (%d no-change wakes) — disabling Hall "
-                      "wake, daily-timer-only until next power-on",
-                      g_rtcNoChangeHallWakes);
-            }
+            g_noiseWake = true;
+            if (g_rtcNoiseRun < 1000000) g_rtcNoiseRun++;   // bump backoff
+            log_i("Hall wake, sign unchanged (noise #%d) — re-sleeping w/ backoff, "
+                  "still armed", g_rtcNoiseRun);
         } else {
-            g_rtcNoChangeHallWakes = 0;   // real sign movement → trust the sensor
+            g_rtcNoiseRun = 0;   // real transition → clear backoff
         }
+    } else {
+        g_rtcNoiseRun = 0;       // power-on / timer wake → clear backoff
     }
 
     // ── NO Wi-Fi / BLE onboarding for hangers ──
@@ -364,10 +364,13 @@ void setup() {
 
     // Fire an uplink immediately on every boot/wake so the event reaches the
     // cloud within ~1 s of the trigger — this IS the instant-alert path.
-    //   • Hall wake (sign moved) → send the exact transition (Lifted/Returned)
+    //   • Hall wake + real change → send the exact transition (Lifted/Returned)
     //     so the spill alert opens or closes right away.
-    //   • Power-on / timer wake  → send the current steady state.
-    if (wake == ESP_SLEEP_WAKEUP_EXT1) {
+    //   • Hall wake but NOISE      → send nothing; the loop re-sleeps, still armed.
+    //   • Power-on / timer wake    → send the current steady state.
+    if (g_noiseWake) {
+        // no-op: don't spend a packet on pin noise
+    } else if (wake == ESP_SLEEP_WAKEUP_EXT1) {
         LoraLink::sendEvent(signTransitionEvent(), Battery::readPercent(), flagsForUplink());
     } else {
         sendCurrentState();
@@ -375,6 +378,27 @@ void setup() {
 }
 
 void loop() {
+    // ── Noise wake: re-sleep immediately, still armed ──
+    //
+    // setup() flagged this as an ext1 wake whose sign state didn't change =
+    // electrical noise on a floating pin, not a real lift/return. Don't spend a
+    // packet, don't open the awake window — a brief settle then straight back
+    // to sleep (re-arming the Hall wake). Negligible battery; the genuine next
+    // transition is still caught. (Skipped in the STAY_AWAKE bench build, which
+    // never sleeps.)
+#ifndef BOR_HANGER_STAY_AWAKE
+    if (g_noiseWake) {
+        delay(40);            // let the pin settle so we don't immediately re-trip
+        // Escalating backoff: 2s, 4s, 8s … capped, so a floating/broken pin
+        // can't spin the radio every ~0.5s and drain the cell. A real
+        // transition or a timer wake resets g_rtcNoiseRun to 0 (see setup()),
+        // so genuine instant alerts are never slowed by past noise.
+        uint32_t backoffS = NOISE_BACKOFF_BASE_S << (uint32_t)(g_rtcNoiseRun - 1);
+        if (backoffS > NOISE_BACKOFF_MAX_S || backoffS == 0) backoffS = NOISE_BACKOFF_MAX_S;
+        enterDeepSleep((uint64_t)backoffS * 1000000ULL);   // does not return
+    }
+#endif
+
     // ── When is the OLED lit? ──
     //
     // By default it's OFF — that's what keeps a wall-mounted, battery-powered
