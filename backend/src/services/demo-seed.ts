@@ -58,6 +58,20 @@ export async function seedDemoOrg(): Promise<DemoCredentials> {
       .returning();
   }
 
+  // Make the demo org look established (~90 days old) so the age-based
+  // analytics window (which caps to the org's age for the first 30 days) shows
+  // the full 30 days of seeded spill history. The demo org row itself is only
+  // days old, which would otherwise shrink the demo's analytics to almost
+  // nothing. One-time + idempotent: only backdates while it still looks recent.
+  if (org?.createdAt && Date.now() - new Date(org.createdAt).getTime() < 35 * 86_400_000) {
+    const established = new Date(Date.now() - 90 * 86_400_000);
+    await db
+      .update(schema.organisations)
+      .set({ createdAt: established })
+      .where(eq(schema.organisations.id, DEMO_ORG_ID));
+    org.createdAt = established;
+  }
+
   // ----- Admin reviewer -----
   const [existingAdmin] = await db
     .select()
