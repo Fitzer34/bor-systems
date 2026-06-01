@@ -15,7 +15,10 @@ struct MapView: View {
     /// Bumped every second to force re-evaluation of the offline pins.
     @State private var tick = 0
 
-    private static let onlineWindow: TimeInterval = 15
+    /// Battery LoRa hangers deep-sleep + heartbeat hourly: "online" = checked
+    /// in within 75 min (one beat + margin). Lifting the sign wakes it
+    /// instantly, so the spill pin appears immediately regardless of this.
+    private static let onlineWindow: TimeInterval = 75 * 60
 
     private var offlineZoneIds: Set<String> {
         let now = Date()

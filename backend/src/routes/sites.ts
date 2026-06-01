@@ -42,7 +42,11 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
         const c = ctx(req);
         const now = Date.now();
         const thirtyDaysAgo = new Date(now - 30 * 24 * 3600 * 1000);
-        const fiveMinAgo = new Date(now - 5 * 60 * 1000);
+        // Battery hangers deep-sleep and heartbeat hourly, so "online" must
+        // tolerate a missed beat: 75 min = one hourly check-in + 15 min margin.
+        // (Was 5 min, tuned for the old always-on Pi — that flagged every
+        // healthy sleeping hanger as offline.)
+        const onlineCutoff = new Date(now - 75 * 60 * 1000);
 
         // 1. Buildings in this org.
         const buildings = await db
@@ -127,7 +131,7 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
           const a = acc.get(bId)!;
           a.hangerCount++;
           if (h.status === "active" && h.lastSeenAt &&
-              h.lastSeenAt.getTime() >= fiveMinAgo.getTime()) {
+              h.lastSeenAt.getTime() >= onlineCutoff.getTime()) {
             a.onlineCount++;
           }
           if (h.batteryPct != null && h.batteryPct <= 20) a.lowBatteryCount++;

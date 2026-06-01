@@ -20,8 +20,10 @@ struct SiteFloorPlansFeed: View {
     /// Bumped every second to force re-evaluation of offline pins between fetches.
     @State private var tick = 0
 
-    /// 15-second window matches the WiFi-Pi 5-second heartbeat (allows two misses).
-    private static let onlineWindow: TimeInterval = 15
+    /// Battery LoRa hangers deep-sleep + heartbeat hourly: "online" = checked
+    /// in within 75 min (one beat + margin). Lifting the sign wakes it
+    /// instantly, so spill pins still appear immediately regardless of this.
+    private static let onlineWindow: TimeInterval = 75 * 60
 
     struct FloorBundle: Identifiable {
         let id: String

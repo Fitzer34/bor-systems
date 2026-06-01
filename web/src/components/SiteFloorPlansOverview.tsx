@@ -18,7 +18,9 @@ interface FloorWithZones {
   zones: Zone[];
 }
 
-const ONLINE_WINDOW_MS = 15 * 1000;
+// Battery hangers deep-sleep and check in hourly: 75 min = one heartbeat + 15
+// min margin. (Was 15 s, tuned for the always-on Pi.)
+const ONLINE_WINDOW_MS = 75 * 60 * 1000;
 
 export function SiteFloorPlansOverview() {
   // Re-render every second so offline pins appear the moment a hanger

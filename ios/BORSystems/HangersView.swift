@@ -179,12 +179,12 @@ private struct HangerRow: View {
         }
     }
 
-    /// "Online" if the hanger has phoned home within the last 15 seconds.
-    /// WiFi-Pi hangers heartbeat every 5 seconds, so 15 seconds tolerates
-    /// two missed beats. Combined with the 1-second tick driven by the
-    /// parent HangersView, the badge flips within ~16 seconds of going dark.
-    /// Battery LoRa hangers will need a longer threshold once we ship them.
-    private static let onlineWindow: TimeInterval = 90
+    /// "Online" if the hanger has checked in within the last 75 minutes.
+    /// Battery LoRa hangers deep-sleep and heartbeat hourly, so the window must
+    /// tolerate one missed beat: 75 min = one hourly check-in + 15 min margin.
+    /// (Lifting the sign is an instant wake+send, so spill alerts never wait on
+    /// this — it only governs the idle "still alive" badge.)
+    private static let onlineWindow: TimeInterval = 75 * 60
 
     @ViewBuilder
     private var statusBadge: some View {
@@ -894,6 +894,7 @@ struct RegisterHangerSheet: View {
     @EnvironmentObject var auth: AuthStore
     @Environment(\.dismiss) private var dismiss
 
+    @StateObject private var scanner = HangerBeaconScanner()
     @State private var devEui = ""
     @State private var buildings: [Building] = []
     @State private var floors: [Floor] = []
@@ -908,11 +909,59 @@ struct RegisterHangerSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Device") {
-                    TextField("DevEUI (16 hex)", text: $devEui)
+                // ── Discover over Bluetooth — no typing ──
+                Section {
+                    if scanner.bluetoothOff {
+                        Label("Turn on Bluetooth to find hangers automatically.",
+                              systemImage: "antenna.radiowaves.left.and.right.slash")
+                            .font(.callout).foregroundStyle(.secondary)
+                    } else if scanner.nearby.isEmpty {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Searching for hangers…").font(.callout)
+                                Text("Press the button on the hanger to make it discoverable.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    } else {
+                        ForEach(scanner.nearby) { b in
+                            Button {
+                                devEui = b.devEui
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(b.devEui)
+                                            .font(.system(.body, design: .monospaced))
+                                            .foregroundStyle(.primary)
+                                        Text(bleSignalLabel(b.rssi))
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if devEui.uppercased() == b.devEui {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.blue)
+                                    } else {
+                                        Image(systemName: "plus.circle")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Hangers nearby")
+                } footer: {
+                    Text("Hangers are LoRa devices — there's no Bluetooth pairing. This just reads the ID off a nearby hanger so you don't have to type it.")
+                }
+
+                Section("Or enter the ID manually") {
+                    TextField("DevEUI (e.g. BOR3C0F02EC38188)", text: $devEui)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .font(.system(.body, design: .monospaced))
+                    Text("Press the button on the hanger — the DevEUI is on the top line of its screen.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Zone (optional)") {
                     Picker("Building", selection: $buildingId) {
@@ -961,17 +1010,35 @@ struct RegisterHangerSheet: View {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
             }
             .task { buildings = (try? await APIClient.shared.buildings()) ?? [] }
+            .onAppear { scanner.start() }
+            .onDisappear { scanner.stop() }
         }
     }
 
+    /// Trimmed + upper-cased form we actually validate and send. The hanger
+    /// prints its DevEUI as `BOR` + 13 hex (e.g. BOR3C0F02EC38188); uppercasing
+    /// here means a pasted lowercase value still matches, and matches how the
+    /// backend stores it.
+    private var normalizedDevEui: String {
+        devEui.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
+    /// Mirror the backend rule (hangers.ts): either the BOR-prefixed form
+    /// (`BOR` + 13 hex) or a bare 16-hex DevEUI. Validating client-side keeps
+    /// the button greyed out until the value is actually registerable —
+    /// previously this only accepted bare 16-hex and rejected every real
+    /// `BOR…` DevEUI, leaving the button stuck disabled.
     private var devEuiValid: Bool {
-        devEui.range(of: #"^[0-9A-Fa-f]{16}$"#, options: .regularExpression) != nil
+        normalizedDevEui.range(
+            of: #"^(BOR[0-9A-F]{13}|[0-9A-F]{16})$"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private func register() async {
         creating = true; error = nil
         do {
-            try await APIClient.shared.registerHanger(devEui: devEui, zoneId: zoneId.isEmpty ? nil : zoneId, audibleAlarmEnabled: audibleAlarm)
+            try await APIClient.shared.registerHanger(devEui: normalizedDevEui, zoneId: zoneId.isEmpty ? nil : zoneId, audibleAlarmEnabled: audibleAlarm)
             onCreated()
             dismiss()
         } catch {

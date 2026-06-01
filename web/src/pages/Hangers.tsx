@@ -22,7 +22,10 @@ interface Zone     { id: string; name: string; floorId: string }
 interface Floor    { id: string; name: string; buildingId: string; orderIndex: number }
 interface Building { id: string; name: string }
 
-const ONLINE_WINDOW_MS = 90 * 1000;
+// Battery hangers deep-sleep and check in hourly, so "Online" must tolerate a
+// missed beat: 75 min = one hourly heartbeat + 15 min margin. (Was 90 s, tuned
+// for the always-on Pi — that showed every healthy sleeping hanger as Offline.)
+const ONLINE_WINDOW_MS = 75 * 60 * 1000;
 
 export function Hangers() {
   useTicker(1000);

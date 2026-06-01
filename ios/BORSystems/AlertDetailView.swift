@@ -15,7 +15,10 @@ struct AlertDetailView: View {
     /// Bumped every second so the offline pin updates live.
     @State private var tick = 0
 
-    private static let onlineWindow: TimeInterval = 15
+    /// Battery LoRa hangers deep-sleep + heartbeat hourly, so "online" =
+    /// checked in within 75 min (one beat + margin). A lifted sign wakes the
+    /// hanger instantly, so the spill alert itself never waits on this.
+    private static let onlineWindow: TimeInterval = 75 * 60
 
     private var offlineZoneIds: Set<String> {
         let now = Date()

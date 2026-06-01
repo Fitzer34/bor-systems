@@ -40,12 +40,11 @@ interface Hanger {
   lastSeenAt: string | null;
 }
 
-/** Match the 3-minute online window used elsewhere — WiFi-Pi hangers
- *  heartbeat every 60 seconds, so 3 minutes is two missed beats. */
-// Tight 15-second window — Pi heartbeats every 5 seconds, so this allows
-// 2 missed beats before flipping to Offline. Combined with a 1-second
-// ticker re-render, worst-case unplug detection is ~16 seconds.
-const ONLINE_WINDOW_MS = 15 * 1000;
+// Battery LoRa hangers deep-sleep and heartbeat hourly, so "online" must
+// tolerate a missed beat: 75 min = one hourly check-in + 15 min margin. (Was
+// 15 s, tuned for the always-on Pi that heartbeat every 5 s — that flagged
+// every healthy sleeping hanger as offline.)
+const ONLINE_WINDOW_MS = 75 * 60 * 1000;
 
 export function Dashboard() {
   const qc = useQueryClient();

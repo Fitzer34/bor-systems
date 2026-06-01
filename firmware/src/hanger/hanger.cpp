@@ -1,4 +1,5 @@
 #include "hanger.h"
+#include "hanger_beacon.h"
 #include "../battery.h"
 #include "../config/nvs_store.h"
 #include "../display.h"
@@ -7,16 +8,20 @@
 
 #include <Arduino.h>
 #include <esp_sleep.h>
+#include "driver/rtc_io.h"   // RTC pull config for the deep-sleep wake pin
 
 namespace {
 
 // Heartbeat cadence on battery: once an hour balances "online indicator stays
-// fresh" against battery life. ~24 months on a 5000 mAh 21700.
+// fresh" against battery life. ~1-2 years on an 18650/21700. The dashboard's
+// Online window is widened to match (see ONLINE_WINDOW on the backend), so an
+// hourly hanger doesn't look falsely offline.
 constexpr uint64_t HEARTBEAT_INTERVAL_US = 60ULL * 60ULL * 1000000ULL;
 
-// Heartbeat cadence on USB power: once a minute — same as the gateway. We're
-// not battery-constrained, and a 60 s "still alive" cadence makes the
-// dashboard's Online/Offline badge useful during install + bench testing.
+// Heartbeat cadence while AWAKE (USB / commission / button window) — once a
+// minute, same as the gateway, so the dashboard updates promptly during
+// install + bench testing. On battery the device is asleep between these, so
+// this only applies during the brief awake windows.
 constexpr uint32_t USB_HEARTBEAT_INTERVAL_MS = 60UL * 1000UL;
 
 // How long the OLED stays lit after a fresh power-on while on battery. Long
@@ -36,26 +41,70 @@ constexpr uint32_t SCREEN_WAKE_MS = 60UL * 1000UL;
 // first powered up, not on every wake.
 bool g_freshBoot = true;
 
+// True when this boot was caused by an ext1 (Hall sensor or PRG button) wake
+// from deep sleep — as opposed to the hourly timer. On a button wake we light
+// the screen + BLE beacon so the installer who pressed it gets feedback; on a
+// plain timer wake we send the heartbeat and go straight back to sleep, screen
+// dark, to save the battery.
+bool g_buttonWake = false;
+
 // Threshold for sending an EVT_LOW_BATTERY (1-shot) ahead of the scheduled
 // heartbeat. Kept aggressive — the cloud already has the % from every
 // heartbeat, this is a "wake the operator up" signal.
 constexpr uint8_t LOW_BATTERY_PCT = 15;
 
 void enterDeepSleep() {
-    log_i("entering deep sleep");
+    log_i("entering deep sleep (%llu us timer + Hall/PRG wake)", HEARTBEAT_INTERVAL_US);
     Serial.flush();
 
-    // Wake on EXT0 (Hall sensor edge) OR timer.
-    esp_sleep_enable_ext0_wakeup(
-        static_cast<gpio_num_t>(Pinout::HALL_SENSOR_PIN),
-        /*level=*/!digitalRead(Pinout::HALL_SENSOR_PIN));  // wake on change
-    esp_sleep_enable_timer_wakeup(HEARTBEAT_INTERVAL_US);
+    // Park the LoRa radio so it isn't burning ~10 mA in the SX1262 RX/idle
+    // state through the whole sleep — without this, deep sleep saves almost
+    // nothing.
+    LoraLink::sleep();
 
-    // Cut the Vext rail to save the OLED's quiescent draw.
+    // Cut the Vext rail (OLED + battery divider quiescent draw).
     pinMode(Pinout::VEXT_CTRL, OUTPUT);
     digitalWrite(Pinout::VEXT_CTRL, HIGH);  // HIGH = off on Heltec V3
 
-    esp_deep_sleep_start();
+    // ── Wake sources (ESP32-S3) ──
+    //
+    // NB: the S3 has NO ext0 — that's ESP32-classic only. The S3 wake-on-GPIO
+    // primitive is ext1 (a bitmask of RTC-capable pins). We wake on:
+    //   • the Hall sensor pin   → sign lifted/returned = instant spill alert
+    //   • the PRG button pin    → installer wants the screen/beacon
+    //   • the hourly timer       → scheduled "still alive" heartbeat
+    //
+    // ext1 with ANY_HIGH fires when any listed pin goes HIGH. Both pins idle
+    // HIGH (INPUT_PULLUP) and go LOW when active, so we can't simply watch for
+    // HIGH. Instead we keep internal pulls alive in sleep and watch the level
+    // each pin will transition TO. Simplest robust choice on the S3: wake on
+    // the rising edge back to idle is useless, so we hold the pulls and use
+    // ANY_LOW-equivalent via inverted logic isn't supported — so we configure
+    // each RTC pad with a pull-up and trigger on the pin going LOW using the
+    // ANY_HIGH mask on the *complement* isn't available either. Therefore we
+    // use the supported pattern: enable pull-ups, and trigger ext1 ANY_HIGH on
+    // a transition by momentarily relying on the pins' active-low pulses being
+    // long enough — both the Hall sensor change and a button press hold LOW
+    // well beyond the wake latency.
+    //
+    // Concretely: configure both pads as RTC inputs with pull-ups, then arm
+    // ext1 in ALL_LOW mode (ESP_EXT1_WAKEUP_ALL_LOW is deprecated on S3 —
+    // the supported modes are ANY_HIGH and ANY_LOW). ANY_LOW wakes the moment
+    // either pin is pulled LOW, which is exactly "sign moved" or "button
+    // pressed".
+    const gpio_num_t hallPin = static_cast<gpio_num_t>(Pinout::HALL_SENSOR_PIN);
+    const gpio_num_t prgPin  = static_cast<gpio_num_t>(Pinout::PRG_BUTTON_PIN);
+
+    rtc_gpio_pullup_en(hallPin);
+    rtc_gpio_pulldown_dis(hallPin);
+    rtc_gpio_pullup_en(prgPin);
+    rtc_gpio_pulldown_dis(prgPin);
+
+    const uint64_t mask = (1ULL << hallPin) | (1ULL << prgPin);
+    esp_sleep_enable_ext1_wakeup(mask, ESP_EXT1_WAKEUP_ANY_LOW);
+    esp_sleep_enable_timer_wakeup(HEARTBEAT_INTERVAL_US);
+
+    esp_deep_sleep_start();   // does not return — boots fresh through setup()
 }
 
 uint8_t flagsForUplink() {
@@ -151,10 +200,13 @@ void setup() {
     pinMode(Pinout::TEST_BUTTON_PIN, INPUT_PULLUP);
     pinMode(Pinout::PRG_BUTTON_PIN,  INPUT_PULLUP);  // on-board "wake screen" button
 
-    // Identify the wake reason — first boot vs sensor wake vs timer wake.
+    // Identify the wake reason — first boot vs sensor/button wake vs timer.
     const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
-    log_i("wake cause: %d  (0=power-on, 2=ext0, 4=timer)", (int)wake);
+    log_i("wake cause: %d  (0=power-on, 7=timer, ext1=GPIO/Hall/PRG)", (int)wake);
     g_freshBoot = (wake == ESP_SLEEP_WAKEUP_UNDEFINED);  // true power-on only
+    // A button (PRG/Hall) wake should light the screen + beacon just like a
+    // fresh boot, so the installer who pressed it sees something.
+    g_buttonWake = (wake == ESP_SLEEP_WAKEUP_EXT1);
 
     // ── NO Wi-Fi / BLE onboarding for hangers ──
     //
@@ -248,8 +300,12 @@ void loop() {
     }
     prevPrgDown = prgDown;
 
-    // Screen on during the post-boot window or a button wake; dark otherwise.
-    const bool inCommissionWindow = g_freshBoot && millis() < SCREEN_COMMISSION_MS;
+    // Screen on during the post-wake window (fresh boot OR a Hall/PRG wake from
+    // deep sleep) or an in-session PRG press; dark otherwise. Both deep-sleep
+    // wake reasons that a human triggers should show the screen so the
+    // installer gets feedback for the press they just made.
+    const bool inCommissionWindow =
+        (g_freshBoot || g_buttonWake) && millis() < SCREEN_COMMISSION_MS;
     const bool inButtonWake       = millis() < screenWakeUntil;
     const bool wantScreenOn       = inCommissionWindow || inButtonWake;
 
@@ -263,23 +319,59 @@ void loop() {
         screenState = wantScreen;
     }
 
-#ifdef BOR_HANGER_DEEP_SLEEP
-    // Optional ultra-low-power mode (off by default). Sleep only when truly on
-    // battery AND nobody is looking at the screen. (Button-wake-from-deep-sleep
-    // would need GPIO0 added as an ext1 wake source — a later enhancement.)
-    if (!inCommissionWindow && !inButtonWake) {
-        Display::off();
+    // ── BLE discovery beacon ──
+    //
+    // Broadcast the DevEUI over BLE for the SAME window the screen is lit: the
+    // post-boot window and after a PRG-button press. That's exactly when an
+    // installer is standing at the unit with the app open trying to add it, so
+    // it shows up as "hanger nearby" — no typing the code. Outside the window
+    // the beacon is off and the device is LoRa-only, as designed.
+    static int beaconState = 0;            // 0 off, 1 on
+    const int wantBeacon = wantScreenOn ? 1 : 0;
+    if (wantBeacon != beaconState) {
+        if (wantBeacon) HangerBeacon::start(Config::getDevEui());
+        else            HangerBeacon::stop();
+        beaconState = wantBeacon;
+    }
+
+    // ── Sleep once the awake window closes (default, battery-saving path) ──
+    //
+    // When no one's looking at the screen and we're not mid-discovery, drop the
+    // CPU + radio into deep sleep until the hourly timer or a Hall/PRG wake.
+    // This is THE battery fix: staying awake + beaconing LoRa every 60 s drains
+    // a cell in days; sleeping between events lasts ~1-2 years. The sign is
+    // still monitored — lifting it is an ext1 wake that fires an instant alert.
+    //
+    // (Plug into USB to keep it awake for bench work: the USB 5 V holds the
+    // rails up, but the chip still "sleeps" logically — it just wakes on the
+    // same triggers. For continuous bench monitoring, hold PRG or use the
+    // serial console.)
+#ifndef BOR_HANGER_STAY_AWAKE
+    if (!wantScreenOn) {
+        // Make sure this wake's heartbeat actually went out before sleeping.
+        // On a timer wake we haven't sent since boot, so send now; the
+        // sendCurrentState() in setup() already covered fresh/Hall/PRG boots,
+        // but a belt-and-braces send here costs one packet and guarantees the
+        // dashboard sees every hourly check-in.
+        if (millis() - lastSendMs >= 500) {
+            LoraLink::sendEvent(currentEventType(), Battery::readPercent(),
+                                flagsForUplink());
+        }
         enterDeepSleep();   // does not return
     }
+#else
+    // Bench/demo build (-DBOR_HANGER_STAY_AWAKE): never deep-sleep, so a USB-
+    // tethered unit keeps streaming serial + heartbeating every 60 s for
+    // continuous monitoring. NEVER ship this on battery — it's the ~days-not-
+    // years drain. The default (flagless) build deep-sleeps as above.
 #endif
 
-    // ── Awake path ──
+    // ── Awake window (fresh boot / Hall / PRG, ~60 s) ──
     //
-    // Default behaviour (and always while on USB): stay alive, beacon a LoRa
-    // heartbeat once a minute so the dashboard's Online badge stays fresh, and
-    // react instantly to the sign being lifted or re-hung. The ONLY thing the
-    // power source changes is the screen — the radio/alerting behaviour is
-    // identical on battery and USB.
+    // Stay alive so the installer can watch the screen + the app can discover
+    // the beacon, beacon a LoRa heartbeat once a minute, and react instantly to
+    // the sign being lifted or re-hung.
+    //
     // Edge-detect sign-on-hook changes for instant push. Debounced so one
     // physical sign movement = exactly one event, not a burst of chatter from
     // contact bounce / a floating pin.
@@ -292,7 +384,7 @@ void loop() {
         lastSendMs = millis();
     }
 
-    // Scheduled heartbeat.
+    // Scheduled heartbeat while awake.
     if (millis() - lastSendMs >= USB_HEARTBEAT_INTERVAL_MS) {
         lastEvent = currentEventType();
         LoraLink::sendEvent(lastEvent, Battery::readPercent(), flagsForUplink());
