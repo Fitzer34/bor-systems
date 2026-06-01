@@ -50,7 +50,14 @@ export function Analytics() {
 
   return (
     <div className="max-w-5xl space-y-6">
-      <h1 className="text-2xl font-semibold">Analytics (last 30 days)</h1>
+      <div>
+        <h1 className="text-2xl font-semibold">Analytics</h1>
+        <p className="text-sm text-slate-400 mt-1">
+          Trends and accountability from the last 30 days of spill alerts — how
+          often spills happen, which areas spill most, and who responds fastest.
+          These charts fill in automatically as alerts are raised and closed.
+        </p>
+      </div>
 
       {/* ─── Timeline ─── */}
       <Card title="Daily spills">
@@ -106,7 +113,12 @@ function Loading() {
 
 function Sparkline({ buckets }: { buckets: TimelineBucket[] }) {
   if (buckets.length === 0) {
-    return <div className="text-slate-400 text-sm">No spills in the last 30 days.</div>;
+    return (
+      <div className="text-slate-400 text-sm">
+        No spills logged in the last 30 days. Once wet-floor signs are lifted and
+        alerts are raised, a per-day spill count appears here.
+      </div>
+    );
   }
   const max = Math.max(...buckets.map((b) => b.spillCount), 1);
   const w = 700;
@@ -153,7 +165,12 @@ function Sparkline({ buckets }: { buckets: TimelineBucket[] }) {
 
 function ZoneList({ zones }: { zones: HeatmapZone[] }) {
   if (zones.length === 0) {
-    return <div className="text-slate-400 text-sm">No spill data yet.</div>;
+    return (
+      <div className="text-slate-400 text-sm">
+        No spill data yet. As spills are logged, the zones where they happen most
+        are ranked here so you can target the worst offenders.
+      </div>
+    );
   }
   const maxCount = Math.max(...zones.map((z) => z.spillCount), 1);
   return (
@@ -189,7 +206,13 @@ function ZoneList({ zones }: { zones: HeatmapZone[] }) {
 
 function ResponderTable({ responders }: { responders: Responder[] }) {
   if (responders.length === 0) {
-    return <div className="text-slate-400 text-sm">No responder activity yet.</div>;
+    return (
+      <div className="text-slate-400 text-sm">
+        No responder activity yet. When staff acknowledge and close alerts,
+        you'll see who responded, how many they closed, and their average
+        response time.
+      </div>
+    );
   }
   return (
     <div className="table-wrap">
