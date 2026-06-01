@@ -92,7 +92,11 @@ RTC_DATA_ATTR int g_rtcSleepSignLevel = -1;   // -1 = unset (first boot)
 // resets it to 0 so instant alerts are never slowed by past noise.
 RTC_DATA_ATTR int g_rtcNoiseRun = 0;
 constexpr uint32_t NOISE_BACKOFF_BASE_S = 2;     // first noise re-sleep
-constexpr uint32_t NOISE_BACKOFF_MAX_S  = 64;    // cap (~1 wake/min worst case)
+constexpr uint32_t NOISE_BACKOFF_MAX_S  = 8;     // cap: bounds worst-case real-
+                                                 // transition latency on a
+                                                 // BROKEN pin to ≤8s (a working
+                                                 // sensor never enters backoff),
+                                                 // while cutting noise wakes 16×
 
 // Threshold for sending an EVT_LOW_BATTERY (1-shot) ahead of the scheduled
 // heartbeat. Kept aggressive — the cloud already has the % from every
@@ -100,9 +104,15 @@ constexpr uint32_t NOISE_BACKOFF_MAX_S  = 64;    // cap (~1 wake/min worst case)
 constexpr uint8_t LOW_BATTERY_PCT = 15;
 
 // timerOverrideUs: if non-zero, use this as the timer-wake interval instead of
-// the normal daily heartbeat. Used for the short noise-backoff re-sleep so a
-// floating pin can't spin the radio; the Hall wake is still armed either way.
-void enterDeepSleep(uint64_t timerOverrideUs = 0) {
+// the normal daily heartbeat.
+// armHall: if false, do NOT arm the Hall ext1 wake — sleep timer-only. Used for
+// the noise backoff: a floating pin re-trips ext1 in ~0.5s, far sooner than any
+// timer, so a longer timer alone can't slow it. Disarming the Hall wake for the
+// backoff window is the only thing that actually caps the noise rate; we
+// re-arm on the very next wake, so a real transition during the backoff is
+// caught at most `timerOverrideUs` later (≤64s) — still effectively instant for
+// a spill, and this path only ever runs on a broken/floating sensor anyway.
+void enterDeepSleep(uint64_t timerOverrideUs = 0, bool armHall = true) {
     Serial.flush();
 
     // Park the LoRa radio so it isn't burning ~10 mA in the SX1262 RX/idle
@@ -148,26 +158,32 @@ void enterDeepSleep(uint64_t timerOverrideUs = 0) {
     const bool signOnHook = signPresentDebounced();   // true == magnet present == LOW
     g_rtcSleepSignLevel = signOnHook ? LOW : HIGH;
 
-    // ALWAYS arm the Hall wake (we never disable it — that broke alert-close).
-    // Wake on the level OPPOSITE the sign's current level (wake-on-change):
-    // sign on (LOW) → wake when it goes HIGH (lifted); sign off (HIGH) → wake
-    // when it goes LOW (re-hung). Hold the matching internal pull so the pad
-    // rests at its current level and only a real movement crosses the
-    // threshold. A floating pin may still trip it on noise, but that's now a
-    // cheap re-sleep (see g_noiseWake), not a battery-killing reboot loop.
-    const esp_sleep_ext1_wakeup_mode_t mode =
-        signOnHook ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ANY_LOW;
-    rtc_gpio_pullup_dis(hallPin);
-    rtc_gpio_pulldown_dis(hallPin);
-    if (signOnHook) rtc_gpio_pulldown_en(hallPin);  // hold LOW until lifted
-    else            rtc_gpio_pullup_en(hallPin);    // hold HIGH until re-hung
-    esp_sleep_enable_ext1_wakeup(1ULL << hallPin, mode);
+    // Normally arm the Hall wake (wake-on-change): sign on (LOW) → wake when it
+    // goes HIGH (lifted); sign off (HIGH) → wake when it goes LOW (re-hung).
+    // Hold the matching internal pull so the pad rests at its current level and
+    // only a real movement crosses the threshold. We do NOT permanently disable
+    // it (that broke alert-close) — but during a noise backoff we arm it
+    // timer-only (armHall=false) so a floating pin can't re-trip ext1 every
+    // ~0.5s; it re-arms on the next wake.
     const uint64_t timerUs = timerOverrideUs ? timerOverrideUs : HEARTBEAT_INTERVAL_US;
+    if (armHall) {
+        const esp_sleep_ext1_wakeup_mode_t mode =
+            signOnHook ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ANY_LOW;
+        rtc_gpio_pullup_dis(hallPin);
+        rtc_gpio_pulldown_dis(hallPin);
+        if (signOnHook) rtc_gpio_pulldown_en(hallPin);  // hold LOW until lifted
+        else            rtc_gpio_pullup_en(hallPin);    // hold HIGH until re-hung
+        esp_sleep_enable_ext1_wakeup(1ULL << hallPin, mode);
+        log_i("deep sleep (%llu us timer + Hall wake; sign=%s, mode=%s)",
+              timerUs, signOnHook ? "ON-HOOK" : "LIFTED",
+              signOnHook ? "ANY_HIGH" : "ANY_LOW");
+    } else {
+        // Backoff: timer-only, Hall disarmed for this short window.
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT1);
+        log_i("deep sleep (%llu us timer ONLY — Hall disarmed for noise backoff)",
+              timerUs);
+    }
     esp_sleep_enable_timer_wakeup(timerUs);
-    log_i("entering deep sleep (%llu us timer + Hall wake; sign=%s, mode=%s)",
-          HEARTBEAT_INTERVAL_US,
-          signOnHook ? "ON-HOOK" : "LIFTED",
-          signOnHook ? "ANY_HIGH" : "ANY_LOW");
 
     esp_deep_sleep_start();   // does not return — boots fresh through setup()
 }
@@ -395,7 +411,11 @@ void loop() {
         // so genuine instant alerts are never slowed by past noise.
         uint32_t backoffS = NOISE_BACKOFF_BASE_S << (uint32_t)(g_rtcNoiseRun - 1);
         if (backoffS > NOISE_BACKOFF_MAX_S || backoffS == 0) backoffS = NOISE_BACKOFF_MAX_S;
-        enterDeepSleep((uint64_t)backoffS * 1000000ULL);   // does not return
+        // Sleep timer-only (Hall disarmed) for the backoff window — that's the
+        // ONLY thing that actually stops a floating pin re-tripping ext1 in
+        // ~0.5s. Re-armed on the next wake, so a real transition is caught
+        // within `backoffS` (≤ the cap) — only ever relevant on a broken pin.
+        enterDeepSleep((uint64_t)backoffS * 1000000ULL, /*armHall=*/false);
     }
 #endif
 
