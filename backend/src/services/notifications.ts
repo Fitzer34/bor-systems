@@ -154,6 +154,31 @@ export async function notifySms(input: DispatchInput): Promise<void> {
   }
 }
 
+/**
+ * Send a one-off email to an arbitrary address, OUTSIDE the alert-centric
+ * `notifications` table. Used by the PPM reminder job, which tracks its own
+ * send state on the ppm row (so it doesn't need an alertId or a notification
+ * kind). Returns delivery status so the caller can log it.
+ */
+export async function sendEmailToUser(
+  to: string,
+  subject: string,
+  body: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!smtpReady()) return { ok: false, error: "smtp_not_configured" };
+  try {
+    await smtp!.sendMail({
+      from: config.SMTP_FROM,
+      to,
+      subject: `[BOR] ${subject}`,
+      text: body,
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 export async function notifyEmail(input: DispatchInput): Promise<void> {
   const user = await loadUser(input.userId);
   if (!user?.email) {

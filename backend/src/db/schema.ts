@@ -7,6 +7,7 @@ import {
   smallint,
   boolean,
   timestamp,
+  date,
   jsonb,
   index,
   uniqueIndex,
@@ -150,6 +151,49 @@ export const gateways = pgTable(
   (t) => ({
     devEuiUnique: uniqueIndex("gateways_dev_eui_unique").on(t.devEui),
     orgIdx: index("gateways_org_idx").on(t.organisationId),
+  }),
+);
+
+/// Planned Preventive Maintenance (PPM) tasks. Recurring maintenance jobs a
+/// facilities manager schedules with outside contractors — fire-extinguisher
+/// service, PAT testing, HVAC filter changes, etc. The reminder job
+/// (services/ppm-reminder.ts) emails admins + supervisors as each task's due
+/// date approaches; the dashboard shows due/overdue badges + a login banner.
+export const ppms = pgTable(
+  "ppms",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    // What needs doing ("Annual fire-extinguisher service").
+    title: text("title").notNull(),
+    // Optional scope / detail notes.
+    notes: text("notes"),
+    // The contractor who performs the work + how to reach them.
+    contractorName: text("contractor_name"),
+    contactPhone: text("contact_phone"),
+    contactEmail: text("contact_email"),
+    // Times per year it must be done (1 = annual, 4 = quarterly, 12 = monthly).
+    // Used to roll the next due date forward on completion.
+    frequencyPerYear: integer("frequency_per_year").notNull().default(1),
+    // When the task is next due (calendar date, no time-of-day).
+    nextDueDate: date("next_due_date", { mode: "string" }).notNull(),
+    // Days before nextDueDate the first reminder fires. Editable per task.
+    reminderLeadDays: integer("reminder_lead_days").notNull().default(14),
+    // Set when last marked complete; next due date rolls forward from here.
+    lastCompletedAt: timestamp("last_completed_at", { withTimezone: true }),
+    // Dedup guard — the reminder job sends at most one email per calendar day
+    // per task. Stores the date it last reminded on.
+    lastRemindedOn: date("last_reminded_on", { mode: "string" }),
+    // Paused tasks stay listed but stop generating reminders.
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("ppms_org_idx").on(t.organisationId),
+    dueIdx: index("ppms_due_idx").on(t.nextDueDate),
   }),
 );
 

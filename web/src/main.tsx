@@ -11,6 +11,7 @@ import { Layout } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
 import { AlertDetail } from "./pages/AlertDetail";
 import { Devices } from "./pages/Devices";
+import { Ppms } from "./pages/Ppms";
 import { Users } from "./pages/Users";
 import { FloorPlans } from "./pages/FloorPlans";
 import { Reports } from "./pages/Reports";
@@ -69,6 +70,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   links / bookmarks keep working. */}
               <Route path="hangers" element={<Navigate to="/devices" replace />} />
               <Route path="gateways" element={<Navigate to="/devices" replace />} />
+              {/* Planned preventive maintenance (admin + supervisor). */}
+              <Route path="ppms" element={<RequireAuth role={["admin", "supervisor"]}><Ppms /></RequireAuth>} />
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />
               <Route path="floor-plans" element={<RequireAuth role={["admin"]}><FloorPlans /></RequireAuth>} />
               <Route path="reports" element={<RequireAuth role={["admin", "supervisor"]}><Reports /></RequireAuth>} />

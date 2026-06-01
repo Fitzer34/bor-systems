@@ -13,6 +13,7 @@ import twoFactorRoutes from "./routes/two-factor.js";
 import alertRoutes from "./routes/alerts.js";
 import hangerRoutes from "./routes/hangers.js";
 import gatewayRoutes from "./routes/gateways.js";
+import ppmRoutes from "./routes/ppms.js";
 import userRoutes from "./routes/users.js";
 import buildingRoutes from "./routes/buildings.js";
 import reportRoutes from "./routes/reports.js";
@@ -30,6 +31,7 @@ import publicRoutes from "./routes/public.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
+import { startPpmReminderJob } from "./services/ppm-reminder.js";
 import { initSentry, Sentry, captureException } from "./services/observability.js";
 import { seedDemoOrgOnBoot } from "./services/demo-seed.js";
 
@@ -153,6 +155,7 @@ async function main(): Promise<void> {
   await app.register(alertRoutes);
   await app.register(hangerRoutes);
   await app.register(gatewayRoutes);
+  await app.register(ppmRoutes);
   await app.register(buildingRoutes);
   await app.register(reportRoutes);
   await app.register(settingsRoutes);
@@ -170,6 +173,7 @@ async function main(): Promise<void> {
   startEscalationTimer();
   startAntiTheftWatcher();
   startSignConditionWatcher();
+  startPpmReminderJob();
 
   // Graceful shutdown — flushes Sentry events on SIGTERM (Render restarts).
   const shutdown = async (sig: string) => {

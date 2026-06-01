@@ -5,6 +5,7 @@ import { useAuth } from "../lib/auth";
 import { AlertFloorPlanThumb } from "../components/AlertFloorPlanThumb";
 import { SiteFloorPlansOverview } from "../components/SiteFloorPlansOverview";
 import { useTicker } from "../lib/ticker";
+import { PpmReminderBanner } from "./Ppms";
 
 interface ActiveAlert {
   id: string;
@@ -102,6 +103,7 @@ export function Dashboard() {
 
   return (
     <div>
+      <PpmReminderBanner />
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Active alerts</h1>
         <button onClick={() => alerts.refetch()} className="text-sm text-slate-600 hover:text-white">Refresh</button>
