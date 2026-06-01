@@ -10,8 +10,14 @@
 # Prerequisite: hazardlink.ie is on this Cloudflare account (it is — the apex
 # was proxied during the original landing-page rollout). With
 # custom_domain = true, Cloudflare creates/updates the route + SSL cert.
+#
+# worker.js wraps the static assets: it serves the real page, but on any
+# failure returns a branded "we'll be right back" holding page (503 +
+# Retry-After) instead of Cloudflare's raw error page. run_worker_first makes
+# the Worker run on every request so it can catch asset-pipeline errors.
 
 name = "hazardlink-marketing"
+main = "worker.js"
 compatibility_date = "2025-05-29"
 
 routes = [
@@ -24,3 +30,7 @@ routes = [
 directory = "./public"
 # Single static page: any unmatched path falls back to index.html.
 not_found_handling = "single-page-application"
+# Let worker.js read assets via env.ASSETS, and run it before asset serving
+# so it can wrap everything in try/catch → graceful holding page on error.
+binding = "ASSETS"
+run_worker_first = true
