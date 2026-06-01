@@ -18,6 +18,25 @@ struct LoginResponse: Codable {
     let user: CurrentUser
 }
 
+/// Planned Preventive Maintenance task. Dates are kept as plain strings —
+/// `nextDueDate` is a date-only "YYYY-MM-DD" value the shared ISO8601 decoder
+/// can't parse, so we format it ourselves for display.
+struct PPM: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let notes: String?
+    let contractorName: String?
+    let contactPhone: String?
+    let contactEmail: String?
+    let frequencyPerYear: Int
+    let nextDueDate: String        // "YYYY-MM-DD"
+    let reminderLeadDays: Int
+    let lastCompletedAt: String?   // ISO timestamp (display only)
+    let active: Bool
+}
+
+struct PPMsResponse: Codable { let ppms: [PPM] }
+
 enum AlertStatus: String, Codable {
     case open, acknowledged, closed
 }

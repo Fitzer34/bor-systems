@@ -454,4 +454,35 @@ extension APIClient {
         let res: NotificationsResponse = try await request("/admin/notifications-log?limit=\(limit)")
         return res.entries
     }
+
+    // MARK: PPMs (planned preventive maintenance)
+
+    struct PPMBody: Encodable {
+        var title: String
+        var notes: String?
+        var contractorName: String?
+        var contactPhone: String?
+        var contactEmail: String?
+        var frequencyPerYear: Int
+        var nextDueDate: String        // "YYYY-MM-DD"
+        var reminderLeadDays: Int
+        var active: Bool
+    }
+
+    func ppms() async throws -> [PPM] {
+        let res: PPMsResponse = try await request("/ppms")
+        return res.ppms
+    }
+    func createPPM(_ body: PPMBody) async throws {
+        let _: EmptyResponse = try await request("/ppms", method: "POST", body: body)
+    }
+    func updatePPM(_ id: String, _ body: PPMBody) async throws {
+        let _: EmptyResponse = try await request("/ppms/\(id)", method: "PATCH", body: body)
+    }
+    func completePPM(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/ppms/\(id)/complete", method: "POST")
+    }
+    func deletePPM(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/ppms/\(id)", method: "DELETE")
+    }
 }
