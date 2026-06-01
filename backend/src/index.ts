@@ -31,6 +31,7 @@ import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
 import { initSentry, Sentry, captureException } from "./services/observability.js";
+import { seedDemoOrgOnBoot } from "./services/demo-seed.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -185,6 +186,12 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => void shutdown("SIGINT"));
 
   await app.listen({ port: config.PORT, host: config.HOST });
+
+  // Ensure the reviewer demo org + sample data exist. Idempotent and
+  // never-throws, so it self-heals a fresh/empty DB on ANY environment with
+  // no manual deploy command or env var — fired after listen() so a slow seed
+  // can't delay the health check. Disable with DEMO_SEED_DISABLED=1.
+  void seedDemoOrgOnBoot(app.log);
 }
 
 main().catch((err) => {
