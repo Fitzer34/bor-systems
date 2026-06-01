@@ -100,7 +100,68 @@ uint8_t readPercent() {
 bool isCharging() {
     // VBUS divider gives ~1.6 V when USB plugged in, ~0 V otherwise. Treat
     // anything above half-rail as "charging".
+    //
+    // NB: on bare Heltec V3 boards the VBUS-sense divider (GPIO4) often isn't
+    // populated, so this reads ~0 even while plugged in. Callers that must work
+    // on bare boards should use chargingByVoltage() instead. This stays as the
+    // hardware-accurate path for production PCBs that DO wire VBUS.
     return analogRead(Pinout::VBUS_SENSE_PIN) > ADC_MAX / 2;
+}
+
+int vbusRaw() {
+    return analogRead(Pinout::VBUS_SENSE_PIN);
+}
+
+// ── Voltage-trend charge detection (works without a VBUS pin) ──
+//
+// A battery that's charging trends UP in voltage (or sits pinned at the ~4.2 V
+// top once full); a battery that's discharging only ever trends down or holds
+// flat below full. So we infer "charging" from the voltage history:
+//   • pinned high   (≥ FULL_V)               → on the charger, topped off, OR
+//   • rising        (latest ≥ baseline+RISE) → actively charging.
+// Otherwise → on battery. A short ring of samples + hysteresis keeps ADC noise
+// (~±20 mV) from flipping the state. Call chargingByVoltage() once per second
+// or so from the main loop; it samples internally on a timer.
+namespace {
+constexpr float FULL_V       = 4.15f;   // "topped off / on charger" threshold
+constexpr float RISE_V       = 0.03f;   // +30 mV over the window = charging
+constexpr uint32_t SAMPLE_MS = 5000;    // trend sample cadence
+constexpr int    HIST        = 6;       // ~30 s of history at 5 s/sample
+
+float    g_hist[HIST] = {0};
+int      g_histCount  = 0;
+int      g_histHead   = 0;
+uint32_t g_lastSampleMs = 0;
+bool     g_chargingState = false;       // hysteresis latch
+}  // namespace
+
+bool chargingByVoltage() {
+    const uint32_t now = millis();
+    // Sample on a timer so the caller can poll us every loop cheaply.
+    if (g_lastSampleMs == 0 || now - g_lastSampleMs >= SAMPLE_MS) {
+        g_lastSampleMs = now;
+        const float v = readVoltage();
+        g_hist[g_histHead] = v;
+        g_histHead = (g_histHead + 1) % HIST;
+        if (g_histCount < HIST) g_histCount++;
+
+        // Oldest sample in the ring = baseline for the rise test.
+        const int oldestIdx = (g_histHead - g_histCount + HIST) % HIST;
+        const float oldest  = g_hist[oldestIdx];
+
+        const bool pinnedHigh = v >= FULL_V;
+        const bool rising     = g_histCount >= 2 && (v - oldest) >= RISE_V;
+
+        // Hysteresis: once "charging", require a clear drop below full AND no
+        // rise to flip back to "on battery", so a full pack sitting on the
+        // charger doesn't oscillate.
+        if (g_chargingState) {
+            g_chargingState = pinnedHigh || rising || v >= (FULL_V - 0.05f);
+        } else {
+            g_chargingState = pinnedHigh || rising;
+        }
+    }
+    return g_chargingState;
 }
 
 }  // namespace Battery

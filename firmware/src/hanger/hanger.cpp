@@ -32,6 +32,11 @@ constexpr uint64_t HEARTBEAT_INTERVAL_US = 24ULL * 60ULL * 60ULL * 1000000ULL;
 // this only applies during the brief awake windows.
 constexpr uint32_t USB_HEARTBEAT_INTERVAL_MS = 60UL * 1000UL;
 
+// Battery-% streaming cadence while plugged into USB-C charging. 30 s gives a
+// live charging readout without flooding the LoRa link. Only active while
+// charging; unplugging drops straight back to deep-sleep operation.
+constexpr uint32_t CHARGE_STREAM_INTERVAL_MS = 30UL * 1000UL;
+
 // How long the OLED stays lit after a fresh power-on while on battery. Long
 // enough for an installer to read the DevEUI off the screen and confirm the
 // unit booted + reacts to the sign, then it goes dark to save the cell. On
@@ -168,7 +173,10 @@ void enterDeepSleep() {
 
 uint8_t flagsForUplink() {
     uint8_t f = 0;
-    if (Battery::isCharging()) f |= static_cast<uint8_t>(LoraLink::Flags::IsCharging);
+    // Use the voltage-trend charge signal (works on bare boards where the VBUS
+    // pin floats), so the "charging" flag the dashboard shows matches the
+    // charging-stream behaviour in the loop.
+    if (Battery::chargingByVoltage()) f |= static_cast<uint8_t>(LoraLink::Flags::IsCharging);
     return f;
 }
 
@@ -186,8 +194,9 @@ LoraLink::EventType currentEventType() {
     // Sign is on the hook. Only now is a low-battery heartbeat meaningful.
     // Require a CONFIDENT low reading (1–LOW_BATTERY_PCT): a flat 0 almost
     // always means the measurement failed (no cell / divider), not a truly
-    // dead pack, so don't spam low_battery on a glitch.
-    if (pct > 0 && pct <= LOW_BATTERY_PCT && !Battery::isCharging()) {
+    // dead pack, so don't spam low_battery on a glitch. Suppress while charging
+    // (voltage-trend signal) — a low-but-rising pack isn't a problem.
+    if (pct > 0 && pct <= LOW_BATTERY_PCT && !Battery::chargingByVoltage()) {
         return LoraLink::EventType::LowBattery;
     }
     return LoraLink::EventType::Heartbeat;
@@ -278,6 +287,8 @@ void setup() {
     // Identify the wake reason — first boot vs Hall wake vs timer.
     const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
     log_i("wake cause: %d  (0=power-on, 7=timer, 6=ext1/Hall-sign)", (int)wake);
+    log_i("VBUS raw=%d charging=%d  (charge-detect diagnostic)",
+          Battery::vbusRaw(), (int)Battery::isCharging());
     g_freshBoot = (wake == ESP_SLEEP_WAKEUP_UNDEFINED);  // true power-on only
     // NB: an ext1 wake now means ONLY "the sign moved" (Hall pin) — PRG isn't a
     // deep-sleep wake source. sendCurrentState() below reports the new sign
@@ -443,6 +454,53 @@ void loop() {
         beaconState = wantBeacon;
     }
 
+    // ── Charging mode: stream battery % while plugged into USB-C ──
+    //
+    // When charging we're not battery-constrained, so stay awake and report the
+    // battery percentage to the cloud on a fast cadence — a live "charging,
+    // NN%" readout. The moment USB is unplugged we fall straight through to the
+    // deep-sleep path below and resume the years-long battery operation.
+    //
+    // Detection: the bare Heltec V3's VBUS-sense pin (GPIO4) isn't populated
+    // (measured raw≈107 while plugged in), so isCharging() can't see USB. We
+    // instead infer charging from the battery-VOLTAGE TREND — rising, or pinned
+    // near full — via chargingByVoltage(), which works on any board and has its
+    // own noise hysteresis. Safety: the charging branch never sleeps, but the
+    // moment the trend says "not charging" we fall straight through to deep
+    // sleep, so a discharging pack can never be stranded awake.
+    static uint32_t lastChargeSendMs = 0;
+    static bool chargeStreamLogged = false;
+    const bool charging = Battery::chargingByVoltage();
+
+    if (charging) {
+        if (!chargeStreamLogged) {
+            log_i("USB charging detected (VBUS) — streaming battery %% every %lus",
+                  (unsigned long)(CHARGE_STREAM_INTERVAL_MS / 1000));
+            chargeStreamLogged = true;
+        }
+        // Stream the battery percentage on a fast cadence while plugged in.
+        if (lastChargeSendMs == 0 ||
+            millis() - lastChargeSendMs >= CHARGE_STREAM_INTERVAL_MS) {
+            const uint8_t pct = Battery::readPercent();
+            // currentEventType() still lets a lifted sign win (safety), and the
+            // IsCharging flag rides along so the dashboard shows "charging".
+            LoraLink::sendEvent(currentEventType(), pct, flagsForUplink());
+            lastChargeSendMs = millis();
+            lastSendMs       = millis();
+            log_i("charging — battery %d%%", pct);
+        }
+        // Keep the screen showing live status while plugged in.
+        if (millis() - lastDispMs > 1000) {
+            lastDispMs = millis();
+            Display::on();
+            showHangerStatus();
+        }
+        delay(20);
+        return;   // never sleep while charging
+    } else {
+        chargeStreamLogged = false;   // re-arm the log for the next plug-in
+    }
+
     // ── Sleep once the awake window closes (default, battery-saving path) ──
     //
     // When no one's looking at the screen and we're not mid-discovery, drop the
@@ -450,11 +508,6 @@ void loop() {
     // This is THE battery fix: staying awake + beaconing LoRa every 60 s drains
     // a cell in days; sleeping between events lasts years. The sign is still
     // monitored — lifting it is an ext1 wake that fires an instant alert.
-    //
-    // (Plug into USB to keep it awake for bench work: the USB 5 V holds the
-    // rails up, but the chip still "sleeps" logically — it just wakes on the
-    // same triggers. For continuous bench monitoring, hold PRG or use the
-    // serial console.)
 #ifndef BOR_HANGER_STAY_AWAKE
     if (!wantScreenOn) {
         // setup() already fired this wake's uplink (the exact Lifted/Returned

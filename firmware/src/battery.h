@@ -22,7 +22,19 @@ float readVoltage();
 // 4.20 V → 100, 3.30 V → 0. Averaged across 32 ADC samples to denoise.
 uint8_t readPercent();
 
-// True if USB power is present (board is charging or running on USB).
+// True if USB power is present, per the VBUS-sense pin (GPIO4). Hardware-
+// accurate on production PCBs that wire VBUS; reads ~0 on bare boards where the
+// pin isn't populated — use chargingByVoltage() there.
 bool isCharging();
+
+// Charge detection that works WITHOUT a VBUS pin: infers charging from the
+// battery-voltage trend (rising, or pinned near full). Samples internally on a
+// timer, so call it freely (e.g. once per loop). Has hysteresis to ride out
+// ADC noise. This is the bare-Heltec-V3 charge signal.
+bool chargingByVoltage();
+
+// Raw VBUS-sense ADC reading (0–4095). Diagnostic only — lets us confirm on a
+// given board whether GPIO4 actually swings with USB plug/unplug, or floats.
+int vbusRaw();
 
 }  // namespace Battery
