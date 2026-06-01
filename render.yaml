@@ -14,8 +14,10 @@ services:
     region: frankfurt
     rootDir: backend
     buildCommand: npm install && npm run build
-    # Run any pending migrations on every deploy, then start the server.
-    startCommand: npm run migrate:prod && node dist/index.js
+    # Run any pending migrations on every deploy, optionally (re)seed the demo
+    # org when SEED_DEMO=1, then start the server. The seed is idempotent —
+    # safe to leave enabled; it only tops up missing demo rows.
+    startCommand: npm run migrate:prod && (if [ "$SEED_DEMO" = "1" ]; then npm run db:seed:demo || true; fi) && node dist/index.js
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
@@ -34,6 +36,11 @@ services:
         generateValue: true
       - key: RESOLUTION_TIMER_MINUTES
         value: 15
+      # Set to "1" to (re)seed the reviewer demo org on deploy. Idempotent —
+      # only adds missing demo rows. Leave at 1 to keep the demo populated, or
+      # set to 0 once you no longer need it.
+      - key: SEED_DEMO
+        value: 1
       # Notification credentials — set these in the Render dashboard later if you want
       # real push / SMS / email delivery. Leaving them empty means the system records
       # notification intents but doesn't actually send.
