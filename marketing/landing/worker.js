@@ -82,15 +82,45 @@ const HOLDING_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Security headers applied to every response (assets, 404, holding page).
+// The CSP permits the page's own inline <style>/<script> (the demo preview +
+// nav-drawer toggle) but blocks any external or injected resources.
+// frame-ancestors 'none' supersedes X-Frame-Options for clickjacking defense.
+const SECURITY_HEADERS = {
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=(), payment=()",
+  "X-XSS-Protection": "1; mode=block",
+  "Content-Security-Policy":
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; " +
+    "font-src 'self'; " +
+    "connect-src 'self'; " +
+    "frame-ancestors 'none'; " +
+    "base-uri 'self'; " +
+    "form-action 'self'; " +
+    "upgrade-insecure-requests",
+};
+
+function withSecurity(res) {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 function holdingResponse() {
-  return new Response(HOLDING_PAGE, {
+  return withSecurity(new Response(HOLDING_PAGE, {
     status: 503, // temporary — keeps search engines from indexing the holding page
     headers: {
       "content-type": "text/html; charset=utf-8",
       "retry-after": "15",
       "cache-control": "no-store",
     },
-  });
+  }));
 }
 
 export default {
@@ -99,7 +129,7 @@ export default {
       const res = await env.ASSETS.fetch(request);
       // Any server-side failure from the asset pipeline → show the holding page.
       if (res.status >= 500) return holdingResponse();
-      return res;
+      return withSecurity(res);
     } catch (_err) {
       return holdingResponse();
     }

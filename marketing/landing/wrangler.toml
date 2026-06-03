@@ -28,8 +28,11 @@ routes = [
 # Serve ONLY public/ (just index.html) so wrangler config + .wrangler cache
 # never get uploaded as public assets.
 directory = "./public"
-# Single static page: any unmatched path falls back to index.html.
-not_found_handling = "single-page-application"
+# Single static page (no client-side routing — the demo preview just swaps
+# content in-place). Serve a real 404 for unknown paths instead of a catch-all
+# 200, so scanners/crawlers can tell a missing page from the homepage and we
+# don't mask non-existent /api, config-file, or admin paths.
+not_found_handling = "404-page"
 # Let worker.js read assets via env.ASSETS, and run it before asset serving
 # so it can wrap everything in try/catch → graceful holding page on error.
 binding = "ASSETS"

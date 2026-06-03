@@ -14,6 +14,7 @@
 #   npx wrangler deploy     # picks up this file, uploads dist/ as assets
 
 name = "hazardlink-app"
+main = "worker.js"
 compatibility_date = "2025-05-29"
 
 # Bind app.hazardlink.ie directly to this worker. With `custom_domain = true`,
@@ -37,3 +38,7 @@ directory = "./dist"
 # can take over client-side. Default ("none") returns 404 — the bug we
 # were seeing.
 not_found_handling = "single-page-application"
+# worker.js runs on every request to attach security headers, then serves the
+# asset (or the SPA fallback) via this binding.
+binding = "ASSETS"
+run_worker_first = true
