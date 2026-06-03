@@ -7,6 +7,7 @@ export interface CurrentUser {
   name: string;
   role: "admin" | "supervisor" | "cleaner";
   onDuty: boolean;
+  phoneE164?: string | null;
   locale?: string;
   organisationId?: string;
   organisationName?: string;
@@ -23,6 +24,7 @@ interface AuthState {
   completeTotpLogin: (challengeToken: string, code: string) => Promise<void>;
   logout: () => void;
   setOnDuty: (onDuty: boolean) => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -77,8 +79,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((u) => (u ? { ...u, onDuty } : u));
   };
 
+  // Re-pull the current user (e.g. after editing profile) so fields like the
+  // saved phone number reflect the server, not the stale login snapshot.
+  const refreshUser = async () => {
+    if (!getToken()) return;
+    try {
+      setUser(await api<CurrentUser>("/users/me"));
+    } catch {
+      /* keep the existing user on a transient error */
+    }
+  };
+
   return (
-    <Ctx.Provider value={{ user, loading, login, completeTotpLogin, logout, setOnDuty }}>
+    <Ctx.Provider value={{ user, loading, login, completeTotpLogin, logout, setOnDuty, refreshUser }}>
       {children}
     </Ctx.Provider>
   );

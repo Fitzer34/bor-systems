@@ -171,9 +171,9 @@ function TwoFactorSection() {
 }
 
 export function Profile() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [name, setName] = useState(user?.name ?? "");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(user?.phoneE164 ?? "");
   const [savedProfile, setSavedProfile] = useState(false);
 
   const [oldPwd, setOldPwd] = useState("");
@@ -187,7 +187,7 @@ export function Profile() {
         method: "PATCH",
         body: JSON.stringify({ name, phoneE164: phone || null }),
       }),
-    onSuccess: () => setSavedProfile(true),
+    onSuccess: () => { setSavedProfile(true); refreshUser(); },
   });
 
   const changePassword = useMutation({

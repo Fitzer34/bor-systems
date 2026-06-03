@@ -110,6 +110,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
         name: user.name,
         role: user.role,
         onDuty: user.onDuty,
+        phoneE164: user.phoneE164,
         organisationId: user.organisationId,
         organisationName: org?.name ?? "",
       },

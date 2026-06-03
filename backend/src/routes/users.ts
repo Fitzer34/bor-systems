@@ -24,6 +24,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     const [org] = await db.select().from(schema.organisations).where(eq(schema.organisations.id, c.orgId)).limit(1);
     return {
       id: u.id, email: u.email, name: u.name, role: u.role, onDuty: u.onDuty, locale: u.locale,
+      phoneE164: u.phoneE164,
       organisationId: u.organisationId,
       organisationName: org?.name ?? "",
     };
