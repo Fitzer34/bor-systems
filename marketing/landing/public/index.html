@@ -285,9 +285,109 @@
   footer p { margin: 0; font-size: 14px; color: var(--grey); }
   footer .links a { color: var(--grey); margin-left: 16px; text-decoration: none; font-size: 14px; }
   footer .links a:hover { color: var(--ink); }
+
+  /* ─────────────────────────────────────────────────────────────────────
+     Motion & "automations" — scroll reveals, self-touring demo with live
+     toasts, animated data-flow, and count-up numbers. All self-contained,
+     and every effect is disabled under prefers-reduced-motion.
+     ───────────────────────────────────────────────────────────────────── */
+
+  /* Scroll-reveal: rise + fade in as elements enter the viewport. */
+  .reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* Animated stat band */
+  .stats-band { background: var(--ink); color: #fff; padding: 30px 0; }
+  .stats-band .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; text-align: center; }
+  .stats-band .num { font-size: clamp(30px, 5vw, 42px); font-weight: 800; letter-spacing: -1px; color: var(--orange); line-height: 1; }
+  .stats-band .lbl { font-size: 13px; color: #cbd5e1; margin-top: 8px; }
+  @media (max-width: 600px) { .stats-band .grid4 { grid-template-columns: repeat(2, 1fr); gap: 24px; } }
+
+  /* Data-flow strip in "How it works" */
+  .flowstrip { display: flex; align-items: flex-start; justify-content: center; flex-wrap: nowrap; max-width: 760px; margin: 0 auto 40px; }
+  .flowstrip .node { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; color: var(--grey); min-width: 88px; transition: color .3s; }
+  .flowstrip .node .ic { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; font-size: 27px; background: #fff; border: 2px solid #e2e8f0; border-radius: 50%; transition: border-color .3s, box-shadow .3s, transform .3s; }
+  .flowstrip .node.lit { color: var(--ink); font-weight: 600; }
+  .flowstrip .node.lit .ic { border-color: var(--orange); box-shadow: 0 0 0 5px rgba(255,136,0,.15); transform: translateY(-3px); }
+  .flowstrip .wire { position: relative; flex: 1; min-width: 28px; height: 3px; background: #e2e8f0; margin: 27px 2px 0; border-radius: 2px; transition: background .3s; }
+  .flowstrip .wire.hot { background: var(--orange); }
+  .flowstrip .wire i { position: absolute; top: 50%; left: 0; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--orange); opacity: 0; box-shadow: 0 0 8px var(--orange); }
+  .flowstrip .wire.hot i { animation: flowdot .72s linear; }
+  @keyframes flowdot { 0% { left: 0; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+  @media (max-width: 600px) { .flowstrip .node { min-width: 60px; font-size: 11px; } .flowstrip .node .ic { width: 46px; height: 46px; font-size: 22px; } .flowstrip .wire { margin-top: 22px; min-width: 12px; } }
+
+  /* Live demo toast notifications (overlaid on the dashboard mockup) */
+  #demo-toasts { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; z-index: 6; }
+  .demo-toast { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid var(--red); border-radius: 10px; box-shadow: 0 12px 32px rgba(15,23,42,.20); padding: 10px 14px; min-width: 230px; max-width: 290px; transform: translateX(125%); opacity: 0; transition: transform .4s cubic-bezier(.2,.85,.25,1), opacity .4s; }
+  .demo-toast.in { transform: none; opacity: 1; }
+  .demo-toast.green { border-left-color: var(--green); }
+  .demo-toast b { display: block; font-size: 13px; color: var(--ink); }
+  .demo-toast span { color: var(--grey); font-size: 12px; }
+  @media (max-width: 720px) { #demo-toasts { right: 8px; bottom: 8px; } .demo-toast { min-width: 0; max-width: 220px; font-size: 12px; } }
+
+  /* Auto-play "live" badge in the demo browser chrome */
+  .demo-badge { margin-left: auto; font-size: 11px; color: var(--grey); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .demo-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: livedot 1.6s ease-out infinite; }
+  @keyframes livedot { 0% { box-shadow: 0 0 0 0 rgba(46,125,50,.5); } 70% { box-shadow: 0 0 0 7px rgba(46,125,50,0); } 100% { box-shadow: 0 0 0 0 rgba(46,125,50,0); } }
+  @media (max-width: 560px) { .demo-badge { display: none; } }
+
+  /* The mockup needs to be a positioning context for the toasts. */
+  .mockup { position: relative; }
+
+  /* ── Second wave: scroll progress, rotating word, hero phone, card tilt,
+        CTA shine, back-to-top ──────────────────────────────────────────── */
+
+  /* Scroll progress bar */
+  .scroll-progress { position: fixed; top: 0; left: 0; height: 3px; width: 0; background: linear-gradient(90deg, var(--orange), #ff5e3a); z-index: 30; transition: width .12s linear; }
+
+  /* Rotating headline word */
+  .rotate-word { display: inline-block; transition: opacity .3s ease, transform .3s ease; }
+  .rotate-word.swap { opacity: 0; transform: translateY(-10px); }
+
+  /* Hero live push-notification phone */
+  .hero-demo { margin: 48px auto 0; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .phone { width: 300px; max-width: 86vw; height: 210px; background: linear-gradient(160deg, #1e293b, #0f172a); border-radius: 30px; padding: 12px; box-shadow: 0 30px 60px rgba(15,23,42,.28); position: relative; }
+  .phone-notch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 92px; height: 18px; background: #0f172a; border-radius: 0 0 13px 13px; z-index: 3; }
+  .phone-screen { background: linear-gradient(180deg, #e7edf5, #f1f5f9); border-radius: 20px; height: 100%; padding: 14px 12px; overflow: hidden; position: relative; }
+  .phone-time { text-align: center; font-size: 26px; font-weight: 700; color: #0f172a; margin-top: 4px; line-height: 1; }
+  .phone-hint { text-align: center; font-size: 11px; color: var(--grey); margin-top: 2px; }
+  .push-stack { position: absolute; left: 10px; right: 10px; top: 64px; display: flex; flex-direction: column; gap: 8px; }
+  .push { background: rgba(255,255,255,.94); border-radius: 14px; padding: 9px 11px; box-shadow: 0 8px 20px rgba(15,23,42,.16); display: flex; gap: 9px; align-items: flex-start; transform: translateY(-140%); opacity: 0; transition: transform .45s cubic-bezier(.2,.85,.25,1), opacity .45s; }
+  .push.in { transform: none; opacity: 1; }
+  .push .pic { width: 26px; height: 26px; border-radius: 7px; background: var(--orange); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .push .tx b { display: block; font-size: 12px; color: #0f172a; line-height: 1.3; }
+  .push .tx span { font-size: 11px; color: var(--grey); }
+  .hero-demo-cap { font-size: 13px; color: var(--grey); max-width: 320px; text-align: center; }
+
+  /* Shine-sweep on primary buttons + gentle pulse ring on the hero CTA */
+  .btn { position: relative; overflow: hidden; }
+  .btn:not(.btn-ghost)::after { content: ""; position: absolute; top: 0; left: -120%; width: 60%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent); transform: skewX(-18deg); transition: left .6s ease; }
+  .btn:not(.btn-ghost):hover::after { left: 140%; }
+  .pulse-cta { animation: ctapulse 2.8s ease-in-out infinite; }
+  @keyframes ctapulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,136,0,.45); } 50% { box-shadow: 0 0 0 12px rgba(255,136,0,0); } }
+
+  /* Back-to-top button */
+  .to-top { position: fixed; right: 20px; bottom: 20px; width: 46px; height: 46px; border-radius: 50%; background: var(--orange); color: #fff; border: 0; cursor: pointer; font-size: 20px; line-height: 1; box-shadow: 0 10px 24px rgba(15,23,42,.22); opacity: 0; transform: translateY(16px) scale(.9); pointer-events: none; transition: opacity .3s, transform .3s; z-index: 25; }
+  .to-top.show { opacity: 1; transform: none; pointer-events: auto; }
+  .to-top:hover { background: #e67700; }
+
+  /* Respect reduced-motion: show everything, animate nothing. */
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1 !important; transform: none !important; transition: none; }
+    .flowstrip .wire.hot i { animation: none; }
+    .demo-badge::before { animation: none; }
+    .demo-toast { transition: none; }
+    .rotate-word { transition: none; }
+    .push { transition: none; }
+    .pulse-cta { animation: none; }
+    .btn:not(.btn-ghost)::after { display: none; }
+    .to-top { transition: none; }
+  }
 </style>
 </head>
 <body>
+
+<div class="scroll-progress" id="scrollProgress"></div>
 
 <header>
   <div class="container">
@@ -311,53 +411,86 @@
 
 <section class="hero">
   <div class="container">
-    <h1>Spills detected the second they happen.<br><span class="accent">Insurance-ready audit trail.</span></h1>
+    <h1><span class="rotate-word" id="rotateWord">Spills</span> detected the second they happen.<br><span class="accent">Insurance-ready audit trail.</span></h1>
     <p>HazardLink puts a smart sensor inside every wet-floor sign. The moment one is lifted, your cleaning team gets a push notification, the location goes red on the dashboard, and a tamper-proof PDF goes to your insurer.</p>
     <div class="cta">
-      <a class="btn" href="#contact">Book a 15-minute demo</a>
+      <a class="btn pulse-cta" href="#contact">Book a 15-minute demo</a>
       <a class="btn btn-ghost" href="#how">See how it works</a>
+    </div>
+
+    <div class="hero-demo reveal" aria-hidden="true">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="phone-time">9:41</div>
+          <div class="phone-hint">HazardLink · live</div>
+          <div class="push-stack" id="pushStack"></div>
+        </div>
+      </div>
+      <div class="hero-demo-cap">↑ A push lands on your team's phone the instant a sign moves.</div>
+    </div>
+  </div>
+</section>
+
+<section class="stats-band">
+  <div class="container">
+    <div class="grid4">
+      <div><div class="num" data-to="30" data-suffix=" min">0 min</div><div class="lbl">to set up a site</div></div>
+      <div><div class="num" data-to="2" data-suffix=" yr">0 yr</div><div class="lbl">battery per hanger</div></div>
+      <div><div class="num" data-to="19">0</div><div class="lbl">dashboard pages</div></div>
+      <div><div class="num" data-to="3">0</div><div class="lbl">apps · iOS · Android · Web</div></div>
     </div>
   </div>
 </section>
 
 <section id="features" class="features">
   <div class="container">
-    <h2>Built for facility safety teams</h2>
+    <h2 class="reveal">Built for facility safety teams</h2>
     <div class="grid">
-      <div class="feat"><div class="icon">🚨</div><h3>Instant alerts</h3><p>Phone, web, watch, and Slack notifications the moment a wet-floor sign is lifted. Response time becomes measurable.</p></div>
-      <div class="feat"><div class="icon">📍</div><h3>Find any sign</h3><p>AirTag-style precision finding (UWB) lets cleaners walk straight to the alert location. No more searching huge warehouses.</p></div>
-      <div class="feat"><div class="icon">📄</div><h3>Compliance PDF</h3><p>Auto-generated weekly reports with every spill, response time, and photo evidence. Hand it to your insurer for premium discounts.</p></div>
-      <div class="feat"><div class="icon">🔋</div><h3>2-year battery</h3><p>21700 lithium cells. Charge once a year via USB-C dock. Six languages, multi-site, dark mode.</p></div>
-      <div class="feat"><div class="icon">🌙</div><h3>After-hours mode</h3><p>Different escalation policy at night. Alerts route to your security guard instead of waking the cleaning team.</p></div>
-      <div class="feat"><div class="icon">🛡️</div><h3>Anti-theft</h3><p>Signs that go missing for 24 hours auto-alert you. Save €300–600/year in replacement costs.</p></div>
+      <div class="feat reveal"><div class="icon">🚨</div><h3>Instant alerts</h3><p>Phone, web, watch, and Slack notifications the moment a wet-floor sign is lifted. Response time becomes measurable.</p></div>
+      <div class="feat reveal"><div class="icon">📍</div><h3>Find any sign</h3><p>AirTag-style precision finding (UWB) lets cleaners walk straight to the alert location. No more searching huge warehouses.</p></div>
+      <div class="feat reveal"><div class="icon">📄</div><h3>Compliance PDF</h3><p>Auto-generated weekly reports with every spill, response time, and photo evidence. Hand it to your insurer for premium discounts.</p></div>
+      <div class="feat reveal"><div class="icon">🔋</div><h3>2-year battery</h3><p>21700 lithium cells. Charge once a year via USB-C dock. Six languages, multi-site, dark mode.</p></div>
+      <div class="feat reveal"><div class="icon">🌙</div><h3>After-hours mode</h3><p>Different escalation policy at night. Alerts route to your security guard instead of waking the cleaning team.</p></div>
+      <div class="feat reveal"><div class="icon">🛡️</div><h3>Anti-theft</h3><p>Signs that go missing for 24 hours auto-alert you. Save €300–600/year in replacement costs.</p></div>
     </div>
   </div>
 </section>
 
 <section id="how" class="how">
   <div class="container">
-    <h2>Setup in 30 minutes per site</h2>
+    <h2 class="reveal">Setup in 30 minutes per site</h2>
+    <div class="flowstrip reveal" aria-hidden="true">
+      <div class="node"><span class="ic">🪧</span><span>Smart sign</span></div>
+      <div class="wire"><i></i></div>
+      <div class="node"><span class="ic">📡</span><span>Gateway</span></div>
+      <div class="wire"><i></i></div>
+      <div class="node"><span class="ic">☁️</span><span>Cloud</span></div>
+      <div class="wire"><i></i></div>
+      <div class="node"><span class="ic">📱</span><span>Your team</span></div>
+    </div>
     <div class="steps">
-      <div class="step"><div class="num">1</div><h3>Mount the hangers</h3><p>Screw a sign-hanger to the wall wherever you keep a wet-floor sign. 5 minutes per location.</p></div>
-      <div class="step"><div class="num">2</div><h3>Plug in the gateway</h3><p>One gateway per building. USB-C power. App walks you through Wi-Fi setup over Bluetooth.</p></div>
-      <div class="step"><div class="num">3</div><h3>Hang your existing signs</h3><p>Drop your own wet-floor signs onto the hangers. We don't replace your signs — we make them smart.</p></div>
-      <div class="step"><div class="num">4</div><h3>Cleaners install the app</h3><p>Free iPhone + Android app. Watch + Wear OS supported. Done.</p></div>
+      <div class="step reveal"><div class="num">1</div><h3>Mount the hangers</h3><p>Screw a sign-hanger to the wall wherever you keep a wet-floor sign. 5 minutes per location.</p></div>
+      <div class="step reveal"><div class="num">2</div><h3>Plug in the gateway</h3><p>One gateway per building. USB-C power. App walks you through Wi-Fi setup over Bluetooth.</p></div>
+      <div class="step reveal"><div class="num">3</div><h3>Hang your existing signs</h3><p>Drop your own wet-floor signs onto the hangers. We don't replace your signs — we make them smart.</p></div>
+      <div class="step reveal"><div class="num">4</div><h3>Cleaners install the app</h3><p>Free iPhone + Android app. Watch + Wear OS supported. Done.</p></div>
     </div>
   </div>
 </section>
 
 <section id="dashboard" class="dashboard">
   <div class="container">
-    <h2>Your control centre</h2>
+    <h2 class="reveal">Your control centre</h2>
     <p class="lede">Every customer gets a private dashboard at <strong>app.hazardlink.ie</strong>. Live alerts, multi-site rollups, compliance PDFs, staff scheduling, and analytics — all in one place.</p>
 
     <p style="text-align:center;color:var(--grey);font-size:14px;margin-top:-20px;margin-bottom:24px;">
       👇 <strong>Try the demo</strong> — click any item in the sidebar
     </p>
-    <div class="mockup">
+    <div class="mockup reveal">
       <div class="chrome">
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
         <span class="url" id="demo-url">app.hazardlink.ie/alerts</span>
+        <span class="demo-badge" id="demo-autoplay">Auto-playing · click to explore</span>
       </div>
       <div class="body">
         <div class="side">
@@ -379,6 +512,7 @@
           <!-- Populated by JS on load + on sidebar click -->
         </div>
       </div>
+      <div id="demo-toasts" aria-hidden="true"></div>
     </div>
 
     <h3 style="text-align:center;font-size:20px;margin:48px 0 16px;">19 pages built-in</h3>
@@ -401,9 +535,9 @@
 
 <section id="pricing" class="pricing">
   <div class="container">
-    <h2>Simple pricing</h2>
+    <h2 class="reveal">Simple pricing</h2>
     <div class="plans">
-      <div class="plan">
+      <div class="plan reveal">
         <h3>Small site</h3>
         <p style="color:var(--grey)">Up to 10 sign-hangers + 1 building</p>
         <div class="price">€30<span> / month</span></div>
@@ -415,7 +549,7 @@
         </ul>
         <p style="color:var(--grey);font-size:13px;margin-top:16px;">+ €1,500 one-time hardware</p>
       </div>
-      <div class="plan featured">
+      <div class="plan featured reveal">
         <h3>Multi-site</h3>
         <p style="color:var(--grey)">Up to 50 hangers + 2 buildings</p>
         <div class="price">€100<span> / month</span></div>
@@ -428,7 +562,7 @@
         </ul>
         <p style="color:var(--grey);font-size:13px;margin-top:16px;">+ €6,500 one-time hardware</p>
       </div>
-      <div class="plan">
+      <div class="plan reveal">
         <h3>Enterprise</h3>
         <p style="color:var(--grey)">Unlimited hangers, multiple buildings</p>
         <div class="price">€350<span> / month</span></div>
@@ -447,7 +581,7 @@
 
 <section id="contact" class="contact">
   <div class="container">
-    <h2>Book a 15-minute demo</h2>
+    <h2 class="reveal">Book a 15-minute demo</h2>
     <p>We'll walk through your building's safety needs and show the live alert flow on a real device.</p>
     <p>Email <a href="mailto:hello@hazardlink.ie">hello@hazardlink.ie</a> or call <a href="tel:+353000000000">+353 (0)0 000 0000</a></p>
     <p style="margin-top:32px;color:var(--grey);font-size:14px;">No-pressure call. We'll send a Calendar invite within 1 working day.</p>
@@ -852,6 +986,160 @@
 
     // Initial render — Live alerts (matches the highlighted sidebar item)
     render('alerts');
+
+    // ── "Automations": the demo tours itself + fires live alert toasts ────
+    // Auto-advances through pages and pops simulated spill notifications, so
+    // the product sells itself with zero clicks. The instant a visitor clicks
+    // a sidebar item, autoplay stops and hands them control. Only runs while
+    // the dashboard is on screen, and is fully disabled for reduced-motion.
+    (function () {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+      var section = document.getElementById('dashboard');
+      var toastWrap = document.getElementById('demo-toasts');
+      var badge = document.getElementById('demo-autoplay');
+      var tour = ['alerts', 'analytics', 'floorplans', 'hangers', 'schedule', 'reports'];
+      var ti = 0, paused = false, visible = false, pageTimer = null, toastTimer = null;
+
+      function nextPage() {
+        if (paused || !visible) return;
+        ti = (ti + 1) % tour.length;
+        render(tour[ti]);
+        pageTimer = setTimeout(nextPage, 3800);
+      }
+
+      var spots = ['Ward 4B — corridor', 'Main entrance lobby', 'Canteen — south door',
+                   'Pharmacy corridor', 'Ward 4A', 'Reception'];
+      var crew = ['Nora McCarthy', 'Tomasz K.', 'Aisling B.', 'Mihai P.'];
+
+      function toast(html, cls) {
+        if (!toastWrap) return;
+        var el = document.createElement('div');
+        el.className = 'demo-toast' + (cls ? ' ' + cls : '');
+        el.innerHTML = html;
+        toastWrap.appendChild(el);
+        requestAnimationFrame(function () { el.classList.add('in'); });
+        setTimeout(function () {
+          el.classList.remove('in');
+          setTimeout(function () { el.remove(); }, 450);
+        }, 4200);
+      }
+
+      function fireAlert() {
+        if (paused || !visible) return;
+        var spot = spots[Math.floor(Math.random() * spots.length)];
+        var who = crew[Math.floor(Math.random() * crew.length)];
+        toast('🚨 <b>Spill detected · ' + spot + '</b><span>Sign lifted just now · crew notified</span>');
+        setTimeout(function () {
+          if (paused || !visible) return;
+          var secs = 40 + Math.floor(Math.random() * 90);
+          var t = (secs >= 60 ? Math.floor(secs / 60) + 'm ' : '') + (secs % 60) + 's';
+          toast('✓ <b>Resolved · ' + spot + '</b><span>' + who + ' · response ' + t + '</span>', 'green');
+        }, 2100);
+        toastTimer = setTimeout(fireAlert, 6500 + Math.random() * 3500);
+      }
+
+      function start() {
+        if (paused) return;
+        clearTimeout(pageTimer); clearTimeout(toastTimer);
+        pageTimer = setTimeout(nextPage, 3800);
+        toastTimer = setTimeout(fireAlert, 2200);
+      }
+      function stop() { clearTimeout(pageTimer); clearTimeout(toastTimer); }
+
+      // Visitor takes over → stop touring for good.
+      nav.addEventListener('click', function () {
+        paused = true; stop();
+        if (badge) badge.textContent = 'Exploring · you’re in control';
+      });
+
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            visible = e.isIntersecting;
+            if (visible) start(); else stop();
+          });
+        }, { threshold: 0.3 }).observe(section);
+      } else {
+        visible = true; start();
+      }
+    })();
+  })();
+
+  // ── Scroll-reveal + animated number counters ──────────────────────────
+  (function () {
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var reveals = document.querySelectorAll('.reveal');
+    if (reduce || !('IntersectionObserver' in window)) {
+      reveals.forEach(function (el) { el.classList.add('in'); });
+    } else {
+      var ro = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+      reveals.forEach(function (el) { ro.observe(el); });
+    }
+
+    // Count up any element with a data-to value when it scrolls into view.
+    var nums = document.querySelectorAll('[data-to]');
+    function run(el) {
+      var to = parseFloat(el.getAttribute('data-to')) || 0;
+      var pre = el.getAttribute('data-prefix') || '';
+      var suf = el.getAttribute('data-suffix') || '';
+      if (reduce) { el.textContent = pre + to + suf; return; }
+      var dur = 1100, t0 = null;
+      function frame(ts) {
+        if (!t0) t0 = ts;
+        var p = Math.min((ts - t0) / dur, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = pre + Math.round(to * eased) + suf;
+        if (p < 1) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+    if (!('IntersectionObserver' in window)) {
+      nums.forEach(run);
+    } else {
+      var co = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { run(e.target); co.unobserve(e.target); }
+        });
+      }, { threshold: 0.6 });
+      nums.forEach(function (el) { co.observe(el); });
+    }
+  })();
+
+  // ── Data-flow strip: light each node in turn (sign → gateway → cloud → team)
+  (function () {
+    var strip = document.querySelector('.flowstrip');
+    if (!strip) return;
+    var nodes = strip.querySelectorAll('.node');
+    var wires = strip.querySelectorAll('.wire');
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) {
+      nodes.forEach(function (n) { n.classList.add('lit'); });
+      return;
+    }
+    var running = false, idx = 0, timer = null;
+    function tick() {
+      nodes.forEach(function (n, k) { n.classList.toggle('lit', k <= idx); });
+      wires.forEach(function (w, k) { w.classList.toggle('hot', k === idx - 1); });
+      idx++;
+      if (idx > nodes.length) {
+        idx = 0;
+        nodes.forEach(function (n) { n.classList.remove('lit'); });
+        wires.forEach(function (w) { w.classList.remove('hot'); });
+      }
+      timer = setTimeout(tick, 720);
+    }
+    new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting && !running) { running = true; idx = 0; tick(); }
+        else if (!e.isIntersecting) { running = false; clearTimeout(timer); }
+      });
+    }, { threshold: 0.4 }).observe(strip);
   })();
 
   // ── Mobile nav: hamburger toggles the slide-in side menu ──────────────
@@ -879,6 +1167,107 @@
     window.addEventListener('resize', function () {
       if (window.innerWidth > 720) setOpen(false);
     });
+  })();
+
+  // ── Scroll progress bar ───────────────────────────────────────────────
+  (function () {
+    var bar = document.getElementById('scrollProgress');
+    if (!bar) return;
+    function update() {
+      var st = window.scrollY || document.documentElement.scrollTop;
+      var h = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      bar.style.width = (h > 0 ? (st / h) * 100 : 0) + '%';
+    }
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+  })();
+
+  // ── Rotating headline word ────────────────────────────────────────────
+  (function () {
+    var el = document.getElementById('rotateWord');
+    if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var words = ['Spills', 'Slips', 'Leaks', 'Hazards'], i = 0;
+    setInterval(function () {
+      el.classList.add('swap');
+      setTimeout(function () {
+        i = (i + 1) % words.length;
+        el.textContent = words[i];
+        el.classList.remove('swap');
+      }, 300);
+    }, 2600);
+  })();
+
+  // ── Hero live push-notification demo ──────────────────────────────────
+  // A phone mockup that receives "sign lifted" pushes on a loop — proves the
+  // hero's claim visually. Only runs while the hero is on screen.
+  (function () {
+    var stack = document.getElementById('pushStack');
+    if (!stack) return;
+    var spots = ['Ward 4B · corridor', 'Main lobby', 'Canteen', 'Pharmacy', 'Aisle 7', 'Reception'];
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      stack.innerHTML = '<div class="push in"><div class="pic">⚠️</div><div class="tx"><b>Sign lifted · Ward 4B</b><span>HazardLink · tap to respond · now</span></div></div>';
+      return;
+    }
+    function push() {
+      var el = document.createElement('div');
+      el.className = 'push';
+      var spot = spots[Math.floor(Math.random() * spots.length)];
+      el.innerHTML = '<div class="pic">⚠️</div><div class="tx"><b>Sign lifted · ' + spot + '</b><span>HazardLink · tap to respond · now</span></div>';
+      stack.appendChild(el);
+      requestAnimationFrame(function () { el.classList.add('in'); });
+      while (stack.children.length > 2) { stack.removeChild(stack.firstChild); }
+      setTimeout(function () {
+        el.classList.remove('in');
+        setTimeout(function () { if (el.parentNode) el.remove(); }, 450);
+      }, 3200);
+    }
+    var hero = document.querySelector('.hero'), timer = null;
+    function start() { stop(); push(); timer = setInterval(push, 2800); }
+    function stop() { if (timer) { clearInterval(timer); timer = null; } }
+    if ('IntersectionObserver' in window && hero) {
+      new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) { if (e.isIntersecting) start(); else stop(); });
+      }, { threshold: 0.2 }).observe(hero);
+    } else { start(); }
+  })();
+
+  // ── 3D tilt on feature cards (pointer-reactive) ───────────────────────
+  (function () {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (window.matchMedia('(hover: none)').matches) return;
+    document.querySelectorAll('.feat').forEach(function (card) {
+      card.addEventListener('mousemove', function (e) {
+        var r = card.getBoundingClientRect();
+        var px = (e.clientX - r.left) / r.width - 0.5;
+        var py = (e.clientY - r.top) / r.height - 0.5;
+        card.style.transition = 'box-shadow .2s ease';
+        card.style.transform = 'perspective(600px) rotateX(' + (-py * 6) + 'deg) rotateY(' + (px * 6) + 'deg) translateY(-4px)';
+        card.style.boxShadow = '0 24px 48px rgba(15,23,42,.16)';
+      });
+      card.addEventListener('mouseleave', function () {
+        card.style.transition = 'transform .35s ease, box-shadow .35s ease';
+        card.style.transform = '';
+        card.style.boxShadow = '';
+        setTimeout(function () { card.style.transition = ''; }, 360);
+      });
+    });
+  })();
+
+  // ── Back-to-top button ────────────────────────────────────────────────
+  (function () {
+    var btn = document.createElement('button');
+    btn.className = 'to-top';
+    btn.setAttribute('aria-label', 'Back to top');
+    btn.innerHTML = '↑';
+    document.body.appendChild(btn);
+    var smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    btn.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+    });
+    window.addEventListener('scroll', function () {
+      btn.classList.toggle('show', window.scrollY > 600);
+    }, { passive: true });
   })();
 </script>
 

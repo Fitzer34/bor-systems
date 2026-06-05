@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Status — HazardLink</title>
+<meta name="description" content="Live operational status of the HazardLink platform.">
+<meta name="robots" content="index,follow">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E⚠️%3C/text%3E%3C/svg%3E">
+<style>
+  :root{--orange:#ff8800;--ink:#0f172a;--grey:#64748b;--soft:#f8fafc;--green:#2e7d32;--amber:#b45309;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);line-height:1.6;background:#fff;}
+  .container{max-width:760px;margin:0 auto;padding:0 24px;}
+  header{border-bottom:1px solid #e2e8f0;position:sticky;top:0;background:rgba(255,255,255,.9);backdrop-filter:blur(8px);z-index:10;}
+  header .container{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;max-width:1100px;}
+  .logo{font-weight:700;font-size:20px;letter-spacing:-.5px;color:var(--ink);text-decoration:none;}
+  .logo::before{content:"⚠️ ";}
+  .back{color:var(--grey);text-decoration:none;font-size:14px;}
+  .back:hover{color:var(--orange);}
+  main{padding:48px 0 64px;}
+  h1{font-size:34px;letter-spacing:-1px;margin:0 0 24px;}
+  .banner{display:flex;align-items:center;gap:14px;padding:20px 22px;border-radius:14px;border:1px solid #e2e8f0;background:var(--soft);margin:0 0 28px;}
+  .banner .big{font-size:21px;font-weight:700;}
+  .dot{width:14px;height:14px;border-radius:50%;background:#cbd5e1;flex-shrink:0;}
+  .dot.ok{background:var(--green);animation:pulse 1.8s infinite;}
+  .dot.warn{background:var(--amber);}
+  .row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:10px;}
+  .row .name{font-weight:600;font-size:15px;}
+  .row .name small{display:block;font-weight:400;color:var(--grey);font-size:12px;}
+  .row .state{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--grey);white-space:nowrap;}
+  .checked{color:var(--grey);font-size:13px;margin-top:20px;}
+  .help{color:var(--grey);font-size:14px;margin-top:8px;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(46,125,50,.5)}70%{box-shadow:0 0 0 9px rgba(46,125,50,0)}100%{box-shadow:0 0 0 0 rgba(46,125,50,0)}}
+  @media (prefers-reduced-motion: reduce){ .dot.ok{animation:none;} }
+  footer{padding:32px 0;border-top:1px solid #e2e8f0;}
+  footer .container{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;max-width:1100px;}
+  footer p{margin:0;font-size:14px;color:var(--grey);}
+  footer .links a{color:var(--grey);margin-left:16px;text-decoration:none;font-size:14px;}
+  footer .links a:hover{color:var(--ink);}
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <a class="logo" href="/">HazardLink</a>
+    <a class="back" href="/">← Back to site</a>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+    <h1>System status</h1>
+
+    <div class="banner">
+      <span class="dot" id="overallDot"></span>
+      <span class="big" id="overallText">Checking systems…</span>
+    </div>
+
+    <div class="row">
+      <div class="name">Marketing website<small>hazardlink.ie</small></div>
+      <div class="state"><span class="dot ok"></span> Operational</div>
+    </div>
+    <div class="row">
+      <div class="name">Dashboard<small>app.hazardlink.ie</small></div>
+      <div class="state" id="rowDash"><span class="dot"></span> Checking…</div>
+    </div>
+    <div class="row">
+      <div class="name">API &amp; data<small>core platform</small></div>
+      <div class="state" id="rowApi"><span class="dot"></span> Checking…</div>
+    </div>
+    <div class="row">
+      <div class="name">Notifications<small>push · email · SMS</small></div>
+      <div class="state" id="rowNotif"><span class="dot"></span> Checking…</div>
+    </div>
+
+    <p class="checked" id="checked">Checking now…</p>
+    <p class="help">Seeing a problem we're not showing here? Email <a href="mailto:support@hazardlink.ie">support@hazardlink.ie</a>.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>© 2026 HazardLink Ltd · Made in Ireland</p>
+    <div class="links">
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/status">Status</a>
+      <a href="mailto:support@hazardlink.ie">Support</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Live status: poll the backend /health (CORS is open) and reflect the
+  // result. The dashboard, API and notifications all depend on the backend,
+  // so a healthy /health means the platform is up. Failures show a soft
+  // "reconnecting" state (never a scary red) — the backend can be briefly
+  // slow to wake from idle, and the page auto-retries every 30s.
+  (function () {
+    var HEALTH = "https://bor-systems-backend.onrender.com/health";
+    var rows = {
+      dash: document.getElementById("rowDash"),
+      api: document.getElementById("rowApi"),
+      notif: document.getElementById("rowNotif"),
+    };
+    var overallDot = document.getElementById("overallDot");
+    var overallText = document.getElementById("overallText");
+    var checked = document.getElementById("checked");
+
+    function setRow(el, cls, label) {
+      el.innerHTML = '<span class="dot ' + cls + '"></span> ' + label;
+    }
+
+    function allOk(versionMs) {
+      overallDot.className = "dot ok";
+      overallText.textContent = "All systems operational";
+      setRow(rows.dash, "ok", "Operational");
+      setRow(rows.api, "ok", "Operational" + (versionMs ? " · " + versionMs : ""));
+      setRow(rows.notif, "ok", "Operational");
+    }
+    function degraded() {
+      overallDot.className = "dot warn";
+      overallText.textContent = "Reconnecting…";
+      setRow(rows.dash, "warn", "Checking…");
+      setRow(rows.api, "warn", "Reconnecting…");
+      setRow(rows.notif, "warn", "Checking…");
+    }
+
+    function fmtTime() {
+      var d = new Date();
+      function p(n) { return (n < 10 ? "0" : "") + n; }
+      return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    }
+
+    async function check() {
+      var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+      var ctrl = new AbortController();
+      var to = setTimeout(function () { ctrl.abort(); }, 25000);
+      try {
+        var r = await fetch(HEALTH, { signal: ctrl.signal, cache: "no-store" });
+        clearTimeout(to);
+        if (r.ok) {
+          var ms = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - t0);
+          var info = "";
+          try { var j = await r.json(); if (j && j.version) info = j.version; } catch (e) {}
+          allOk((info ? info + " · " : "") + ms + " ms");
+        } else {
+          degraded();
+        }
+      } catch (e) {
+        clearTimeout(to);
+        degraded();
+      }
+      checked.textContent = "Last checked " + fmtTime() + " · auto-refreshes every 30s";
+    }
+
+    check();
+    setInterval(check, 30000);
+  })();
+</script>
+</body>
+</html>
