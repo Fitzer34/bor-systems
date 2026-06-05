@@ -99,7 +99,8 @@ const SECURITY_HEADERS = {
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data:; " +
     "font-src 'self'; " +
-    "connect-src 'self'; " +
+    // Allow the Status page to poll the backend /health endpoint cross-origin.
+    "connect-src 'self' https://bor-systems-backend.onrender.com; " +
     "frame-ancestors 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'; " +
@@ -125,6 +126,23 @@ function holdingResponse() {
 
 export default {
   async fetch(request, env) {
+    // ── Canonical redirect: hazardlink.net → hazardlink.ie ────────────────
+    // .net is an alt-TLD registration; we run one canonical site on .ie.
+    // 301 everything (path + query preserved) so links/SEO funnel to a single
+    // domain. (.ie requests fall straight through to the asset pipeline below.)
+    const url = new URL(request.url);
+    const host = url.hostname.toLowerCase();
+    if (host === "hazardlink.net" || host === "www.hazardlink.net") {
+      return new Response(null, {
+        status: 301,
+        headers: {
+          "Location": "https://hazardlink.ie" + url.pathname + url.search,
+          "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     try {
       const res = await env.ASSETS.fetch(request);
       // Any server-side failure from the asset pipeline → show the holding page.
