@@ -26,7 +26,10 @@ export function LiveEventsBridge(): null {
       Notification.requestPermission().catch(() => undefined);
     }
 
-    const es = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
+    // Same prod/dev split as api.ts — direct to Render in prod, Vite proxy in dev
+    const base = import.meta.env.PROD ? "https://bor-systems-backend.onrender.com" : "";
+    const esPath = base ? `${base}/events` : "/api/events";
+    const es = new EventSource(`${esPath}?token=${encodeURIComponent(token)}`);
 
     const showAlertNotification = (title: string, body: string) => {
       // Play an audible "ping" regardless of browser-notification permission,
