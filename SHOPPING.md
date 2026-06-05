@@ -1,9 +1,15 @@
 # HazardLink — Prototype shopping list
 
-Updated 2026-05-21
+Updated 2026-05-23
 
-Everything needed to build 2 hangers + 1 gateway + 2 UWB tag prototypes.
-**Total: ~€363** across 4 suppliers.
+Everything needed to build 2 hangers + 1 gateway.
+**Total: ~€198** across 3 suppliers.
+
+> ⚠️ **Update:** UWB tags (Qorvo DWM3001CDK) dropped from v1 — Mouser has a
+> 26-week lead time globally due to the post-AirTag chip allocation
+> squeeze. We now do "Find Sign" via BLE proximity, which the Heltec
+> board already has built-in. UWB returns as an upgrade once supply
+> recovers (est. mid-2027).
 
 ---
 

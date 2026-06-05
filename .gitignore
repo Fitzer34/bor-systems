@@ -19,3 +19,9 @@ android/.gradle/
 android/build/
 *.pem
 *.keystore
+
+# Machine-specific & stray media (keep out of the repo)
+*.HEIC
+*.heic
+android/local.properties
+android/.kotlin/
