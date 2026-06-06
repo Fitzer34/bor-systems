@@ -335,6 +335,30 @@
 
   /* The mockup needs to be a positioning context for the toasts. */
   .mockup { position: relative; }
+  .mockup .body { position: relative; }
+
+  /* Demo dashboard: collapsible sidebar on phones (hamburger lives in the
+     demo's chrome bar). Desktop is unchanged — sidebar always visible. */
+  .demo-menu-btn { display: none; margin-left: auto; align-items: center; justify-content: center; width: 30px; height: 26px; padding: 0; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: var(--ink); font-size: 15px; line-height: 1; cursor: pointer; }
+  .demo-backdrop { display: none; }
+  @media (max-width: 600px) {
+    .demo-badge { display: none; }
+    .demo-menu-btn { display: inline-flex; }
+    .mockup .body { grid-template-columns: 1fr; }
+    .mockup .side {
+      position: absolute; top: 0; bottom: 0; left: 0;
+      width: 74%; max-width: 210px; z-index: 4;
+      transform: translateX(-100%); transition: transform .25s ease;
+      box-shadow: 6px 0 20px rgba(0,0,0,.35);
+    }
+    .mockup.menu-open .side { transform: translateX(0); }
+    .demo-backdrop {
+      display: block; position: absolute; inset: 0;
+      background: rgba(15,23,42,.4); z-index: 3;
+      opacity: 0; pointer-events: none; transition: opacity .25s ease;
+    }
+    .mockup.menu-open .demo-backdrop { opacity: 1; pointer-events: auto; }
+  }
 
   /* ── Second wave: scroll progress, rotating word, hero phone, card tilt,
         CTA shine, back-to-top ──────────────────────────────────────────── */
@@ -493,6 +517,7 @@
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
         <span class="url" id="demo-url">app.hazardlink.ie/alerts</span>
         <span class="demo-badge" id="demo-autoplay">Auto-playing · click to explore</span>
+        <button class="demo-menu-btn" id="demoMenuBtn" aria-label="Toggle menu" aria-expanded="false">☰</button>
       </div>
       <div class="body">
         <div class="side">
@@ -513,6 +538,7 @@
         <div class="main" id="demo-main">
           <!-- Populated by JS on load + on sidebar click -->
         </div>
+        <div class="demo-backdrop" id="demoBackdrop" aria-hidden="true"></div>
       </div>
       <div id="demo-toasts" aria-hidden="true"></div>
     </div>
@@ -1270,6 +1296,25 @@
     window.addEventListener('scroll', function () {
       btn.classList.toggle('show', window.scrollY > 600);
     }, { passive: true });
+  })();
+
+  // ── Demo dashboard: collapsible sidebar on phones ─────────────────────
+  (function () {
+    var mockup = document.querySelector('.mockup');
+    var btn = document.getElementById('demoMenuBtn');
+    if (!mockup || !btn) return;
+    var backdrop = document.getElementById('demoBackdrop');
+    var nav = document.getElementById('demo-nav');
+    function setOpen(open) {
+      mockup.classList.toggle('menu-open', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    btn.addEventListener('click', function () {
+      setOpen(!mockup.classList.contains('menu-open'));
+    });
+    if (backdrop) backdrop.addEventListener('click', function () { setOpen(false); });
+    // Tapping a page in the drawer renders it (handled elsewhere) and closes the menu.
+    if (nav) nav.addEventListener('click', function () { setOpen(false); });
   })();
 </script>
 
