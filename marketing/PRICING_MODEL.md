@@ -70,17 +70,17 @@ For a 50-hanger commercial cleaning customer:
 
 | Saving / Year | Conservative | Optimistic |
 |---|---|---|
-| Insurance premium discount (10%) | €2,000 | €5,000 |
-| Reduced incidents (1 fewer slip claim avoided every 5 years) | €1,500 | €8,000 |
+| Reduced incidents (1 fewer slip-and-fall every 5 years) | €1,500 | €8,000 |
 | Faster cleaner response = less downstream damage | €1,200 | €2,500 |
 | Anti-theft sign replacement saved | €400 | €600 |
-| Reduced legal/audit/investigation costs | €1,000 | €5,000 |
-| **Total saved per year** | **€6,100** | **€21,100** |
+| Reduced incident-investigation & downtime costs | €1,000 | €5,000 |
+| **Total saved per year** | **€4,100** | **€16,100** |
 | HazardLink cost (5-year amortised) | €2,500 | €2,500 |
-| **Net ROI** | **2.4×** | **8.4×** |
+| **Net ROI** | **1.6×** | **6.4×** |
 
-Pitch: *"Our system pays for itself in the first year on insurance
-discount alone. Everything else is gravy."*
+Pitch: *"Avoid even one slip-and-fall and it's paid for itself for years.
+Day to day, it cuts response times, stops signs going missing, and proves
+the job was done."*
 
 ---
 
@@ -150,5 +150,6 @@ customers are fine but don't disproportionately spend sales time on them.
    → Yes — hardware-as-a-service tier: €0 setup, €250/month (covers BOM
      amortisation + cloud + 30% margin over 36 months)
 3. What if a competitor undercuts you on price?
-   → Lead with compliance PDF + insurance discount math. Hardly anyone
-     else has that yet — it's worth €2-5k/year to a customer on its own.
+   → Lead with the live demo — a sign lifted and an alert landing in 3
+     seconds, response time 8 min → under 2 min. Hardly anyone else can
+     show that, and it's what wins the room.
