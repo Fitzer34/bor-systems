@@ -11,14 +11,14 @@ submissions. Both stores have character limits — these stay under them.
 ## Subtitle / Short description (Apple 30 / Google 80 chars)
 
 **Apple**: `Smart wet-floor sign alerts`
-**Google**: `Real-time alerts the moment a wet-floor sign is lifted. Compliance reports.`
+**Google**: `Real-time alerts the moment a wet-floor sign is moved. Built-in safety records.`
 
 ---
 
 ## Promotional text (Apple, 170 chars, can be updated without re-review)
 
 ```
-The moment a wet-floor sign is lifted, your cleaning team gets an alert. Live audit trail your insurer will love. Built for facility safety teams.
+The moment a wet-floor sign is lifted, your cleaning team gets an alert — and every response is logged automatically. Built for facility safety teams.
 ```
 
 ---
@@ -29,7 +29,7 @@ The moment a wet-floor sign is lifted, your cleaning team gets an alert. Live au
 HazardLink turns ordinary wet-floor signs into connected safety sensors.
 The moment one is lifted off its mount, your cleaning team gets a push
 notification, the dashboard goes red, and the response is logged — every
-step, with timestamps and photo evidence, ready for your insurance broker.
+step, with timestamps and photo evidence, so nothing slips through the cracks.
 
 —— Why HazardLink ——
 
@@ -40,9 +40,9 @@ step, with timestamps and photo evidence, ready for your insurance broker.
   cleaners straight to the lifted sign in any building. cm-level
   accuracy on iPhone 11+, Pixel 6 Pro+, Galaxy S21 Ultra+.
 
-• INSURANCE-READY COMPLIANCE — Auto-generated weekly PDF reports
-  document every spill, response time, and resolution. Hand it to your
-  insurer for premium discounts on slip-and-fall coverage.
+• REPORTS & RECORDS — Auto-generated reports document every spill,
+  response time, and resolution. A complete, exportable safety record
+  for your own health-and-safety reviews and accountability.
 
 • PHOTO PROOF — Cleaners snap a quick photo of the cleaned area before
   closing each alert. Tamper-resistant audit trail.
@@ -76,7 +76,7 @@ step, with timestamps and photo evidence, ready for your insurance broker.
 
 • Commercial cleaning companies managing multiple client sites
 • Facility managers in offices, retail, hospitality, healthcare
-• Insurance brokers offering slip-and-fall coverage
+• Health &amp; safety officers responsible for slip/trip prevention
 • Any business where a sudden spill needs a cleaning response
 
 —— Hardware ——
@@ -154,7 +154,7 @@ Suggested 5 screenshots per device size:
 
 1. **Live alerts feed** — Active alert with red pin on floor plan
 2. **AirTag-style Find Sign view** — arrow + distance
-3. **Compliance PDF preview** — page with summary + response times
+3. **Reports preview** — page with summary + response times
 4. **Multi-site dashboard** — grid of buildings sorted by open alerts
 5. **Heat-map analytics** — zones colour-coded by spill frequency
 
@@ -180,7 +180,7 @@ Welcome to HazardLink.
 
 This is our first public release. Wet-floor sign monitoring with
 real-time push alerts, multi-language notifications, Apple Watch
-and Wear OS support, and insurance-ready compliance reports.
+and Wear OS support, and built-in safety reports.
 
 Pair your first hanger via Bluetooth in 60 seconds.
 ```
