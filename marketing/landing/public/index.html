@@ -339,7 +339,7 @@
 
   /* Demo dashboard: collapsible sidebar on phones (hamburger lives in the
      demo's chrome bar). Desktop is unchanged — sidebar always visible. */
-  .demo-menu-btn { display: none; margin-left: auto; align-items: center; justify-content: center; width: 30px; height: 26px; padding: 0; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: var(--ink); font-size: 15px; line-height: 1; cursor: pointer; }
+  .demo-menu-btn { display: none; align-items: center; justify-content: center; width: 30px; height: 26px; padding: 0; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: var(--ink); font-size: 15px; line-height: 1; cursor: pointer; }
   .demo-backdrop { display: none; }
   @media (max-width: 600px) {
     .demo-badge { display: none; }
@@ -515,9 +515,9 @@
     <div class="mockup reveal">
       <div class="chrome">
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <button class="demo-menu-btn" id="demoMenuBtn" aria-label="Toggle menu" aria-expanded="false">☰</button>
         <span class="url" id="demo-url">app.hazardlink.ie/alerts</span>
         <span class="demo-badge" id="demo-autoplay">Auto-playing · click to explore</span>
-        <button class="demo-menu-btn" id="demoMenuBtn" aria-label="Toggle menu" aria-expanded="false">☰</button>
       </div>
       <div class="body">
         <div class="side">
