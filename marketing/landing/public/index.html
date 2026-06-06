@@ -185,7 +185,9 @@
     background: white; padding: 4px 12px; border-radius: 6px;
     border: 1px solid #e2e8f0;
   }
-  .mockup .body { display: grid; grid-template-columns: 200px 1fr; min-height: 380px; }
+  /* Fixed height so the auto-touring demo never resizes the page as it
+     cycles between tall (floor-plan) and short (table) pages. */
+  .mockup .body { display: grid; grid-template-columns: 200px 1fr; height: 500px; }
   .mockup .side {
     background: var(--ink); color: white; padding: 18px 14px;
     font-size: 13px;
@@ -222,7 +224,7 @@
   .pill.grey { background: #e2e8f0; color: var(--grey); }
   .heatmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin: 12px 0; }
   .heatmap .cell { aspect-ratio: 1; border-radius: 4px; }
-  .mockup .main { padding: 20px 24px; }
+  .mockup .main { padding: 20px 24px; overflow-y: auto; }
   .mockup .main h4 { margin: 0 0 4px; font-size: 18px; }
   .mockup .main .sub { color: var(--grey); font-size: 13px; margin-bottom: 16px; }
   .alert-row {
