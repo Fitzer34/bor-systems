@@ -3,37 +3,33 @@ import NearbyInteraction
 import CoreBluetooth
 import simd
 
-/// Drives the UWB precision-finding session against the sign-side
-/// Qorvo DWM3001 tag.
+/// Drives UWB precision-finding against a Qorvo DWM3001 sign tag using Apple's
+/// **Nearby Interaction Accessory Protocol** (`NINearbyAccessoryConfiguration`).
 ///
-/// State machine:
+/// IMPORTANT: this is the THIRD-PARTY ACCESSORY model, not the iPhone↔iPhone
+/// peer model. A DWM3001 can't produce an Apple `NIDiscoveryToken`; instead the
+/// phone and tag exchange Apple "accessory configuration data" over BLE, then
+/// range over UWB. (The earlier version used `NINearbyPeerConfiguration`, which
+/// only works between two Apple devices — see docs/UWB_PLAN.md.)
 ///
-///   idle
-///     │  start(alertId:)
-///     ▼
-///   lookingUp ─── backend /sign-tags/for-alert/:id
-///     │
-///     ├── 404 / no UWB on this phone → unavailable(reason)
-///     │
-///     ▼
-///   connecting ─── CBCentralManager scan + connect to tag's BLE UUID
-///     │           ─── exchange NI discovery tokens over a writable BLE
-///     │              characteristic (matches the tag's GATT spec)
-///     ▼
-///   ranging(distance, direction) ─── NISession callbacks stream every ~100 ms
-///     │
-///     │  markFound() OR session drops
-///     ▼
-///   signFound
+/// BLE transport = Nordic UART Service (NUS), which is what Qorvo's "Nearby
+/// Interaction" sample firmware for the DWM3001 uses. Confirm these against the
+/// flashed firmware.
 ///
-/// Hardware contract (matches the firmware we'll write for the DWM3001):
-///   - Tag advertises BLE service 0xFE59 (BOR sign) with the bleUuid from
-///     the backend as the instance UUID
-///   - One characteristic 0xFE5A: writable — accepts a 16-byte NIDiscoveryToken
-///     from the iPhone, then the tag computes its own token and writes it back
-///   - One characteristic 0xFE5B: notify — tag's UWB MAC address (8 bytes)
+/// Accessory-protocol messages (match Qorvo sample / Apple NINearbyAccessorySample):
+///   phone → tag:  0x0A initialize · 0x0B configureAndStart(+config) · 0x0C stop
+///   tag → phone:  0x01 accessoryConfigurationData(+data) · 0x02 uwbDidStart · 0x03 uwbDidStop
 @MainActor
 final class SignFinder: NSObject, ObservableObject {
+
+    // MARK: BLE / protocol constants (must match the tag firmware)
+    private enum NUS {
+        static let service = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
+        static let rx      = CBUUID(string: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E") // write: phone → tag
+        static let tx      = CBUUID(string: "6E400003-B5A3-F393-E0A9-E50E24DCCA9E") // notify: tag → phone
+    }
+    private enum ToAccessory: UInt8 { case initialize = 0x0A, configureAndStart = 0x0B, stop = 0x0C }
+    private enum FromAccessory: UInt8 { case configurationData = 0x01, uwbDidStart = 0x02, uwbDidStop = 0x03 }
 
     enum State {
         case idle
@@ -49,42 +45,42 @@ final class SignFinder: NSObject, ObservableObject {
     private var niSession: NISession?
     private var central: CBCentralManager?
     private var tagPeripheral: CBPeripheral?
+    private var rxChar: CBCharacteristic?
     private var bleUuid: String?
-    private var uwbAddress: String?
 
     // MARK: - Public API
 
     func start(alertId: String) async {
-        // 1. Check hardware support first. NIDeviceCapability is the
-        //    canonical "does this phone do UWB" check.
+        // 1. Does this iPhone even do UWB? (U1/U2 chip — iPhone 11+.)
         guard NISession.deviceCapabilities.supportsPreciseDistanceMeasurement else {
             state = .unavailable(
                 reason: "This iPhone doesn't have a U1 or U2 chip. iPhone 11 and newer are supported.")
             return
         }
 
+        // 2. Which tag is paired to this alert's hanger?
         state = .lookingUp
         do {
             let info = try await APIClient.shared.fetchSignTagForAlert(alertId: alertId)
-            self.bleUuid    = info.bleUuid
-            self.uwbAddress = info.uwbAddress
+            self.bleUuid = info.bleUuid
         } catch {
             state = .unavailable(
                 reason: "No precision-finding tag is paired with this sign. Using floor plan instead.")
             return
         }
 
+        // 3. Scan/connect over BLE (the scan starts once Bluetooth reports poweredOn).
         state = .connecting
         central = CBCentralManager(delegate: self, queue: nil)
-        // CBCentralManager's centralManagerDidUpdateState callback will
-        // kick off the scan once Bluetooth is actually powered on.
     }
 
     func stop() {
+        send(.stop)
         niSession?.invalidate()
         niSession = nil
         if let p = tagPeripheral { central?.cancelPeripheralConnection(p) }
         tagPeripheral = nil
+        rxChar = nil
         central = nil
     }
 
@@ -93,16 +89,14 @@ final class SignFinder: NSObject, ObservableObject {
         stop()
     }
 
-    // MARK: - NI session setup
+    // MARK: - Helpers
 
-    private func startNiSession(with discoveryToken: NIDiscoveryToken) {
-        let session = NISession()
-        session.delegate = self
-        let config = NINearbyPeerConfiguration(peerToken: discoveryToken)
-        session.run(config)
-        niSession = session
-        // Move into ranging state once we have ANY callback — until then
-        // show "connecting" so the user knows something's happening.
+    /// Send an accessory-protocol message: [messageId byte] + payload.
+    private func send(_ messageId: ToAccessory, _ payload: Data = Data()) {
+        guard let peripheral = tagPeripheral, let rx = rxChar else { return }
+        var msg = Data([messageId.rawValue])
+        msg.append(payload)
+        peripheral.writeValue(msg, for: rx, type: .withResponse)
     }
 }
 
@@ -115,10 +109,7 @@ extension SignFinder: CBCentralManagerDelegate {
                 self.state = .unavailable(reason: "Bluetooth is off. Turn it on in Settings.")
                 return
             }
-            // The tag advertises the BOR sign service. We'll filter
-            // matches by the bleUuid we got from the backend lookup.
-            let svc = CBUUID(string: "FE59")
-            central.scanForPeripherals(withServices: [svc], options: nil)
+            central.scanForPeripherals(withServices: [NUS.service], options: nil)
         }
     }
 
@@ -127,9 +118,11 @@ extension SignFinder: CBCentralManagerDelegate {
                                     advertisementData: [String : Any],
                                     rssi RSSI: NSNumber) {
         Task { @MainActor in
-            guard self.tagPeripheral == nil,
-                  let expected = self.bleUuid,
-                  peripheral.identifier.uuidString == expected else { return }
+            guard self.tagPeripheral == nil else { return }
+            // Prefer the tag the backend pinned to this alert; fall back to the
+            // first NUS peripheral if no UUID was provisioned yet.
+            if let expected = self.bleUuid, !expected.isEmpty,
+               peripheral.identifier.uuidString != expected { return }
             self.tagPeripheral = peripheral
             peripheral.delegate = self
             central.stopScan()
@@ -139,92 +132,104 @@ extension SignFinder: CBCentralManagerDelegate {
 
     nonisolated func centralManager(_ central: CBCentralManager,
                                     didConnect peripheral: CBPeripheral) {
-        peripheral.discoverServices([CBUUID(string: "FE59")])
+        peripheral.discoverServices([NUS.service])
+    }
+
+    nonisolated func centralManager(_ central: CBCentralManager,
+                                    didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        Task { @MainActor in self.state = .unavailable(reason: "Couldn't connect to the tag.") }
     }
 }
 
-// MARK: - GATT discovery + NI token exchange
+// MARK: - GATT discovery + accessory-protocol kickoff
 
 extension SignFinder: CBPeripheralDelegate {
-    nonisolated func peripheral(_ peripheral: CBPeripheral,
-                                didDiscoverServices error: Error?) {
-        guard let svc = peripheral.services?.first(where: { $0.uuid == CBUUID(string: "FE59") })
-        else { return }
-        peripheral.discoverCharacteristics(
-            [CBUUID(string: "FE5A"), CBUUID(string: "FE5B")],
-            for: svc)
+    nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard let svc = peripheral.services?.first(where: { $0.uuid == NUS.service }) else { return }
+        peripheral.discoverCharacteristics([NUS.rx, NUS.tx], for: svc)
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral,
                                 didDiscoverCharacteristicsFor service: CBService,
                                 error: Error?) {
         guard let chars = service.characteristics else { return }
-
-        // Write our NI discovery token to the tag.
-        if let tokenChar = chars.first(where: { $0.uuid == CBUUID(string: "FE5A") }) {
-            Task { @MainActor in
-                guard let token = self.niSession?.discoveryToken
-                    ?? self.createSessionAndGetToken() else { return }
-                let data = try? NSKeyedArchiver.archivedData(
-                    withRootObject: token, requiringSecureCoding: true)
-                if let data {
-                    peripheral.writeValue(data, for: tokenChar, type: .withResponse)
-                }
+        Task { @MainActor in
+            self.rxChar = chars.first(where: { $0.uuid == NUS.rx })
+            if let tx = chars.first(where: { $0.uuid == NUS.tx }) {
+                peripheral.setNotifyValue(true, for: tx)
             }
+            // Kick off the handshake: ask the tag for its accessory config.
+            self.send(.initialize)
         }
-
-        // Subscribe to the tag's UWB-address notify characteristic.
-        if let addrChar = chars.first(where: { $0.uuid == CBUUID(string: "FE5B") }) {
-            peripheral.setNotifyValue(true, for: addrChar)
-        }
-    }
-
-    @MainActor
-    private func createSessionAndGetToken() -> NIDiscoveryToken? {
-        if niSession == nil { niSession = NISession(); niSession?.delegate = self }
-        return niSession?.discoveryToken
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral,
                                 didUpdateValueFor characteristic: CBCharacteristic,
                                 error: Error?) {
-        // The tag responds with ITS NI discovery token on the same
-        // characteristic. Use it to start the ranging session.
-        guard let data = characteristic.value,
-              let token = try? NSKeyedUnarchiver.unarchivedObject(
-                ofClass: NIDiscoveryToken.self, from: data) else { return }
+        guard let data = characteristic.value, let first = data.first,
+              let kind = FromAccessory(rawValue: first) else { return }
+        let payload = data.count > 1 ? data.subdata(in: 1..<data.count) : Data()
         Task { @MainActor in
-            self.startNiSession(with: token)
+            switch kind {
+            case .configurationData:
+                self.startSession(with: payload)
+            case .uwbDidStart:
+                break // ranging state arrives on the first NISession update
+            case .uwbDidStop:
+                self.state = .connecting
+            }
+        }
+    }
+
+    /// Build the accessory configuration from the tag's blob and run the session.
+    /// The session then asks us (didGenerateShareableConfigurationData) for the
+    /// data to send back in configureAndStart.
+    @MainActor
+    private func startSession(with accessoryData: Data) {
+        do {
+            let config = try NINearbyAccessoryConfiguration(data: accessoryData)
+            let session = niSession ?? NISession()
+            session.delegate = self
+            niSession = session
+            session.run(config)
+        } catch {
+            state = .unavailable(reason: "Couldn't start UWB session: \(error.localizedDescription)")
         }
     }
 }
 
-// MARK: - NI session callbacks (the ranging stream)
+// MARK: - NI session callbacks
 
 extension SignFinder: NISessionDelegate {
+    /// Accessory flow: the session hands us the blob to send to the tag to make
+    /// it start its side of the UWB session.
     nonisolated func session(_ session: NISession,
-                             didUpdate nearbyObjects: [NINearbyObject]) {
+                             didGenerateShareableConfigurationData data: Data,
+                             for object: NINearbyObject) {
+        Task { @MainActor in self.send(.configureAndStart, data) }
+    }
+
+    nonisolated func session(_ session: NISession, didUpdate nearbyObjects: [NINearbyObject]) {
         guard let obj = nearbyObjects.first else { return }
         Task { @MainActor in
             let distance = obj.distance ?? Float.greatestFiniteMagnitude
-            let dir = obj.direction  // simd_float3? — needs both U1 and motion
-            self.state = .ranging(distance: distance, direction: dir)
+            self.state = .ranging(distance: distance, direction: obj.direction)
         }
     }
 
     nonisolated func session(_ session: NISession,
                              didRemove nearbyObjects: [NINearbyObject],
                              reason: NINearbyObject.RemovalReason) {
-        Task { @MainActor in
-            // Peer dropped — show a recoverable connecting state instead
-            // of failing the whole flow. NI will re-pick-up automatically
-            // when the tag responds again.
-            self.state = .connecting
-        }
+        // Peer dropped — show a recoverable "connecting" state; NI re-acquires
+        // automatically when the tag responds again.
+        Task { @MainActor in self.state = .connecting }
     }
 
     nonisolated func sessionWasSuspended(_ session: NISession) {}
-    nonisolated func sessionSuspensionEnded(_ session: NISession) {}
+    nonisolated func sessionSuspensionEnded(_ session: NISession) {
+        // Re-run by asking the tag to reconfigure.
+        Task { @MainActor in self.send(.initialize) }
+    }
     nonisolated func session(_ session: NISession, didInvalidateWith error: Error) {
         Task { @MainActor in
             self.state = .unavailable(reason: "Session ended: \(error.localizedDescription)")
