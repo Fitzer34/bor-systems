@@ -188,6 +188,15 @@ extension SignFinder: CBPeripheralDelegate {
     private func startSession(with accessoryData: Data) {
         do {
             let config = try NINearbyAccessoryConfiguration(data: accessoryData)
+            // iPhone 14 and newer (incl. iPhone 16) need CAMERA ASSISTANCE to
+            // produce a direction vector — without this you get distance only,
+            // no arrow. Requires NSCameraUsageDescription in Info.plist + camera
+            // permission, and the user sweeping the phone in a small circle for
+            // a second or two so NearbyInteraction converges on a heading.
+            // (Source: Qorvo forum "DWM3001CDK iPhone 16 Demo Not Working".)
+            if #available(iOS 16.0, *) {
+                config.isCameraAssistanceEnabled = true
+            }
             let session = niSession ?? NISession()
             session.delegate = self
             niSession = session
