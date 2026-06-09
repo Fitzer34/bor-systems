@@ -76,7 +76,6 @@ export function Layout() {
           <NavItem to="/dispatch">Dispatch</NavItem>
           <NavItem to="/schedule">Schedule</NavItem>
           {isStaff && <NavItem to="/devices">Devices</NavItem>}
-          {isStaff && <NavItem to="/sign-tags">Sign tags</NavItem>}
           {isStaff && <NavItem to="/ppms">PPMs</NavItem>}
           {isStaff && <NavItem to="/users">Users</NavItem>}
           {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}

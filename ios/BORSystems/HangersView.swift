@@ -247,6 +247,9 @@ struct HangerDetailView: View {
     @State private var saving = false
     @State private var error: String?
     @State private var showDecommissionConfirm = false
+    @State private var tracker: HangerTracker?
+    @State private var showTrackerScan = false
+    @State private var removingTracker = false
 
     init(
         hanger: Hanger,
@@ -262,12 +265,25 @@ struct HangerDetailView: View {
         _locationNote = State(initialValue: hanger.locationNote ?? "")
         _audibleAlarm = State(initialValue: hanger.audibleAlarmEnabled)
         _zoneId = State(initialValue: hanger.zoneId ?? "")
+        _tracker = State(initialValue: hanger.tracker)
     }
 
     private var canEdit: Bool {
         auth.user?.role == .admin || auth.user?.role == .supervisor
     }
     private var isAdmin: Bool { auth.user?.role == .admin }
+
+    private func removeTracker() async {
+        removingTracker = true; error = nil
+        do {
+            try await APIClient.shared.removeTracker(hangerId: hanger.id)
+            tracker = nil
+            onChange()
+        } catch {
+            self.error = "Couldn't remove the tracker — try again."
+        }
+        removingTracker = false
+    }
 
     var body: some View {
         Form {
@@ -338,6 +354,38 @@ struct HangerDetailView: View {
                 }
             }
 
+            Section {
+                if let t = tracker {
+                    LabeledContent("Tracker", value: "Assigned")
+                    if let b = t.batteryPct {
+                        LabeledContent("Tracker battery", value: "\(b)%")
+                    }
+                    if canEdit {
+                        Button(role: .destructive) {
+                            Task { await removeTracker() }
+                        } label: {
+                            if removingTracker { ProgressView() }
+                            else { Label("Remove tracker", systemImage: "minus.circle") }
+                        }
+                        .disabled(removingTracker)
+                    }
+                } else if canEdit {
+                    Button {
+                        showTrackerScan = true
+                    } label: {
+                        Label("Assign tracker", systemImage: "dot.radiowaves.left.and.right")
+                    }
+                } else {
+                    LabeledContent("Tracker", value: "None")
+                }
+            } header: {
+                Text("Find-sign tracker")
+            } footer: {
+                if tracker == nil && canEdit {
+                    Text("Hold the phone next to this sign's tracker and tap Assign. “Find sign” then guides staff straight to it.")
+                }
+            }
+
             Section("Live state") {
                 statusRow
                 batteryRow
@@ -390,6 +438,12 @@ struct HangerDetailView: View {
             }
         }
         .task { await bootstrap() }
+        .sheet(isPresented: $showTrackerScan) {
+            TrackerAssignSheet(hangerId: hanger.id) { assigned in
+                tracker = assigned
+                onChange()
+            }
+        }
         .alert("Decommission this hanger?", isPresented: $showDecommissionConfirm) {
             Button("Decommission", role: .destructive) {
                 Task { await decommission() }

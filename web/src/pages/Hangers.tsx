@@ -15,6 +15,7 @@ export interface Hanger {
   firmwareVersion: string | null;
   lastSeenAt: string | null;
   audibleAlarmEnabled: boolean;
+  tracker: { id: string; bleUuid: string; batteryPct: number | null; lastSeenAt: string | null } | null;
 }
 
 export interface ZoneFull { id: string; name: string; floorId: string; floorName: string; buildingName: string; buildingId: string }
@@ -363,6 +364,11 @@ export function HangerEditDialog({
     onSuccess: onStatusChanged,
   });
 
+  const removeTracker = useMutation({
+    mutationFn: () => api(`/hangers/${hanger.id}/tracker`, { method: "DELETE" }),
+    onSuccess: onSaved,
+  });
+
   const hasChanges =
     name !== (hanger.name ?? "") ||
     locationNote !== (hanger.locationNote ?? "") ||
@@ -481,6 +487,31 @@ export function HangerEditDialog({
               </label>
             ) : (
               <ReadRow label="Audible alarm" value={audibleAlarm ? "On" : "Off"} />
+            )}
+          </Section>
+
+          <Section title="Find-sign tracker">
+            {hanger.tracker ? (
+              <>
+                <ReadRow label="Tracker" value="Assigned" />
+                {hanger.tracker.batteryPct !== null && (
+                  <ReadRow label="Tracker battery" value={`${hanger.tracker.batteryPct}%`} />
+                )}
+                {isStaff && (
+                  <button
+                    onClick={() => removeTracker.mutate()}
+                    disabled={removeTracker.isPending}
+                    className="text-sm text-red-400 hover:text-red-300 disabled:text-slate-500"
+                  >
+                    {removeTracker.isPending ? "Removing…" : "Remove tracker"}
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-slate-400">
+                No tracker assigned. Assign one from the iOS app — open this hanger →{" "}
+                <span className="text-slate-200">Assign tracker</span>, then hold the phone next to it.
+              </p>
             )}
           </Section>
 

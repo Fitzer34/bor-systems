@@ -173,6 +173,19 @@ extension APIClient {
         try await request("/sign-tags/for-alert/\(alertId)")
     }
 
+    /// Pin a find-sign tracker to a hanger (the app scans the tracker over BLE
+    /// and sends its identity). One tracker per hanger; replaces any existing.
+    private struct AssignTrackerBody: Encodable { let bleUuid: String }
+    private struct AssignTrackerResponse: Decodable { let tracker: HangerTracker }
+    func assignTracker(hangerId: String, bleUuid: String) async throws -> HangerTracker {
+        let res: AssignTrackerResponse = try await request(
+            "/hangers/\(hangerId)/tracker", method: "PUT", body: AssignTrackerBody(bleUuid: bleUuid))
+        return res.tracker
+    }
+    func removeTracker(hangerId: String) async throws {
+        let _: EmptyResponse = try await request("/hangers/\(hangerId)/tracker", method: "DELETE")
+    }
+
     func dispatches() async throws -> [DispatchItem] {
         let res: DispatchesResponse = try await request("/dispatches")
         return res.dispatches

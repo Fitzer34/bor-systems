@@ -26,7 +26,6 @@ import { Terms } from "./pages/Terms";
 import { Status } from "./pages/Status";
 import { Sites } from "./pages/Sites";
 import { Analytics } from "./pages/Analytics";
-import { SignTags } from "./pages/SignTags";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
 
@@ -71,9 +70,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   links / bookmarks keep working. */}
               <Route path="hangers" element={<Navigate to="/devices" replace />} />
               <Route path="gateways" element={<Navigate to="/devices" replace />} />
-              {/* UWB finder tags embedded in the signs — pair to hangers so the
-                  apps' "Find sign" feature can range to them. */}
-              <Route path="sign-tags" element={<RequireAuth role={["admin", "supervisor"]}><SignTags /></RequireAuth>} />
+              {/* Trackers are assigned per-hanger now (on the hanger), so the old
+                  standalone sign-tags page redirects to Devices. */}
+              <Route path="sign-tags" element={<Navigate to="/devices" replace />} />
               {/* Planned preventive maintenance (admin + supervisor). */}
               <Route path="ppms" element={<RequireAuth role={["admin", "supervisor"]}><Ppms /></RequireAuth>} />
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />

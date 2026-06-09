@@ -1,8 +1,20 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+
+/**
+ * The sign_tags table needs a unique uwbAddress, but when a tracker is assigned
+ * by scanning it from the phone we only have its BLE identity — the real UWB MAC
+ * isn't exchanged until ranging starts. So derive a stable, unique placeholder
+ * from the BLE id (16 hex chars). It's metadata only; "Find sign" matches on the
+ * BLE id, not this.
+ */
+function deriveUwbAddress(bleUuid: string): string {
+  return createHash("sha256").update(bleUuid).digest("hex").slice(0, 16).toUpperCase();
+}
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -13,7 +25,27 @@ const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) 
 export default async function hangerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/hangers", { preHandler: [app.authenticate] }, async (req) => {
     const c = ctx(req);
-    return { hangers: await db.select().from(schema.hangers).where(eq(schema.hangers.organisationId, c.orgId)) };
+    // Left-join the paired find-sign tracker (1 per hanger) so the apps can show
+    // "tracker assigned" + battery without a second round-trip.
+    const rows = await db
+      .select({
+        hanger: schema.hangers,
+        tagId: schema.signTags.id,
+        tagBle: schema.signTags.bleUuid,
+        tagBattery: schema.signTags.batteryPct,
+        tagSeen: schema.signTags.lastSeenAt,
+      })
+      .from(schema.hangers)
+      .leftJoin(schema.signTags, eq(schema.signTags.pairedHangerId, schema.hangers.id))
+      .where(eq(schema.hangers.organisationId, c.orgId));
+    return {
+      hangers: rows.map((r) => ({
+        ...r.hanger,
+        tracker: r.tagId
+          ? { id: r.tagId, bleUuid: r.tagBle, batteryPct: r.tagBattery, lastSeenAt: r.tagSeen }
+          : null,
+      })),
+    };
   });
 
   app.post(
@@ -184,6 +216,96 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
       await db.update(schema.hangers)
         .set(updates)
         .where(and(eq(schema.hangers.id, id), eq(schema.hangers.organisationId, c.orgId)));
+      return { ok: true };
+    },
+  );
+
+  // ── Find-sign tracker (hanger-centric assignment) ────────────────────────
+  // Simple UX: from the phone you scan the tracker next to a sign and pin it to
+  // that hanger. One tracker per hanger; re-assigning replaces the previous one.
+  app.put(
+    "/hangers/:id/tracker",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      // BLE identity captured by the app's scan (CoreBluetooth id or adv name).
+      const body = z.object({ bleUuid: z.string().min(2).max(80) }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
+
+      const [hanger] = await db
+        .select({ id: schema.hangers.id })
+        .from(schema.hangers)
+        .where(and(eq(schema.hangers.id, id), eq(schema.hangers.organisationId, c.orgId)))
+        .limit(1);
+      if (!hanger) return reply.code(404).send({ error: "not_found" });
+
+      const bleUuid = body.data.bleUuid.trim();
+
+      // One tracker per hanger: unpair whatever was on this hanger before.
+      await db
+        .update(schema.signTags)
+        .set({ pairedHangerId: null })
+        .where(and(
+          eq(schema.signTags.pairedHangerId, id),
+          eq(schema.signTags.organisationId, c.orgId),
+        ));
+
+      // Upsert by BLE id so re-scanning the same physical tracker reuses its row
+      // (moving it to this hanger) instead of hitting the unique-index error.
+      const [existing] = await db
+        .select()
+        .from(schema.signTags)
+        .where(and(
+          eq(schema.signTags.bleUuid, bleUuid),
+          eq(schema.signTags.organisationId, c.orgId),
+        ))
+        .limit(1);
+
+      let tag;
+      if (existing) {
+        [tag] = await db
+          .update(schema.signTags)
+          .set({ pairedHangerId: id })
+          .where(eq(schema.signTags.id, existing.id))
+          .returning();
+      } else {
+        [tag] = await db
+          .insert(schema.signTags)
+          .values({
+            organisationId: c.orgId,
+            bleUuid,
+            uwbAddress: deriveUwbAddress(bleUuid),
+            pairedHangerId: id,
+          })
+          .returning();
+      }
+
+      if (!tag) return reply.code(500).send({ error: "tracker_assign_failed" });
+      return {
+        tracker: {
+          id: tag.id,
+          bleUuid: tag.bleUuid,
+          batteryPct: tag.batteryPct,
+          lastSeenAt: tag.lastSeenAt,
+        },
+      };
+    },
+  );
+
+  // Remove a hanger's tracker (deletes the tag record).
+  app.delete(
+    "/hangers/:id/tracker",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    async (req) => {
+      const { id } = req.params as { id: string };
+      const c = ctx(req);
+      await db
+        .delete(schema.signTags)
+        .where(and(
+          eq(schema.signTags.pairedHangerId, id),
+          eq(schema.signTags.organisationId, c.orgId),
+        ));
       return { ok: true };
     },
   );

@@ -129,6 +129,13 @@ enum HangerStatus: String, Codable {
     case active, outOfService = "out_of_service", decommissioned
 }
 
+/// The find-sign UWB tracker paired to a hanger (nil when none is assigned).
+struct HangerTracker: Codable, Hashable {
+    let id: String
+    let bleUuid: String
+    let batteryPct: Int?
+    let lastSeenAt: Date?
+}
 struct Hanger: Codable, Identifiable, Hashable {
     let id: String
     let devEui: String
@@ -142,6 +149,8 @@ struct Hanger: Codable, Identifiable, Hashable {
     let batteryPct: Int?
     let firmwareVersion: String?
     let lastSeenAt: Date?
+    /// Paired find-sign tracker, if one is assigned.
+    let tracker: HangerTracker?
 }
 struct HangersResponse: Codable { let hangers: [Hanger] }
 
