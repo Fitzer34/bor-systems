@@ -47,6 +47,23 @@ struct AlertDetailView: View {
 
                 locationCard
 
+                // AirTag-style precision finding — walk straight to the lifted
+                // sign. Useful while responding, so we show it until the alert
+                // is closed. Falls back to the floor plan if no tag is paired
+                // or the phone has no UWB chip (handled inside FindSignView).
+                if alert.status != .closed {
+                    NavigationLink {
+                        FindSignView(alertId: alert.id, zoneName: alert.zoneName)
+                    } label: {
+                        Label("Find sign", systemImage: "location.viewfinder")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .background(Color.green, in: RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(.white)
+                }
+
                 if alert.status == .open {
                     Button {
                         Task { await acknowledge() }

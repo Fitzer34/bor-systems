@@ -60,6 +60,11 @@ final class SignFinder: NSObject, ObservableObject {
     private var tagPeripheral: CBPeripheral?
     private var rxChar: CBCharacteristic?
     private var bleUuid: String?
+    /// If the provisioned tag isn't matched by identifier/name but some NI tag is
+    /// clearly in range, connect to it after a short grace period. Covers the
+    /// common single-tag / bench case where the stored name isn't an exact match.
+    private var fallbackCandidate: CBPeripheral?
+    private var fallbackTask: Task<Void, Never>?
 
     // MARK: - Public API
 
@@ -89,6 +94,8 @@ final class SignFinder: NSObject, ObservableObject {
 
     func stop() {
         send(.stop)
+        fallbackTask?.cancel(); fallbackTask = nil
+        fallbackCandidate = nil
         niSession?.invalidate()
         niSession = nil
         if let p = tagPeripheral { central?.cancelPeripheralConnection(p) }
@@ -123,6 +130,19 @@ extension SignFinder: CBCentralManagerDelegate {
                 return
             }
             central.scanForPeripherals(withServices: BLEProfile.services, options: nil)
+            // Grace period: if the provisioned tag isn't matched by id/name but an
+            // NI tag is clearly in range, connect to it so a single-tag setup
+            // "just works". (For multi-tag sites, provision an exact name — see
+            // didDiscover — so we never pick the wrong one.)
+            self.fallbackTask?.cancel()
+            self.fallbackTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard self.tagPeripheral == nil, let cand = self.fallbackCandidate else { return }
+                self.tagPeripheral = cand
+                cand.delegate = self
+                central.stopScan()
+                central.connect(cand, options: nil)
+            }
         }
     }
 
@@ -130,12 +150,23 @@ extension SignFinder: CBCentralManagerDelegate {
                                     didDiscover peripheral: CBPeripheral,
                                     advertisementData: [String : Any],
                                     rssi RSSI: NSNumber) {
+        // peripheral.identifier is stable per-phone but differs across phones, so
+        // we ALSO accept a match on the advertised name (portable). The backend's
+        // bleUuid field can hold either form.
+        let advName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name
         Task { @MainActor in
             guard self.tagPeripheral == nil else { return }
-            // Prefer the tag the backend pinned to this alert; fall back to the
-            // first NI-advertising peripheral if no UUID was provisioned yet.
-            if let expected = self.bleUuid, !expected.isEmpty,
-               peripheral.identifier.uuidString != expected { return }
+            if let expected = self.bleUuid, !expected.isEmpty {
+                let matchesId   = peripheral.identifier.uuidString.caseInsensitiveCompare(expected) == .orderedSame
+                let matchesName = advName?.caseInsensitiveCompare(expected) == .orderedSame
+                guard matchesId || matchesName else {
+                    // Not our provisioned tag — remember the first one seen as a
+                    // fallback in case nothing matches (single-tag convenience).
+                    if self.fallbackCandidate == nil { self.fallbackCandidate = peripheral }
+                    return
+                }
+            }
+            self.fallbackTask?.cancel(); self.fallbackTask = nil
             self.tagPeripheral = peripheral
             peripheral.delegate = self
             central.stopScan()

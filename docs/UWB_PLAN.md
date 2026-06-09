@@ -47,9 +47,24 @@ that blob → tag starts UWB → ranging callbacks stream distance/direction.
   IDs are an EXACT match (`0x1/0x2/0x3` from tag, `0xA/0xB/0xC` to tag); writes are
   `.withResponse`; `SignFinder` now scans/binds BOTH GATT profiles the firmware may
   expose — NUS `6E40…` and Qorvo-NI `2E93…` — exactly like the reference app.
+- ✅ **Wired into the app (this commit):**
+  - iOS `AlertDetailView` shows a **"Find sign"** button (until the alert is
+    closed) → pushes `FindSignView`.
+  - `SignFinder` now matches the provisioned tag by CoreBluetooth identifier OR
+    advertised name (the id is per-phone, the name is portable), and after a 5 s
+    grace period falls back to the only NI tag in range — so a single-tag setup
+    "just works" even if the stored name isn't an exact match.
+  - Web dashboard has a **Sign tags** page (admin/supervisor): register a tag
+    (BLE name + UWB address), pair/unpair to a hanger, delete. The backend
+    `sign-tags` route + `0008_sign_tags` migration were already in place.
 - ⬜ Smoke-test board on the iPhone: build `QorvoAccessorySample.xcodeproj` (in the
   SDK) → run → it shows live distance + direction arrow. Proves the tag works.
-- ⬜ Provision one tag ↔ one hanger in the backend; test ranging via HazardLink "Find sign".
+- ⬜ End-to-end in HazardLink: web → **Sign tags → Register tag** (BLE name = what
+  the Qorvo app shows for the board) → pair to a hanger → lift that sign to fire a
+  spill alert → open it in the iOS app → **Find sign** → confirm ranging.
+- ⬜ Multi-tag identity: the stock QANI firmware advertises a fixed name, so several
+  tags look alike over BLE. For >1 sign, give each board a unique advertised name
+  (firmware tweak) and provision that exact name. Tracked as a follow-up.
 - ⬜ Android: AndroidX UWB (dep already present) — after iOS works.
 
 ## Flashing recipe (repeat for each of the 6 boards)
