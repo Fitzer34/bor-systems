@@ -12,9 +12,11 @@ import simd
 /// range over UWB. (The earlier version used `NINearbyPeerConfiguration`, which
 /// only works between two Apple devices — see docs/UWB_PLAN.md.)
 ///
-/// BLE transport = Nordic UART Service (NUS), which is what Qorvo's "Nearby
-/// Interaction" sample firmware for the DWM3001 uses. Confirm these against the
-/// flashed firmware.
+/// BLE transport = Qorvo's NI GATT profile. Qorvo's firmware exposes ONE of two
+/// services depending on the board/build (legacy Nordic-UART `6E40…` or the newer
+/// Qorvo-NI `2E93…`), so — exactly like Qorvo's QorvoAccessorySample — we scan for
+/// and bind to whichever the tag advertises. Verified against QorvoAccessorySample
+/// v1.3.5 + the DWM3001CDK-QANI-FreeRTOS QNI 3.0.0 firmware flashed on the tag.
 ///
 /// Accessory-protocol messages (match Qorvo sample / Apple NINearbyAccessorySample):
 ///   phone → tag:  0x0A initialize · 0x0B configureAndStart(+config) · 0x0C stop
@@ -22,11 +24,22 @@ import simd
 @MainActor
 final class SignFinder: NSObject, ObservableObject {
 
-    // MARK: BLE / protocol constants (must match the tag firmware)
-    private enum NUS {
-        static let service = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
-        static let rx      = CBUUID(string: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E") // write: phone → tag
-        static let tx      = CBUUID(string: "6E400003-B5A3-F393-E0A9-E50E24DCCA9E") // notify: tag → phone
+    // MARK: BLE / protocol constants (verified against the flashed QNI 3.0.0 firmware)
+    // Qorvo NI firmware advertises one of these two profiles; we accept either.
+    private enum BLEProfile {
+        // Legacy Nordic UART Service (Apple NINearbyAccessorySample / older builds).
+        static let nusService = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
+        static let nusRx      = CBUUID(string: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E") // write  phone → tag
+        static let nusTx      = CBUUID(string: "6E400003-B5A3-F393-E0A9-E50E24DCCA9E") // notify tag → phone
+        // Qorvo NI Service (current DWM3001CDK QANI builds).
+        static let qniService = CBUUID(string: "2E938FD0-6A61-11ED-A1EB-0242AC120002")
+        static let qniRx      = CBUUID(string: "2E93998A-6A61-11ED-A1EB-0242AC120002") // write  phone → tag
+        static let qniTx      = CBUUID(string: "2E939AF2-6A61-11ED-A1EB-0242AC120002") // notify tag → phone
+
+        static let services  = [nusService, qniService]
+        static let allChars  = [nusRx, nusTx, qniRx, qniTx]
+        static func isRx(_ u: CBUUID) -> Bool { u == nusRx || u == qniRx }
+        static func isTx(_ u: CBUUID) -> Bool { u == nusTx || u == qniTx }
     }
     private enum ToAccessory: UInt8 { case initialize = 0x0A, configureAndStart = 0x0B, stop = 0x0C }
     private enum FromAccessory: UInt8 { case configurationData = 0x01, uwbDidStart = 0x02, uwbDidStop = 0x03 }
@@ -109,7 +122,7 @@ extension SignFinder: CBCentralManagerDelegate {
                 self.state = .unavailable(reason: "Bluetooth is off. Turn it on in Settings.")
                 return
             }
-            central.scanForPeripherals(withServices: [NUS.service], options: nil)
+            central.scanForPeripherals(withServices: BLEProfile.services, options: nil)
         }
     }
 
@@ -120,7 +133,7 @@ extension SignFinder: CBCentralManagerDelegate {
         Task { @MainActor in
             guard self.tagPeripheral == nil else { return }
             // Prefer the tag the backend pinned to this alert; fall back to the
-            // first NUS peripheral if no UUID was provisioned yet.
+            // first NI-advertising peripheral if no UUID was provisioned yet.
             if let expected = self.bleUuid, !expected.isEmpty,
                peripheral.identifier.uuidString != expected { return }
             self.tagPeripheral = peripheral
@@ -132,7 +145,7 @@ extension SignFinder: CBCentralManagerDelegate {
 
     nonisolated func centralManager(_ central: CBCentralManager,
                                     didConnect peripheral: CBPeripheral) {
-        peripheral.discoverServices([NUS.service])
+        peripheral.discoverServices(BLEProfile.services)
     }
 
     nonisolated func centralManager(_ central: CBCentralManager,
@@ -145,8 +158,10 @@ extension SignFinder: CBCentralManagerDelegate {
 
 extension SignFinder: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard let svc = peripheral.services?.first(where: { $0.uuid == NUS.service }) else { return }
-        peripheral.discoverCharacteristics([NUS.rx, NUS.tx], for: svc)
+        guard let services = peripheral.services else { return }
+        for svc in services where BLEProfile.services.contains(svc.uuid) {
+            peripheral.discoverCharacteristics(BLEProfile.allChars, for: svc)
+        }
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral,
@@ -154,12 +169,18 @@ extension SignFinder: CBPeripheralDelegate {
                                 error: Error?) {
         guard let chars = service.characteristics else { return }
         Task { @MainActor in
-            self.rxChar = chars.first(where: { $0.uuid == NUS.rx })
-            if let tx = chars.first(where: { $0.uuid == NUS.tx }) {
+            // Bind rx (write) + tx (notify) from whichever profile this service exposes.
+            if let rx = chars.first(where: { BLEProfile.isRx($0.uuid) }) {
+                self.rxChar = rx
+            }
+            if let tx = chars.first(where: { BLEProfile.isTx($0.uuid) }) {
                 peripheral.setNotifyValue(true, for: tx)
             }
-            // Kick off the handshake: ask the tag for its accessory config.
-            self.send(.initialize)
+            // Once we have a write characteristic, kick off the handshake:
+            // ask the tag for its accessory configuration data.
+            if self.rxChar != nil {
+                self.send(.initialize)
+            }
         }
     }
 

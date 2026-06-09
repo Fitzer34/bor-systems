@@ -39,11 +39,39 @@ that blob → tag starts UWB → ranging callbacks stream distance/direction.
 *(Confirm exact UUIDs/message-IDs against the flashed Qorvo sample — they're defined there.)*
 
 ## What's done vs. to do
-- ✅ iOS `SignFinder.swift` rewritten to the accessory protocol (this commit).
+- ✅ iOS `SignFinder.swift` rewritten to the accessory protocol.
 - ✅ Backend `sign-tags` route already maps alert → `{bleUuid, uwbAddress}`.
-- ⬜ Flash Qorvo NI sample on a DWM3001CDK (when boards arrive); confirm UUIDs.
-- ⬜ Provision one tag ↔ one hanger in the backend; test ranging on a UWB iPhone.
+- ✅ **Flashed** `DWM3001CDK-QANI-FreeRTOS_full_QNI_3_0_0.hex` to board #1 (probe-rs,
+  nRF52833; vector table read back byte-exact). Recipe below.
+- ✅ **Protocol reconciled** against Qorvo's `QorvoAccessorySample` v1.3.5: message
+  IDs are an EXACT match (`0x1/0x2/0x3` from tag, `0xA/0xB/0xC` to tag); writes are
+  `.withResponse`; `SignFinder` now scans/binds BOTH GATT profiles the firmware may
+  expose — NUS `6E40…` and Qorvo-NI `2E93…` — exactly like the reference app.
+- ⬜ Smoke-test board on the iPhone: build `QorvoAccessorySample.xcodeproj` (in the
+  SDK) → run → it shows live distance + direction arrow. Proves the tag works.
+- ⬜ Provision one tag ↔ one hanger in the backend; test ranging via HazardLink "Find sign".
 - ⬜ Android: AndroidX UWB (dep already present) — after iOS works.
+
+## Flashing recipe (repeat for each of the 6 boards)
+Open-source, no SEGGER/myQorvo account needed. The DWM3001CDK's onboard J-Link OB
+is driven by **probe-rs**:
+```sh
+export PATH="$HOME/.cargo/bin:$PATH"
+HEX="…/Qorvo_Nearby_Interaction_3_2_1/Software/Accessory/Binaries/DWM3001CDK-QANI-FreeRTOS_full_QNI_3_0_0.hex"
+probe-rs list                                              # confirm "J-Link" shows up
+probe-rs erase    --chip nRF52833_xxAA                     # clean slate
+probe-rs download --chip nRF52833_xxAA --binary-format hex "$HEX"
+probe-rs reset    --chip nRF52833_xxAA                     # boot the firmware
+```
+Notes:
+- Chip = **nRF52833_xxAA** (the DWM3001C's MCU). Use the **DWM3001CDK** hex, NOT the
+  QTag / Type2AB / nRF52832/40/33-DK variants in the same folder.
+- `probe-rs verify` will report "contents do not match" — this is a **cosmetic
+  probe-rs quirk** on full-image hex files (it compares `0xFF`-fill/FDS pages the
+  flasher legitimately skips). The download itself verifies as it writes, and the
+  reset-vector table reads back byte-exact, so the flash is good.
+- The minimal QANI build does **not** log over the J-Link VCOM (it uses RTT), so a
+  silent serial port is normal — confirm the board via the iPhone app, not UART.
 
 ## Order of operations (when boards arrive)
 1. Flash Qorvo NI sample on one DWM3001CDK.
