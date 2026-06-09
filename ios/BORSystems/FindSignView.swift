@@ -76,10 +76,13 @@ struct FindSignView: View {
                 .foregroundStyle(distanceColor(distance))
                 .contentTransition(.numericText())
 
-            // Helper text.
-            Text(hintText(distance: distance, direction: direction))
+            // Helper text. With no direction yet, prefer the live camera/
+            // convergence coaching so the user knows exactly what to adjust.
+            Text(noDirectionHint(distance: distance, direction: direction))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
 
             Spacer()
 
@@ -107,6 +110,14 @@ struct FindSignView: View {
         if m < 2.0  { return .yellow }
         if m < 5.0  { return .orange }
         return .red
+    }
+
+    /// With no direction yet, pick the most useful nudge: "you're on top of it"
+    /// up close, otherwise the live camera/convergence coaching from SignFinder.
+    private func noDirectionHint(distance: Float, direction: simd_float3?) -> String {
+        if direction != nil { return hintText(distance: distance, direction: direction) }
+        if distance < 0.6 { return "You're right next to it — look around you" }
+        return finder.coachingHint ?? "Point the phone at the sign and walk a few steps"
     }
 
     private func hintText(distance: Float, direction: simd_float3?) -> String {

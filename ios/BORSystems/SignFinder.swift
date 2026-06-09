@@ -2,6 +2,7 @@ import Foundation
 import NearbyInteraction
 import CoreBluetooth
 import simd
+import AVFoundation
 
 /// Drives UWB precision-finding against a Qorvo DWM3001 sign tag using Apple's
 /// **Nearby Interaction Accessory Protocol** (`NINearbyAccessoryConfiguration`).
@@ -54,6 +55,10 @@ final class SignFinder: NSObject, ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
+    /// AirTag-style coaching shown while we have distance but no direction yet.
+    /// Direction on iPhone 14+ is camera-assisted — it needs Camera access,
+    /// movement and light, so we tell the user exactly what's missing.
+    @Published private(set) var coachingHint: String?
 
     private var niSession: NISession?
     private var central: CBCentralManager?
@@ -75,6 +80,12 @@ final class SignFinder: NSObject, ObservableObject {
                 reason: "This iPhone doesn't have a U1 or U2 chip. iPhone 11 and newer are supported.")
             return
         }
+
+        // The direction arrow on iPhone 14+ is camera-assisted, so flag it up
+        // front if Camera access is off (distance still works without it).
+        coachingHint = cameraDenied
+            ? "Turn on Camera in Settings to get the direction arrow"
+            : "Point the phone at the sign and walk a few steps"
 
         // 2. Which tag is paired to this alert's hanger?
         state = .lookingUp
@@ -278,6 +289,25 @@ extension SignFinder: NISessionDelegate {
         }
     }
 
+    /// Camera-assistance convergence updates — tells us *why* there's no
+    /// direction yet so we can coach the user (move / more light / camera off).
+    nonisolated func session(_ session: NISession,
+                             didUpdateAlgorithmConvergence convergence: NIAlgorithmConvergence,
+                             for object: NINearbyObject?) {
+        Task { @MainActor in
+            switch convergence.status {
+            case .converged:
+                self.coachingHint = nil
+            case .notConverged(let reasons):
+                self.coachingHint = self.cameraDenied
+                    ? "Turn on Camera in Settings to get the direction arrow"
+                    : Self.directionHint(for: reasons)
+            @unknown default:
+                self.coachingHint = nil
+            }
+        }
+    }
+
     nonisolated func session(_ session: NISession,
                              didRemove nearbyObjects: [NINearbyObject],
                              reason: NINearbyObject.RemovalReason) {
@@ -295,5 +325,25 @@ extension SignFinder: NISessionDelegate {
         Task { @MainActor in
             self.state = .unavailable(reason: "Session ended: \(error.localizedDescription)")
         }
+    }
+}
+
+// MARK: - Direction coaching (camera-assisted NI on iPhone 14+)
+
+extension SignFinder {
+    /// True when the user has explicitly denied camera access — camera
+    /// assistance (and so the direction arrow) can't run without it.
+    var cameraDenied: Bool {
+        let s = AVCaptureDevice.authorizationStatus(for: .video)
+        return s == .denied || s == .restricted
+    }
+
+    /// Map the session's "why aren't we converged" reasons to a plain-English nudge.
+    static func directionHint(for reasons: [NIAlgorithmConvergenceStatus.Reason]) -> String {
+        if reasons.contains(.insufficientLighting) { return "It's too dark — point the phone somewhere brighter" }
+        if reasons.contains(.insufficientHorizontalSweep) { return "Sweep the phone slowly left and right" }
+        if reasons.contains(.insufficientVerticalSweep) { return "Tilt the phone slowly up and down" }
+        if reasons.contains(.insufficientMovement) { return "Keep moving — walk a few steps" }
+        return "Point the phone toward the sign and keep moving"
     }
 }
