@@ -53,6 +53,14 @@ struct FindSignView: View {
         }
         .navigationTitle(zoneName ?? "Find sign")
         .navigationBarTitleDisplayMode(.inline)
+        // Hidden AR session that powers camera-assisted direction (the arrow).
+        .background(
+            CameraAssistARView { session in finder.attachARSession(session) }
+                .frame(width: 1, height: 1)
+                .opacity(0.02)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        )
         .task { await finder.start(alertId: alertId) }
         .onDisappear { finder.stop() }
         .sheet(isPresented: $showAssign) {

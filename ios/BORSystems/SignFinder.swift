@@ -74,12 +74,20 @@ final class SignFinder: NSObject, ObservableObject {
     /// common single-tag / bench case where the stored name isn't an exact match.
     private var fallbackCandidate: CBPeripheral?
     private var fallbackTask: Task<Void, Never>?
-    /// A world-tracking AR session shared with NISession. This is what unlocks
-    /// DIRECTION (the arrow) on iPhone 14+ — Apple computes it from camera +
-    /// UWB fusion, and the reference Qorvo app only gets the arrow because it
-    /// runs its own ARSession and hands it over via setARSession(). Without
-    /// this you get distance but never a heading. Runs headless (no preview).
-    private let arSession = ARSession()
+    /// A *view-backed* world-tracking AR session, shared with NISession to unlock
+    /// DIRECTION (the arrow) on iPhone 14+ (Apple fuses camera + UWB). It comes
+    /// from a hidden ARView in FindSignView — a bare `ARSession()` gets rejected
+    /// with invalidARConfiguration, which is exactly what bit us. Camera
+    /// assistance is best-effort: if it's missing or fails, we fall back to
+    /// distance-only so the finder never dead-ends.
+    private var externalARSession: ARSession?
+    private var lastAccessoryData: Data?
+    private var usedCameraAssist = false
+    private var cameraAssistDisabled = false
+    private var retriedPlain = false
+
+    /// Hand in the AR session from the view layer (called once it's running).
+    func attachARSession(_ session: ARSession) { externalARSession = session }
 
     // MARK: - Public API
 
@@ -91,22 +99,15 @@ final class SignFinder: NSObject, ObservableObject {
             return
         }
 
-        // The direction arrow on iPhone 14+ is camera-assisted, so flag it up
-        // front if Camera access is off (distance still works without it).
+        // The direction arrow on iPhone 14+ is camera-assisted, so ask for the
+        // camera up front (the arrow can't compute without it). Distance still
+        // works if declined — we just won't show a heading.
+        if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
+            _ = await AVCaptureDevice.requestAccess(for: .video)
+        }
         coachingHint = cameraDenied
             ? "Turn on Camera in Settings to get the direction arrow"
             : "Point the phone at the sign and walk a few steps"
-
-        // Warm up a world-tracking AR session now so camera assistance has
-        // tracking ready by the time we range (we hand it to NISession below).
-        // Running it also triggers the camera-permission prompt if needed.
-        if ARWorldTrackingConfiguration.isSupported {
-            let arConfig = ARWorldTrackingConfiguration()
-            arConfig.worldAlignment = .gravity
-            arConfig.isCollaborationEnabled = false
-            arConfig.userFaceTrackingEnabled = false
-            arSession.run(arConfig)
-        }
 
         // 2. Which tag is paired to this alert's hanger?
         state = .lookingUp
@@ -128,13 +129,17 @@ final class SignFinder: NSObject, ObservableObject {
         send(.stop)
         fallbackTask?.cancel(); fallbackTask = nil
         fallbackCandidate = nil
-        arSession.pause()
         niSession?.invalidate()
         niSession = nil
         if let p = tagPeripheral { central?.cancelPeripheralConnection(p) }
         tagPeripheral = nil
         rxChar = nil
         central = nil
+        // The hidden ARView owns its session and tears it down on disappear.
+        lastAccessoryData = nil
+        usedCameraAssist = false
+        retriedPlain = false
+        cameraAssistDisabled = false
     }
 
     func markFound() {
@@ -272,22 +277,23 @@ extension SignFinder: CBPeripheralDelegate {
     @MainActor
     private func startSession(with accessoryData: Data) {
         do {
+            lastAccessoryData = accessoryData
             let config = try NINearbyAccessoryConfiguration(data: accessoryData)
-            // iPhone 14 and newer (incl. iPhone 16) need CAMERA ASSISTANCE to
-            // produce a direction vector — without this you get distance only,
-            // no arrow. Requires NSCameraUsageDescription in Info.plist + camera
-            // permission, and the user sweeping the phone in a small circle for
-            // a second or two so NearbyInteraction converges on a heading.
-            // (Source: Qorvo forum "DWM3001CDK iPhone 16 Demo Not Working".)
-            if #available(iOS 16.0, *) {
-                config.isCameraAssistanceEnabled = true
-            }
+            // Camera assistance (= the direction arrow on iPhone 14+) is best
+            // effort: enable it only when Camera is granted AND we have a real,
+            // view-backed AR session. Otherwise range distance-only — reliable,
+            // and never a dead end. If it fails anyway, didInvalidateWith retries
+            // distance-only.
+            let useCameraAssist = !cameraAssistDisabled && cameraAuthorized && externalARSession != nil
+            config.isCameraAssistanceEnabled = useCameraAssist
+            usedCameraAssist = useCameraAssist
+
             let session = niSession ?? NISession()
             session.delegate = self
             niSession = session
-            // Share our world-tracking AR session BEFORE running, so camera
-            // assistance can resolve direction (the arrow), not just distance.
-            session.setARSession(arSession)
+            if useCameraAssist, let ar = externalARSession {
+                session.setARSession(ar)   // must precede run()
+            }
             session.run(config)
         } catch {
             state = .unavailable(reason: "Couldn't start UWB session: \(error.localizedDescription)")
@@ -348,6 +354,17 @@ extension SignFinder: NISessionDelegate {
     }
     nonisolated func session(_ session: NISession, didInvalidateWith error: Error) {
         Task { @MainActor in
+            // If camera-assisted ranging fails (e.g. the AR config is rejected),
+            // retry ONCE distance-only so Find sign still works rather than
+            // dead-ending. Distance is the workhorse; the arrow is the bonus.
+            if self.usedCameraAssist, !self.retriedPlain, let data = self.lastAccessoryData {
+                self.retriedPlain = true
+                self.cameraAssistDisabled = true
+                self.niSession?.invalidate()
+                self.niSession = nil
+                self.startSession(with: data)
+                return
+            }
             self.state = .unavailable(reason: "Session ended: \(error.localizedDescription)")
         }
     }
@@ -361,6 +378,10 @@ extension SignFinder {
     var cameraDenied: Bool {
         let s = AVCaptureDevice.authorizationStatus(for: .video)
         return s == .denied || s == .restricted
+    }
+
+    var cameraAuthorized: Bool {
+        AVCaptureDevice.authorizationStatus(for: .video) == .authorized
     }
 
     /// Map the session's "why aren't we converged" reasons to a plain-English nudge.
