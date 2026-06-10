@@ -1,30 +1,34 @@
 import SwiftUI
 import ARKit
-import RealityKit
+import SceneKit
 
-/// A tiny, effectively-invisible ARView that runs a gravity-aligned world-
-/// tracking session and hands it to `SignFinder` for camera-assisted DIRECTION
-/// (the find-sign arrow on iPhone 14+).
+/// A near-invisible AR view that runs a world-tracking session and hands it to
+/// `SignFinder` for camera-assisted DIRECTION (the find-sign arrow on iPhone 14+).
 ///
-/// Why a real view and not a bare `ARSession()`: Nearby Interaction rejects a
-/// bare session with `invalidARConfiguration` — it needs a genuine, view-backed
-/// AR session. This mirrors Qorvo's reference app (a hidden `ARView`), which is
-/// the configuration that actually produces the arrow on this exact phone +
-/// firmware. No camera preview is shown to the user; the view is 1pt.
+/// Why this exact shape:
+///   • NI needs a *view-backed* session that **we** fully own. A bare
+///     `ARSession()` and RealityKit `ARView`'s auto-managed session are both
+///     rejected with `NIERROR_INVALID_AR_SESSION`.
+///   • `ARSCNView` lets us assign our own `ARSession` and run a clean
+///     `ARWorldTrackingConfiguration` (gravity-aligned, no extras), which is the
+///     configuration NI accepts — this mirrors Qorvo's reference app.
+/// No camera preview is shown to the user; the view renders at ~2% opacity.
 struct CameraAssistARView: UIViewRepresentable {
     /// Called once with the running session so the finder can `setARSession`.
     let onSession: (ARSession) -> Void
 
-    func makeUIView(context: Context) -> ARView {
-        let view = ARView(frame: .zero)
+    func makeUIView(context: Context) -> ARSCNView {
+        let view = ARSCNView(frame: .zero)
+        let session = ARSession()
+        view.session = session                 // we own the session, not SceneKit
         let config = ARWorldTrackingConfiguration()
         config.worldAlignment = .gravity
         config.isCollaborationEnabled = false
         config.userFaceTrackingEnabled = false
-        view.session.run(config)
-        onSession(view.session)
+        session.run(config)
+        onSession(session)
         return view
     }
 
-    func updateUIView(_ uiView: ARView, context: Context) {}
+    func updateUIView(_ uiView: ARSCNView, context: Context) {}
 }
