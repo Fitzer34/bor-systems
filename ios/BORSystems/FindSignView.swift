@@ -53,13 +53,15 @@ struct FindSignView: View {
         }
         .navigationTitle(zoneName ?? "Find sign")
         .navigationBarTitleDisplayMode(.inline)
-        // Hidden AR session that powers camera-assisted direction (the arrow).
+        // Full-screen but near-invisible AR session powering camera-assisted
+        // direction. It must be real-sized (not 1pt) or ARKit world tracking is
+        // starved of resources and never converges — so the arrow never comes.
         .background(
             CameraAssistARView { session in finder.attachARSession(session) }
-                .frame(width: 1, height: 1)
                 .opacity(0.02)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
+                .ignoresSafeArea()
         )
         .task { await finder.start(alertId: alertId) }
         .onDisappear { finder.stop() }
