@@ -34,6 +34,16 @@ struct FindSignView: View {
 
     var body: some View {
         ZStack {
+            // Live (dimmed) camera. This BOTH powers camera-assisted direction
+            // and — crucially — gives ARKit a real on-screen surface so the
+            // camera/AR session actually starts. A near-invisible view fails to
+            // start the camera, and NI then rejects it (INVALID_AR_SESSION).
+            CameraAssistARView { session in finder.attachARSession(session) }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            Color.black.opacity(0.62).ignoresSafeArea()
+
             switch finder.state {
             case .idle, .lookingUp:
                 ProgressView("Looking up tag…")
@@ -53,16 +63,6 @@ struct FindSignView: View {
         }
         .navigationTitle(zoneName ?? "Find sign")
         .navigationBarTitleDisplayMode(.inline)
-        // Full-screen but near-invisible AR session powering camera-assisted
-        // direction. It must be real-sized (not 1pt) or ARKit world tracking is
-        // starved of resources and never converges — so the arrow never comes.
-        .background(
-            CameraAssistARView { session in finder.attachARSession(session) }
-                .opacity(0.02)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .ignoresSafeArea()
-        )
         .task { await finder.start(alertId: alertId) }
         .onDisappear { finder.stop() }
         .sheet(isPresented: $showAssign) {
