@@ -87,7 +87,17 @@ final class SignFinder: NSObject, ObservableObject {
     private var retriedPlain = false
 
     /// Hand in the AR session from the view layer (called once it's running).
-    func attachARSession(_ session: ARSession) { externalARSession = session }
+    func attachARSession(_ session: ARSession) {
+        externalARSession = session
+        print("🧭 SignFinder: AR session attached")
+        // If we already started ranging distance-only because the AR session
+        // wasn't ready in time, restart now with camera assistance.
+        if niSession != nil, !usedCameraAssist, !cameraAssistDisabled,
+           cameraAuthorized, let data = lastAccessoryData {
+            print("🧭 SignFinder: AR attached late — re-running WITH camera assist")
+            startSession(with: data)
+        }
+    }
 
     // MARK: - Public API
 
@@ -285,6 +295,7 @@ extension SignFinder: CBPeripheralDelegate {
             // and never a dead end. If it fails anyway, didInvalidateWith retries
             // distance-only.
             let useCameraAssist = !cameraAssistDisabled && cameraAuthorized && externalARSession != nil
+            print("🧭 SignFinder: startSession useCameraAssist=\(useCameraAssist) camAuth=\(cameraAuthorized) arAttached=\(externalARSession != nil) disabled=\(cameraAssistDisabled)")
             config.isCameraAssistanceEnabled = useCameraAssist
             usedCameraAssist = useCameraAssist
 
@@ -326,6 +337,7 @@ extension SignFinder: NISessionDelegate {
                              didUpdateAlgorithmConvergence convergence: NIAlgorithmConvergence,
                              for object: NINearbyObject?) {
         Task { @MainActor in
+            print("🧭 SignFinder: convergence \(convergence.status)")
             switch convergence.status {
             case .converged:
                 self.coachingHint = nil
@@ -354,6 +366,7 @@ extension SignFinder: NISessionDelegate {
     }
     nonisolated func session(_ session: NISession, didInvalidateWith error: Error) {
         Task { @MainActor in
+            print("🧭 SignFinder: session invalidated — \(error)")
             // If camera-assisted ranging fails (e.g. the AR config is rejected),
             // retry ONCE distance-only so Find sign still works rather than
             // dead-ending. Distance is the workhorse; the arrow is the bonus.
