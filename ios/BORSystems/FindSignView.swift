@@ -1,62 +1,56 @@
 import SwiftUI
-import NearbyInteraction
-import CoreBluetooth
-import simd
+import UIKit
 
-/// AirTag-style "Find sign" view using Apple's NearbyInteraction framework
-/// + Ultra-Wideband ranging with the sign's embedded Qorvo DWM3001 tag.
+/// "Find sign" — a hot/cold precision finder driven by UWB distance to the sign's
+/// tag. No camera, no line of sight required: distance ranges through walls and
+/// around corners, so it guides staff to the right spot even when the sign isn't
+/// visible yet. The screen glows red→green as you close in, and a haptic pulse
+/// speeds up and strengthens the nearer you get — like a metal detector.
 ///
-/// Entry path:
-///   1. Spill alert fires → user taps "Find sign" on the alert
-///   2. Backend lookup for the alert's paired tag → returns BLE UUID
-///   3. This view scans BLE, connects, exchanges UWB discovery tokens,
-///      starts ranging, then renders a big arrow + cm-accurate distance
-///
-/// Fallback behaviour (handled by the parent navigator, not this view):
-///   - No paired tag for this alert → push FloorPlanView instead
-///   - Phone doesn't support UWB → push FloorPlanView with a banner
-///     ("Your phone doesn't support precision finding — using floor plan")
+/// (Camera-assisted direction arrows are deliberately not used: on iPhone 14+
+/// they need the camera pointed at the target with line of sight, which is the
+/// opposite of when you actually need finding — and a big yellow sign you can
+/// already see doesn't need an arrow.)
 struct FindSignView: View {
     let alertId: String
     let zoneName: String?
-    /// The alert's hanger — lets staff assign a tracker right here when none
-    /// is paired yet, instead of dead-ending to the floor plan.
+    /// The alert's hanger — lets staff assign a tracker right here when none is
+    /// paired yet, instead of dead-ending to the floor plan.
     var hangerId: String? = nil
 
     @StateObject private var finder = SignFinder()
+    @StateObject private var haptics = HapticPulser()
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: AuthStore
     @State private var showAssign = false
+    @State private var pingScale: CGFloat = 1.0
 
     private var isStaff: Bool {
         auth.user?.role == .admin || auth.user?.role == .supervisor
     }
 
+    /// Current distance while ranging (nil in every other state). Drives the
+    /// haptics from one place via `.onChange`.
+    private var rangingDistance: Float? {
+        if case .ranging(let d, _) = finder.state { return d }
+        return nil
+    }
+
     var body: some View {
         ZStack {
-            // Live (dimmed) camera. This BOTH powers camera-assisted direction
-            // and — crucially — gives ARKit a real on-screen surface so the
-            // camera/AR session actually starts. A near-invisible view fails to
-            // start the camera, and NI then rejects it (INVALID_AR_SESSION).
-            CameraAssistARView { session in finder.attachARSession(session) }
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            Color.black.opacity(0.62).ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             switch finder.state {
             case .idle, .lookingUp:
-                ProgressView("Looking up tag…")
+                ProgressView("Looking up tag…").tint(.white)
             case .connecting:
-                ProgressView("Connecting to sign…")
-            case .ranging(let distance, let direction):
-                rangingUI(distance: distance, direction: direction)
+                ProgressView("Connecting to sign…").tint(.white)
+            case .ranging(let distance, _):
+                rangingUI(distance: distance)
             case .signFound:
                 FoundUI()
             case .noTagPaired:
-                NoTagUI(canAssign: isStaff && hangerId != nil) {
-                    showAssign = true
-                }
+                NoTagUI(canAssign: isStaff && hangerId != nil) { showAssign = true }
             case .unavailable(let reason):
                 UnavailableUI(reason: reason)
             }
@@ -64,11 +58,20 @@ struct FindSignView: View {
         .navigationTitle(zoneName ?? "Find sign")
         .navigationBarTitleDisplayMode(.inline)
         .task { await finder.start(alertId: alertId) }
-        .onDisappear { finder.stop() }
+        .onChange(of: rangingDistance) { d in
+            if let d { haptics.start(); haptics.update(distance: d) }
+            else { haptics.stop() }
+        }
+        .onChange(of: haptics.tick) { _ in
+            // A quick "pop" on each haptic pulse so you see and feel each beat.
+            withAnimation(.easeOut(duration: 0.10)) { pingScale = 1.10 }
+            withAnimation(.easeIn(duration: 0.24).delay(0.10)) { pingScale = 1.0 }
+        }
+        .onDisappear { finder.stop(); haptics.stop() }
         .sheet(isPresented: $showAssign) {
             if let hangerId {
                 TrackerAssignSheet(hangerId: hangerId) { _ in
-                    // Tracker pinned — kick the finder off again, it'll now
+                    // Tracker pinned — kick the finder off again; it'll now
                     // resolve the tag and start ranging.
                     Task {
                         finder.stop()
@@ -79,98 +82,183 @@ struct FindSignView: View {
         }
     }
 
-    // MARK: - Ranging UI
+    // MARK: - Hot/cold ranging UI
 
     @ViewBuilder
-    private func rangingUI(distance: Float, direction: simd_float3?) -> some View {
-        VStack(spacing: 20) {
-            Spacer()
+    private func rangingUI(distance: Float) -> some View {
+        let p = proximity(distance)
+        let c = proximityColor(p)
 
-            // Direction arrow — rotates to point at the tag. When the user
-            // turns the phone the arrow corrects in real time.
-            if let dir = direction {
-                Image(systemName: "arrow.up.circle.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 180, height: 180)
-                    .foregroundStyle(distanceColor(distance))
-                    .rotationEffect(.radians(Double(atan2(dir.x, -dir.z))))
-                    .animation(.linear(duration: 0.1), value: dir)
-            } else {
-                // No direction yet (UWB session needs ~1s of motion to lock).
-                Image(systemName: "scope")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 180, height: 180)
-                    .foregroundStyle(.secondary)
+        ZStack {
+            // Whole screen glows in the proximity colour, brighter as you close in.
+            RadialGradient(
+                colors: [c.opacity(0.22 + 0.5 * p), .black],
+                center: .center, startRadius: 6, endRadius: 470
+            )
+            .ignoresSafeArea()
+            .animation(.easeInOut(duration: 0.3), value: p)
+
+            VStack(spacing: 22) {
+                Spacer()
+
+                ZStack {
+                    Circle().fill(c.opacity(0.16)).frame(width: 250, height: 250)
+                    Circle()
+                        .stroke(c, lineWidth: 10)
+                        .frame(width: 250, height: 250)
+                        .shadow(color: c.opacity(0.8), radius: 22)
+                    VStack(spacing: 4) {
+                        Text(formatDistance(distance))
+                            .font(.system(size: 58, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .contentTransition(.numericText())
+                        trendBadge
+                    }
+                }
+                .scaleEffect(pingScale)
+                .animation(.easeInOut(duration: 0.3), value: c)
+
+                Text(proximityHint(distance))
+                    .font(.headline)
+                    .foregroundStyle(.white.opacity(0.85))
+
+                Spacer()
+
+                Button {
+                    haptics.stop()
+                    finder.markFound()
+                } label: {
+                    Text("I found it")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.white)
+                .foregroundStyle(.black)
+                .padding(.horizontal, 24)
             }
-
-            // Distance — big number, AirTag-style.
-            Text(formatDistance(distance))
-                .font(.system(size: 64, weight: .semibold, design: .rounded))
-                .foregroundStyle(distanceColor(distance))
-                .contentTransition(.numericText())
-
-            // Helper text. With no direction yet, prefer the live camera/
-            // convergence coaching so the user knows exactly what to adjust.
-            Text(noDirectionHint(distance: distance, direction: direction))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            Spacer()
-
-            Button {
-                finder.markFound()
-            } label: {
-                Text("I found it")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.horizontal, 24)
+            .padding()
         }
-        .padding()
     }
+
+    @ViewBuilder
+    private var trendBadge: some View {
+        switch haptics.trend {
+        case 1:
+            Label("Closer", systemImage: "chevron.up")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.green)
+        case -1:
+            Label("Further", systemImage: "chevron.down")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.red)
+        default:
+            Color.clear.frame(height: 20)
+        }
+    }
+
+    // MARK: - Helpers
 
     private func formatDistance(_ m: Float) -> String {
         if m < 1.0 { return String(format: "%.0f cm", m * 100) }
         return String(format: "%.1f m", m)
     }
 
-    /// Green when within reach, amber as you get closer, red at distance.
-    private func distanceColor(_ m: Float) -> Color {
-        if m < 0.5  { return .green }
-        if m < 2.0  { return .yellow }
-        if m < 5.0  { return .orange }
-        return .red
+    /// 0 = far (≥8 m), 1 = on top of it (≤0.3 m).
+    private func proximity(_ m: Float) -> Double {
+        let clamped = Double(min(max(m, 0.3), 8.0))
+        return 1.0 - (clamped - 0.3) / (8.0 - 0.3)
     }
 
-    /// With no direction yet, pick the most useful nudge: "you're on top of it"
-    /// up close, otherwise the live camera/convergence coaching from SignFinder.
-    private func noDirectionHint(distance: Float, direction: simd_float3?) -> String {
-        if direction != nil { return hintText(distance: distance, direction: direction) }
-        if distance < 0.6 { return "You're right next to it — look around you" }
-        return finder.coachingHint ?? "Point the phone at the sign and walk a few steps"
+    /// Red when far → amber → green up close. Hue 0 (red) … 0.33 (green).
+    private func proximityColor(_ p: Double) -> Color {
+        Color(hue: p * 0.33, saturation: 0.85, brightness: 1.0)
     }
 
-    private func hintText(distance: Float, direction: simd_float3?) -> String {
-        guard let d = direction else {
-            return "Walk a few steps so we can find direction"
-        }
-        let behind = d.z < 0
-        let left   = d.x < -0.3
-        let right  = d.x >  0.3
-        if behind             { return "Sign is behind you — turn around" }
-        if left               { return "Sign is to your left" }
-        if right              { return "Sign is to your right" }
-        if distance < 0.5     { return "You're right next to it" }
-        return "Keep walking forward"
+    private func proximityHint(_ m: Float) -> String {
+        if m < 0.4 { return "You're right on it" }
+        if m < 1.0 { return "Right here — look around you" }
+        if m < 2.5 { return "Very close" }
+        if m < 5.0 { return "Getting closer" }
+        return "Keep moving — follow the buzzes"
     }
 }
 
-// MARK: - Empty states
+// MARK: - Haptic hot/cold engine
+
+/// Drives a metal-detector-style haptic: pulses get faster and stronger the
+/// closer you are, with a success tap when you arrive. Also reports whether
+/// you're getting closer or further so the UI can show a trend.
+@MainActor
+final class HapticPulser: ObservableObject {
+    /// Increments on every pulse — the view animates a "pop" off this.
+    @Published var tick = 0
+    /// +1 getting closer, -1 getting further, 0 steady.
+    @Published var trend = 0
+
+    private var timer: Timer?
+    private let impact = UIImpactFeedbackGenerator(style: .medium)
+    private let success = UINotificationFeedbackGenerator()
+    private var distance: Float = 8
+    private var lastTrendDistance: Float?
+    private var arrived = false
+    private var running = false
+
+    func start() {
+        guard !running else { return }
+        running = true
+        impact.prepare()
+        scheduleNext()
+    }
+
+    func stop() {
+        running = false
+        timer?.invalidate(); timer = nil
+        trend = 0
+    }
+
+    func update(distance d: Float) {
+        distance = d
+        // Trend with hysteresis so small jitter doesn't flip it.
+        if let last = lastTrendDistance {
+            if d < last - 0.1 { trend = 1; lastTrendDistance = d }
+            else if d > last + 0.1 { trend = -1; lastTrendDistance = d }
+        } else {
+            lastTrendDistance = d
+        }
+        // Success tap once, when you arrive.
+        if d < 0.4 {
+            if !arrived { arrived = true; success.notificationOccurred(.success) }
+        } else if d > 0.6 {
+            arrived = false
+        }
+    }
+
+    private func scheduleNext() {
+        guard running else { return }
+        let d = Double(min(max(distance, 0.3), 8.0))
+        let t = (d - 0.3) / (8.0 - 0.3)            // 0 close … 1 far
+        let interval = 0.07 + t * (1.25 - 0.07)    // rapid up close, slow far away
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.fire() }
+        }
+    }
+
+    private func fire() {
+        guard running else { return }
+        if !arrived {
+            let d = Double(min(max(distance, 0.3), 8.0))
+            let t = (d - 0.3) / (8.0 - 0.3)
+            let intensity = CGFloat(max(0.4, 1.0 - t))  // stronger up close
+            impact.impactOccurred(intensity: intensity)
+            tick &+= 1
+        }
+        scheduleNext()
+    }
+}
+
+// MARK: - Other states
 
 private struct FoundUI: View {
     var body: some View {
@@ -179,15 +267,15 @@ private struct FoundUI: View {
                 .resizable().scaledToFit()
                 .frame(width: 96, height: 96)
                 .foregroundStyle(.green)
-            Text("Sign found").font(.title2)
+            Text("Sign found").font(.title2).foregroundStyle(.white)
             Text("Place it back on the hanger when done.")
                 .foregroundStyle(.secondary)
         }
     }
 }
 
-/// No tracker on this alert's hanger. Staff get a one-tap scan-to-assign so
-/// the dead end fixes itself; cleaners are pointed at the floor plan.
+/// No tracker on this alert's hanger. Staff get a one-tap scan-to-assign so the
+/// dead end fixes itself; cleaners are pointed at the floor plan.
 private struct NoTagUI: View {
     let canAssign: Bool
     let onAssign: () -> Void
@@ -198,7 +286,7 @@ private struct NoTagUI: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
             Text("No tracker on this sign yet")
-                .font(.headline)
+                .font(.headline).foregroundStyle(.white)
             Text(canAssign
                  ? "Hold your phone next to the sign's tracker and assign it — precision finding starts straight away."
                  : "Ask a supervisor to assign a tracker to this sign. Use the floor plan to locate it for now.")
@@ -228,7 +316,7 @@ private struct UnavailableUI: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
             Text("Precision finding unavailable")
-                .font(.headline)
+                .font(.headline).foregroundStyle(.white)
             Text(reason)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

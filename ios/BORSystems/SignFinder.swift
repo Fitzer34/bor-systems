@@ -112,16 +112,6 @@ final class SignFinder: NSObject, ObservableObject {
             return
         }
 
-        // The direction arrow on iPhone 14+ is camera-assisted, so ask for the
-        // camera up front (the arrow can't compute without it). Distance still
-        // works if declined — we just won't show a heading.
-        if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
-            _ = await AVCaptureDevice.requestAccess(for: .video)
-        }
-        coachingHint = cameraDenied
-            ? "Turn on Camera in Settings to get the direction arrow"
-            : "Point the phone at the sign and walk a few steps"
-
         // 2. Which tag is paired to this alert's hanger?
         state = .lookingUp
         do {
@@ -297,17 +287,14 @@ extension SignFinder: CBPeripheralDelegate {
             // view-backed AR session. Otherwise range distance-only — reliable,
             // and never a dead end. If it fails anyway, didInvalidateWith retries
             // distance-only.
-            let useCameraAssist = !cameraAssistDisabled && cameraAuthorized && externalARSession != nil
-            print("🧭 SignFinder: startSession useCameraAssist=\(useCameraAssist) camAuth=\(cameraAuthorized) arAttached=\(externalARSession != nil) disabled=\(cameraAssistDisabled)")
-            config.isCameraAssistanceEnabled = useCameraAssist
-            usedCameraAssist = useCameraAssist
+            // Distance-only ranging — the hot/cold haptic finder doesn't need
+            // camera-assisted direction, so we skip camera/AR entirely (no
+            // permission prompt, reliable, works through walls and round corners).
+            usedCameraAssist = false
 
             let session = niSession ?? NISession()
             session.delegate = self
             niSession = session
-            if useCameraAssist, let ar = externalARSession {
-                session.setARSession(ar)   // must precede run()
-            }
             session.run(config)
         } catch {
             state = .unavailable(reason: "Couldn't start UWB session: \(error.localizedDescription)")
