@@ -3,6 +3,7 @@ import NearbyInteraction
 import CoreBluetooth
 import simd
 import AVFoundation
+import ARKit
 
 /// Drives UWB precision-finding against a Qorvo DWM3001 sign tag using Apple's
 /// **Nearby Interaction Accessory Protocol** (`NINearbyAccessoryConfiguration`).
@@ -73,6 +74,12 @@ final class SignFinder: NSObject, ObservableObject {
     /// common single-tag / bench case where the stored name isn't an exact match.
     private var fallbackCandidate: CBPeripheral?
     private var fallbackTask: Task<Void, Never>?
+    /// A world-tracking AR session shared with NISession. This is what unlocks
+    /// DIRECTION (the arrow) on iPhone 14+ — Apple computes it from camera +
+    /// UWB fusion, and the reference Qorvo app only gets the arrow because it
+    /// runs its own ARSession and hands it over via setARSession(). Without
+    /// this you get distance but never a heading. Runs headless (no preview).
+    private let arSession = ARSession()
 
     // MARK: - Public API
 
@@ -89,6 +96,17 @@ final class SignFinder: NSObject, ObservableObject {
         coachingHint = cameraDenied
             ? "Turn on Camera in Settings to get the direction arrow"
             : "Point the phone at the sign and walk a few steps"
+
+        // Warm up a world-tracking AR session now so camera assistance has
+        // tracking ready by the time we range (we hand it to NISession below).
+        // Running it also triggers the camera-permission prompt if needed.
+        if ARWorldTrackingConfiguration.isSupported {
+            let arConfig = ARWorldTrackingConfiguration()
+            arConfig.worldAlignment = .gravity
+            arConfig.isCollaborationEnabled = false
+            arConfig.userFaceTrackingEnabled = false
+            arSession.run(arConfig)
+        }
 
         // 2. Which tag is paired to this alert's hanger?
         state = .lookingUp
@@ -110,6 +128,7 @@ final class SignFinder: NSObject, ObservableObject {
         send(.stop)
         fallbackTask?.cancel(); fallbackTask = nil
         fallbackCandidate = nil
+        arSession.pause()
         niSession?.invalidate()
         niSession = nil
         if let p = tagPeripheral { central?.cancelPeripheralConnection(p) }
@@ -266,6 +285,9 @@ extension SignFinder: CBPeripheralDelegate {
             let session = niSession ?? NISession()
             session.delegate = self
             niSession = session
+            // Share our world-tracking AR session BEFORE running, so camera
+            // assistance can resolve direction (the arrow), not just distance.
+            session.setARSession(arSession)
             session.run(config)
         } catch {
             state = .unavailable(reason: "Couldn't start UWB session: \(error.localizedDescription)")
