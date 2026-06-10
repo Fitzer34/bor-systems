@@ -94,7 +94,7 @@ struct FindSignView: View {
                     .scaledToFit()
                     .frame(width: 180, height: 180)
                     .foregroundStyle(distanceColor(distance))
-                    .rotationEffect(.radians(Double(atan2(dir.x, dir.z))))
+                    .rotationEffect(.radians(Double(atan2(dir.x, -dir.z))))
                     .animation(.linear(duration: 0.1), value: dir)
             } else {
                 // No direction yet (UWB session needs ~1s of motion to lock).

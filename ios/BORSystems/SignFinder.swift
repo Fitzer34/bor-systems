@@ -85,6 +85,9 @@ final class SignFinder: NSObject, ObservableObject {
     private var usedCameraAssist = false
     private var cameraAssistDisabled = false
     private var retriedPlain = false
+    /// Camera assistance has localized the tag. On iPhone 14+ this is the gate
+    /// for using `horizontalAngle` as the heading (obj.direction stays nil).
+    private var isConverged = false
 
     /// Hand in the AR session from the view layer (called once it's running).
     func attachARSession(_ session: ARSession) {
@@ -325,9 +328,18 @@ extension SignFinder: NISessionDelegate {
 
     nonisolated func session(_ session: NISession, didUpdate nearbyObjects: [NINearbyObject]) {
         guard let obj = nearbyObjects.first else { return }
+        let directDir = obj.direction
+        let hAngle = obj.horizontalAngle
         Task { @MainActor in
             let distance = obj.distance ?? Float.greatestFiniteMagnitude
-            self.state = .ranging(distance: distance, direction: obj.direction)
+            var dir = directDir
+            // iPhone 14+ never fills obj.direction — once camera assistance has
+            // converged, derive the heading from the horizontal angle (azimuth).
+            // This is exactly what Qorvo's reference app does on 14+/16.
+            if dir == nil, self.isConverged, let h = hAngle {
+                dir = simd_float3(sin(h), 0, -cos(h))
+            }
+            self.state = .ranging(distance: distance, direction: dir)
         }
     }
 
@@ -340,12 +352,15 @@ extension SignFinder: NISessionDelegate {
             print("🧭 SignFinder: convergence \(convergence.status)")
             switch convergence.status {
             case .converged:
+                self.isConverged = true
                 self.coachingHint = nil
             case .notConverged(let reasons):
+                self.isConverged = false
                 self.coachingHint = self.cameraDenied
                     ? "Turn on Camera in Settings to get the direction arrow"
                     : Self.directionHint(for: reasons)
             @unknown default:
+                self.isConverged = false
                 self.coachingHint = nil
             }
         }
