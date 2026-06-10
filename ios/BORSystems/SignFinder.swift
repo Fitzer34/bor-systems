@@ -51,6 +51,9 @@ final class SignFinder: NSObject, ObservableObject {
         case connecting
         case ranging(distance: Float, direction: simd_float3?)
         case signFound
+        /// This alert's hanger has no tracker assigned yet — recoverable:
+        /// the view offers staff a scan-to-assign right there.
+        case noTagPaired
         case unavailable(reason: String)
     }
 
@@ -93,8 +96,8 @@ final class SignFinder: NSObject, ObservableObject {
             let info = try await APIClient.shared.fetchSignTagForAlert(alertId: alertId)
             self.bleUuid = info.bleUuid
         } catch {
-            state = .unavailable(
-                reason: "No precision-finding tag is paired with this sign. Using floor plan instead.")
+            // 404 from /sign-tags/for-alert — nothing assigned to this hanger.
+            state = .noTagPaired
             return
         }
 

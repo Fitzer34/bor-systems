@@ -53,7 +53,7 @@ struct AlertDetailView: View {
                 // or the phone has no UWB chip (handled inside FindSignView).
                 if alert.status != .closed {
                     NavigationLink {
-                        FindSignView(alertId: alert.id, zoneName: alert.zoneName)
+                        FindSignView(alertId: alert.id, zoneName: alert.zoneName, hangerId: alert.hangerId)
                     } label: {
                         Label("Find sign", systemImage: "location.viewfinder")
                             .font(.headline)

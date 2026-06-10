@@ -19,9 +19,18 @@ import simd
 struct FindSignView: View {
     let alertId: String
     let zoneName: String?
+    /// The alert's hanger — lets staff assign a tracker right here when none
+    /// is paired yet, instead of dead-ending to the floor plan.
+    var hangerId: String? = nil
 
     @StateObject private var finder = SignFinder()
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var auth: AuthStore
+    @State private var showAssign = false
+
+    private var isStaff: Bool {
+        auth.user?.role == .admin || auth.user?.role == .supervisor
+    }
 
     var body: some View {
         ZStack {
@@ -34,6 +43,10 @@ struct FindSignView: View {
                 rangingUI(distance: distance, direction: direction)
             case .signFound:
                 FoundUI()
+            case .noTagPaired:
+                NoTagUI(canAssign: isStaff && hangerId != nil) {
+                    showAssign = true
+                }
             case .unavailable(let reason):
                 UnavailableUI(reason: reason)
             }
@@ -42,6 +55,18 @@ struct FindSignView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await finder.start(alertId: alertId) }
         .onDisappear { finder.stop() }
+        .sheet(isPresented: $showAssign) {
+            if let hangerId {
+                TrackerAssignSheet(hangerId: hangerId) { _ in
+                    // Tracker pinned — kick the finder off again, it'll now
+                    // resolve the tag and start ranging.
+                    Task {
+                        finder.stop()
+                        await finder.start(alertId: alertId)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Ranging UI
@@ -148,6 +173,40 @@ private struct FoundUI: View {
             Text("Place it back on the hanger when done.")
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// No tracker on this alert's hanger. Staff get a one-tap scan-to-assign so
+/// the dead end fixes itself; cleaners are pointed at the floor plan.
+private struct NoTagUI: View {
+    let canAssign: Bool
+    let onAssign: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+            Text("No tracker on this sign yet")
+                .font(.headline)
+            Text(canAssign
+                 ? "Hold your phone next to the sign's tracker and assign it — precision finding starts straight away."
+                 : "Ask a supervisor to assign a tracker to this sign. Use the floor plan to locate it for now.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
+            if canAssign {
+                Button(action: onAssign) {
+                    Label("Assign tracker", systemImage: "plus.circle.fill")
+                        .font(.headline)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 24)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.top, 4)
+            }
+        }
+        .padding()
     }
 }
 
