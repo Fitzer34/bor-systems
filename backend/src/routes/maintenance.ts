@@ -12,7 +12,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 
@@ -317,5 +317,118 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
         : `Awarded €${((chosen.amountCents ?? 0) / 100).toFixed(0)} (cheapest)`,
     );
     return { ok: true };
+  });
+
+  // ─── Trades (taxonomy) ─────────────────────────────────────────────────────
+  // Built-ins (organisation_id NULL) + this org's own customs ("Other").
+  app.get("/trades", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.trades)
+      .where(or(isNull(schema.trades.organisationId), eq(schema.trades.organisationId, c.orgId)))
+      .orderBy(schema.trades.groupName, schema.trades.name);
+    return { trades: rows };
+  });
+
+  const tradeBody = z.object({
+    name: z.string().min(1).max(120),
+    groupName: z.string().max(120).optional(),
+    statutory: z.boolean().optional(),
+  });
+  app.post("/trades", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const parsed = tradeBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [created] = await db
+      .insert(schema.trades)
+      .values({
+        organisationId: c.orgId,
+        name: parsed.data.name,
+        groupName: parsed.data.groupName ?? "Other",
+        statutory: parsed.data.statutory ?? false,
+      })
+      .returning();
+    return reply.code(201).send(created);
+  });
+
+  // ─── Assets (register) ─────────────────────────────────────────────────────
+  app.get("/assets", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.assets)
+      .where(and(eq(schema.assets.organisationId, c.orgId), eq(schema.assets.retired, false)))
+      .orderBy(schema.assets.name);
+    return { assets: rows };
+  });
+
+  const assetBody = z.object({
+    name: z.string().min(1).max(160),
+    category: z.string().max(120).optional(),
+    tradeId: z.string().uuid().optional(),
+    buildingId: z.string().uuid().optional(),
+    zoneId: z.string().uuid().optional(),
+    make: z.string().max(120).optional(),
+    model: z.string().max(120).optional(),
+    serial: z.string().max(120).optional(),
+    installDate: z.string().optional(),
+    expectedLifeYears: z.number().int().min(0).max(100).optional(),
+    warrantyExpiry: z.string().optional(),
+    notes: z.string().max(2000).optional(),
+  });
+  app.post("/assets", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const parsed = assetBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [created] = await db
+      .insert(schema.assets)
+      .values({ organisationId: c.orgId, ...parsed.data })
+      .returning();
+    return reply.code(201).send(created);
+  });
+
+  app.patch("/assets/:id", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = assetBody.partial().extend({ retired: z.boolean().optional() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [row] = await db
+      .update(schema.assets)
+      .set(parsed.data)
+      .where(and(eq(schema.assets.id, id), eq(schema.assets.organisationId, c.orgId)))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return row;
+  });
+
+  // ─── Tenants (light register) ──────────────────────────────────────────────
+  app.get("/tenants", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.organisationId, c.orgId))
+      .orderBy(schema.tenants.name);
+    return { tenants: rows };
+  });
+
+  const tenantBody = z.object({
+    name: z.string().min(1).max(160),
+    contactName: z.string().max(120).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().max(40).optional(),
+    buildingId: z.string().uuid().optional(),
+    areaNote: z.string().max(500).optional(),
+  });
+  app.post("/tenants", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const parsed = tenantBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [created] = await db
+      .insert(schema.tenants)
+      .values({ organisationId: c.orgId, ...parsed.data })
+      .returning();
+    return reply.code(201).send(created);
   });
 }
