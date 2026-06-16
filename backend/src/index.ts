@@ -28,6 +28,7 @@ import signTagRoutes from "./routes/sign-tags.js";
 import sitesRoutes from "./routes/sites.js";
 import analyticsRoutes from "./routes/analytics.js";
 import publicRoutes from "./routes/public.js";
+import maintenanceRoutes from "./routes/maintenance.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
@@ -169,6 +170,7 @@ async function main(): Promise<void> {
   await app.register(sitesRoutes);
   await app.register(analyticsRoutes);
   await app.register(publicRoutes);
+  await app.register(maintenanceRoutes);
 
   startEscalationTimer();
   startAntiTheftWatcher();
