@@ -322,10 +322,15 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
 function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void }) {
   const s = ppm.schedule;
   const [copied, setCopied] = useState(false);
+  const [emailErr, setEmailErr] = useState<string | null>(null);
 
   const request = useMutation({
-    mutationFn: () => api(`/ppms/${ppm.id}/request-schedule`, { method: "POST" }),
-    onSuccess: onChanged,
+    mutationFn: () => api<{ emailDelivered: boolean; emailError: string | null }>(`/ppms/${ppm.id}/request-schedule`, { method: "POST" }),
+    onSuccess: (data) => {
+      setEmailErr(data?.emailDelivered ? null : (data?.emailError ?? "unknown error"));
+      onChanged();
+    },
+    onError: (e: any) => setEmailErr(e?.payload?.error ?? "request failed"),
   });
   const confirm = useMutation({
     mutationFn: () => api(`/ppm-schedule-requests/${s!.id}/confirm`, { method: "POST" }),
@@ -383,6 +388,7 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
           <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
             className="px-2 py-1 text-xs text-slate-500 hover:text-slate-800">Cancel</button>
         </div>
+        {emailErr && <p className="w-full text-xs text-red-600 mt-1 break-all">✉️ Email send failed: {emailErr}</p>}
       </Bar>
     );
   }

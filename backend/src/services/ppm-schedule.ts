@@ -134,5 +134,6 @@ export async function requestPpmSchedule(
       .where(eq(schema.ppmScheduleRequests.id, request.id));
     return { ok: true, request: { ...request, emailDelivered: true } };
   }
+  console.warn(`[ppm-schedule] email to ${email} for "${ppm.title}" was NOT sent: ${send.error}`);
   return { ok: true, request, emailError: send.error };
 }
