@@ -26,6 +26,7 @@ import { Terms } from "./pages/Terms";
 import { Status } from "./pages/Status";
 import { Sites } from "./pages/Sites";
 import { Analytics } from "./pages/Analytics";
+import { Maintenance } from "./pages/Maintenance";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
 
@@ -75,6 +76,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="sign-tags" element={<Navigate to="/devices" replace />} />
               {/* Planned preventive maintenance (admin + supervisor). */}
               <Route path="ppms" element={<RequireAuth role={["admin", "supervisor"]}><Ppms /></RequireAuth>} />
+              <Route path="maintenance" element={<RequireAuth role={["admin", "supervisor"]}><Maintenance /></RequireAuth>} />
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />
               <Route path="floor-plans" element={<RequireAuth role={["admin"]}><FloorPlans /></RequireAuth>} />
               <Route path="reports" element={<RequireAuth role={["admin", "supervisor"]}><Reports /></RequireAuth>} />
