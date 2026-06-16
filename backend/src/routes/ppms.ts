@@ -41,6 +41,15 @@ function nextDueFromToday(frequencyPerYear: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Render a YYYY-MM-DD as a readable "Friday, 19 June 2026" for emails.
+function formatLongDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00Z");
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
+  });
+}
+
 const createSchema = z.object({
   title: z.string().min(1).max(200),
   notes: z.string().max(2000).nullable().optional(),
@@ -266,15 +275,24 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(schema.organisations.id, c.orgId))
         .limit(1);
       const orgName = org?.name ?? "Your client";
+      const niceDate = formatLongDate(date);
       void sendEmail({
         to: r.sentToEmail,
-        subject: `Confirmed: ${ppm?.title ?? "your visit"} on ${date}`,
+        subject: `Appointment confirmed: ${ppm?.title ?? "your visit"} — ${niceDate}`,
         text: [
-          `Hello${ppm?.contractorName ? " " + ppm.contractorName : ""},`,
+          ppm?.contractorName ? `Dear ${ppm.contractorName},` : "Dear Sir or Madam,",
           ``,
-          `${orgName} has confirmed your visit for "${ppm?.title ?? "the planned work"}" on ${date}.`,
-          `Thanks — see you then.`,
+          `Thank you for confirming your availability. We are pleased to confirm the following appointment:`,
           ``,
+          `    Job:   ${ppm?.title ?? "Planned maintenance"}`,
+          `    Date:  ${niceDate}`,
+          ...(ppm?.notes ? [`    Notes: ${ppm.notes}`] : []),
+          ``,
+          `This date is now booked in our system. If anything changes, please let us know as soon as possible so we can rearrange.`,
+          ``,
+          `We look forward to seeing you then.`,
+          ``,
+          `Kind regards,`,
           orgName,
         ].join("\n"),
         fromName: orgName,
