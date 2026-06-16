@@ -24,6 +24,11 @@ function fcmReady(): boolean {
   return true;
 }
 
+/** True when SMTP is configured, so outbound email will actually be delivered. */
+export function isEmailConfigured(): boolean {
+  return smtpReady();
+}
+
 function smtpReady(): boolean {
   if (smtp) return true;
   if (!config.SMTP_HOST || !config.SMTP_PORT || !config.SMTP_FROM) return false;
@@ -172,6 +177,40 @@ export async function sendEmailToUser(
       to,
       subject: `[BOR] ${subject}`,
       text: body,
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+/**
+ * Send a white-labelled one-off email to an arbitrary address. Unlike
+ * `sendEmailToUser`, this does NOT prefix the subject with "[BOR]" and lets the
+ * caller set a display name on the From header — so a contractor sees the email
+ * as coming from the maintenance company ("Cork Facilities Ltd"), not us. The
+ * envelope sender stays config.SMTP_FROM (the authenticated domain); only the
+ * display name is white-labelled. Full per-org domain sending is a later step.
+ */
+export async function sendEmail(opts: {
+  to: string;
+  subject: string;
+  text: string;
+  fromName?: string;
+  replyTo?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!smtpReady()) return { ok: false, error: "smtp_not_configured" };
+  try {
+    const addr = config.SMTP_FROM!;
+    const from = opts.fromName
+      ? `"${opts.fromName.replace(/["\\\r\n]/g, "")}" <${addr}>`
+      : addr;
+    await smtp!.sendMail({
+      from,
+      to: opts.to,
+      subject: opts.subject,
+      text: opts.text,
+      ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
     });
     return { ok: true };
   } catch (err) {

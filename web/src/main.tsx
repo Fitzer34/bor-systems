@@ -23,6 +23,7 @@ import { Schedule } from "./pages/Schedule";
 import { Dispatch } from "./pages/Dispatch";
 import { Privacy } from "./pages/Privacy";
 import { Terms } from "./pages/Terms";
+import { SchedulePage } from "./pages/SchedulePage";
 import { Status } from "./pages/Status";
 import { Sites } from "./pages/Sites";
 import { Analytics } from "./pages/Analytics";
@@ -54,6 +55,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/signup" element={<Signup />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
+            {/* Public, no-login page a contractor opens from the PPM scheduling
+                magic link we email them. */}
+            <Route path="/schedule/:token" element={<SchedulePage />} />
             <Route
               path="/"
               element={

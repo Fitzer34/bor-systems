@@ -1,12 +1,17 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
-import { sendEmailToUser } from "./notifications.js";
+import { isEmailConfigured, sendEmailToUser } from "./notifications.js";
+import { hasOpenScheduleRequest, requestPpmSchedule } from "./ppm-schedule.js";
 
 /**
  * PPM reminder job.
  *
  * Every few hours it scans active PPM tasks and, for any that are within their
- * reminder lead window (or overdue), emails the org's admins + supervisors.
+ * reminder lead window (or overdue):
+ *   • if the task has a contractor email and SMTP is configured, the system
+ *     emails the contractor a magic link to agree a visit date (once per
+ *     outreach, via services/ppm-schedule.ts) and tells staff the status;
+ *   • otherwise it emails the org's admins + supervisors to arrange it manually.
  *
  * Cadence:
  *   • due soon (within lead days) → at most one email every 3 days
@@ -79,26 +84,65 @@ async function tick(): Promise<void> {
           isNull(schema.users.deactivatedAt),
         ));
 
-      const subject = overdue
-        ? `PPM OVERDUE: ${p.title}`
-        : daysUntil === 0
-          ? `PPM due today: ${p.title}`
-          : `PPM due in ${daysUntil} day${daysUntil === 1 ? "" : "s"}: ${p.title}`;
+      // If the task has a contractor email AND email sending is configured, the
+      // system itself emails the contractor a magic link to agree a date (once
+      // per outreach), and staff get a status note. Otherwise staff get the
+      // classic "go arrange it" reminder with the contractor's details on file.
+      const hasContractorEmail = !!p.contactEmail?.trim();
+      let subject: string;
+      let body: string;
 
-      const lines: string[] = [
-        overdue
-          ? `The following planned maintenance is OVERDUE (was due ${p.nextDueDate}):`
-          : `The following planned maintenance is due on ${p.nextDueDate}:`,
-        "",
-        `• Task: ${p.title}`,
-        `• Frequency: ${frequencyLabel(p.frequencyPerYear)}`,
-      ];
-      if (p.contractorName) lines.push(`• Contractor: ${p.contractorName}`);
-      if (p.contactPhone) lines.push(`• Phone: ${p.contactPhone}`);
-      if (p.contactEmail) lines.push(`• Email: ${p.contactEmail}`);
-      if (p.notes) lines.push(`• Notes: ${p.notes}`);
-      lines.push("", `Open the dashboard to mark it done once complete:`, DASHBOARD_URL);
-      const body = lines.join("\n");
+      if (hasContractorEmail && isEmailConfigured()) {
+        if (!(await hasOpenScheduleRequest(p.id, today))) {
+          await requestPpmSchedule(p.id, { createdByUserId: null });
+        }
+        const [latest] = await db
+          .select()
+          .from(schema.ppmScheduleRequests)
+          .where(eq(schema.ppmScheduleRequests.ppmId, p.id))
+          .orderBy(desc(schema.ppmScheduleRequests.createdAt))
+          .limit(1);
+        const who = p.contractorName ?? p.contactEmail!;
+        const statusLine =
+          latest?.status === "proposed"
+            ? `${who} proposed ${latest.proposedDate} — approve it in the dashboard to book it in.`
+            : latest?.status === "declined"
+              ? `${who} declined — arrange another contractor in the dashboard.`
+              : `We've emailed ${who} to agree a date. You'll confirm it once they reply.`;
+        subject = overdue ? `PPM OVERDUE: ${p.title}` : `PPM due: ${p.title}`;
+        body = [
+          overdue
+            ? `Planned maintenance is OVERDUE (was due ${p.nextDueDate}):`
+            : `Planned maintenance is due on ${p.nextDueDate}:`,
+          "",
+          `• Task: ${p.title}`,
+          `• Frequency: ${frequencyLabel(p.frequencyPerYear)}`,
+          "",
+          statusLine,
+          "",
+          `Dashboard: ${DASHBOARD_URL}`,
+        ].join("\n");
+      } else {
+        subject = overdue
+          ? `PPM OVERDUE: ${p.title}`
+          : daysUntil === 0
+            ? `PPM due today: ${p.title}`
+            : `PPM due in ${daysUntil} day${daysUntil === 1 ? "" : "s"}: ${p.title}`;
+        const lines: string[] = [
+          overdue
+            ? `The following planned maintenance is OVERDUE (was due ${p.nextDueDate}):`
+            : `The following planned maintenance is due on ${p.nextDueDate}:`,
+          "",
+          `• Task: ${p.title}`,
+          `• Frequency: ${frequencyLabel(p.frequencyPerYear)}`,
+        ];
+        if (p.contractorName) lines.push(`• Contractor: ${p.contractorName}`);
+        if (p.contactPhone) lines.push(`• Phone: ${p.contactPhone}`);
+        if (p.contactEmail) lines.push(`• Email: ${p.contactEmail}`);
+        if (p.notes) lines.push(`• Notes: ${p.notes}`);
+        lines.push("", `Open the dashboard to mark it done once complete:`, DASHBOARD_URL);
+        body = lines.join("\n");
+      }
 
       for (const r of recipients) {
         if (r.email) await sendEmailToUser(r.email, subject, body);

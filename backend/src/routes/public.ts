@@ -19,8 +19,9 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
+import { sendEmail } from "../services/notifications.js";
 
 const feedbackSchema = z.object({
   isDry: z.boolean(),
@@ -33,6 +34,24 @@ const feedbackRateLimit = {
       max: 10,
       timeWindow: "1 minute",
       keyGenerator: (req: any) => `feedback:${req.ip}`,
+    },
+  },
+};
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+const scheduleResponseSchema = z.object({
+  date: z.string().regex(ISO_DATE).optional(),
+  note: z.string().max(500).optional(),
+  decline: z.boolean().optional(),
+});
+
+const scheduleRateLimit = {
+  config: {
+    rateLimit: {
+      max: 20,
+      timeWindow: "1 minute",
+      keyGenerator: (req: any) => `ppmsched:${req.ip}`,
     },
   },
 };
@@ -130,4 +149,139 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       return { ok: true };
     },
   );
+
+  // ─── PPM contractor scheduling (magic link) ─────────────────────────────
+  // A contractor opens app.hazardlink.ie/schedule/<token>, which loads this.
+  // Public-safe view: who's asking, what the job is, current state. No org
+  // internals, no other tasks.
+  app.get("/public/ppm-schedule/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const [r] = await db
+      .select()
+      .from(schema.ppmScheduleRequests)
+      .where(eq(schema.ppmScheduleRequests.token, token))
+      .limit(1);
+    if (!r) return reply.code(404).send({ error: "not_found" });
+
+    const [ppm] = await db
+      .select({
+        title: schema.ppms.title,
+        notes: schema.ppms.notes,
+        frequencyPerYear: schema.ppms.frequencyPerYear,
+        contractorName: schema.ppms.contractorName,
+      })
+      .from(schema.ppms)
+      .where(eq(schema.ppms.id, r.ppmId))
+      .limit(1);
+    const [org] = await db
+      .select({ name: schema.organisations.name })
+      .from(schema.organisations)
+      .where(eq(schema.organisations.id, r.organisationId))
+      .limit(1);
+
+    const expired = r.expiresAt.getTime() < Date.now();
+    return {
+      orgName: org?.name ?? "Maintenance",
+      title: ppm?.title ?? "Planned maintenance visit",
+      notes: ppm?.notes ?? null,
+      frequencyPerYear: ppm?.frequencyPerYear ?? 1,
+      contractorName: ppm?.contractorName ?? null,
+      status: r.status,
+      proposedDate: r.proposedDate,
+      confirmedDate: r.confirmedDate,
+      contractorNote: r.contractorNote,
+      expired,
+    };
+  });
+
+  // Contractor submits a date (or declines). Idempotent until staff confirm.
+  app.post("/public/ppm-schedule/:token", scheduleRateLimit, async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const parsed = scheduleResponseSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+
+    const [r] = await db
+      .select()
+      .from(schema.ppmScheduleRequests)
+      .where(eq(schema.ppmScheduleRequests.token, token))
+      .limit(1);
+    if (!r) return reply.code(404).send({ error: "not_found" });
+    if (r.status === "cancelled") return reply.code(409).send({ error: "cancelled" });
+    if (r.status === "confirmed") return reply.code(409).send({ error: "already_confirmed" });
+    if (r.expiresAt.getTime() < Date.now()) return reply.code(409).send({ error: "expired" });
+
+    const note = parsed.data.note?.trim() || null;
+
+    if (parsed.data.decline) {
+      await db
+        .update(schema.ppmScheduleRequests)
+        .set({ status: "declined", contractorNote: note, respondedAt: new Date(), updatedAt: new Date() })
+        .where(eq(schema.ppmScheduleRequests.id, r.id));
+      await notifyStaffOfResponse(r.organisationId, r.ppmId, "declined", null, note);
+      return { ok: true, status: "declined" };
+    }
+
+    const date = parsed.data.date;
+    if (!date) return reply.code(400).send({ error: "date_required" });
+    const todayISO = new Date().toISOString().slice(0, 10);
+    if (date < todayISO) return reply.code(400).send({ error: "date_in_past" });
+
+    await db
+      .update(schema.ppmScheduleRequests)
+      .set({
+        status: "proposed",
+        proposedDate: date,
+        contractorNote: note ?? r.contractorNote,
+        respondedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.ppmScheduleRequests.id, r.id));
+    await notifyStaffOfResponse(r.organisationId, r.ppmId, "proposed", date, note);
+    return { ok: true, status: "proposed", proposedDate: date };
+  });
+
+  // Best-effort: email the org's admins + supervisors that a contractor replied,
+  // so they can confirm in the dashboard. Never throws.
+  async function notifyStaffOfResponse(
+    orgId: string,
+    ppmId: string,
+    kind: "proposed" | "declined",
+    date: string | null,
+    note: string | null,
+  ): Promise<void> {
+    try {
+      const [ppm] = await db
+        .select({ title: schema.ppms.title, contractorName: schema.ppms.contractorName })
+        .from(schema.ppms)
+        .where(eq(schema.ppms.id, ppmId))
+        .limit(1);
+      const recipients = await db
+        .select({ email: schema.users.email })
+        .from(schema.users)
+        .where(and(
+          eq(schema.users.organisationId, orgId),
+          inArray(schema.users.role, ["admin", "supervisor"]),
+          isNull(schema.users.deactivatedAt),
+        ));
+      const who = ppm?.contractorName ?? "The contractor";
+      const subject = kind === "proposed"
+        ? `Contractor proposed a date: ${ppm?.title ?? "PPM"}`
+        : `Contractor declined: ${ppm?.title ?? "PPM"}`;
+      const body = [
+        kind === "proposed"
+          ? `${who} proposed ${date} for "${ppm?.title ?? "the planned task"}".`
+          : `${who} can't carry out "${ppm?.title ?? "the planned task"}" right now.`,
+        ...(note ? [``, `They added: "${note}"`] : []),
+        ``,
+        kind === "proposed"
+          ? `Approve the date in the dashboard: https://app.hazardlink.ie/ppms`
+          : `Open the dashboard to arrange another contractor: https://app.hazardlink.ie/ppms`,
+      ].join("\n");
+      for (const rec of recipients) {
+        if (rec.email) await sendEmail({ to: rec.email, subject, text: body });
+      }
+    } catch (err) {
+      console.error("notifyStaffOfResponse failed:", err);
+    }
+  }
 }

@@ -183,6 +183,9 @@ export const ppms = pgTable(
     reminderLeadDays: integer("reminder_lead_days").notNull().default(14),
     // Set when last marked complete; next due date rolls forward from here.
     lastCompletedAt: timestamp("last_completed_at", { withTimezone: true }),
+    // The agreed visit date once a contractor accepts a scheduling request
+    // (see ppmScheduleRequests / services/ppm-schedule.ts). Null until agreed.
+    scheduledDate: date("scheduled_date", { mode: "string" }),
     // Dedup guard — the reminder job sends at most one email per calendar day
     // per task. Stores the date it last reminded on.
     lastRemindedOn: date("last_reminded_on", { mode: "string" }),
@@ -194,6 +197,55 @@ export const ppms = pgTable(
   (t) => ({
     orgIdx: index("ppms_org_idx").on(t.organisationId),
     dueIdx: index("ppms_due_idx").on(t.nextDueDate),
+  }),
+);
+
+/// Outreach to a PPM's contractor to agree a visit date. When a task comes due
+/// the system emails the contractor a magic link (no login) where they pick a
+/// date; staff then confirm it, which stamps ppms.scheduledDate. One row per
+/// outreach attempt — the most recent is the live one. See
+/// services/ppm-schedule.ts for the lifecycle.
+export const ppmScheduleStatus = pgEnum("ppm_schedule_status", [
+  "sent",       // emailed the contractor, awaiting their proposed date
+  "proposed",   // contractor picked a date, awaiting staff confirmation
+  "confirmed",  // date agreed — ppms.scheduledDate is set
+  "declined",   // contractor can't do it
+  "cancelled",  // staff withdrew the request
+]);
+
+export const ppmScheduleRequests = pgTable(
+  "ppm_schedule_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    ppmId: uuid("ppm_id")
+      .references(() => ppms.id, { onDelete: "cascade" })
+      .notNull(),
+    // Unguessable secret embedded in the magic-link URL the contractor clicks.
+    token: text("token").notNull().unique(),
+    status: ppmScheduleStatus("status").notNull().default("sent"),
+    // Snapshot of where the invite was sent (the ppm's contact email can change).
+    sentToEmail: text("sent_to_email"),
+    // Did SMTP accept the message? False when SMTP isn't configured yet — the
+    // request still exists so staff can copy the link and send it manually.
+    emailDelivered: boolean("email_delivered").notNull().default(false),
+    // The date the contractor proposed, then the date staff confirmed.
+    proposedDate: date("proposed_date", { mode: "string" }),
+    confirmedDate: date("confirmed_date", { mode: "string" }),
+    // Free-text from the contractor (e.g. "mornings only" / why they declined).
+    contractorNote: text("contractor_note"),
+    // Who kicked it off — null when the reminder job did it automatically.
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    ppmIdx: index("ppm_sched_ppm_idx").on(t.ppmId),
+    orgIdx: index("ppm_sched_org_idx").on(t.organisationId),
   }),
 );
 

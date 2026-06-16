@@ -15,6 +15,21 @@ import { useTicker } from "../lib/ticker";
  * complete (rolls the due date forward), and delete tasks.
  */
 
+export interface PpmSchedule {
+  id: string;
+  status: "sent" | "proposed" | "confirmed" | "declined" | "cancelled";
+  sentToEmail: string | null;
+  emailDelivered: boolean;
+  proposedDate: string | null;
+  confirmedDate: string | null;
+  contractorNote: string | null;
+  token: string;
+  scheduleUrl: string;
+  respondedAt: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface Ppm {
   id: string;
   title: string;
@@ -27,6 +42,8 @@ export interface Ppm {
   reminderLeadDays: number;
   lastCompletedAt: string | null;
   lastRemindedOn: string | null;
+  scheduledDate: string | null; // agreed contractor visit date, once confirmed
+  schedule: PpmSchedule | null;  // latest scheduling outreach for this task
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -294,8 +311,103 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
           <button onClick={onClick} className="text-slate-400 text-xs hover:text-slate-200">Edit →</button>
         </div>
       </div>
+
+      <ScheduleControls ppm={ppm} onChanged={onChanged} />
     </div>
   );
+}
+
+// ─── Contractor scheduling row (under each card) ────────────────────────────
+
+function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void }) {
+  const s = ppm.schedule;
+  const [copied, setCopied] = useState(false);
+
+  const request = useMutation({
+    mutationFn: () => api(`/ppms/${ppm.id}/request-schedule`, { method: "POST" }),
+    onSuccess: onChanged,
+  });
+  const confirm = useMutation({
+    mutationFn: () => api(`/ppm-schedule-requests/${s!.id}/confirm`, { method: "POST" }),
+    onSuccess: onChanged,
+  });
+  const cancel = useMutation({
+    mutationFn: () => api(`/ppm-schedule-requests/${s!.id}/cancel`, { method: "POST" }),
+    onSuccess: onChanged,
+  });
+
+  function copyLink(url: string) {
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  // Booked — show the confirmed date.
+  if (ppm.scheduledDate || s?.status === "confirmed") {
+    const d = ppm.scheduledDate ?? s?.confirmedDate ?? null;
+    return <Bar><span className="text-emerald-300">📅 Booked for <b>{d ? formatDate(d) : "—"}</b></span></Bar>;
+  }
+
+  // Contractor proposed a date — approve or cancel.
+  if (s?.status === "proposed") {
+    return (
+      <Bar>
+        <span className="text-amber-200 min-w-0">
+          Contractor proposed <b>{s.proposedDate ? formatDate(s.proposedDate) : "—"}</b>
+          {s.contractorNote ? <span className="text-amber-200/70"> — “{s.contractorNote}”</span> : null}
+        </span>
+        <div className="flex gap-2 ml-auto">
+          <button onClick={() => confirm.mutate()} disabled={confirm.isPending}
+            className="px-3 py-1 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 rounded text-white font-medium">
+            {confirm.isPending ? "…" : "Approve date"}
+          </button>
+          <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
+            className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200">Cancel</button>
+        </div>
+      </Bar>
+    );
+  }
+
+  // Invite sent — awaiting reply. Offer copy-link (works even before SMTP).
+  if (s?.status === "sent") {
+    return (
+      <Bar>
+        <span className="text-slate-300 min-w-0">
+          ⏳ Awaiting {ppm.contractorName ?? "contractor"}
+          <span className="text-slate-500">{s.emailDelivered ? " · emailed" : " · not emailed yet — copy the link"}</span>
+        </span>
+        <div className="flex gap-2 ml-auto">
+          <button onClick={() => copyLink(s.scheduleUrl)}
+            className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-white">{copied ? "Copied!" : "Copy link"}</button>
+          <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
+            className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200">Cancel</button>
+        </div>
+      </Bar>
+    );
+  }
+
+  // Nothing live (none / declined / cancelled) — offer to (re)request a date.
+  const declined = s?.status === "declined";
+  const hasEmail = !!ppm.contactEmail;
+  return (
+    <Bar>
+      <span className="text-slate-400 min-w-0">
+        {declined
+          ? <>Contractor declined{s?.contractorNote ? <span className="text-slate-500"> — “{s.contractorNote}”</span> : null}</>
+          : "No date arranged yet"}
+      </span>
+      <button onClick={() => request.mutate()} disabled={request.isPending || !hasEmail}
+        title={hasEmail ? "Email the contractor a link to pick a date" : "Add a contractor email on this task first"}
+        className="ml-auto px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white font-medium">
+        {request.isPending ? "…" : declined ? "Ask again" : "Request a date"}
+      </button>
+    </Bar>
+  );
+}
+
+function Bar({ children }: { children: React.ReactNode }) {
+  return <div className="mt-3 pt-3 border-t border-slate-800 text-sm flex flex-wrap items-center gap-x-3 gap-y-2">{children}</div>;
 }
 
 function Field({ label, value }: { label: string; value: string }) {
