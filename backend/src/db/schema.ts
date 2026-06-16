@@ -440,3 +440,206 @@ export const signTags = pgTable(
     orgIdx: index("sign_tags_org_idx").on(t.organisationId),
   }),
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Maintenance & tendering platform (Phase 1)
+//
+// Extends the existing site model (organisations → buildings → floors → zones)
+// and PPMs. Contractors are NOT app users — they're emailed (white-labelled as
+// the maintenance company) and respond via magic links. See
+// docs/MAINTENANCE_PLATFORM_SPEC.md.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const jobSource = pgEnum("job_source", ["manual", "sensor", "ppm", "tenant_request"]);
+export const jobPriority = pgEnum("job_priority", ["emergency", "urgent", "routine"]);
+export const jobStatus = pgEnum("job_status", [
+  "logged",      // just raised
+  "scoped",      // AI drafted the scope; awaiting orchestrator approval
+  "tendering",   // out to contractors, collecting quotes
+  "awarded",     // a quote chosen; agreeing a start date
+  "scheduled",   // date agreed, on the calendar
+  "in_progress", // work underway
+  "completed",   // signed off
+  "cancelled",
+]);
+export const billToParty = pgEnum("bill_to_party", ["landlord", "tenant", "maintenance_co"]);
+export const quoteStatus = pgEnum("quote_status", [
+  "pending",
+  "submitted",
+  "awarded",
+  "declined",
+  "withdrawn",
+]);
+export const contractorTier = pgEnum("contractor_tier", [
+  "preferred",
+  "approved",
+  "on_notice",
+  "blocked",
+]);
+
+// Trade taxonomy. Built-ins seed with organisation_id NULL; an org's own
+// ("Other — type your own") set their organisation_id.
+export const trades = pgTable(
+  "trades",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    groupName: text("group_name").notNull(),
+    statutory: boolean("statutory").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgIdx: index("trades_org_idx").on(t.organisationId) }),
+);
+
+export const assets = pgTable(
+  "assets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    floorId: uuid("floor_id").references(() => floors.id, { onDelete: "set null" }),
+    zoneId: uuid("zone_id").references(() => zones.id, { onDelete: "set null" }),
+    tradeId: uuid("trade_id").references(() => trades.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    category: text("category"),
+    make: text("make"),
+    model: text("model"),
+    serial: text("serial"),
+    qrCode: text("qr_code"),
+    installDate: date("install_date"),
+    expectedLifeYears: smallint("expected_life_years"),
+    warrantyExpiry: date("warranty_expiry"),
+    conditionScore: smallint("condition_score"), // 1 (poor) .. 5 (excellent)
+    purchaseCostCents: integer("purchase_cost_cents"),
+    replacementCostCents: integer("replacement_cost_cents"),
+    notes: text("notes"),
+    retired: boolean("retired").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("assets_org_idx").on(t.organisationId),
+    buildingIdx: index("assets_building_idx").on(t.buildingId),
+  }),
+);
+
+export const contractors = pgTable(
+  "contractors",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(), // company name
+    contactName: text("contact_name"),
+    email: text("email"), // where tenders are sent
+    phone: text("phone"),
+    region: text("region"),
+    insuranceExpiry: date("insurance_expiry"),
+    accreditation: text("accreditation"),
+    isPreferred: boolean("is_preferred").notNull().default(false),
+    tier: contractorTier("tier").notNull().default("approved"),
+    ratingAvg: smallint("rating_avg"), // 0..100 blended score
+    notes: text("notes"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgIdx: index("contractors_org_idx").on(t.organisationId) }),
+);
+
+export const contractorTrades = pgTable(
+  "contractor_trades",
+  {
+    contractorId: uuid("contractor_id").references(() => contractors.id, { onDelete: "cascade" }).notNull(),
+    tradeId: uuid("trade_id").references(() => trades.id, { onDelete: "cascade" }).notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.contractorId, t.tradeId] }) }),
+);
+
+export const tenants = pgTable(
+  "tenants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    contactName: text("contact_name"),
+    email: text("email"),
+    phone: text("phone"),
+    areaNote: text("area_note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgIdx: index("tenants_org_idx").on(t.organisationId) }),
+);
+
+export const maintenanceJobs = pgTable(
+  "maintenance_jobs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    source: jobSource("source").notNull().default("manual"),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    floorId: uuid("floor_id").references(() => floors.id, { onDelete: "set null" }),
+    zoneId: uuid("zone_id").references(() => zones.id, { onDelete: "set null" }),
+    assetId: uuid("asset_id").references(() => assets.id, { onDelete: "set null" }),
+    tradeId: uuid("trade_id").references(() => trades.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    description: text("description"), // the logged issue, raw
+    scope: text("scope"), // AI-drafted scope of works
+    priority: jobPriority("priority").notNull().default("routine"),
+    status: jobStatus("status").notNull().default("logged"),
+    billTo: billToParty("bill_to"),
+    tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+    reportedByUserId: uuid("reported_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    ppmId: uuid("ppm_id").references(() => ppms.id, { onDelete: "set null" }),
+    awardedQuoteId: uuid("awarded_quote_id"), // → job_quotes.id (no FK: avoids a cycle)
+    awardReason: text("award_reason"), // why this quote was chosen (justification)
+    proposedStartAt: timestamp("proposed_start_at", { withTimezone: true }),
+    scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
+    scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completionNote: text("completion_note"),
+    completionPhotoUrl: text("completion_photo_url"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("maintenance_jobs_org_idx").on(t.organisationId),
+    statusIdx: index("maintenance_jobs_status_idx").on(t.status),
+    assetIdx: index("maintenance_jobs_asset_idx").on(t.assetId),
+  }),
+);
+
+export const jobQuotes = pgTable(
+  "job_quotes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobId: uuid("job_id").references(() => maintenanceJobs.id, { onDelete: "cascade" }).notNull(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    contractorId: uuid("contractor_id").references(() => contractors.id, { onDelete: "cascade" }).notNull(),
+    status: quoteStatus("status").notNull().default("pending"),
+    amountCents: integer("amount_cents"),
+    upfrontCents: integer("upfront_cents"),
+    upfrontPct: smallint("upfront_pct"),
+    proposedStartDate: date("proposed_start_date"),
+    notes: text("notes"),
+    invitedAt: timestamp("invited_at", { withTimezone: true }).defaultNow().notNull(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  },
+  (t) => ({
+    jobIdx: index("job_quotes_job_idx").on(t.jobId),
+    contractorIdx: index("job_quotes_contractor_idx").on(t.contractorId),
+  }),
+);
+
+export const jobEvents = pgTable(
+  "job_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobId: uuid("job_id").references(() => maintenanceJobs.id, { onDelete: "cascade" }).notNull(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    type: text("type").notNull(), // logged|scoped|approved|tendered|quoted|awarded|scheduled|started|completed|note
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    detail: text("detail"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ jobIdx: index("job_events_job_idx").on(t.jobId) }),
+);
