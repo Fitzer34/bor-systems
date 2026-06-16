@@ -90,6 +90,17 @@ export async function requestPpmSchedule(
     .limit(1);
   const orgName = org?.name ?? "Your client";
 
+  // Site location + on-site point of contact come from the building (if linked),
+  // so the contractor knows where to go and who to meet.
+  let building: typeof schema.buildings.$inferSelect | null = null;
+  if (ppm.buildingId) {
+    const [bld] = await db.select().from(schema.buildings).where(eq(schema.buildings.id, ppm.buildingId)).limit(1);
+    building = bld ?? null;
+  }
+  const siteContact = building
+    ? [building.siteContactName, building.siteContactPhone, building.siteContactEmail].filter(Boolean).join(" · ")
+    : "";
+
   const expiresAt = new Date(Date.now() + EXPIRY_DAYS * 86_400_000);
   const [request] = await db
     .insert(schema.ppmScheduleRequests)
@@ -115,6 +126,8 @@ export async function requestPpmSchedule(
     ``,
     `    Job:        ${ppm.title}`,
     `    Frequency:  ${frequencyLabel(ppm.frequencyPerYear)}`,
+    ...(building?.name ? [`    Site:       ${building.name}${building.address ? ", " + building.address : ""}`] : []),
+    ...(siteContact ? [`    On-site contact: ${siteContact}`] : []),
     ...(ppm.notes ? [`    Notes:      ${ppm.notes}`] : []),
     ``,
     `Please let us know a date that suits you using the secure link below. It takes a moment and needs no login or account:`,

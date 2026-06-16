@@ -52,6 +52,7 @@ function formatLongDate(iso: string): string {
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
+  buildingId: z.string().uuid().nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   contractorName: z.string().max(200).nullable().optional(),
   contactPhone: z.string().max(50).nullable().optional(),
@@ -70,11 +71,27 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
   // "proposed 12 Jul — approve?", or "scheduled" inline.
   app.get("/ppms", { preHandler: [app.authenticate, staff] }, async (req) => {
     const c = ctx(req);
-    const rows = await db
+    const joined = await db
       .select()
       .from(schema.ppms)
+      .leftJoin(schema.buildings, eq(schema.buildings.id, schema.ppms.buildingId))
       .where(eq(schema.ppms.organisationId, c.orgId))
       .orderBy(asc(schema.ppms.nextDueDate));
+    // Flatten the join and attach the building's site details (location +
+    // on-site contact) so the UI can show them and the contractor email uses them.
+    const rows = joined.map((j) => ({
+      ...j.ppms,
+      building: j.buildings?.id
+        ? {
+            id: j.buildings.id,
+            name: j.buildings.name,
+            address: j.buildings.address,
+            siteContactName: j.buildings.siteContactName,
+            siteContactPhone: j.buildings.siteContactPhone,
+            siteContactEmail: j.buildings.siteContactEmail,
+          }
+        : null,
+    }));
 
     // Latest schedule request per task (newest first; first seen per ppm wins).
     const ids = rows.map((r) => r.id);
@@ -117,6 +134,7 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
       .insert(schema.ppms)
       .values({
         organisationId: c.orgId,
+        buildingId: b.buildingId ?? null,
         title: b.title.trim(),
         notes: b.notes?.trim() || null,
         contractorName: b.contractorName?.trim() || null,
@@ -141,6 +159,7 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
     const c = ctx(req);
     const b = parsed.data;
     const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (b.buildingId !== undefined) updates.buildingId = b.buildingId || null;
     if (b.title !== undefined) updates.title = b.title.trim();
     if (b.notes !== undefined) updates.notes = b.notes?.trim() || null;
     if (b.contractorName !== undefined) updates.contractorName = b.contractorName?.trim() || null;
@@ -276,6 +295,14 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
         .limit(1);
       const orgName = org?.name ?? "Your client";
       const niceDate = formatLongDate(date);
+      let building: typeof schema.buildings.$inferSelect | null = null;
+      if (ppm?.buildingId) {
+        const [bld] = await db.select().from(schema.buildings).where(eq(schema.buildings.id, ppm.buildingId)).limit(1);
+        building = bld ?? null;
+      }
+      const contact = building
+        ? [building.siteContactName, building.siteContactPhone, building.siteContactEmail].filter(Boolean).join(" · ")
+        : "";
       void sendEmail({
         to: r.sentToEmail,
         subject: `Appointment confirmed: ${ppm?.title ?? "your visit"} — ${niceDate}`,
@@ -286,6 +313,8 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
           ``,
           `    Job:   ${ppm?.title ?? "Planned maintenance"}`,
           `    Date:  ${niceDate}`,
+          ...(building?.name ? [`    Site:  ${building.name}${building.address ? ", " + building.address : ""}`] : []),
+          ...(contact ? [`    On-site contact: ${contact}`] : []),
           ...(ppm?.notes ? [`    Notes: ${ppm.notes}`] : []),
           ``,
           `This date is now booked in our system. If anything changes, please let us know as soon as possible so we can rearrange.`,

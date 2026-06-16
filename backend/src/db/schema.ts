@@ -73,6 +73,14 @@ export const buildings = pgTable("buildings", {
     .references(() => organisations.id, { onDelete: "cascade" })
     .notNull(),
   name: text("name").notNull(),
+  // Street address / location notes so a contractor knows where to go. The
+  // on-site point of contact is the person they meet/ring on arrival. All
+  // optional, set per building and reused by every PPM/job there, and included
+  // in the emails sent to contractors.
+  address: text("address"),
+  siteContactName: text("site_contact_name"),
+  siteContactPhone: text("site_contact_phone"),
+  siteContactEmail: text("site_contact_email"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -166,6 +174,9 @@ export const ppms = pgTable(
     organisationId: uuid("organisation_id")
       .references(() => organisations.id, { onDelete: "cascade" })
       .notNull(),
+    // Which building this task is at. Drives the site address + on-site contact
+    // emailed to the contractor. Optional (a task may be portfolio-wide).
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
     // What needs doing ("Annual fire-extinguisher service").
     title: text("title").notNull(),
     // Optional scope / detail notes.

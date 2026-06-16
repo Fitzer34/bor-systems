@@ -169,6 +169,7 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
         notes: schema.ppms.notes,
         frequencyPerYear: schema.ppms.frequencyPerYear,
         contractorName: schema.ppms.contractorName,
+        buildingId: schema.ppms.buildingId,
       })
       .from(schema.ppms)
       .where(eq(schema.ppms.id, r.ppmId))
@@ -179,6 +180,14 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       .where(eq(schema.organisations.id, r.organisationId))
       .limit(1);
 
+    // Site location + on-site contact (from the building) so the contractor
+    // sees where to go and who to meet on the page, not just in the email.
+    let building: typeof schema.buildings.$inferSelect | null = null;
+    if (ppm?.buildingId) {
+      const [bld] = await db.select().from(schema.buildings).where(eq(schema.buildings.id, ppm.buildingId)).limit(1);
+      building = bld ?? null;
+    }
+
     const expired = r.expiresAt.getTime() < Date.now();
     return {
       orgName: org?.name ?? "Maintenance",
@@ -186,6 +195,11 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       notes: ppm?.notes ?? null,
       frequencyPerYear: ppm?.frequencyPerYear ?? 1,
       contractorName: ppm?.contractorName ?? null,
+      siteName: building?.name ?? null,
+      siteAddress: building?.address ?? null,
+      siteContactName: building?.siteContactName ?? null,
+      siteContactPhone: building?.siteContactPhone ?? null,
+      siteContactEmail: building?.siteContactEmail ?? null,
       status: r.status,
       proposedDate: r.proposedDate,
       confirmedDate: r.confirmedDate,

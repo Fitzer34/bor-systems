@@ -43,6 +43,41 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     return { building: b };
   });
 
+  // Edit a building's name, site address, and on-site point of contact. These
+  // are reused by every PPM/job at the building and included in contractor
+  // emails, so they're admin-only.
+  app.patch("/buildings/:id", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    const body = z.object({
+      name: z.string().min(1).max(200).optional(),
+      address: z.string().max(500).nullable().optional(),
+      siteContactName: z.string().max(200).nullable().optional(),
+      siteContactPhone: z.string().max(50).nullable().optional(),
+      siteContactEmail: z.string().max(200).nullable().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+
+    const [existing] = await db.select({ id: schema.buildings.id }).from(schema.buildings)
+      .where(and(eq(schema.buildings.id, id), eq(schema.buildings.organisationId, c.orgId)))
+      .limit(1);
+    if (!existing) return reply.code(404).send({ error: "not_found" });
+
+    const b = body.data;
+    const updates: Record<string, unknown> = {};
+    if (b.name !== undefined) updates.name = b.name.trim();
+    if (b.address !== undefined) updates.address = b.address?.trim() || null;
+    if (b.siteContactName !== undefined) updates.siteContactName = b.siteContactName?.trim() || null;
+    if (b.siteContactPhone !== undefined) updates.siteContactPhone = b.siteContactPhone?.trim() || null;
+    if (b.siteContactEmail !== undefined) updates.siteContactEmail = b.siteContactEmail?.trim() || null;
+    if (Object.keys(updates).length === 0) return { ok: true };
+
+    const [updated] = await db.update(schema.buildings).set(updates)
+      .where(and(eq(schema.buildings.id, id), eq(schema.buildings.organisationId, c.orgId)))
+      .returning();
+    return { building: updated };
+  });
+
   app.get("/buildings/:id/floors", { preHandler: [app.authenticate] }, async (req) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);

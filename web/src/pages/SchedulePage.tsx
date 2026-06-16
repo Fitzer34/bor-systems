@@ -18,6 +18,11 @@ interface ScheduleInfo {
   notes: string | null;
   frequencyPerYear: number;
   contractorName: string | null;
+  siteName: string | null;
+  siteAddress: string | null;
+  siteContactName: string | null;
+  siteContactPhone: string | null;
+  siteContactEmail: string | null;
   status: "sent" | "proposed" | "confirmed" | "declined" | "cancelled";
   proposedDate: string | null;
   confirmedDate: string | null;
@@ -149,6 +154,16 @@ export function SchedulePage() {
                   <div className="font-semibold text-slate-900">{info.title}</div>
                   <div className="text-sm text-slate-500 mt-0.5">Recurs {freqLabel(info.frequencyPerYear)}</div>
                   {info.notes && <div className="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{info.notes}</div>}
+                  {info.siteName && (
+                    <div className="text-sm text-slate-700 mt-2">
+                      📍 <span className="font-medium">{info.siteName}</span>{info.siteAddress ? `, ${info.siteAddress}` : ""}
+                    </div>
+                  )}
+                  {(info.siteContactName || info.siteContactPhone || info.siteContactEmail) && (
+                    <div className="text-sm text-slate-700 mt-1">
+                      👤 On-site contact: {[info.siteContactName, info.siteContactPhone, info.siteContactEmail].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
                 </div>
 
                 {info.status === "proposed" && (

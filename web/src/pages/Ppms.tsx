@@ -30,9 +30,20 @@ export interface PpmSchedule {
   createdAt: string;
 }
 
+export interface Building {
+  id: string;
+  name: string;
+  address: string | null;
+  siteContactName: string | null;
+  siteContactPhone: string | null;
+  siteContactEmail: string | null;
+}
+
 export interface Ppm {
   id: string;
   title: string;
+  buildingId: string | null;
+  building: Building | null;
   notes: string | null;
   contractorName: string | null;
   contactPhone: string | null;
@@ -287,6 +298,7 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
             <Field label="Frequency" value={frequencyLabel(ppm.frequencyPerYear)} />
             <Field label="Next due" value={formatDate(ppm.nextDueDate)} />
+            {ppm.building && <Field label="Site" value={ppm.building.name} />}
             {ppm.contractorName && <Field label="Contractor" value={ppm.contractorName} />}
             {ppm.contactPhone && <Field label="Phone" value={ppm.contactPhone} />}
             {ppm.contactEmail && <Field label="Email" value={ppm.contactEmail} />}
@@ -453,6 +465,30 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  // Site + on-site contact live on the building. Pick one (or add it), and the
+  // address/contact below are saved onto that building.
+  const [buildingChoice, setBuildingChoice] = useState<string>(ppm?.building?.id ?? "");
+  const [newBuildingName, setNewBuildingName] = useState("");
+  const [addr, setAddr] = useState(ppm?.building?.address ?? "");
+  const [scName, setScName] = useState(ppm?.building?.siteContactName ?? "");
+  const [scPhone, setScPhone] = useState(ppm?.building?.siteContactPhone ?? "");
+  const [scEmail, setScEmail] = useState(ppm?.building?.siteContactEmail ?? "");
+
+  const buildingsQuery = useQuery({ queryKey: ["buildings"], queryFn: () => api<{ buildings: Building[] }>("/buildings") });
+  const buildings = buildingsQuery.data?.buildings ?? [];
+
+  // Switching building prefills the address/contact from that building's saved values.
+  function selectBuilding(val: string) {
+    setBuildingChoice(val);
+    if (val === "__new__" || val === "") {
+      setAddr(""); setScName(""); setScPhone(""); setScEmail("");
+      return;
+    }
+    const b = buildings.find((x) => x.id === val);
+    setAddr(b?.address ?? ""); setScName(b?.siteContactName ?? "");
+    setScPhone(b?.siteContactPhone ?? ""); setScEmail(b?.siteContactEmail ?? "");
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -472,11 +508,33 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
   });
 
   const save = useMutation({
-    mutationFn: () =>
-      isEdit
-        ? api(`/ppms/${ppm!.id}`, { method: "PATCH", body: JSON.stringify(payload()) })
-        : api("/ppms", { method: "POST", body: JSON.stringify(payload()) }),
-    onSuccess: onSaved,
+    mutationFn: async () => {
+      // Resolve the building: create it if "new", else use the selection.
+      let buildingId: string | null = buildingChoice && buildingChoice !== "__new__" ? buildingChoice : null;
+      if (buildingChoice === "__new__" && newBuildingName.trim()) {
+        const res = await api<{ building: { id: string } }>("/buildings", {
+          method: "POST", body: JSON.stringify({ name: newBuildingName.trim() }),
+        });
+        buildingId = res.building.id;
+      }
+      // Save the site address + on-site contact onto the building (reused everywhere).
+      if (buildingId) {
+        await api(`/buildings/${buildingId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            address: addr.trim() || null,
+            siteContactName: scName.trim() || null,
+            siteContactPhone: scPhone.trim() || null,
+            siteContactEmail: scEmail.trim() || null,
+          }),
+        });
+      }
+      const body = JSON.stringify({ ...payload(), buildingId });
+      return isEdit
+        ? api(`/ppms/${ppm!.id}`, { method: "PATCH", body })
+        : api("/ppms", { method: "POST", body });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["buildings"] }); onSaved(); },
     onError: (err: unknown) => {
       const e = err as { status?: number; payload?: { details?: Record<string, string[]> } };
       const first = e?.payload?.details ? Object.values(e.payload.details).flat()[0] : null;
@@ -521,6 +579,54 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
                 className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm resize-none"
               />
             </FieldGroup>
+          </Section>
+
+          <Section title="Site & on-site contact">
+            <FieldGroup label="Building / site">
+              <select
+                value={buildingChoice} onChange={(e) => selectBuilding(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+              >
+                <option value="">— None —</option>
+                {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                <option value="__new__">+ Add a new building…</option>
+              </select>
+            </FieldGroup>
+            {buildingChoice === "__new__" && (
+              <FieldGroup label="New building name">
+                <input
+                  type="text" value={newBuildingName} onChange={(e) => setNewBuildingName(e.target.value)} maxLength={200}
+                  placeholder="e.g. Riverside House"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                />
+              </FieldGroup>
+            )}
+            {buildingChoice && (buildingChoice !== "__new__" || newBuildingName.trim()) && (
+              <>
+                <FieldGroup label="Address / how to find it">
+                  <input
+                    type="text" value={addr} onChange={(e) => setAddr(e.target.value)} maxLength={500}
+                    placeholder="e.g. 12 Main St, Cork — deliveries to rear entrance"
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                  />
+                </FieldGroup>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <FieldGroup label="On-site contact">
+                    <input type="text" value={scName} onChange={(e) => setScName(e.target.value)} maxLength={200}
+                      placeholder="Name" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                  </FieldGroup>
+                  <FieldGroup label="Phone">
+                    <input type="tel" value={scPhone} onChange={(e) => setScPhone(e.target.value)} maxLength={50}
+                      placeholder="Phone" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                  </FieldGroup>
+                  <FieldGroup label="Email">
+                    <input type="email" value={scEmail} onChange={(e) => setScEmail(e.target.value)} maxLength={200}
+                      placeholder="Email" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                  </FieldGroup>
+                </div>
+                <p className="text-xs text-slate-500">Saved on the building and reused for every job here — and sent to the contractor so they know where to go and who to meet.</p>
+              </>
+            )}
           </Section>
 
           <Section title="Contractor">
