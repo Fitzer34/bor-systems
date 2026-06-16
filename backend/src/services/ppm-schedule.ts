@@ -107,22 +107,23 @@ export async function requestPpmSchedule(
   if (!request) return { ok: false, error: "insert_failed" };
 
   const url = scheduleUrl(request.token);
-  const subject = `Please book in: ${ppm.title}`;
+  const subject = `Maintenance booking request: ${ppm.title}`;
   const body = [
-    `Hello${ppm.contractorName ? " " + ppm.contractorName : ""},`,
+    ppm.contractorName ? `Dear ${ppm.contractorName},` : "Dear Sir or Madam,",
     ``,
-    `${orgName} manages planned maintenance through HazardLink, and "${ppm.title}" is now due.`,
-    `Please pick a date you can carry it out — it takes a few seconds and there's no login:`,
+    `${orgName} would like to arrange the following planned maintenance, which is now due:`,
+    ``,
+    `    Job:        ${ppm.title}`,
+    `    Frequency:  ${frequencyLabel(ppm.frequencyPerYear)}`,
+    ...(ppm.notes ? [`    Notes:      ${ppm.notes}`] : []),
+    ``,
+    `Please let us know a date that suits you using the secure link below. It takes a moment and needs no login or account:`,
     ``,
     url,
     ``,
-    `Job: ${ppm.title}`,
-    `How often: ${frequencyLabel(ppm.frequencyPerYear)}`,
-    ...(ppm.notes ? [`Notes: ${ppm.notes}`] : []),
+    `Once you submit a date, ${orgName} will review and confirm it, and you'll receive written confirmation by email.`,
     ``,
-    `Once you choose a date, ${orgName} confirms it and you're booked in.`,
-    ``,
-    `Thanks,`,
+    `Kind regards,`,
     orgName,
   ].join("\n");
 

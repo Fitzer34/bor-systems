@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import {
@@ -111,6 +112,22 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       await setNumber(c.orgId, SETTING_KEYS.EXPECTED_CLEANING_TIME, body.data.minutes);
       await audit(req, "settings.expected_cleaning_time_set", SETTING_KEYS.EXPECTED_CLEANING_TIME, { minutes: body.data.minutes });
       return { minutes: body.data.minutes };
+    },
+  );
+
+  // Rename the organisation. This name shows in the sidebar and is the sender
+  // name + signature on every contractor email, so it's admin-only.
+  app.put(
+    "/settings/org-name",
+    { preHandler: [app.authenticate, requireRole(["admin"])] },
+    async (req, reply) => {
+      const body = z.object({ name: z.string().trim().min(1).max(120) }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
+      const name = body.data.name.trim();
+      await db.update(schema.organisations).set({ name }).where(eq(schema.organisations.id, c.orgId));
+      await audit(req, "settings.org_name_set", "org_name", { name });
+      return { name };
     },
   );
 }

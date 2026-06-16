@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
 
 interface AllSettings {
   resolutionMinutes: number;
@@ -24,6 +25,10 @@ export function Settings() {
   const [cleaning, setCleaning] = useState("");
   const [savedKey, setSavedKey] = useState<string | null>(null);
 
+  const { user, refreshUser } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const [orgName, setOrgName] = useState(user?.organisationName ?? "");
+
   useEffect(() => {
     if (!current.data) return;
     setResolution(String(current.data.resolutionMinutes));
@@ -32,6 +37,16 @@ export function Settings() {
     setAudibleAlarm(current.data.defaultAudibleAlarm);
     setCleaning(String(current.data.expectedCleaningMinutes));
   }, [current.data]);
+
+  // Keep the field in sync with the live org name (e.g. after a save refreshes it).
+  useEffect(() => {
+    if (user?.organisationName) setOrgName(user.organisationName);
+  }, [user?.organisationName]);
+
+  const saveOrgName = useMutation({
+    mutationFn: () => api("/settings/org-name", { method: "PUT", body: JSON.stringify({ name: orgName.trim() }) }),
+    onSuccess: async () => { setSavedKey(`org-name@${Date.now()}`); await refreshUser(); },
+  });
 
   const onSaved = (label: string) => () => {
     setSavedKey(`${label}@${Date.now()}`);
@@ -62,6 +77,27 @@ export function Settings() {
   return (
     <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-semibold">Settings</h1>
+
+      {isAdmin && (
+        <Card title="Organisation name" description="Your company name. Shown in the sidebar, and used as the sender name and signature on every email sent to contractors.">
+          <div className="flex items-end gap-3 flex-wrap">
+            <input
+              type="text" value={orgName} maxLength={120}
+              onChange={(e) => setOrgName(e.target.value)}
+              placeholder="e.g. Cork Facilities Ltd"
+              className="border rounded px-3 py-2 w-full max-w-sm"
+            />
+            <button
+              onClick={() => saveOrgName.mutate()}
+              disabled={!orgName.trim() || orgName.trim() === (user?.organisationName ?? "") || saveOrgName.isPending}
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm whitespace-nowrap"
+            >
+              {saveOrgName.isPending ? "Saving…" : "Save"}
+            </button>
+            {savedKey?.startsWith("org-name@") && <span className="text-sm text-green-700 mb-2">Saved</span>}
+          </div>
+        </Card>
+      )}
 
       <Card title="Acknowledgement timer" description="If no cleaner taps 'I'm on it' within this many minutes, the alert escalates to all on-duty supervisors via push, SMS, and email.">
         <NumberRow value={ack} onChange={setAck} suffix="minutes" min={1} max={120}
