@@ -71,7 +71,7 @@ export function Status() {
         </Card>
       </div>
 
-      <div className="text-xs text-slate-400">
+      <div className="text-xs text-slate-500">
         Backend v{data.version} · This page polls /status every 30 s. For an externally-hosted status page, point your StatusPage.io or UptimeRobot monitor at <code>/status</code>.
       </div>
     </div>
@@ -98,7 +98,7 @@ function Banner({
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="p-4 rounded-lg border bg-slate-900/50 shadow-sm">
+    <div className="p-4 rounded-lg border bg-white shadow-sm">
       <div className="text-sm font-medium text-slate-700 mb-2">{title}</div>
       <div className="space-y-1">{children}</div>
     </div>

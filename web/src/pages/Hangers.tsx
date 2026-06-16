@@ -81,10 +81,10 @@ export function Hangers() {
   const [registering, setRegistering] = useState(false);
 
   if (hangers.isLoading) {
-    return <div className="p-8 text-slate-400">Loading hangers…</div>;
+    return <div className="p-8 text-slate-500">Loading hangers…</div>;
   }
   if (hangers.error) {
-    return <div className="p-8 text-red-400">Could not load hangers.</div>;
+    return <div className="p-8 text-red-700">Could not load hangers.</div>;
   }
 
   const list = hangers.data?.hangers ?? [];
@@ -94,7 +94,7 @@ export function Hangers() {
       <div className="flex items-center justify-between mb-6 gap-4">
         <h1 className="text-2xl font-semibold">Hangers</h1>
         <div className="flex items-center gap-4">
-          <p className="text-sm text-slate-400 hidden md:block">
+          <p className="text-sm text-slate-500 hidden md:block">
             One per wet-floor sign. Onboard via the iOS app or register
             by DevEUI here.
           </p>
@@ -110,9 +110,9 @@ export function Hangers() {
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-8 text-center">
-          <p className="text-slate-200">No hangers registered yet.</p>
-          <p className="text-sm text-slate-400 mt-2">
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+          <p className="text-slate-800">No hangers registered yet.</p>
+          <p className="text-sm text-slate-500 mt-2">
             Plug in a HazardLink hanger and run <em>More → Add a hanger</em>{" "}
             on the iOS app — it'll appear here once it joins WiFi.
           </p>
@@ -189,30 +189,30 @@ export function HangerCard({ hanger, zone, lowBatteryThreshold, isStaff, onClick
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left rounded-lg border border-slate-800 bg-slate-900/40 hover:bg-slate-900/70 hover:border-slate-700 transition p-4 cursor-pointer"
+      className="w-full text-left rounded-lg border border-slate-200 bg-white hover:bg-white hover:border-slate-300 transition p-4 cursor-pointer"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
-            <h3 className="font-medium text-slate-100">
+            <h3 className="font-medium text-slate-900">
               {hanger.name || hanger.devEui}
             </h3>
             <StatusPill status={status} />
             {lowBatt && (
-              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-500/15 text-red-300">
+              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
                 Low battery
               </span>
             )}
           </div>
 
           {hanger.name && (
-            <p className="text-xs text-slate-400 font-mono">{hanger.devEui}</p>
+            <p className="text-xs text-slate-500 font-mono">{hanger.devEui}</p>
           )}
 
-          <p className="mt-2 text-sm text-slate-300">{locationLabel}</p>
+          <p className="mt-2 text-sm text-slate-600">{locationLabel}</p>
 
           {hanger.locationNote && (
-            <p className="mt-1 text-sm text-slate-300 italic">
+            <p className="mt-1 text-sm text-slate-600 italic">
               📍 {hanger.locationNote}
             </p>
           )}
@@ -228,7 +228,7 @@ export function HangerCard({ hanger, zone, lowBatteryThreshold, isStaff, onClick
           </div>
         </div>
 
-        <div className="text-slate-400 text-xs whitespace-nowrap shrink-0">
+        <div className="text-slate-500 text-xs whitespace-nowrap shrink-0">
           {isStaff ? "Tap to edit →" : "View →"}
         </div>
       </div>
@@ -239,8 +239,8 @@ export function HangerCard({ hanger, zone, lowBatteryThreshold, isStaff, onClick
 function Field({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
   return (
     <span>
-      <span className="text-slate-400">{label}:</span>{" "}
-      <span className={highlight ? "text-red-300" : "text-slate-100"}>{value}</span>
+      <span className="text-slate-500">{label}:</span>{" "}
+      <span className={highlight ? "text-red-700" : "text-slate-900"}>{value}</span>
     </span>
   );
 }
@@ -249,10 +249,10 @@ type StatusKey = "online" | "offline" | "out_of_service" | "decommissioned";
 
 function StatusPill({ status }: { status: StatusKey }) {
   const styles: Record<StatusKey, string> = {
-    online:          "bg-emerald-500/15 text-emerald-300",
-    offline:         "bg-amber-500/15 text-amber-300",
-    out_of_service:  "bg-orange-500/15 text-orange-300",
-    decommissioned:  "bg-slate-700/40 text-slate-400",
+    online:          "bg-emerald-100 text-emerald-700",
+    offline:         "bg-amber-100 text-amber-700",
+    out_of_service:  "bg-orange-500/15 text-orange-700",
+    decommissioned:  "bg-slate-200 text-slate-500",
   };
   const labels: Record<StatusKey, string> = {
     online:          "Online",
@@ -381,12 +381,12 @@ export function HangerEditDialog({
       onClick={onClose}
     >
       <div
-        className="bg-slate-900 rounded-xl w-full max-w-2xl border border-slate-700 shadow-2xl overflow-hidden"
+        className="bg-white rounded-xl w-full max-w-2xl border border-slate-300 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-slate-100">Hanger details</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none" aria-label="Close">×</button>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 className="text-lg font-medium text-slate-900">Hanger details</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-2xl leading-none" aria-label="Close">×</button>
         </div>
 
         <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
@@ -399,14 +399,14 @@ export function HangerEditDialog({
                   onChange={(e) => setName(e.target.value)}
                   maxLength={80}
                   placeholder="e.g. Ward 4B main bathroom"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
                 />
               ) : (
-                <div className="text-slate-100 text-sm">{name || "—"}</div>
+                <div className="text-slate-900 text-sm">{name || "—"}</div>
               )}
             </FieldGroup>
             <FieldGroup label="DevEUI">
-              <div className="text-slate-300 text-sm font-mono">{hanger.devEui}</div>
+              <div className="text-slate-600 text-sm font-mono">{hanger.devEui}</div>
             </FieldGroup>
           </Section>
 
@@ -421,7 +421,7 @@ export function HangerEditDialog({
                       setFloorId("");
                       setZoneId("");
                     }}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
                   >
                     <option value="">— Unassigned —</option>
                     {buildings.map((b) => (
@@ -434,7 +434,7 @@ export function HangerEditDialog({
                     value={floorId}
                     onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }}
                     disabled={!buildingId}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm disabled:opacity-50"
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm disabled:opacity-50"
                   >
                     <option value="">— Unassigned —</option>
                     {floorsForBuilding.map((f) => (
@@ -447,7 +447,7 @@ export function HangerEditDialog({
                     value={zoneId}
                     onChange={(e) => setZoneId(e.target.value)}
                     disabled={!floorId}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm disabled:opacity-50"
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm disabled:opacity-50"
                   >
                     <option value="">— Unassigned —</option>
                     {zonesForFloor.map((z) => (
@@ -462,7 +462,7 @@ export function HangerEditDialog({
                     maxLength={280}
                     rows={2}
                     placeholder="e.g. behind the first stall on the right, on the wall opposite the sinks"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm resize-none"
+                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm resize-none"
                   />
                 </FieldGroup>
               </>
@@ -481,9 +481,9 @@ export function HangerEditDialog({
                   type="checkbox"
                   checked={audibleAlarm}
                   onChange={(e) => setAudibleAlarm(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-800 cursor-pointer"
+                  className="h-4 w-4 rounded border-slate-300 bg-slate-100 cursor-pointer"
                 />
-                <span className="text-slate-100 text-sm">Audible alarm on lift</span>
+                <span className="text-slate-900 text-sm">Audible alarm on lift</span>
               </label>
             ) : (
               <ReadRow label="Audible alarm" value={audibleAlarm ? "On" : "Off"} />
@@ -501,16 +501,16 @@ export function HangerEditDialog({
                   <button
                     onClick={() => removeTracker.mutate()}
                     disabled={removeTracker.isPending}
-                    className="text-sm text-red-400 hover:text-red-300 disabled:text-slate-500"
+                    className="text-sm text-red-700 hover:text-red-700 disabled:text-slate-500"
                   >
                     {removeTracker.isPending ? "Removing…" : "Remove tracker"}
                   </button>
                 )}
               </>
             ) : (
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-slate-500">
                 No tracker assigned. Assign one from the iOS app — open this hanger →{" "}
-                <span className="text-slate-200">Assign tracker</span>, then hold the phone next to it.
+                <span className="text-slate-800">Assign tracker</span>, then hold the phone next to it.
               </p>
             )}
           </Section>
@@ -522,39 +522,39 @@ export function HangerEditDialog({
             <ReadRow label="Last seen" value={hanger.lastSeenAt ? relativeTime(hanger.lastSeenAt) : "Never"} />
           </Section>
 
-          {save.error && <p className="text-sm text-red-400">Couldn't save changes — try again.</p>}
+          {save.error && <p className="text-sm text-red-700">Couldn't save changes — try again.</p>}
           {(decommission.error || recommission.error) && (
-            <p className="text-sm text-red-400">Couldn't change status — try again.</p>
+            <p className="text-sm text-red-700">Couldn't change status — try again.</p>
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between gap-3">
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
           {isAdmin && (
             confirmingDelete ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-red-300">Permanently delete + all its alerts?</span>
+                <span className="text-sm text-red-700">Permanently delete + all its alerts?</span>
                 <button
                   onClick={() => remove.mutate()}
                   disabled={remove.isPending}
-                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded text-white"
+                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-200 rounded text-white"
                 >
                   {remove.isPending ? "…" : "Delete"}
                 </button>
-                <button onClick={() => setConfirmingDelete(false)} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">
+                <button onClick={() => setConfirmingDelete(false)} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">
                   Cancel
                 </button>
               </div>
             ) : confirmingDecommission ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-300">Decommission this hanger?</span>
+                <span className="text-sm text-slate-600">Decommission this hanger?</span>
                 <button
                   onClick={() => decommission.mutate()}
                   disabled={decommission.isPending}
-                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded text-white"
+                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-200 rounded text-white"
                 >
                   {decommission.isPending ? "…" : "Confirm"}
                 </button>
-                <button onClick={() => setConfirmingDecommission(false)} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">
+                <button onClick={() => setConfirmingDecommission(false)} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">
                   Cancel
                 </button>
               </div>
@@ -564,14 +564,14 @@ export function HangerEditDialog({
                   <button
                     onClick={() => recommission.mutate()}
                     disabled={recommission.isPending}
-                    className="px-3 py-1.5 text-sm text-green-400 hover:text-green-300 hover:bg-green-950/30 rounded"
+                    className="px-3 py-1.5 text-sm text-green-700 hover:text-green-700 hover:bg-green-950/30 rounded"
                   >
                     {recommission.isPending ? "…" : "Recommission"}
                   </button>
                 ) : (
                   <button
                     onClick={() => setConfirmingDecommission(true)}
-                    className="px-3 py-1.5 text-sm text-amber-400 hover:text-amber-300 hover:bg-amber-950/30 rounded"
+                    className="px-3 py-1.5 text-sm text-amber-700 hover:text-amber-700 hover:bg-amber-950/30 rounded"
                   >
                     Decommission
                   </button>
@@ -580,7 +580,7 @@ export function HangerEditDialog({
                     is for real devices you're retiring (keeps history). */}
                 <button
                   onClick={() => setConfirmingDelete(true)}
-                  className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded"
+                  className="px-3 py-1.5 text-sm text-red-700 hover:text-red-700 hover:bg-red-950/30 rounded"
                 >
                   Delete permanently
                 </button>
@@ -588,12 +588,12 @@ export function HangerEditDialog({
             )
           )}
           <div className="flex gap-2 ml-auto">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">Close</button>
+            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Close</button>
             {isStaff && (
               <button
                 onClick={() => save.mutate()}
                 disabled={!hasChanges || save.isPending}
-                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 rounded text-white font-medium"
+                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium"
               >
                 {save.isPending ? "Saving…" : "Save"}
               </button>
@@ -608,7 +608,7 @@ export function HangerEditDialog({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs uppercase tracking-wider text-slate-400 mb-2">{title}</h3>
+      <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-2">{title}</h3>
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -617,7 +617,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      <label className="block text-xs text-slate-500 mb-1">{label}</label>
       {children}
     </div>
   );
@@ -626,8 +626,8 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
 function ReadRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-sm">
-      <span className="text-slate-400">{label}</span>
-      <span className="text-slate-100">{value}</span>
+      <span className="text-slate-500">{label}</span>
+      <span className="text-slate-900">{value}</span>
     </div>
   );
 }
@@ -798,10 +798,10 @@ export function RegisterHangerDialog({ buildings, onClose, onRegistered }: Regis
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-slate-900 rounded-xl w-full max-w-2xl border border-slate-700 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-slate-100">Register hanger</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
+      <div className="bg-white rounded-xl w-full max-w-2xl border border-slate-300 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 className="text-lg font-medium text-slate-900">Register hanger</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-2xl leading-none">×</button>
         </div>
 
         <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
@@ -813,7 +813,7 @@ export function RegisterHangerDialog({ buildings, onClose, onRegistered }: Regis
                 onChange={(e) => setDevEui(e.target.value)}
                 autoFocus
                 placeholder="e.g. BOR3C0F02EADB342"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm font-mono"
+                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm font-mono"
               />
               <p className="mt-1.5 text-xs text-slate-500">
                 Read it off the OLED's first boot screen, the gateway's
@@ -888,21 +888,21 @@ export function RegisterHangerDialog({ buildings, onClose, onRegistered }: Regis
                 type="checkbox"
                 checked={audibleAlarm}
                 onChange={(e) => setAudibleAlarm(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-600 bg-slate-800 cursor-pointer"
+                className="h-4 w-4 rounded border-slate-300 bg-slate-100 cursor-pointer"
               />
-              <span className="text-slate-100 text-sm">Audible alarm on lift</span>
+              <span className="text-slate-900 text-sm">Audible alarm on lift</span>
             </label>
           </Section>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-700">{error}</p>}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">Cancel</button>
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
           <button
             onClick={() => { setError(null); register.mutate(); }}
             disabled={!devEuiValid || register.isPending}
-            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 rounded text-white font-medium"
+            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium"
           >
             {register.isPending
               ? "Registering…"
@@ -942,7 +942,7 @@ function PickerRow({
 }: PickerRowProps) {
   return (
     <div>
-      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      <label className="block text-xs text-slate-500 mb-1">{label}</label>
       <div className="space-y-1">
         {options.map((o) => (
           <button
@@ -952,12 +952,12 @@ function PickerRow({
             className={
               "w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between " +
               (selectedId === o.id
-                ? "bg-blue-500/15 text-blue-200 border border-blue-500/40"
-                : "bg-slate-800 text-slate-200 hover:bg-slate-700 border border-transparent")
+                ? "bg-blue-100 text-blue-800 border border-blue-300"
+                : "bg-slate-100 text-slate-800 hover:bg-slate-200 border border-transparent")
             }
           >
             <span>{o.name}</span>
-            {selectedId === o.id && <span className="text-blue-300">✓</span>}
+            {selectedId === o.id && <span className="text-blue-700">✓</span>}
           </button>
         ))}
         {creating ? (
@@ -969,22 +969,22 @@ function PickerRow({
               onKeyDown={(e) => { if (e.key === "Enter") onSave(); }}
               autoFocus
               placeholder={placeholder}
-              className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+              className="flex-1 px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
             />
             <button
               onClick={onSave}
               disabled={!draftName.trim() || saving}
-              className="px-3 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded text-white"
+              className="px-3 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 rounded text-white"
             >
               {saving ? "…" : "Save"}
             </button>
-            <button onClick={onCancelCreate} className="px-2 text-slate-400 hover:text-white text-lg">×</button>
+            <button onClick={onCancelCreate} className="px-2 text-slate-500 hover:text-slate-900 text-lg">×</button>
           </div>
         ) : (
           <button
             type="button"
             onClick={onStartCreate}
-            className="w-full text-left px-3 py-2 rounded text-sm text-blue-400 hover:text-blue-300 hover:bg-blue-950/30 border border-dashed border-slate-700"
+            className="w-full text-left px-3 py-2 rounded text-sm text-blue-700 hover:text-blue-700 hover:bg-blue-950/30 border border-dashed border-slate-300"
           >
             + Add new {label.toLowerCase()}
           </button>

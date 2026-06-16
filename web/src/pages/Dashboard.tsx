@@ -127,7 +127,7 @@ export function Dashboard() {
       )}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Active alerts</h1>
-        <button onClick={() => alerts.refetch()} className="text-sm text-slate-600 hover:text-white">Refresh</button>
+        <button onClick={() => alerts.refetch()} className="text-sm text-slate-600 hover:text-slate-900">Refresh</button>
       </div>
       {alerts.isLoading && <div className="text-slate-500">Loading…</div>}
       {alerts.error && <div className="text-red-600">Could not load alerts.</div>}
@@ -143,12 +143,12 @@ export function Dashboard() {
           <li key={a.id}>
             <Link
               to={`/alerts/${a.id}`}
-              className={`flex items-center gap-4 rounded-lg border p-4 shadow-sm bg-slate-900/50 hover:shadow ${
+              className={`flex items-center gap-4 rounded-lg border p-4 shadow-sm bg-white hover:shadow ${
                 a.status === "open" ? "border-red-300" : "border-amber-300"
               }`}
             >
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-slate-100 flex items-center gap-2">
+                <div className="font-medium text-slate-900 flex items-center gap-2">
                   <span>{a.floorName ?? "Unknown floor"} — {a.zoneName ?? "Unassigned zone"}</span>
                   {offlineHangerIds.has(a.hangerId) && (
                     <span
@@ -188,13 +188,13 @@ export function Dashboard() {
           <h2 className="text-2xl font-semibold mt-10 mb-3">Dispatches</h2>
           <ul className="space-y-3">
             {activeDispatches.map((d) => (
-              <li key={d.id} className="rounded-lg border border-blue-300 bg-slate-900/50 p-4 shadow-sm">
+              <li key={d.id} className="rounded-lg border border-blue-300 bg-white p-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3 sm:gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium">
                       {d.zoneName ? `Go to: ${d.zoneName}` : "Dispatch"}
                     </div>
-                    <p className="text-slate-300 mt-1 whitespace-pre-wrap break-words">{d.message}</p>
+                    <p className="text-slate-600 mt-1 whitespace-pre-wrap break-words">{d.message}</p>
                     <div className="text-xs text-slate-500 mt-2">
                       Sent {timeAgo(d.sentAt)} · Status: {d.status}
                     </div>
@@ -208,7 +208,7 @@ export function Dashboard() {
                     )}
                     {d.status !== "completed" && (
                       <button onClick={() => completeDispatch.mutate(d.id)}
-                        className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-sm rounded border border-slate-700 hover:bg-slate-800">
+                        className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-sm rounded border border-slate-300 hover:bg-slate-100">
                         Mark done
                       </button>
                     )}
@@ -238,11 +238,11 @@ function LowBatteryBanner({
     .map((h) => `${h.name || "Hanger"} (${h.batteryPct}%)`)
     .join(", ");
   const cls =
-    "flex items-center justify-between gap-3 mb-5 px-4 py-3 rounded-lg border text-sm bg-amber-500/10 border-amber-500/40 text-amber-200";
+    "flex items-center justify-between gap-3 mb-5 px-4 py-3 rounded-lg border text-sm bg-amber-50 border-amber-300 text-amber-700";
   const body = (
     <span className="min-w-0">
       🪫 <span className="font-medium">{n} hanger{n === 1 ? "" : "s"} low on battery</span>
-      <span className="hidden sm:inline text-amber-300/90"> — {detail}{n > 4 ? "…" : ""}</span>
+      <span className="hidden sm:inline text-amber-700/90"> — {detail}{n > 4 ? "…" : ""}</span>
     </span>
   );
   return isStaff ? (

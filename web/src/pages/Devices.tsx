@@ -103,10 +103,10 @@ export function Devices() {
     !!buildingsQ.data && buildingsQ.data.buildings.length > 0 && allZonesQ.isLoading;
 
   if (hangersQ.isLoading || gatewaysQ.isLoading || buildingsQ.isLoading || zonesPending) {
-    return <div className="p-8 text-slate-400">Loading devices…</div>;
+    return <div className="p-8 text-slate-500">Loading devices…</div>;
   }
   if (hangersQ.error || gatewaysQ.error) {
-    return <div className="p-8 text-red-400">Could not load devices.</div>;
+    return <div className="p-8 text-red-700">Could not load devices.</div>;
   }
 
   const hangers = hangersQ.data?.hangers ?? [];
@@ -188,7 +188,7 @@ export function Devices() {
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Devices</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-slate-500 mt-1">
             Gateways and hangers across your sites, grouped by building.
           </p>
         </div>
@@ -203,9 +203,9 @@ export function Devices() {
       </div>
 
       {totalDevices === 0 ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-8 text-center">
-          <p className="text-slate-200">No devices yet.</p>
-          <p className="text-sm text-slate-400 mt-2">
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+          <p className="text-slate-800">No devices yet.</p>
+          <p className="text-sm text-slate-500 mt-2">
             Plug in a HazardLink gateway and hangers, then add them via the iOS
             app (<em>More → Add a gateway / Add a hanger</em>), or register a
             hanger by DevEUI above.
@@ -225,12 +225,12 @@ export function Devices() {
             return (
               <section
                 key={grp.key}
-                className="rounded-lg border border-slate-800 bg-slate-900/20 overflow-hidden"
+                className="rounded-lg border border-slate-200 bg-white/20 overflow-hidden"
               >
                 <button
                   type="button"
                   onClick={() => toggle(grp.key)}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-900/40 transition"
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white transition"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span
@@ -241,23 +241,23 @@ export function Devices() {
                     >
                       ▶
                     </span>
-                    <h2 className="font-semibold text-slate-100 truncate">{grp.name}</h2>
-                    <span className="text-xs text-slate-400 whitespace-nowrap hidden sm:inline">
+                    <h2 className="font-semibold text-slate-900 truncate">{grp.name}</h2>
+                    <span className="text-xs text-slate-500 whitespace-nowrap hidden sm:inline">
                       {gwCount} gateway{gwCount === 1 ? "" : "s"} · {hgCount} hanger{hgCount === 1 ? "" : "s"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {lowBatt > 0 && (
-                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-500/15 text-red-300">
+                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
                         {lowBatt} low battery
                       </span>
                     )}
                     {offline > 0 ? (
-                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-500/15 text-amber-300">
+                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
                         {offline} offline
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-500/15 text-emerald-300">
+                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">
                         All online
                       </span>
                     )}
@@ -273,8 +273,8 @@ export function Devices() {
                         building's gateway, so nest them beneath it with a
                         connector line so the link is obvious. */}
                     {grp.key !== UNASSIGNED && grp.hangers.length > 0 && grp.gateways.length > 0 && (
-                      <div className="ml-2 sm:ml-4 pl-4 border-l-2 border-slate-700/70 space-y-3 pt-1">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                      <div className="ml-2 sm:ml-4 pl-4 border-l-2 border-slate-300/70 space-y-3 pt-1">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
                           <span className="text-slate-500">↳</span>
                           <span>
                             {grp.hangers.length} hanger{grp.hangers.length === 1 ? "" : "s"} relayed through{" "}
@@ -288,7 +288,7 @@ export function Devices() {
                     {/* Hangers present but no gateway in the building to relay them. */}
                     {grp.key !== UNASSIGNED && grp.hangers.length > 0 && grp.gateways.length === 0 && (
                       <>
-                        <div className="flex items-center gap-1.5 text-xs text-amber-300">
+                        <div className="flex items-center gap-1.5 text-xs text-amber-700">
                           <span>⚠</span>
                           <span>No gateway in this building — these hangers can't relay until one is added.</span>
                         </div>

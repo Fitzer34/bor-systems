@@ -71,7 +71,7 @@ export function Users() {
       <h1 className="text-2xl font-semibold mb-6">Users</h1>
 
       {isAdmin && (
-        <div className="mb-8 bg-slate-900/50 border rounded-lg p-4">
+        <div className="mb-8 bg-white border rounded-lg p-4">
           <div className="font-medium mb-3">Create user</div>
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="border rounded px-3 py-2" />
@@ -86,7 +86,7 @@ export function Users() {
             <button
               onClick={() => create.mutate()}
               disabled={!form.email || !form.name || form.password.length < 10 || create.isPending}
-              className="bg-slate-900 text-white rounded px-4 py-2 disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50"
             >
               {create.isPending ? "Creating…" : "Create user"}
             </button>
@@ -100,8 +100,8 @@ export function Users() {
       )}
 
       <div className="table-wrap">
-      <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-        <thead className="bg-slate-800/60 text-slate-300 text-left">
+      <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+        <thead className="bg-slate-100 text-slate-600 text-left">
           <tr>
             <th className="p-2">Name</th>
             <th className="p-2">Email</th>
@@ -117,7 +117,7 @@ export function Users() {
               <td className="p-2 text-slate-500">{u.email}</td>
               <td className="p-2">{u.role}</td>
               <td className="p-2">
-                {u.deactivatedAt ? <span className="text-slate-400">deactivated</span> :
+                {u.deactivatedAt ? <span className="text-slate-500">deactivated</span> :
                   u.onDuty ? <span className="text-green-700">on duty</span> :
                   <span className="text-slate-500">off duty</span>}
               </td>

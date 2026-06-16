@@ -204,7 +204,7 @@ export function FloorPlans() {
         <h1 className="text-2xl font-semibold">Floor plans</h1>
         <button
           onClick={() => { setEditMode((v) => !v); setPinningZoneId(null); }}
-          className={editMode ? "btn-primary" : "btn-ghost border border-slate-700"}
+          className={editMode ? "btn-primary" : "btn-ghost border border-slate-300"}
         >
           {editMode ? "✓ Done editing" : "✎ Edit"}
         </button>
@@ -248,7 +248,7 @@ export function FloorPlans() {
                 <button
                   key={b.id}
                   onClick={() => { setActiveBuildingId(b.id); setActiveFloorId(null); }}
-                  className={"px-3 py-1.5 text-sm rounded " + (activeBuildingId === b.id ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-200 hover:bg-slate-700")}
+                  className={"px-3 py-1.5 text-sm rounded " + (activeBuildingId === b.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200")}
                 >{b.name}</button>
               ))}
             </div>
@@ -272,15 +272,15 @@ export function FloorPlans() {
                     <div key={f.id} className="flex items-center gap-1">
                       <button
                         onClick={() => setActiveFloorId(f.id)}
-                        className={"flex-1 text-left px-3 py-1.5 text-sm rounded " + (activeFloorId === f.id ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-200 hover:bg-slate-700")}
+                        className={"flex-1 text-left px-3 py-1.5 text-sm rounded " + (activeFloorId === f.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200")}
                       >
                         {f.name}
                         {f.floorPlanUrl
-                          ? <span className="ml-2 text-xs text-emerald-400">● plan</span>
+                          ? <span className="ml-2 text-xs text-emerald-700">● plan</span>
                           : <span className="ml-2 text-xs text-slate-500">○ no plan</span>}
                       </button>
-                      <button onClick={() => above && swapFloors.mutate({ a: f, b: above })} disabled={!above || swapFloors.isPending} title="Move up" className="px-2 py-1.5 text-slate-400 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800">↑</button>
-                      <button onClick={() => below && swapFloors.mutate({ a: f, b: below })} disabled={!below || swapFloors.isPending} title="Move down" className="px-2 py-1.5 text-slate-400 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800">↓</button>
+                      <button onClick={() => above && swapFloors.mutate({ a: f, b: above })} disabled={!above || swapFloors.isPending} title="Move up" className="px-2 py-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 rounded hover:bg-slate-100">↑</button>
+                      <button onClick={() => below && swapFloors.mutate({ a: f, b: below })} disabled={!below || swapFloors.isPending} title="Move down" className="px-2 py-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 rounded hover:bg-slate-100">↓</button>
                     </div>
                   );
                 })}
@@ -301,18 +301,18 @@ export function FloorPlans() {
               {(zones.data?.zones.length ?? 0) > 0 && (
                 <div className="space-y-1 mb-2">
                   {zones.data?.zones.map((z) => (
-                    <div key={z.id} className="flex items-center justify-between bg-slate-800/50 rounded px-3 py-1.5 text-sm">
+                    <div key={z.id} className="flex items-center justify-between bg-slate-100 rounded px-3 py-1.5 text-sm">
                       <span>
                         {z.name}
                         {z.pinX != null
-                          ? <span className="ml-2 text-xs text-emerald-400">● pinned</span>
-                          : <span className="ml-2 text-xs text-amber-400">○ needs pin</span>}
+                          ? <span className="ml-2 text-xs text-emerald-700">● pinned</span>
+                          : <span className="ml-2 text-xs text-amber-700">○ needs pin</span>}
                       </span>
                       <div className="flex items-center gap-3">
                         {activeFloor?.floorPlanUrl && (
                           <button
                             onClick={() => setPinningZoneId(pinningZoneId === z.id ? null : z.id)}
-                            className={"text-xs " + (pinningZoneId === z.id ? "text-amber-300 font-medium" : "text-blue-400 hover:underline")}
+                            className={"text-xs " + (pinningZoneId === z.id ? "text-amber-700 font-medium" : "text-blue-700 hover:underline")}
                           >
                             {pinningZoneId === z.id ? "click on the plan ↓" : (z.pinX != null ? "move pin" : "place pin")}
                           </button>
@@ -326,7 +326,7 @@ export function FloorPlans() {
                           }}
                           disabled={deleteZone.isPending}
                           title="Delete zone"
-                          className="text-xs text-red-400 hover:text-red-300"
+                          className="text-xs text-red-700 hover:text-red-700"
                         >
                           🗑
                         </button>
@@ -348,15 +348,15 @@ export function FloorPlans() {
 
       {/* ── PLAN AREA ── */}
       {!activeBuildingId ? (
-        <div className="card text-center text-slate-400 py-10">
+        <div className="card text-center text-slate-500 py-10">
           {buildingList.length === 0
-            ? <>No buildings yet. Tap <span className="text-slate-200 font-medium">✎ Edit</span> to add your first building, floor, and zones.</>
+            ? <>No buildings yet. Tap <span className="text-slate-800 font-medium">✎ Edit</span> to add your first building, floor, and zones.</>
             : "Select a building above to view its floor plans."}
         </div>
       ) : !activeFloorId ? (
-        <div className="card text-center text-slate-400 py-10">
+        <div className="card text-center text-slate-500 py-10">
           {sortedFloors.length === 0
-            ? <>No floors in this building yet. Tap <span className="text-slate-200 font-medium">✎ Edit</span> to add one.</>
+            ? <>No floors in this building yet. Tap <span className="text-slate-800 font-medium">✎ Edit</span> to add one.</>
             : "Select a floor above."}
         </div>
       ) : (
@@ -379,7 +379,7 @@ export function FloorPlans() {
           />
 
           {uploadError && (
-            <div className="mb-3 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded px-3 py-2">
+            <div className="mb-3 text-sm text-red-700 bg-red-950/40 border border-red-900 rounded px-3 py-2">
               {uploadError}
             </div>
           )}
@@ -387,7 +387,7 @@ export function FloorPlans() {
           {activeFloor?.floorPlanUrl ? (
             <>
               {pinningZoneId && (
-                <div className="mb-2 text-sm text-amber-300">
+                <div className="mb-2 text-sm text-amber-700">
                   Click where the zone sits on the plan to drop its pin.
                 </div>
               )}
@@ -417,12 +417,12 @@ export function FloorPlans() {
                 })}
               </div>
               {editMode && unpinnedZones.length > 0 && (
-                <div className="mt-3 text-sm text-amber-300">
+                <div className="mt-3 text-sm text-amber-700">
                   {unpinnedZones.length} zone{unpinnedZones.length === 1 ? "" : "s"} still need a pin: use “place pin” above.
                 </div>
               )}
               {/* Legend */}
-              <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-400">
+              <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> OK</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Alert</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Cleaning</span>
@@ -437,14 +437,14 @@ export function FloorPlans() {
               onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
               onClick={() => fileInput.current?.click()}
               className={"cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition " +
-                (dragOver ? "border-blue-400 bg-blue-950/20" : "border-slate-700 hover:border-slate-600")}
+                (dragOver ? "border-blue-300 bg-blue-950/20" : "border-slate-300 hover:border-slate-300")}
             >
-              <div className="text-slate-300 font-medium">Drop a floor-plan image here</div>
+              <div className="text-slate-600 font-medium">Drop a floor-plan image here</div>
               <div className="text-sm text-slate-500 mt-1">or click to choose a file · PNG or JPEG · up to 8 MB</div>
             </div>
           ) : (
-            <div className="text-sm text-slate-400">
-              No plan uploaded for this floor yet. Tap <span className="text-slate-200 font-medium">✎ Edit</span> to upload one.
+            <div className="text-sm text-slate-500">
+              No plan uploaded for this floor yet. Tap <span className="text-slate-800 font-medium">✎ Edit</span> to upload one.
             </div>
           )}
         </div>

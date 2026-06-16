@@ -131,8 +131,8 @@ export function PpmReminderBanner() {
       className={
         "flex items-center justify-between gap-3 mb-5 px-4 py-3 rounded-lg border text-sm " +
         (overdue > 0
-          ? "bg-red-500/10 border-red-500/40 text-red-200"
-          : "bg-amber-500/10 border-amber-500/40 text-amber-200")
+          ? "bg-red-50 border-red-300 text-red-700"
+          : "bg-amber-50 border-amber-300 text-amber-700")
       }
     >
       <span>
@@ -180,20 +180,20 @@ export function PpmDueList() {
             <Link
               to="/ppms"
               className={
-                "flex items-center justify-between gap-3 rounded-lg border bg-slate-900/50 p-4 shadow-sm hover:shadow " +
-                (s.key === "overdue" ? "border-red-500/40" : "border-amber-500/40")
+                "flex items-center justify-between gap-3 rounded-lg border bg-white p-4 shadow-sm hover:shadow " +
+                (s.key === "overdue" ? "border-red-300" : "border-amber-300")
               }
             >
               <div className="min-w-0">
-                <div className="font-medium text-slate-100 truncate">{p.title}</div>
-                <div className="text-sm text-slate-400 mt-0.5 truncate">
+                <div className="font-medium text-slate-900 truncate">{p.title}</div>
+                <div className="text-sm text-slate-500 mt-0.5 truncate">
                   {p.contractorName ? `${p.contractorName} · ` : ""}{frequencyLabel(p.frequencyPerYear)}
                 </div>
               </div>
               <span
                 className={
                   "px-2 py-0.5 text-xs font-medium rounded-full shrink-0 " +
-                  (s.key === "overdue" ? "bg-red-500/15 text-red-300" : "bg-amber-500/15 text-amber-300")
+                  (s.key === "overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")
                 }
               >
                 {s.label}
@@ -218,8 +218,8 @@ export function Ppms() {
   const [editing, setEditing] = useState<Ppm | null>(null);
   const [creating, setCreating] = useState(false);
 
-  if (isLoading) return <div className="p-8 text-slate-400">Loading PPMs…</div>;
-  if (error) return <div className="p-8 text-red-400">Could not load PPMs.</div>;
+  if (isLoading) return <div className="p-8 text-slate-500">Loading PPMs…</div>;
+  if (error) return <div className="p-8 text-red-700">Could not load PPMs.</div>;
 
   const list = data?.ppms ?? [];
 
@@ -228,8 +228,8 @@ export function Ppms() {
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Planned preventive maintenance</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Recurring contractor jobs. Reminders email all admins + supervisors as each is due.
+          <p className="text-sm text-slate-500 mt-1">
+            Recurring contractor jobs. When one is due, HazardLink emails the contractor to arrange a date — you just approve it.
           </p>
         </div>
         <button
@@ -241,9 +241,9 @@ export function Ppms() {
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-8 text-center">
-          <p className="text-slate-200">No maintenance tasks yet.</p>
-          <p className="text-sm text-slate-400 mt-2">
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+          <p className="text-slate-800">No maintenance tasks yet.</p>
+          <p className="text-sm text-slate-500 mt-2">
             Add your recurring jobs (fire-extinguisher service, PAT testing, HVAC filters…)
             and HazardLink will remind your team before each one is due.
           </p>
@@ -277,11 +277,11 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
   });
 
   return (
-    <div className="w-full rounded-lg border border-slate-800 bg-slate-900/40 hover:border-slate-700 transition p-4">
+    <div className="w-full rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition p-4">
       <div className="flex items-start justify-between gap-4">
         <button type="button" onClick={onClick} className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
-            <h3 className="font-medium text-slate-100">{ppm.title}</h3>
+            <h3 className="font-medium text-slate-900">{ppm.title}</h3>
             <StatusPill status={status.key} label={status.label} />
           </div>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
@@ -291,7 +291,7 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
             {ppm.contactPhone && <Field label="Phone" value={ppm.contactPhone} />}
             {ppm.contactEmail && <Field label="Email" value={ppm.contactEmail} />}
           </div>
-          {ppm.notes && <p className="mt-2 text-sm text-slate-300 italic">📝 {ppm.notes}</p>}
+          {ppm.notes && <p className="mt-2 text-sm text-slate-600 italic">📝 {ppm.notes}</p>}
           {ppm.lastCompletedAt && (
             <p className="mt-1 text-xs text-slate-500">
               Last done {formatDate(ppm.lastCompletedAt.slice(0, 10))}
@@ -303,12 +303,12 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
           <button
             onClick={() => complete.mutate()}
             disabled={complete.isPending}
-            className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 rounded text-white font-medium whitespace-nowrap"
+            className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 rounded text-white font-medium whitespace-nowrap"
             title="Mark done — schedules the next one"
           >
             {complete.isPending ? "…" : "Mark done"}
           </button>
-          <button onClick={onClick} className="text-slate-400 text-xs hover:text-slate-200">Edit →</button>
+          <button onClick={onClick} className="text-slate-500 text-xs hover:text-slate-800">Edit →</button>
         </div>
       </div>
 
@@ -346,24 +346,24 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
   // Booked — show the confirmed date.
   if (ppm.scheduledDate || s?.status === "confirmed") {
     const d = ppm.scheduledDate ?? s?.confirmedDate ?? null;
-    return <Bar><span className="text-emerald-300">📅 Booked for <b>{d ? formatDate(d) : "—"}</b></span></Bar>;
+    return <Bar><span className="text-emerald-700">📅 Booked for <b>{d ? formatDate(d) : "—"}</b></span></Bar>;
   }
 
   // Contractor proposed a date — approve or cancel.
   if (s?.status === "proposed") {
     return (
       <Bar>
-        <span className="text-amber-200 min-w-0">
+        <span className="text-amber-700 min-w-0">
           Contractor proposed <b>{s.proposedDate ? formatDate(s.proposedDate) : "—"}</b>
-          {s.contractorNote ? <span className="text-amber-200/70"> — “{s.contractorNote}”</span> : null}
+          {s.contractorNote ? <span className="text-amber-700/70"> — “{s.contractorNote}”</span> : null}
         </span>
         <div className="flex gap-2 ml-auto">
           <button onClick={() => confirm.mutate()} disabled={confirm.isPending}
-            className="px-3 py-1 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 rounded text-white font-medium">
+            className="px-3 py-1 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 rounded text-white font-medium">
             {confirm.isPending ? "…" : "Approve date"}
           </button>
           <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
-            className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200">Cancel</button>
+            className="px-2 py-1 text-xs text-slate-500 hover:text-slate-800">Cancel</button>
         </div>
       </Bar>
     );
@@ -373,15 +373,15 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
   if (s?.status === "sent") {
     return (
       <Bar>
-        <span className="text-slate-300 min-w-0">
+        <span className="text-slate-600 min-w-0">
           ⏳ Awaiting {ppm.contractorName ?? "contractor"}
           <span className="text-slate-500">{s.emailDelivered ? " · emailed" : " · not emailed yet — copy the link"}</span>
         </span>
         <div className="flex gap-2 ml-auto">
           <button onClick={() => copyLink(s.scheduleUrl)}
-            className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-white">{copied ? "Copied!" : "Copy link"}</button>
+            className="px-3 py-1 text-xs bg-slate-200 hover:bg-slate-300 rounded text-slate-800">{copied ? "Copied!" : "Copy link"}</button>
           <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
-            className="px-2 py-1 text-xs text-slate-400 hover:text-slate-200">Cancel</button>
+            className="px-2 py-1 text-xs text-slate-500 hover:text-slate-800">Cancel</button>
         </div>
       </Bar>
     );
@@ -392,14 +392,14 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
   const hasEmail = !!ppm.contactEmail;
   return (
     <Bar>
-      <span className="text-slate-400 min-w-0">
+      <span className="text-slate-500 min-w-0">
         {declined
           ? <>Contractor declined{s?.contractorNote ? <span className="text-slate-500"> — “{s.contractorNote}”</span> : null}</>
           : "No date arranged yet"}
       </span>
       <button onClick={() => request.mutate()} disabled={request.isPending || !hasEmail}
         title={hasEmail ? "Email the contractor a link to pick a date" : "Add a contractor email on this task first"}
-        className="ml-auto px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 rounded text-white font-medium">
+        className="ml-auto px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
         {request.isPending ? "…" : declined ? "Ask again" : "Request a date"}
       </button>
     </Bar>
@@ -407,24 +407,24 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
 }
 
 function Bar({ children }: { children: React.ReactNode }) {
-  return <div className="mt-3 pt-3 border-t border-slate-800 text-sm flex flex-wrap items-center gap-x-3 gap-y-2">{children}</div>;
+  return <div className="mt-3 pt-3 border-t border-slate-200 text-sm flex flex-wrap items-center gap-x-3 gap-y-2">{children}</div>;
 }
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <span>
-      <span className="text-slate-400">{label}:</span>{" "}
-      <span className="text-slate-100">{value}</span>
+      <span className="text-slate-500">{label}:</span>{" "}
+      <span className="text-slate-900">{value}</span>
     </span>
   );
 }
 
 function StatusPill({ status, label }: { status: PpmStatusKey; label: string }) {
   const styles: Record<PpmStatusKey, string> = {
-    overdue: "bg-red-500/15 text-red-300",
-    due: "bg-amber-500/15 text-amber-300",
-    ok: "bg-emerald-500/15 text-emerald-300",
-    paused: "bg-slate-700/40 text-slate-400",
+    overdue: "bg-red-100 text-red-700",
+    due: "bg-amber-100 text-amber-700",
+    ok: "bg-emerald-100 text-emerald-700",
+    paused: "bg-slate-200 text-slate-500",
   };
   return <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + styles[status]}>{label}</span>;
 }
@@ -493,10 +493,10 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-slate-900 rounded-xl w-full max-w-2xl border border-slate-700 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-slate-100">{isEdit ? "Edit PPM" : "Add PPM"}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none" aria-label="Close">×</button>
+      <div className="bg-white rounded-xl w-full max-w-2xl border border-slate-300 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 className="text-lg font-medium text-slate-900">{isEdit ? "Edit PPM" : "Add PPM"}</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-2xl leading-none" aria-label="Close">×</button>
         </div>
 
         <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
@@ -505,14 +505,14 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <input
                 type="text" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus maxLength={200}
                 placeholder="e.g. Annual fire-extinguisher service"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
               />
             </FieldGroup>
             <FieldGroup label="Details / notes (optional)">
               <textarea
                 value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={2000}
                 placeholder="Scope, access notes, anything the contractor needs to know"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm resize-none"
+                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm resize-none"
               />
             </FieldGroup>
           </Section>
@@ -522,7 +522,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <input
                 type="text" value={contractorName} onChange={(e) => setContractorName(e.target.value)} maxLength={200}
                 placeholder="e.g. Cork Fire & Safety Ltd"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
               />
             </FieldGroup>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -530,14 +530,14 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
                 <input
                   type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} maxLength={50}
                   placeholder="e.g. 021 123 4567"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
                 />
               </FieldGroup>
               <FieldGroup label="Email">
                 <input
                   type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} maxLength={200}
                   placeholder="e.g. service@contractor.ie"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
                 />
               </FieldGroup>
             </div>
@@ -548,7 +548,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <FieldGroup label="How often?">
                 <select
                   value={frequencyPerYear} onChange={(e) => setFrequencyPerYear(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
                 >
                   {FREQ_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
@@ -556,7 +556,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <FieldGroup label="Next due date">
                 <input
                   type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
                 />
               </FieldGroup>
             </div>
@@ -564,50 +564,50 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <input
                 type="number" min={0} max={365} value={reminderLeadDays}
                 onChange={(e) => setReminderLeadDays(Math.max(0, Math.min(365, Number(e.target.value) || 0)))}
-                className="w-32 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                className="w-32 px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
               />
               <p className="mt-1 text-xs text-slate-500">First reminder fires this far ahead, then daily once overdue.</p>
             </FieldGroup>
             {isEdit && (
               <label className="flex items-center gap-3 cursor-pointer pt-1">
                 <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-800 cursor-pointer" />
-                <span className="text-slate-100 text-sm">Active (uncheck to pause reminders)</span>
+                  className="h-4 w-4 rounded border-slate-300 bg-slate-100 cursor-pointer" />
+                <span className="text-slate-900 text-sm">Active (uncheck to pause reminders)</span>
               </label>
             )}
           </Section>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-700">{error}</p>}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between gap-3">
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
           {isEdit ? (
             confirmingDelete ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-red-300">Delete this PPM?</span>
+                <span className="text-sm text-red-700">Delete this PPM?</span>
                 <button onClick={() => remove.mutate()} disabled={remove.isPending}
-                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded text-white">
+                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-200 rounded text-white">
                   {remove.isPending ? "…" : "Delete"}
                 </button>
-                <button onClick={() => setConfirmingDelete(false)} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">Cancel</button>
+                <button onClick={() => setConfirmingDelete(false)} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
                 <button onClick={() => complete.mutate()} disabled={complete.isPending}
-                  className="px-3 py-1.5 text-sm text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/30 rounded">
+                  className="px-3 py-1.5 text-sm text-emerald-700 hover:text-emerald-700 hover:bg-emerald-950/30 rounded">
                   {complete.isPending ? "…" : "Mark done"}
                 </button>
                 <button onClick={() => setConfirmingDelete(true)}
-                  className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded">Delete</button>
+                  className="px-3 py-1.5 text-sm text-red-700 hover:text-red-700 hover:bg-red-950/30 rounded">Delete</button>
               </div>
             )
           ) : <span />}
           <div className="flex gap-2 ml-auto">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">Cancel</button>
+            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
             <button
               onClick={() => { setError(null); save.mutate(); }}
               disabled={!titleValid || !dateValid || save.isPending}
-              className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 rounded text-white font-medium"
+              className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium"
             >
               {save.isPending ? "Saving…" : isEdit ? "Save" : "Add PPM"}
             </button>
@@ -621,7 +621,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs uppercase tracking-wider text-slate-400 mb-2">{title}</h3>
+      <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-2">{title}</h3>
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -630,7 +630,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      <label className="block text-xs text-slate-500 mb-1">{label}</label>
       {children}
     </div>
   );

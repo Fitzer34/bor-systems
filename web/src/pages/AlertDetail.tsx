@@ -82,7 +82,7 @@ export function AlertDetail() {
         Opened {new Date(alert.openedAt).toLocaleString()} · Status: {alert.status}
       </div>
 
-      <div className="mt-6 bg-slate-900/50 border rounded-lg p-4">
+      <div className="mt-6 bg-white border rounded-lg p-4">
         <div className="font-medium mb-3">Location</div>
         {planUrl ? (
           <div className="relative inline-block">
@@ -147,16 +147,16 @@ export function AlertDetail() {
         />
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => close.mutate("sign_damaged")} disabled={close.isPending}
-            className="rounded border border-amber-500 text-amber-700 py-2 hover:bg-amber-50">
+            className="rounded border border-amber-300 text-amber-700 py-2 hover:bg-amber-50">
             Sign damaged
           </button>
           <button onClick={() => close.mutate("sign_missing")} disabled={close.isPending}
-            className="rounded border border-red-500 text-red-700 py-2 hover:bg-red-50">
+            className="rounded border border-red-300 text-red-700 py-2 hover:bg-red-50">
             Sign missing
           </button>
         </div>
         <button onClick={() => close.mutate("manual")} disabled={close.isPending}
-          className="w-full text-sm text-slate-500 hover:text-white py-2">
+          className="w-full text-sm text-slate-500 hover:text-slate-900 py-2">
           Manually close (requires note)
         </button>
       </div>

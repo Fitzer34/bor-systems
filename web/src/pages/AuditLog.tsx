@@ -33,8 +33,8 @@ export function AuditLog() {
 
       {data && (
         <div className="table-wrap">
-        <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-          <thead className="bg-slate-800/60 text-slate-300 text-left">
+        <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+          <thead className="bg-slate-100 text-slate-600 text-left">
             <tr>
               <th className="p-2">When</th>
               <th className="p-2">Who</th>
@@ -47,7 +47,7 @@ export function AuditLog() {
             {data.entries.map((e) => (
               <tr key={e.id} className="border-t align-top">
                 <td className="p-2 whitespace-nowrap text-slate-500">{new Date(e.at).toLocaleString()}</td>
-                <td className="p-2">{e.actorName ?? <span className="text-slate-400">system</span>}</td>
+                <td className="p-2">{e.actorName ?? <span className="text-slate-500">system</span>}</td>
                 <td className="p-2 font-mono text-xs">{e.action}</td>
                 <td className="p-2 font-mono text-xs text-slate-500">
                   {e.targetType ? `${e.targetType}: ${e.targetId ?? ""}` : ""}
@@ -58,7 +58,7 @@ export function AuditLog() {
               </tr>
             ))}
             {data.entries.length === 0 && (
-              <tr><td colSpan={5} className="p-6 text-center text-slate-400">No audit events yet.</td></tr>
+              <tr><td colSpan={5} className="p-6 text-center text-slate-500">No audit events yet.</td></tr>
             )}
           </tbody>
         </table>

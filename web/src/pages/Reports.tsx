@@ -44,7 +44,7 @@ export function Reports() {
   return (
     <div>
       <h1 className="text-2xl font-semibold mb-6">Reports</h1>
-      <div className="bg-slate-900/50 border rounded-lg p-4 mb-6 flex gap-4 items-end">
+      <div className="bg-white border rounded-lg p-4 mb-6 flex gap-4 items-end">
         <div>
           <label className="block text-xs text-slate-500">From</label>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border rounded px-2 py-1" />
@@ -53,7 +53,7 @@ export function Reports() {
           <label className="block text-xs text-slate-500">To</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="border rounded px-2 py-1" />
         </div>
-        <button onClick={downloadCsv} className="ml-auto bg-slate-900 text-white rounded px-3 py-1 text-sm">Download CSV</button>
+        <button onClick={downloadCsv} className="ml-auto bg-blue-600 hover:bg-blue-500 text-white rounded px-3 py-1 text-sm">Download CSV</button>
       </div>
 
       {isLoading && <div className="text-slate-500">Loading…</div>}
@@ -61,8 +61,8 @@ export function Reports() {
         <>
           <div className="text-sm text-slate-600 mb-3">{data.count} spill{data.count === 1 ? "" : "s"} in range</div>
           <div className="table-wrap">
-          <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-            <thead className="bg-slate-800/60 text-slate-300 text-left">
+          <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+            <thead className="bg-slate-100 text-slate-600 text-left">
               <tr>
                 <th className="p-2">Opened</th>
                 <th className="p-2">Building / Floor / Zone</th>

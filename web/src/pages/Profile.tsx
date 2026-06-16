@@ -67,7 +67,7 @@ function TwoFactorSection() {
   const s = status.data;
 
   return (
-    <div className="bg-slate-900/50 border rounded-lg p-6">
+    <div className="bg-white border rounded-lg p-6">
       <div className="font-medium mb-1">Two-factor authentication</div>
       <p className="text-sm text-slate-500 mb-4">
         Use an authenticator app (Google Authenticator, 1Password, Authy, etc.)
@@ -130,7 +130,7 @@ function TwoFactorSection() {
                className="border rounded w-48 h-48" />
           <details className="text-xs text-slate-500">
             <summary className="cursor-pointer">Or type the secret manually</summary>
-            <code className="block mt-1 p-2 bg-slate-800 rounded">{enrol.secret}</code>
+            <code className="block mt-1 p-2 bg-slate-100 rounded">{enrol.secret}</code>
           </details>
           <p className="text-sm">2. Enter the 6-digit code your app shows to confirm:</p>
           <input
@@ -143,7 +143,7 @@ function TwoFactorSection() {
             <button
               onClick={() => { setErr(null); confirm.mutate(); }}
               disabled={code.length < 6 || confirm.isPending}
-              className="bg-slate-900 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
             >
               {confirm.isPending ? "Confirming…" : "Confirm and enable"}
             </button>
@@ -159,7 +159,7 @@ function TwoFactorSection() {
         <button
           onClick={() => start.mutate()}
           disabled={start.isPending}
-          className="bg-slate-900 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+          className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
         >
           {start.isPending ? "Starting…" : "Enable two-factor auth"}
         </button>
@@ -212,7 +212,7 @@ export function Profile() {
     <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-semibold">Profile</h1>
 
-      <div className="bg-slate-900/50 border rounded-lg p-6">
+      <div className="bg-white border rounded-lg p-6">
         <div className="font-medium mb-1">Account details</div>
         <div className="text-sm text-slate-500 mb-4">
           {user.email} · {user.role}
@@ -233,7 +233,7 @@ export function Profile() {
             <button
               onClick={() => updateProfile.mutate()}
               disabled={!name.trim() || !phoneValid || updateProfile.isPending}
-              className="bg-slate-900 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
             >
               {updateProfile.isPending ? "Saving…" : "Save"}
             </button>
@@ -244,7 +244,7 @@ export function Profile() {
 
       <TwoFactorSection />
 
-      <div className="bg-slate-900/50 border rounded-lg p-6">
+      <div className="bg-white border rounded-lg p-6">
         <div className="font-medium mb-1">Change password</div>
         <p className="text-sm text-slate-500 mb-4">
           Minimum 10 characters; must include at least three of: lowercase, uppercase, digit, symbol.
@@ -262,7 +262,7 @@ export function Profile() {
           <button
             onClick={() => { setPwdMsg(null); changePassword.mutate(); }}
             disabled={!oldPwd || !newPwdValid || changePassword.isPending}
-            className="bg-slate-900 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
+            className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
           >
             {changePassword.isPending ? "Updating…" : "Change password"}
           </button>

@@ -51,8 +51,8 @@ export function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950">
-      <form onSubmit={onSubmit} className="bg-slate-900/50 shadow rounded-lg p-8 w-full max-w-md space-y-4">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <form onSubmit={onSubmit} className="bg-white shadow rounded-lg p-8 w-full max-w-md space-y-4">
         <div>
           <h1 className="text-xl font-semibold">Create your HazardLink organisation</h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -126,7 +126,7 @@ export function Signup() {
         <button
           type="submit"
           disabled={!valid || busy}
-          className="w-full bg-slate-900 text-white rounded py-2 disabled:opacity-50"
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded py-2 disabled:opacity-50"
         >
           {busy ? "Creating…" : "Create organisation"}
         </button>

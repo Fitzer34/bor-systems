@@ -2,42 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Global dark theme foundation ──────────────────────────────────────────
+/* ─── Global light theme foundation ─────────────────────────────────────────
  *
- * The dashboard sidebar was already dark (slate-900) but the content area had
- * no theme, so each page rendered on whatever its own classes set — a mix of
- * light cards (bg-white) and dark cards that looked half-finished. This sets
- * one consistent dark base everywhere so every page "flows" the same, and
- * gives us reusable .card / .btn / .input / .pill classes matching the
- * polished Gateways/Hangers style.
+ * The content area is light — white cards on a very light grey page, dark text
+ * — for maximum readability. The sidebar stays dark (it sets its own
+ * bg-slate-900 / text on its element in Layout.tsx, so it's unaffected by this
+ * base). Reusable .card / .btn / .pill classes below match the light content.
  */
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   html, body {
-    @apply bg-slate-950 text-slate-100;
+    @apply bg-slate-50 text-slate-900;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
-  /* Sensible dark defaults so any page that forgot to theme an element still
-     looks right instead of flashing white. */
-  h1, h2, h3, h4 { @apply text-slate-100; }
-  a { @apply text-blue-400; }
+  /* Sensible light defaults so any element that forgot to theme itself still
+     looks right. */
+  h1, h2, h3, h4 { @apply text-slate-900; }
+  a { @apply text-blue-700; }
 
-  /* Native form controls inherit the dark palette by default. Pages can still
-     override per-element, but the baseline is no longer blinding-white. */
+  /* Native form controls: white field, dark text, light border. */
   input, select, textarea {
-    @apply bg-slate-800 border border-slate-700 text-slate-100 rounded;
+    @apply bg-white border border-slate-300 text-slate-900 rounded;
   }
-  input::placeholder, textarea::placeholder { @apply text-slate-500; }
+  input::placeholder, textarea::placeholder { @apply text-slate-400; }
 
   /* Tables — used by Users, AuditLog, Reports, etc. */
-  th { @apply text-slate-300; }
-  td { @apply text-slate-200; }
+  th { @apply text-slate-500; }
+  td { @apply text-slate-700; }
 
   /* Stop long unbreakable strings (emails, DevEUIs, JSON) from forcing the
      whole page wider than the phone viewport. */
@@ -45,12 +42,12 @@
 }
 
 @layer components {
-  /* Standard surface — the dark card used across Gateways/Hangers. */
+  /* Standard surface — white card on the light page. */
   .card {
-    @apply rounded-lg border border-slate-800 bg-slate-900/50 p-4;
+    @apply rounded-lg border border-slate-200 bg-white p-4;
   }
   .card-hover {
-    @apply transition hover:bg-slate-900/80 hover:border-slate-700;
+    @apply transition hover:bg-slate-50 hover:border-slate-300;
   }
 
   /* Buttons. Min 40px tall touch target on phones (py-2.5), tightening to the
@@ -61,27 +58,26 @@
            disabled:cursor-not-allowed;
   }
   .btn-primary  { @apply btn bg-blue-600 text-white hover:bg-blue-500; }
-  .btn-ghost    { @apply btn text-slate-300 hover:text-white hover:bg-slate-800; }
-  .btn-danger   { @apply btn text-red-400 hover:text-red-300 hover:bg-red-950/30; }
+  .btn-ghost    { @apply btn text-slate-600 hover:text-slate-900 hover:bg-slate-100; }
+  .btn-danger   { @apply btn text-red-600 hover:text-red-700 hover:bg-red-50; }
 
   /* Form field wrapper label + control spacing */
-  .field-label { @apply block text-xs font-medium text-slate-400 mb-1; }
+  .field-label { @apply block text-xs font-medium text-slate-500 mb-1; }
 
-  /* Status pills */
+  /* Status pills — light tint + dark text for the light content. */
   .pill         { @apply px-2 py-0.5 text-xs font-medium rounded-full; }
-  .pill-online  { @apply pill bg-emerald-500/15 text-emerald-300; }
-  .pill-offline { @apply pill bg-amber-500/15 text-amber-300; }
-  .pill-alert   { @apply pill bg-red-500/15 text-red-300; }
-  .pill-muted   { @apply pill bg-slate-700/40 text-slate-400; }
+  .pill-online  { @apply pill bg-emerald-100 text-emerald-700; }
+  .pill-offline { @apply pill bg-amber-100 text-amber-700; }
+  .pill-alert   { @apply pill bg-red-100 text-red-700; }
+  .pill-muted   { @apply pill bg-slate-200 text-slate-600; }
 
   /* Section heading used above card groups */
   .section-title {
-    @apply text-xs uppercase tracking-wider text-slate-400 mb-2;
+    @apply text-xs uppercase tracking-wider text-slate-500 mb-2;
   }
 
   /* Wrap any wide <table> in this so it scrolls horizontally inside its card
-     on a phone instead of stretching the whole page. -webkit-overflow-scrolling
-     gives momentum scroll on iOS. */
+     on a phone instead of stretching the whole page. */
   .table-wrap {
     @apply overflow-x-auto -mx-4 px-4;
     -webkit-overflow-scrolling: touch;

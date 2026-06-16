@@ -34,8 +34,8 @@ export function NotificationsLog() {
 
       {data && (
         <div className="table-wrap">
-        <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-          <thead className="bg-slate-800/60 text-slate-300 text-left">
+        <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+          <thead className="bg-slate-100 text-slate-600 text-left">
             <tr>
               <th className="p-2">Sent</th>
               <th className="p-2">Recipient</th>
@@ -48,7 +48,7 @@ export function NotificationsLog() {
             {data.entries.map((n) => (
               <tr key={n.id} className="border-t align-top">
                 <td className="p-2 whitespace-nowrap text-slate-500">{new Date(n.sentAt).toLocaleString()}</td>
-                <td className="p-2">{n.recipientName ?? <span className="text-slate-400">deleted user</span>}<div className="text-xs text-slate-400">{n.recipientEmail}</div></td>
+                <td className="p-2">{n.recipientName ?? <span className="text-slate-500">deleted user</span>}<div className="text-xs text-slate-500">{n.recipientEmail}</div></td>
                 <td className="p-2"><span className="font-mono text-xs">{n.channel}</span></td>
                 <td className="p-2"><span className="font-mono text-xs">{n.kind}</span></td>
                 <td className="p-2">
@@ -57,13 +57,13 @@ export function NotificationsLog() {
                   ) : n.delivered === false && n.error ? (
                     <span className="text-red-600" title={n.error}>{n.error.length > 40 ? `${n.error.slice(0, 40)}…` : n.error}</span>
                   ) : (
-                    <span className="text-slate-400">pending</span>
+                    <span className="text-slate-500">pending</span>
                   )}
                 </td>
               </tr>
             ))}
             {data.entries.length === 0 && (
-              <tr><td colSpan={5} className="p-6 text-center text-slate-400">No notifications sent yet.</td></tr>
+              <tr><td colSpan={5} className="p-6 text-center text-slate-500">No notifications sent yet.</td></tr>
             )}
           </tbody>
         </table>

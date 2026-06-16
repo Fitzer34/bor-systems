@@ -103,7 +103,7 @@ export function Dispatch() {
       </p>
 
       {!isReadOnly && (
-      <div className="bg-slate-900/50 border rounded-lg p-4 mb-8">
+      <div className="bg-white border rounded-lg p-4 mb-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
             <label className="block text-xs text-slate-500 mb-1">Cleaner</label>
@@ -125,14 +125,14 @@ export function Dispatch() {
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Floor (optional)</label>
-            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="border rounded px-3 py-2 w-full disabled:bg-slate-800/40">
+            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
               <option value="">—</option>
               {floors.data?.floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
           <div className="sm:col-span-2">
             <label className="block text-xs text-slate-500 mb-1">Zone (optional)</label>
-            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-800/40">
+            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
               <option value="">—</option>
               {zones.data?.zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select>
@@ -151,7 +151,7 @@ export function Dispatch() {
             <button
               onClick={() => send.mutate()}
               disabled={!valid || send.isPending}
-              className="ml-auto bg-slate-900 text-white rounded px-4 py-2 disabled:opacity-50"
+              className="ml-auto bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50"
             >
               {send.isPending ? "Sending…" : "Send dispatch"}
             </button>
@@ -165,8 +165,8 @@ export function Dispatch() {
         {isReadOnly ? "Pending and recent" : "Recent dispatches"}
       </h2>
       <div className="table-wrap">
-      <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-        <thead className="bg-slate-800/60 text-slate-300 text-left">
+      <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+        <thead className="bg-slate-100 text-slate-600 text-left">
           <tr>
             <th className="p-2">Sent</th>
             <th className="p-2">Cleaner</th>
@@ -198,7 +198,7 @@ export function Dispatch() {
             </tr>
           ))}
           {dispatches.data?.dispatches.length === 0 && (
-            <tr><td colSpan={6} className="p-6 text-center text-slate-400">No dispatches yet.</td></tr>
+            <tr><td colSpan={6} className="p-6 text-center text-slate-500">No dispatches yet.</td></tr>
           )}
         </tbody>
       </table>

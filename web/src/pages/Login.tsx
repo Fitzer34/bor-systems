@@ -54,9 +54,9 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
       {challengeToken ? (
-        <form onSubmit={onSubmitCode} className="bg-slate-900/50 shadow rounded-lg p-8 w-full max-w-sm space-y-4">
+        <form onSubmit={onSubmitCode} className="bg-white shadow rounded-lg p-8 w-full max-w-sm space-y-4">
           <div>
             <h1 className="text-xl font-semibold">Two-factor authentication</h1>
             <p className="text-sm text-slate-500">
@@ -76,7 +76,7 @@ export function Login() {
           <button
             type="submit"
             disabled={busy || code.length < 6}
-            className="w-full bg-slate-900 text-white rounded py-2 disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded py-2 disabled:opacity-50"
           >
             {busy ? "Verifying…" : "Verify"}
           </button>
@@ -89,7 +89,7 @@ export function Login() {
           </button>
         </form>
       ) : (
-        <form onSubmit={onSubmit} className="bg-slate-900/50 shadow rounded-lg p-8 w-full max-w-sm space-y-4">
+        <form onSubmit={onSubmit} className="bg-white shadow rounded-lg p-8 w-full max-w-sm space-y-4">
           <div>
             <h1 className="text-xl font-semibold">HazardLink</h1>
             <p className="text-sm text-slate-500">Sign in</p>
@@ -114,7 +114,7 @@ export function Login() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full bg-slate-900 text-white rounded py-2 disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded py-2 disabled:opacity-50"
           >
             {busy ? "Signing in…" : "Sign in"}
           </button>
@@ -125,7 +125,7 @@ export function Login() {
               Create an organisation
             </Link>
           </div>
-          <div className="text-xs text-center text-slate-400">
+          <div className="text-xs text-center text-slate-500">
             By signing in you agree to our{" "}
             <Link to="/terms" className="underline">Terms</Link> and{" "}
             <Link to="/privacy" className="underline">Privacy Policy</Link>.

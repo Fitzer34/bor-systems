@@ -49,10 +49,10 @@ export function Gateways() {
   };
 
   if (gateways.isLoading) {
-    return <div className="p-8 text-slate-400">Loading gateways…</div>;
+    return <div className="p-8 text-slate-500">Loading gateways…</div>;
   }
   if (gateways.error) {
-    return <div className="p-8 text-red-400">Could not load gateways.</div>;
+    return <div className="p-8 text-red-700">Could not load gateways.</div>;
   }
 
   const list = gateways.data?.gateways ?? [];
@@ -61,16 +61,16 @@ export function Gateways() {
     <div className="p-6 max-w-6xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Gateways</h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-slate-500">
           One per building. Self-registers via the iOS app's{" "}
           <span className="font-medium">Add a gateway</span> flow.
         </p>
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-8 text-center">
-          <p className="text-slate-200">No gateways registered yet.</p>
-          <p className="text-sm text-slate-400 mt-2">
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+          <p className="text-slate-800">No gateways registered yet.</p>
+          <p className="text-sm text-slate-500 mt-2">
             Plug in your HazardLink gateway and run <em>More → Add a gateway</em>{" "}
             on the iOS app. It'll appear here within ~60 seconds.
           </p>
@@ -112,7 +112,7 @@ export function Gateways() {
 // ─── Row ────────────────────────────────────────────────────────────────────
 //
 // One card per gateway. The WHOLE card is clickable — opens the edit dialog.
-// We use bumped contrast (text-slate-200 for values, text-slate-400 for
+// We use bumped contrast (text-slate-800 for values, text-slate-500 for
 // labels) so values are readable against the dark background; the old
 // 400/500 pair was nearly invisible.
 
@@ -132,34 +132,34 @@ export function GatewayCard({ gateway, buildingLabel, isAdmin, onClick }: CardPr
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left rounded-lg border border-slate-800 bg-slate-900/40 hover:bg-slate-900/70 hover:border-slate-700 transition p-4 cursor-pointer"
+      className="w-full text-left rounded-lg border border-slate-200 bg-white hover:bg-white hover:border-slate-300 transition p-4 cursor-pointer"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <h3 className="font-medium text-slate-100">
+            <h3 className="font-medium text-slate-900">
               {gateway.name ?? gateway.devEui}
             </h3>
             <span
               className={
                 "px-2 py-0.5 text-xs font-medium rounded-full " +
                 (isOnline
-                  ? "bg-emerald-500/15 text-emerald-300"
-                  : "bg-amber-500/15 text-amber-300")
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "bg-amber-100 text-amber-700")
               }
             >
               {isOnline ? "Online" : "Offline"}
             </span>
           </div>
-          <p className="text-xs text-slate-400 font-mono">{gateway.devEui}</p>
+          <p className="text-xs text-slate-500 font-mono">{gateway.devEui}</p>
 
           {gateway.locationNote && (
-            <p className="mt-2 text-sm text-slate-300 italic">
+            <p className="mt-2 text-sm text-slate-600 italic">
               📍 {gateway.locationNote}
             </p>
           )}
 
-          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-slate-200">
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-slate-800">
             <Field label="Building" value={buildingLabel} />
             {gateway.ipAddress && <Field label="IP" value={gateway.ipAddress} />}
             {gateway.ssid && <Field label="WiFi" value={gateway.ssid} />}
@@ -182,7 +182,7 @@ export function GatewayCard({ gateway, buildingLabel, isAdmin, onClick }: CardPr
           </div>
         </div>
 
-        <div className="text-slate-400 text-xs whitespace-nowrap shrink-0">
+        <div className="text-slate-500 text-xs whitespace-nowrap shrink-0">
           {isAdmin ? "Tap to edit →" : "View →"}
         </div>
       </div>
@@ -193,8 +193,8 @@ export function GatewayCard({ gateway, buildingLabel, isAdmin, onClick }: CardPr
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <span>
-      <span className="text-slate-400">{label}:</span>{" "}
-      <span className="text-slate-100">{value}</span>
+      <span className="text-slate-500">{label}:</span>{" "}
+      <span className="text-slate-900">{value}</span>
     </span>
   );
 }
@@ -264,15 +264,15 @@ export function GatewayEditDialog({
       onClick={onClose}
     >
       <div
-        className="bg-slate-900 rounded-xl w-full max-w-2xl border border-slate-700 shadow-2xl overflow-hidden"
+        className="bg-white rounded-xl w-full max-w-2xl border border-slate-300 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-slate-100">Gateway details</h2>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 className="text-lg font-medium text-slate-900">Gateway details</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white text-2xl leading-none"
+            className="text-slate-500 hover:text-slate-900 text-2xl leading-none"
             aria-label="Close"
           >
             ×
@@ -290,14 +290,14 @@ export function GatewayEditDialog({
                   onChange={(e) => setName(e.target.value)}
                   maxLength={80}
                   placeholder={`Gateway ${gateway.devEui.slice(-4)}`}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
                 />
               ) : (
-                <div className="text-slate-100 text-sm">{name || "—"}</div>
+                <div className="text-slate-900 text-sm">{name || "—"}</div>
               )}
             </FieldGroup>
             <FieldGroup label="DevEUI">
-              <div className="text-slate-300 text-sm font-mono">{gateway.devEui}</div>
+              <div className="text-slate-600 text-sm font-mono">{gateway.devEui}</div>
             </FieldGroup>
           </Section>
 
@@ -307,7 +307,7 @@ export function GatewayEditDialog({
                 <select
                   value={buildingId}
                   onChange={(e) => setBuildingId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
                 >
                   <option value="">— Unassigned —</option>
                   {buildings.map((b) => (
@@ -315,7 +315,7 @@ export function GatewayEditDialog({
                   ))}
                 </select>
               ) : (
-                <div className="text-slate-100 text-sm">
+                <div className="text-slate-900 text-sm">
                   {buildings.find((b) => b.id === buildingId)?.name ?? "Unassigned"}
                 </div>
               )}
@@ -328,10 +328,10 @@ export function GatewayEditDialog({
                   maxLength={280}
                   rows={2}
                   placeholder="e.g. behind reception desk, Floor 2 cupboard, on the wall opposite the kitchen"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm resize-none"
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm resize-none"
                 />
               ) : (
-                <div className="text-slate-100 text-sm whitespace-pre-line">
+                <div className="text-slate-900 text-sm whitespace-pre-line">
                   {locationNote || "—"}
                 </div>
               )}
@@ -361,29 +361,29 @@ export function GatewayEditDialog({
           </Section>
 
           {save.error && (
-            <p className="text-sm text-red-400">Couldn't save changes — try again.</p>
+            <p className="text-sm text-red-700">Couldn't save changes — try again.</p>
           )}
           {remove.error && (
-            <p className="text-sm text-red-400">Couldn't remove gateway — try again.</p>
+            <p className="text-sm text-red-700">Couldn't remove gateway — try again.</p>
           )}
         </div>
 
         {/* Footer */}
         {isAdmin && (
-          <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between gap-3">
+          <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
             {confirmingDelete ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-300">Remove this gateway?</span>
+                <span className="text-sm text-slate-600">Remove this gateway?</span>
                 <button
                   onClick={() => remove.mutate()}
                   disabled={remove.isPending}
-                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-700 rounded text-white"
+                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-200 rounded text-white"
                 >
                   {remove.isPending ? "Removing…" : "Confirm"}
                 </button>
                 <button
                   onClick={() => setConfirmingDelete(false)}
-                  className="px-3 py-1.5 text-sm text-slate-300 hover:text-white"
+                  className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900"
                 >
                   Cancel
                 </button>
@@ -391,7 +391,7 @@ export function GatewayEditDialog({
             ) : (
               <button
                 onClick={() => setConfirmingDelete(true)}
-                className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded"
+                className="px-3 py-1.5 text-sm text-red-700 hover:text-red-700 hover:bg-red-950/30 rounded"
               >
                 Remove gateway
               </button>
@@ -399,14 +399,14 @@ export function GatewayEditDialog({
             <div className="flex gap-2 ml-auto">
               <button
                 onClick={onClose}
-                className="px-3 py-1.5 text-sm text-slate-300 hover:text-white"
+                className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900"
               >
                 Close
               </button>
               <button
                 onClick={() => save.mutate()}
                 disabled={!hasChanges || save.isPending}
-                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 rounded text-white font-medium"
+                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium"
               >
                 {save.isPending ? "Saving…" : "Save"}
               </button>
@@ -421,7 +421,7 @@ export function GatewayEditDialog({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs uppercase tracking-wider text-slate-400 mb-2">{title}</h3>
+      <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-2">{title}</h3>
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -430,7 +430,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      <label className="block text-xs text-slate-500 mb-1">{label}</label>
       {children}
     </div>
   );
@@ -439,8 +439,8 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
 function ReadRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-sm">
-      <span className="text-slate-400">{label}</span>
-      <span className="text-slate-100">{value}</span>
+      <span className="text-slate-500">{label}</span>
+      <span className="text-slate-900">{value}</span>
     </div>
   );
 }

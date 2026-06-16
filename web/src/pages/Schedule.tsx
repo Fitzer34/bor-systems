@@ -119,7 +119,7 @@ export function Schedule() {
       </p>
 
       {!isReadOnly && (
-      <div className="bg-slate-900/50 border rounded-lg p-4 mb-8">
+      <div className="bg-white border rounded-lg p-4 mb-8">
         <div className="font-medium mb-3">New shift</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
@@ -146,14 +146,14 @@ export function Schedule() {
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Floor (optional)</label>
-            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="border rounded px-3 py-2 w-full disabled:bg-slate-800/40">
+            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
               <option value="">— whole building —</option>
               {floors.data?.floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Zone (optional)</label>
-            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-800/40">
+            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
               <option value="">— whole floor —</option>
               {zones.data?.zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select>
@@ -166,7 +166,7 @@ export function Schedule() {
             <button
               onClick={() => create.mutate()}
               disabled={!valid || create.isPending}
-              className="bg-slate-900 text-white rounded px-4 py-2 disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50"
             >
               {create.isPending ? "Adding…" : "Add shift"}
             </button>
@@ -176,8 +176,8 @@ export function Schedule() {
       )}
 
       <div className="table-wrap">
-      <table className="w-full text-sm bg-slate-900/50 border rounded-lg overflow-hidden">
-        <thead className="bg-slate-800/60 text-slate-300 text-left">
+      <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
+        <thead className="bg-slate-100 text-slate-600 text-left">
           <tr>
             <th className="p-2">Cleaner</th>
             <th className="p-2">Starts</th>
@@ -196,7 +196,7 @@ export function Schedule() {
             const status = end < now ? "past" : start <= now ? "now" : "upcoming";
             const coverage = [s.buildingName, s.floorName, s.zoneName].filter(Boolean).join(" / ") || "Whole site";
             return (
-              <tr key={s.id} className={`border-t ${status === "now" ? "bg-green-50" : status === "past" ? "text-slate-400" : ""}`}>
+              <tr key={s.id} className={`border-t ${status === "now" ? "bg-green-50" : status === "past" ? "text-slate-500" : ""}`}>
                 <td className="p-2">
                   {s.userName ?? "deleted"}
                   {status === "now" && <span className="ml-2 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-xs">on now</span>}
@@ -214,7 +214,7 @@ export function Schedule() {
             );
           })}
           {shifts.data?.shifts.length === 0 && (
-            <tr><td colSpan={6} className="p-6 text-center text-slate-400">No shifts scheduled.</td></tr>
+            <tr><td colSpan={6} className="p-6 text-center text-slate-500">No shifts scheduled.</td></tr>
           )}
         </tbody>
       </table>

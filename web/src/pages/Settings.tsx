@@ -100,7 +100,7 @@ export function Settings() {
           <button
             onClick={() => saveAudibleAlarm.mutate()}
             disabled={current.data ? audibleAlarm === current.data.defaultAudibleAlarm : true}
-            className="bg-slate-900 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
+            className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
           >
             {saveAudibleAlarm.isPending ? "Saving…" : "Save"}
           </button>
@@ -113,7 +113,7 @@ export function Settings() {
 
 function Card({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
-    <div className="bg-slate-900/50 border rounded-lg p-6">
+    <div className="bg-white border rounded-lg p-6">
       <div className="font-medium">{title}</div>
       <p className="text-sm text-slate-500 mt-1 mb-4">{description}</p>
       {children}
@@ -139,7 +139,7 @@ function NumberRow({
       <button
         onClick={onSave}
         disabled={!valid || !dirty || pending}
-        className="bg-slate-900 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
+        className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
       >
         {pending ? "Saving…" : "Save"}
       </button>

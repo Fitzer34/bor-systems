@@ -79,7 +79,7 @@ export function Analytics() {
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Analytics</h1>
-        <p className="text-sm text-slate-400 mt-1">
+        <p className="text-sm text-slate-500 mt-1">
           Trends and accountability from the last {windowDays} day{windowDays === 1 ? "" : "s"} of
           spill alerts — how often spills happen, which areas spill most, and who responds fastest.
           {youngAccount
@@ -91,19 +91,19 @@ export function Analytics() {
             <button
               onClick={() => loadSample.mutate()}
               disabled={loadSample.isPending}
-              className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white font-medium"
+              className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 text-white font-medium"
             >
               {loadSample.isPending ? "Loading…" : "Load sample data"}
             </button>
             <button
               onClick={() => clearSample.mutate()}
               disabled={clearSample.isPending}
-              className="px-3 py-1.5 text-xs rounded border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
             >
               {clearSample.isPending ? "Clearing…" : "Clear sample data"}
             </button>
             {loadSample.isError && (
-              <span className="text-xs text-red-400">
+              <span className="text-xs text-red-700">
                 {(loadSample.error as { payload?: { message?: string } })?.payload?.message ??
                   "Couldn't load — register a hanger first."}
               </span>
@@ -154,7 +154,7 @@ export function Analytics() {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-slate-900/50 rounded-lg border border-slate-800 shadow-sm p-5">
+    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
       <h2 className="text-lg font-medium mb-3">{title}</h2>
       {children}
     </div>
@@ -162,13 +162,13 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 function Loading() {
-  return <div className="text-slate-400 text-sm">Loading…</div>;
+  return <div className="text-slate-500 text-sm">Loading…</div>;
 }
 
 function Sparkline({ buckets }: { buckets: TimelineBucket[] }) {
   if (buckets.length === 0) {
     return (
-      <div className="text-slate-400 text-sm">
+      <div className="text-slate-500 text-sm">
         No spills logged in the last 30 days. Once wet-floor signs are lifted and
         alerts are raised, a per-day spill count appears here.
       </div>
@@ -220,7 +220,7 @@ function Sparkline({ buckets }: { buckets: TimelineBucket[] }) {
 function ZoneList({ zones }: { zones: HeatmapZone[] }) {
   if (zones.length === 0) {
     return (
-      <div className="text-slate-400 text-sm">
+      <div className="text-slate-500 text-sm">
         No spill data yet. As spills are logged, the zones where they happen most
         are ranked here so you can target the worst offenders.
       </div>
@@ -261,7 +261,7 @@ function ZoneList({ zones }: { zones: HeatmapZone[] }) {
 function ResponderTable({ responders }: { responders: Responder[] }) {
   if (responders.length === 0) {
     return (
-      <div className="text-slate-400 text-sm">
+      <div className="text-slate-500 text-sm">
         No responder activity yet. When staff acknowledge and close alerts,
         you'll see who responded, how many they closed, and their average
         response time.

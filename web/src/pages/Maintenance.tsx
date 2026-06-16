@@ -30,13 +30,13 @@ const euro = (cents: number | null | undefined) =>
   cents == null ? "—" : `€${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 const STATUS_STYLE: Record<string, string> = {
-  logged: "bg-slate-500/15 text-slate-300",
-  tendering: "bg-amber-500/15 text-amber-300",
-  awarded: "bg-blue-500/15 text-blue-300",
+  logged: "bg-slate-500/15 text-slate-600",
+  tendering: "bg-amber-100 text-amber-700",
+  awarded: "bg-blue-100 text-blue-700",
   scheduled: "bg-indigo-500/15 text-indigo-300",
   in_progress: "bg-indigo-500/15 text-indigo-300",
-  completed: "bg-emerald-500/15 text-emerald-300",
-  cancelled: "bg-slate-700/40 text-slate-400",
+  completed: "bg-emerald-100 text-emerald-700",
+  cancelled: "bg-slate-200 text-slate-500",
 };
 
 export function Maintenance() {
@@ -55,7 +55,7 @@ export function Maintenance() {
   const trades = tradesQ.data?.trades ?? [];
   const tradeName = (id: string | null) => trades.find((t) => t.id === id)?.name ?? "";
 
-  if (!isStaff) return <div className="p-8 text-slate-400">Maintenance is for admins and supervisors.</div>;
+  if (!isStaff) return <div className="p-8 text-slate-500">Maintenance is for admins and supervisors.</div>;
 
   return (
     <div className="p-6 max-w-6xl">
@@ -77,7 +77,7 @@ export function Maintenance() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={"px-3 py-1.5 rounded " + (tab === t ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/60")}
+            className={"px-3 py-1.5 rounded " + (tab === t ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100")}
           >
             {t === "jobs" ? "Jobs" : "Contractors"}
           </button>
@@ -86,7 +86,7 @@ export function Maintenance() {
 
       {tab === "jobs" && (
         jobsQ.isLoading ? (
-          <div className="text-slate-400">Loading jobs…</div>
+          <div className="text-slate-500">Loading jobs…</div>
         ) : (jobsQ.data?.jobs.length ?? 0) === 0 ? (
           <Empty>No jobs yet. Tap <em>Log a job</em> to start one.</Empty>
         ) : (
@@ -95,19 +95,19 @@ export function Maintenance() {
               <button
                 key={j.id}
                 onClick={() => setOpenJobId(j.id)}
-                className="w-full text-left rounded-lg border border-slate-800 bg-slate-900/40 hover:bg-slate-900/70 hover:border-slate-700 transition p-4"
+                className="w-full text-left rounded-lg border border-slate-200 bg-white hover:bg-white hover:border-slate-300 transition p-4"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium text-slate-100 truncate">{j.title}</h3>
-                      {j.priority === "emergency" && <Pill className="bg-red-500/15 text-red-300">Emergency</Pill>}
+                      <h3 className="font-medium text-slate-900 truncate">{j.title}</h3>
+                      {j.priority === "emergency" && <Pill className="bg-red-100 text-red-700">Emergency</Pill>}
                     </div>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                       {tradeName(j.tradeId) || "Unclassified"} · {relTime(j.createdAt)}
                     </p>
                   </div>
-                  <Pill className={STATUS_STYLE[j.status] ?? "bg-slate-700/40 text-slate-300"}>
+                  <Pill className={STATUS_STYLE[j.status] ?? "bg-slate-200 text-slate-600"}>
                     {j.status.replace("_", " ")}
                   </Pill>
                 </div>
@@ -119,27 +119,27 @@ export function Maintenance() {
 
       {tab === "contractors" && (
         contractorsQ.isLoading ? (
-          <div className="text-slate-400">Loading contractors…</div>
+          <div className="text-slate-500">Loading contractors…</div>
         ) : (contractorsQ.data?.contractors.length ?? 0) === 0 ? (
           <Empty>No contractors yet. Tap <em>Add contractor</em> to build your list.</Empty>
         ) : (
           <div className="space-y-2">
             {contractorsQ.data!.contractors.map((c) => (
-              <div key={c.id} className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 flex items-center justify-between gap-3">
+              <div key={c.id} className="rounded-lg border border-slate-200 bg-white p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-medium text-slate-100 truncate">{c.name}</h3>
-                    {c.isPreferred && <Pill className="bg-emerald-500/15 text-emerald-300">★ Preferred</Pill>}
-                    {c.tier === "blocked" && <Pill className="bg-red-500/15 text-red-300">Blocked</Pill>}
+                    <h3 className="font-medium text-slate-900 truncate">{c.name}</h3>
+                    {c.isPreferred && <Pill className="bg-emerald-100 text-emerald-700">★ Preferred</Pill>}
+                    {c.tier === "blocked" && <Pill className="bg-red-100 text-red-700">Blocked</Pill>}
                   </div>
-                  <p className="text-xs text-slate-400">{[c.email, c.phone, c.region].filter(Boolean).join(" · ") || "—"}</p>
+                  <p className="text-xs text-slate-500">{[c.email, c.phone, c.region].filter(Boolean).join(" · ") || "—"}</p>
                 </div>
                 <button
                   onClick={() =>
                     api(`/contractors/${c.id}`, { method: "PATCH", body: JSON.stringify({ isPreferred: !c.isPreferred }) })
                       .then(() => qc.invalidateQueries({ queryKey: ["mx-contractors"] }))
                   }
-                  className="text-xs text-slate-400 hover:text-amber-300 whitespace-nowrap"
+                  className="text-xs text-slate-500 hover:text-amber-700 whitespace-nowrap"
                 >
                   {c.isPreferred ? "Unprefer" : "Make preferred"}
                 </button>
@@ -201,15 +201,15 @@ function JobModal({
   return (
     <Modal onClose={onClose} title={d?.job.title ?? "Job"}>
       {!d ? (
-        <div className="px-6 py-8 text-slate-400">Loading…</div>
+        <div className="px-6 py-8 text-slate-500">Loading…</div>
       ) : (
         <div className="px-6 py-5 space-y-5 max-h-[72vh] overflow-y-auto">
           <div className="flex items-center gap-2 text-sm">
-            <Pill className={STATUS_STYLE[d.job.status] ?? "bg-slate-700/40 text-slate-300"}>{d.job.status.replace("_", " ")}</Pill>
-            <span className="text-slate-400">{tradeName(d.job.tradeId) || "Unclassified"}</span>
-            {d.job.priority === "emergency" && <Pill className="bg-red-500/15 text-red-300">Emergency</Pill>}
+            <Pill className={STATUS_STYLE[d.job.status] ?? "bg-slate-200 text-slate-600"}>{d.job.status.replace("_", " ")}</Pill>
+            <span className="text-slate-500">{tradeName(d.job.tradeId) || "Unclassified"}</span>
+            {d.job.priority === "emergency" && <Pill className="bg-red-100 text-red-700">Emergency</Pill>}
           </div>
-          {d.job.description && <p className="text-sm text-slate-300">{d.job.description}</p>}
+          {d.job.description && <p className="text-sm text-slate-600">{d.job.description}</p>}
 
           {/* Tender — pick contractors */}
           {(d.job.status === "logged" || d.job.status === "tendering") && (
@@ -219,15 +219,15 @@ function JobModal({
                 {contractors.map((c) => {
                   const already = d.quotes.some((q) => q.contractorId === c.id);
                   return (
-                    <label key={c.id} className={"flex items-center gap-2 text-sm px-2 py-1 rounded " + (already ? "opacity-40" : "hover:bg-slate-800/50 cursor-pointer")}>
+                    <label key={c.id} className={"flex items-center gap-2 text-sm px-2 py-1 rounded " + (already ? "opacity-40" : "hover:bg-slate-100 cursor-pointer")}>
                       <input
                         type="checkbox"
                         disabled={already}
                         checked={picked.has(c.id)}
                         onChange={(e) => setPicked((p) => { const n = new Set(p); e.target.checked ? n.add(c.id) : n.delete(c.id); return n; })}
                       />
-                      <span className="text-slate-200">{c.name}</span>
-                      {c.isPreferred && <span className="text-emerald-300 text-xs">★</span>}
+                      <span className="text-slate-800">{c.name}</span>
+                      {c.isPreferred && <span className="text-emerald-700 text-xs">★</span>}
                       {already && <span className="text-xs text-slate-500">(invited)</span>}
                     </label>
                   );
@@ -240,7 +240,7 @@ function JobModal({
                   api(`/jobs/${jobId}/tender`, { method: "POST", body: JSON.stringify({ contractorIds: [...picked] }) })
                     .then(() => { setPicked(new Set()); refresh(); })
                 }
-                className="mt-2 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 rounded text-white"
+                className="mt-2 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white"
               >
                 Send to {picked.size || ""} {picked.size === 1 ? "contractor" : "contractors"}
               </button>
@@ -273,7 +273,7 @@ function JobModal({
               {d.events.map((e) => (
                 <div key={e.id} className="flex gap-3 text-xs">
                   <span className="text-slate-500 whitespace-nowrap w-28 shrink-0">{relTime(e.createdAt)}</span>
-                  <span className="text-slate-300"><b className="text-slate-200">{e.type}</b>{e.detail ? ` — ${e.detail}` : ""}</span>
+                  <span className="text-slate-600"><b className="text-slate-800">{e.type}</b>{e.detail ? ` — ${e.detail}` : ""}</span>
                 </div>
               ))}
             </div>
@@ -304,17 +304,17 @@ function QuoteRow({
   };
 
   return (
-    <div className={"rounded border p-2.5 " + (quote.status === "awarded" ? "border-emerald-600 bg-emerald-950/20" : "border-slate-800 bg-slate-900/40")}>
+    <div className={"rounded border p-2.5 " + (quote.status === "awarded" ? "border-emerald-600 bg-emerald-950/20" : "border-slate-200 bg-white")}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-slate-200 text-sm truncate">{quote.contractorName}</span>
-          {quote.isPreferred && <span className="text-emerald-300 text-xs">★ preferred</span>}
-          {isCheapest && submitted && <Pill className="bg-emerald-500/15 text-emerald-300">cheapest</Pill>}
-          {quote.status === "awarded" && <Pill className="bg-emerald-500/15 text-emerald-300">awarded</Pill>}
+          <span className="text-slate-800 text-sm truncate">{quote.contractorName}</span>
+          {quote.isPreferred && <span className="text-emerald-700 text-xs">★ preferred</span>}
+          {isCheapest && submitted && <Pill className="bg-emerald-100 text-emerald-700">cheapest</Pill>}
+          {quote.status === "awarded" && <Pill className="bg-emerald-100 text-emerald-700">awarded</Pill>}
         </div>
         <div className="text-right shrink-0">
-          <div className="text-slate-100 font-semibold">{euro(quote.amountCents)}</div>
-          {submitted && overCheapest > 0 && <div className="text-xs text-amber-300">+{euro(overCheapest)} vs cheapest</div>}
+          <div className="text-slate-900 font-semibold">{euro(quote.amountCents)}</div>
+          {submitted && overCheapest > 0 && <div className="text-xs text-amber-700">+{euro(overCheapest)} vs cheapest</div>}
         </div>
       </div>
 
@@ -323,9 +323,9 @@ function QuoteRow({
         entering ? (
           <div className="mt-2 flex items-end gap-2">
             <div className="flex-1">
-              <label className="block text-xs text-slate-400 mb-1">Quote (€)</label>
+              <label className="block text-xs text-slate-500 mb-1">Quote (€)</label>
               <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric"
-                className="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm" placeholder="1450" />
+                className="w-full px-2 py-1.5 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" placeholder="1450" />
             </div>
             <button
               disabled={!amount}
@@ -333,10 +333,10 @@ function QuoteRow({
                 api(`/quotes/${quote.id}`, { method: "PATCH", body: JSON.stringify({ amountCents: Math.round(Number(amount) * 100) }) })
                   .then(() => { setEntering(false); onSubmitted(); })
               }
-              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 rounded text-white">Save</button>
+              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 rounded text-white">Save</button>
           </div>
         ) : (
-          <button onClick={() => setEntering(true)} className="mt-1 text-xs text-blue-400 hover:text-blue-300">+ Enter their quote</button>
+          <button onClick={() => setEntering(true)} className="mt-1 text-xs text-blue-700 hover:text-blue-700">+ Enter their quote</button>
         )
       )}
 
@@ -345,11 +345,11 @@ function QuoteRow({
         <div className="mt-2 space-y-2">
           {showReason && !isCheapest && (
             <input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus
-              className="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+              className="w-full px-2 py-1.5 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
               placeholder="Not the cheapest — why this one? (preferred, faster, reliable…)" />
           )}
           <button onClick={award} disabled={showReason && !isCheapest && !reason.trim()}
-            className="text-xs px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white">
+            className="text-xs px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 text-white">
             {showReason && !isCheapest ? "Confirm award" : "Award this"}
           </button>
         </div>
@@ -394,7 +394,7 @@ function LogJobDialog({ trades, onClose, onLogged }: { trades: Trade[]; onClose:
             </select>
           </Field>
         </div>
-        {save.error && <p className="text-sm text-red-400">Couldn't log the job — try again.</p>}
+        {save.error && <p className="text-sm text-red-700">Couldn't log the job — try again.</p>}
       </div>
       <Footer onClose={onClose} onSave={() => save.mutate()} saveLabel="Log job" disabled={!title.trim() || save.isPending} />
     </Modal>
@@ -421,17 +421,17 @@ function AddContractorDialog({ trades, onClose, onAdded }: { trades: Trade[]; on
           <Field label="Phone"><input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} /></Field>
         </div>
         <Field label="Trades they cover">
-          <div className="max-h-40 overflow-y-auto space-y-1 border border-slate-800 rounded p-2">
+          <div className="max-h-40 overflow-y-auto space-y-1 border border-slate-200 rounded p-2">
             {trades.map((t) => (
-              <label key={t.id} className="flex items-center gap-2 text-sm hover:bg-slate-800/50 px-1 rounded cursor-pointer">
+              <label key={t.id} className="flex items-center gap-2 text-sm hover:bg-slate-100 px-1 rounded cursor-pointer">
                 <input type="checkbox" checked={tradeIds.has(t.id)}
                   onChange={(e) => setTradeIds((p) => { const n = new Set(p); e.target.checked ? n.add(t.id) : n.delete(t.id); return n; })} />
-                <span className="text-slate-200">{t.name}</span>
+                <span className="text-slate-800">{t.name}</span>
               </label>
             ))}
           </div>
         </Field>
-        <label className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
           <input type="checkbox" checked={isPreferred} onChange={(e) => setIsPreferred(e.target.checked)} /> Mark as preferred
         </label>
       </div>
@@ -442,15 +442,15 @@ function AddContractorDialog({ trades, onClose, onAdded }: { trades: Trade[]; on
 
 // ─── Shared bits ─────────────────────────────────────────────────────────────
 
-const inputCls = "w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm";
+const inputCls = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-slate-900 rounded-xl w-full max-w-lg border border-slate-700 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-slate-100">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none" aria-label="Close">×</button>
+      <div className="bg-white rounded-xl w-full max-w-lg border border-slate-300 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 className="text-lg font-medium text-slate-900">{title}</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-2xl leading-none" aria-label="Close">×</button>
         </div>
         {children}
       </div>
@@ -459,23 +459,23 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 function Footer({ onClose, onSave, saveLabel, disabled }: { onClose: () => void; onSave: () => void; saveLabel: string; disabled: boolean }) {
   return (
-    <div className="px-6 py-4 border-t border-slate-800 flex justify-end gap-2">
-      <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-300 hover:text-white">Cancel</button>
-      <button onClick={onSave} disabled={disabled} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 rounded text-white font-medium">{saveLabel}</button>
+    <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+      <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
+      <button onClick={onSave} disabled={disabled} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">{saveLabel}</button>
     </div>
   );
 }
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (<div><h3 className="text-xs uppercase tracking-wider text-slate-400 mb-2">{title}</h3>{children}</div>);
+  return (<div><h3 className="text-xs uppercase tracking-wider text-slate-500 mb-2">{title}</h3>{children}</div>);
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (<div><label className="block text-xs text-slate-400 mb-1">{label}</label>{children}</div>);
+  return (<div><label className="block text-xs text-slate-500 mb-1">{label}</label>{children}</div>);
 }
 function Pill({ className, children }: { className: string; children: React.ReactNode }) {
   return <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + className}>{children}</span>;
 }
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-8 text-center text-slate-300">{children}</div>;
+  return <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-slate-600">{children}</div>;
 }
 function relTime(iso: string): string {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
