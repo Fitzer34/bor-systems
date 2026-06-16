@@ -29,6 +29,8 @@ import { Sites } from "./pages/Sites";
 import { Analytics } from "./pages/Analytics";
 import { Maintenance } from "./pages/Maintenance";
 import { Assets } from "./pages/Assets";
+import { ChooseSection } from "./pages/ChooseSection";
+import { SectionProvider, useSection } from "./lib/section";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
 
@@ -44,10 +46,21 @@ function RequireAuth({ children, role }: { children: JSX.Element; role?: Array<"
   return children;
 }
 
+// The "/" landing depends on the chosen section: maintenance staff jump to the
+// jobs board, everyone else gets the cleaning dashboard (Active alerts).
+function SectionHome() {
+  const { user } = useAuth();
+  const { section } = useSection();
+  const isStaff = user?.role === "admin" || user?.role === "supervisor";
+  if (isStaff && section === "maintenance") return <Navigate to="/maintenance" replace />;
+  return <Dashboard />;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <SectionProvider>
         <BrowserRouter>
           <ActiveAlertsWatcher />
           <LiveEventsBridge />
@@ -59,6 +72,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             {/* Public, no-login page a contractor opens from the PPM scheduling
                 magic link we email them. */}
             <Route path="/schedule/:token" element={<SchedulePage />} />
+            {/* Section chooser — pick Cleaning or Maintenance on entry. */}
+            <Route path="/choose" element={<RequireAuth><ChooseSection /></RequireAuth>} />
             <Route
               path="/"
               element={
@@ -67,7 +82,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 </RequireAuth>
               }
             >
-              <Route index element={<Dashboard />} />
+              <Route index element={<SectionHome />} />
               <Route path="alerts/:id" element={<AlertDetail />} />
               <Route path="profile" element={<Profile />} />
               {/* Unified devices view (gateways + hangers, grouped by building). */}
@@ -110,6 +125,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        </SectionProvider>
       </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>,

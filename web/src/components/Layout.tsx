@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { useSection } from "../lib/section";
 
 export function Layout() {
   const { user, logout, setOnDuty } = useAuth();
+  const { section } = useSection();
+  const navigate = useNavigate();
   // Sidebar drawer state (mobile only — sidebar is always-visible on >= md).
   // Default closed on every navigation so the drawer doesn't linger over the
   // page the user just tapped to.
@@ -11,6 +14,10 @@ export function Layout() {
 
   if (!user) return null;
   const isStaff = user.role === "admin" || user.role === "supervisor";
+  // Cleaners only ever use the cleaning side, so they skip the chooser.
+  const activeSection = isStaff ? section : "cleaning";
+  // Staff who haven't picked a side yet go to the chooser first.
+  if (isStaff && !section) return <Navigate to="/choose" replace />;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
@@ -66,26 +73,49 @@ export function Layout() {
           className="flex-1 p-2 space-y-1 text-sm overflow-y-auto"
           onClick={() => setMobileOpen(false)}
         >
-          <NavItem to="/" end>Active alerts</NavItem>
-          {isStaff && <NavItem to="/sites">Sites overview</NavItem>}
-          {isStaff && <NavItem to="/analytics">Analytics</NavItem>}
-          {/* Dispatch + Schedule are visible to everyone. Cleaners get
-              read-only views (their own shifts and dispatches sent to them)
-              so they know where they're meant to be. Backend enforces the
-              actual write permissions. */}
-          <NavItem to="/dispatch">Dispatch</NavItem>
-          <NavItem to="/schedule">Schedule</NavItem>
-          {isStaff && <NavItem to="/devices">Devices</NavItem>}
-          {isStaff && <NavItem to="/maintenance">Maintenance</NavItem>}
-          {isStaff && <NavItem to="/assets">Assets</NavItem>}
-          {isStaff && <NavItem to="/ppms">PPMs</NavItem>}
-          {isStaff && <NavItem to="/users">Users</NavItem>}
-          {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}
-          {isStaff && <NavItem to="/reports">Reports</NavItem>}
-          {isStaff && <NavItem to="/settings">Settings</NavItem>}
-          {isStaff && <NavItem to="/notifications-log">Notifications</NavItem>}
-          {user.role === "admin" && <NavItem to="/audit-log">Audit log</NavItem>}
+          {/* Section switcher (staff only) — flip between Cleaning & Maintenance. */}
+          {isStaff && (
+            <button
+              onClick={() => navigate("/choose")}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-100"
+            >
+              <span className="font-medium">{activeSection === "maintenance" ? "🔧 Maintenance" : "🧹 Cleaning"}</span>
+              <span className="text-xs text-slate-400">Switch ⇄</span>
+            </button>
+          )}
+
+          {/* ─── Cleaning side (IoT spill safety) ─── */}
+          {activeSection === "cleaning" && (
+            <>
+              <NavItem to="/" end>Active alerts</NavItem>
+              {isStaff && <NavItem to="/sites">Sites overview</NavItem>}
+              {isStaff && <NavItem to="/analytics">Analytics</NavItem>}
+              {/* Dispatch + Schedule are visible to everyone. Cleaners get
+                  read-only views (their own shifts and dispatches sent to them)
+                  so they know where they're meant to be. */}
+              <NavItem to="/dispatch">Dispatch</NavItem>
+              <NavItem to="/schedule">Schedule</NavItem>
+              {isStaff && <NavItem to="/devices">Devices</NavItem>}
+              {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}
+              {isStaff && <NavItem to="/reports">Reports</NavItem>}
+            </>
+          )}
+
+          {/* ─── Maintenance side (CMMS / FM) ─── */}
+          {activeSection === "maintenance" && isStaff && (
+            <>
+              <NavItem to="/maintenance">Jobs</NavItem>
+              <NavItem to="/assets">Assets</NavItem>
+              <NavItem to="/ppms">PPMs</NavItem>
+            </>
+          )}
+
+          {/* ─── Company-wide (both sides) ─── */}
           <div className="pt-3 mt-3 border-t border-slate-800">
+            {isStaff && <NavItem to="/users">Users</NavItem>}
+            {isStaff && <NavItem to="/settings">Settings</NavItem>}
+            {isStaff && <NavItem to="/notifications-log">Notifications</NavItem>}
+            {user.role === "admin" && <NavItem to="/audit-log">Audit log</NavItem>}
             <NavItem to="/profile">My profile</NavItem>
             <NavItem to="/status">System status</NavItem>
           </div>
