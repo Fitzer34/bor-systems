@@ -366,15 +366,18 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
   const assetBody = z.object({
     name: z.string().min(1).max(160),
     category: z.string().max(120).optional(),
-    tradeId: z.string().uuid().optional(),
-    buildingId: z.string().uuid().optional(),
-    zoneId: z.string().uuid().optional(),
+    tradeId: z.string().uuid().nullable().optional(),
+    buildingId: z.string().uuid().nullable().optional(),
+    zoneId: z.string().uuid().nullable().optional(),
     make: z.string().max(120).optional(),
     model: z.string().max(120).optional(),
     serial: z.string().max(120).optional(),
     installDate: z.string().optional(),
     expectedLifeYears: z.number().int().min(0).max(100).optional(),
     warrantyExpiry: z.string().optional(),
+    conditionScore: z.number().int().min(1).max(5).nullable().optional(),
+    purchaseCostCents: z.number().int().min(0).nullable().optional(),
+    replacementCostCents: z.number().int().min(0).nullable().optional(),
     notes: z.string().max(2000).optional(),
   });
   app.post("/assets", { preHandler: [app.authenticate, staff] }, async (req, reply) => {

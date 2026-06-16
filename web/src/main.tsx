@@ -28,6 +28,7 @@ import { Status } from "./pages/Status";
 import { Sites } from "./pages/Sites";
 import { Analytics } from "./pages/Analytics";
 import { Maintenance } from "./pages/Maintenance";
+import { Assets } from "./pages/Assets";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
 
@@ -81,6 +82,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               {/* Planned preventive maintenance (admin + supervisor). */}
               <Route path="ppms" element={<RequireAuth role={["admin", "supervisor"]}><Ppms /></RequireAuth>} />
               <Route path="maintenance" element={<RequireAuth role={["admin", "supervisor"]}><Maintenance /></RequireAuth>} />
+              <Route path="assets" element={<RequireAuth role={["admin", "supervisor"]}><Assets /></RequireAuth>} />
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />
               <Route path="floor-plans" element={<RequireAuth role={["admin"]}><FloorPlans /></RequireAuth>} />
               <Route path="reports" element={<RequireAuth role={["admin", "supervisor"]}><Reports /></RequireAuth>} />
