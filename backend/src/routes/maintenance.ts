@@ -320,6 +320,72 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     return { ok: true };
   });
 
+  // ─── Work-order lifecycle: schedule → start → complete (or cancel) ────────
+  // Works from any prior state, so internal jobs (incl. QR/incident-reported
+  // ones) can skip tendering and go straight to scheduled/done.
+  app.post("/jobs/:id/schedule", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ scheduledStartAt: z.string().datetime(), scheduledEndAt: z.string().datetime().optional() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [job] = await db
+      .update(schema.maintenanceJobs)
+      .set({
+        status: "scheduled",
+        scheduledStartAt: new Date(body.data.scheduledStartAt),
+        scheduledEndAt: body.data.scheduledEndAt ? new Date(body.data.scheduledEndAt) : null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.maintenanceJobs.id, id), eq(schema.maintenanceJobs.organisationId, c.orgId)))
+      .returning();
+    if (!job) return reply.code(404).send({ error: "not_found" });
+    await logJobEvent(c.orgId, id, "scheduled", c.sub, new Date(body.data.scheduledStartAt).toISOString().slice(0, 10));
+    return { ok: true };
+  });
+
+  app.post("/jobs/:id/start", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    const [job] = await db
+      .update(schema.maintenanceJobs)
+      .set({ status: "in_progress", updatedAt: new Date() })
+      .where(and(eq(schema.maintenanceJobs.id, id), eq(schema.maintenanceJobs.organisationId, c.orgId)))
+      .returning();
+    if (!job) return reply.code(404).send({ error: "not_found" });
+    await logJobEvent(c.orgId, id, "started", c.sub);
+    return { ok: true };
+  });
+
+  app.post("/jobs/:id/complete", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ completionNote: z.string().max(2000).optional() }).safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [job] = await db
+      .update(schema.maintenanceJobs)
+      .set({ status: "completed", completedAt: new Date(), completionNote: body.data.completionNote?.trim() || null, updatedAt: new Date() })
+      .where(and(eq(schema.maintenanceJobs.id, id), eq(schema.maintenanceJobs.organisationId, c.orgId)))
+      .returning();
+    if (!job) return reply.code(404).send({ error: "not_found" });
+    await logJobEvent(c.orgId, id, "completed", c.sub, body.data.completionNote?.trim() || undefined);
+    return { ok: true };
+  });
+
+  app.post("/jobs/:id/cancel", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ reason: z.string().max(500).optional() }).safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [job] = await db
+      .update(schema.maintenanceJobs)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(and(eq(schema.maintenanceJobs.id, id), eq(schema.maintenanceJobs.organisationId, c.orgId)))
+      .returning();
+    if (!job) return reply.code(404).send({ error: "not_found" });
+    await logJobEvent(c.orgId, id, "cancelled", c.sub, body.data.reason?.trim() || undefined);
+    return { ok: true };
+  });
+
   // ─── Trades (taxonomy) ─────────────────────────────────────────────────────
   // Built-ins (organisation_id NULL) + this org's own customs ("Other").
   app.get("/trades", { preHandler: [app.authenticate, staff] }, async (req) => {

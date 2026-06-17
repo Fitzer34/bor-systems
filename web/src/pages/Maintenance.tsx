@@ -18,6 +18,7 @@ interface Contractor {
 interface Job {
   id: string; title: string; description: string | null; status: string; priority: string;
   tradeId: string | null; awardReason: string | null; createdAt: string;
+  scheduledStartAt: string | null; completedAt: string | null; completionNote: string | null;
 }
 interface Quote {
   id: string; contractorId: string; contractorName: string; isPreferred: boolean; status: string;
@@ -29,12 +30,17 @@ interface JobEvent { id: string; type: string; detail: string | null; createdAt:
 const euro = (cents: number | null | undefined) =>
   cents == null ? "—" : `€${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
+const fmtDateTime = (iso: string) => {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+};
+
 const STATUS_STYLE: Record<string, string> = {
   logged: "bg-slate-500/15 text-slate-600",
   tendering: "bg-amber-100 text-amber-700",
   awarded: "bg-blue-100 text-blue-700",
-  scheduled: "bg-indigo-500/15 text-indigo-300",
-  in_progress: "bg-indigo-500/15 text-indigo-300",
+  scheduled: "bg-indigo-100 text-indigo-700",
+  in_progress: "bg-indigo-100 text-indigo-700",
   completed: "bg-emerald-100 text-emerald-700",
   cancelled: "bg-slate-200 text-slate-500",
 };
@@ -190,7 +196,12 @@ function JobModal({
   const qc = useQueryClient();
   const detailQ = useQuery({ queryKey: ["mx-job", jobId], queryFn: () => api<{ job: Job; quotes: Quote[]; events: JobEvent[] }>(`/jobs/${jobId}`) });
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [completeNote, setCompleteNote] = useState("");
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const refresh = () => { qc.invalidateQueries({ queryKey: ["mx-job", jobId] }); onChanged(); };
+  const act = (path: string, body?: unknown) =>
+    api(`/jobs/${jobId}/${path}`, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) }).then(refresh);
 
   const d = detailQ.data;
   const cheapest = d
@@ -264,6 +275,49 @@ function JobModal({
                   />
                 ))}
               </div>
+            </Section>
+          )}
+
+          {/* Work-order lifecycle */}
+          {d.job.status !== "cancelled" && (
+            <Section title="Work order">
+              {["logged", "scoped", "tendering", "awarded"].includes(d.job.status) && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Schedule start</label>
+                    <input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} className="px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                  </div>
+                  <button disabled={!scheduleAt} onClick={() => act("schedule", { scheduledStartAt: new Date(scheduleAt).toISOString() })} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white">Schedule</button>
+                </div>
+              )}
+              {d.job.status === "scheduled" && (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-sm text-slate-700">📅 Scheduled for <b>{d.job.scheduledStartAt ? fmtDateTime(d.job.scheduledStartAt) : "—"}</b></span>
+                  <button onClick={() => act("start")} className="px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 rounded text-white font-medium">Mark started</button>
+                </div>
+              )}
+              {d.job.status === "in_progress" && (
+                <div className="space-y-2">
+                  <input value={completeNote} onChange={(e) => setCompleteNote(e.target.value)} placeholder="Completion note (optional)" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                  <button onClick={() => act("complete", { completionNote: completeNote.trim() || undefined })} className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium">Mark complete</button>
+                </div>
+              )}
+              {d.job.status === "completed" && (
+                <p className="text-sm text-emerald-700">✓ Completed{d.job.completedAt ? ` · ${fmtDateTime(d.job.completedAt)}` : ""}{d.job.completionNote ? ` — ${d.job.completionNote}` : ""}</p>
+              )}
+              {d.job.status !== "completed" && (
+                <div className="mt-3">
+                  {confirmingCancel ? (
+                    <span className="flex items-center gap-2 text-sm">
+                      <span className="text-red-600">Cancel this job?</span>
+                      <button onClick={() => act("cancel")} className="px-2 py-1 text-xs bg-red-600 text-white rounded">Yes, cancel</button>
+                      <button onClick={() => setConfirmingCancel(false)} className="px-2 py-1 text-xs text-slate-600 hover:text-slate-900">No</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setConfirmingCancel(true)} className="text-xs text-red-600 hover:underline">Cancel job</button>
+                  )}
+                </div>
+              )}
             </Section>
           )}
 
