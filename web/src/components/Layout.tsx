@@ -123,6 +123,7 @@ export function Layout() {
 
           {/* ─── Company-wide (both sides) ─── */}
           <div className="pt-3 mt-3 border-t border-slate-800">
+            {isStaff && <NavItem to="/assistant">✨ Assistant</NavItem>}
             {isStaff && <NavItem to="/users">Users</NavItem>}
             {isStaff && <NavItem to="/settings">Settings</NavItem>}
             {isStaff && <NavItem to="/notifications-log">Notifications</NavItem>}
