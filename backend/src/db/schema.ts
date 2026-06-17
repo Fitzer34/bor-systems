@@ -61,11 +61,33 @@ export const notificationKind = pgEnum("notification_kind", [
   "sign_replacement_needed",
 ]);
 
+/// Subscription tier. Gates the monthly AI Assistant allowance (a soft cap —
+/// the UI nudges, it never hard-blocks). The everyday AI helpers stay free on
+/// every plan. Existing orgs default to 'starter'.
+export const orgPlan = pgEnum("org_plan", ["starter", "growth", "enterprise"]);
+
 export const organisations = pgTable("organisations", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
+  plan: orgPlan("plan").notNull().default("starter"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/// Append-only log of metered AI calls (currently just the Assistant). Powers
+/// the per-plan monthly allowance and future cost/usage analytics. kind is
+/// "assistant" today; the free helpers stay unlogged. user_id is best-effort.
+export const aiUsageEvents = pgTable(
+  "ai_usage_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(),
+    model: text("model"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgTimeIdx: index("ai_usage_org_time_idx").on(t.organisationId, t.createdAt) }),
+);
 
 export const buildings = pgTable("buildings", {
   id: uuid("id").defaultRandom().primaryKey(),

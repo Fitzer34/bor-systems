@@ -10,6 +10,9 @@ import { api } from "../lib/api";
  */
 
 type Msg = { role: "user" | "assistant"; text: string };
+type Usage = { plan: string; used: number; included: number | null; remaining: number | null; overIncluded: boolean };
+
+const planLabel = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
 
 const SUGGESTIONS = [
   "What needs attention right now?",
@@ -25,6 +28,16 @@ export function Assistant() {
     staleTime: 5 * 60_000,
   });
   const configured = !!aiQ.data?.configured;
+
+  const usageQ = useQuery({
+    queryKey: ["ai-usage"],
+    queryFn: () => api<Usage>("/ai/usage"),
+    enabled: configured,
+    staleTime: 60_000,
+  });
+  // /ai/ask returns fresh usage after each question; prefer that over the query.
+  const [usageOverride, setUsageOverride] = useState<Usage | null>(null);
+  const usage = usageOverride ?? usageQ.data ?? null;
 
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -42,11 +55,12 @@ export function Assistant() {
     setInput("");
     setBusy(true);
     try {
-      const r = await api<{ answer: string }>("/ai/ask", {
+      const r = await api<{ answer: string; usage?: Usage }>("/ai/ask", {
         method: "POST",
         body: JSON.stringify({ question }),
       });
       setMessages((m) => [...m, { role: "assistant", text: r.answer }]);
+      if (r.usage) setUsageOverride(r.usage);
     } catch {
       setMessages((m) => [...m, { role: "assistant", text: "Sorry — I couldn't answer that just now. Try again." }]);
     } finally {
@@ -61,11 +75,24 @@ export function Assistant() {
         <p className="text-sm text-slate-500 mt-1">
           Ask anything about your jobs, assets, and incidents — answered from your live data.
         </p>
+        {configured && usage && (
+          <p className="text-xs text-slate-400 mt-1">
+            {usage.included == null
+              ? `Unlimited AI questions · ${planLabel(usage.plan)} plan`
+              : `${usage.used} of ${usage.included} AI questions used this month · ${planLabel(usage.plan)} plan`}
+          </p>
+        )}
       </div>
 
       {!aiQ.isLoading && !configured && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 mb-4">
           The assistant isn't switched on yet. Add an <code>ANTHROPIC_API_KEY</code> in Render to enable it.
+        </div>
+      )}
+
+      {configured && usage?.overIncluded && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 mb-4">
+          You've used all {usage.included} AI Assistant questions in your {planLabel(usage.plan)} plan this month. It still works — upgrade for a higher monthly allowance.
         </div>
       )}
 

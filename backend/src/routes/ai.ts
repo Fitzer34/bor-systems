@@ -14,7 +14,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, eq, desc, ilike } from "drizzle-orm";
+import { and, eq, desc, ilike, gte, count } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import {
@@ -33,8 +33,67 @@ const requireRole =
     if (!role || !allowed.includes(role)) return reply.code(403).send({ error: "forbidden" });
   };
 
+// The Assistant is the only AI surface expensive enough to meter (the everyday
+// helpers stay free + ambient). Each plan includes a monthly allowance of
+// Assistant questions; this is a SOFT cap — we surface usage and nudge to
+// upgrade, but never hard-block a task. Enterprise is effectively unlimited.
+const ASSISTANT_INCLUDED: Record<string, number> = {
+  starter: 100,
+  growth: 500,
+  enterprise: Number.POSITIVE_INFINITY,
+};
+
+function monthStartUtc(): Date {
+  const n = new Date();
+  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1));
+}
+
+export interface AssistantUsage {
+  plan: string;
+  used: number;
+  included: number | null; // null = unlimited
+  remaining: number | null; // null = unlimited
+  overIncluded: boolean;
+}
+
+async function assistantUsage(orgId: string): Promise<AssistantUsage> {
+  const [org] = await db
+    .select({ plan: schema.organisations.plan })
+    .from(schema.organisations)
+    .where(eq(schema.organisations.id, orgId))
+    .limit(1);
+  const plan = org?.plan ?? "starter";
+  const [row] = await db
+    .select({ n: count() })
+    .from(schema.aiUsageEvents)
+    .where(
+      and(
+        eq(schema.aiUsageEvents.organisationId, orgId),
+        eq(schema.aiUsageEvents.kind, "assistant"),
+        gte(schema.aiUsageEvents.createdAt, monthStartUtc()),
+      ),
+    );
+  const used = Number(row?.n ?? 0);
+  const inc = ASSISTANT_INCLUDED[plan] ?? 100;
+  const unlimited = !Number.isFinite(inc);
+  return {
+    plan,
+    used,
+    included: unlimited ? null : inc,
+    remaining: unlimited ? null : Math.max(0, inc - used),
+    overIncluded: !unlimited && used >= inc,
+  };
+}
+
 export default async function aiRoutes(app: FastifyInstance): Promise<void> {
   const staff = requireRole(["admin", "supervisor"]);
+
+  // Current month's Assistant usage for the calling org — powers the UI meter
+  // and the upgrade nudge. Returns { plan, used, included, remaining, overIncluded }.
+  app.get("/ai/usage", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    return assistantUsage(c.orgId);
+  });
 
   // ─── Voice / free-text → structured work request ───────────────────────────
   // The client transcribes speech on-device (or the user types), posts the raw
@@ -290,7 +349,16 @@ export default async function aiRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       const answer = await runDataAssistant({ question: parsed.data.question, tools, executeTool });
-      return { answer };
+      // Log the metered call, then return fresh usage so the UI can show the
+      // allowance and nudge when over. Soft cap: the answer is never refused.
+      await db.insert(schema.aiUsageEvents).values({
+        organisationId: c.orgId,
+        userId: c.sub ?? null,
+        kind: "assistant",
+        model: process.env.ANTHROPIC_MODEL || "claude-opus-4-8",
+      });
+      const usage = await assistantUsage(c.orgId);
+      return { answer, usage };
     } catch (e) {
       req.log.error(e);
       return reply.code(502).send({ error: "ai_failed" });
