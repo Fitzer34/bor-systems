@@ -53,6 +53,7 @@ struct MenuView: View {
                     Section("Manage") {
                         NavigationLink { GatewaysView() } label: { Label("Gateways", systemImage: "wifi.router") }
                         NavigationLink { HangersView() } label: { Label("Hangers", systemImage: "antenna.radiowaves.left.and.right") }
+                        NavigationLink { MaintenanceJobsView() } label: { Label("Maintenance jobs", systemImage: "hammer") }
                         NavigationLink { PPMsView() } label: { Label("PPMs", systemImage: "wrench.and.screwdriver") }
                         NavigationLink { UsersView() } label: { Label("Users", systemImage: "person.3") }
                         NavigationLink { ScheduleView() } label: { Label("Schedule", systemImage: "calendar") }

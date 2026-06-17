@@ -245,3 +245,33 @@ struct NotificationEntry: Codable, Identifiable, Hashable {
     let error: String?
 }
 struct NotificationsResponse: Codable { let entries: [NotificationEntry] }
+
+// MARK: - Maintenance jobs (CMMS)
+
+/// A maintenance work order. Mirrors the web Maintenance jobs board. Extra
+/// server fields (org, building, quotes, etc.) are ignored by Codable.
+struct MaintenanceJob: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let description: String?
+    let status: String        // logged|scoped|tendering|awarded|scheduled|in_progress|completed|cancelled
+    let priority: String      // routine|urgent|emergency
+    let awardReason: String?
+    let scheduledStartAt: String?  // ISO timestamp (display only)
+    let completedAt: String?
+    let completionNote: String?
+    let createdAt: String?
+}
+struct MaintenanceJobsResponse: Codable { let jobs: [MaintenanceJob] }
+
+/// One line in a job's append-only timeline.
+struct JobEvent: Codable, Identifiable, Hashable {
+    let id: String
+    let type: String          // logged|tendered|quoted|awarded|scheduled|started|completed|note…
+    let detail: String?
+    let createdAt: String?
+}
+struct JobDetailResponse: Codable {
+    let job: MaintenanceJob
+    let events: [JobEvent]
+}

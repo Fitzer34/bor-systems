@@ -499,3 +499,30 @@ extension APIClient {
         let _: EmptyResponse = try await request("/ppms/\(id)", method: "DELETE")
     }
 }
+
+// MARK: - Maintenance jobs (CMMS)
+
+extension APIClient {
+    struct ScheduleJobBody: Encodable { let scheduledStartAt: String }
+    struct CompleteJobBody: Encodable { let completionNote: String? }
+
+    func maintenanceJobs() async throws -> [MaintenanceJob] {
+        let res: MaintenanceJobsResponse = try await request("/jobs")
+        return res.jobs
+    }
+    func maintenanceJobDetail(_ id: String) async throws -> JobDetailResponse {
+        try await request("/jobs/\(id)")
+    }
+    func scheduleJob(_ id: String, startAtISO: String) async throws {
+        let _: EmptyResponse = try await request("/jobs/\(id)/schedule", method: "POST", body: ScheduleJobBody(scheduledStartAt: startAtISO))
+    }
+    func startJob(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/jobs/\(id)/start", method: "POST")
+    }
+    func completeJob(_ id: String, note: String?) async throws {
+        let _: EmptyResponse = try await request("/jobs/\(id)/complete", method: "POST", body: CompleteJobBody(completionNote: note))
+    }
+    func cancelJob(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/jobs/\(id)/cancel", method: "POST")
+    }
+}
