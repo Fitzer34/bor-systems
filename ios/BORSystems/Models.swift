@@ -264,6 +264,21 @@ struct MaintenanceJob: Codable, Identifiable, Hashable {
 }
 struct MaintenanceJobsResponse: Codable { let jobs: [MaintenanceJob] }
 
+/// A predictive-maintenance usage meter on an asset. The server computes the
+/// status / remaining / pct fields from the reading vs the service interval.
+struct Meter: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let unit: String?
+    let assetName: String?
+    let currentValue: Int
+    let intervalValue: Int?
+    let remaining: Int?
+    let pct: Int?
+    let status: String   // due | due_soon | ok | tracking
+}
+struct MetersResponse: Codable { let meters: [Meter] }
+
 /// One line in a job's append-only timeline.
 struct JobEvent: Codable, Identifiable, Hashable {
     let id: String

@@ -542,6 +542,19 @@ extension APIClient {
         let res: MaintenanceJobsResponse = try await request("/jobs")
         return res.jobs
     }
+
+    // MARK: Meters (predictive maintenance)
+    func meters() async throws -> [Meter] {
+        let res: MetersResponse = try await request("/meters")
+        return res.meters
+    }
+    func logMeterReading(_ id: String, value: Int, note: String?) async throws {
+        struct Body: Encodable { let value: Int; let note: String? }
+        let _: EmptyResponse = try await request("/meters/\(id)/readings", method: "POST", body: Body(value: value, note: note))
+    }
+    func serviceMeter(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/meters/\(id)/service", method: "POST")
+    }
     func maintenanceJobDetail(_ id: String) async throws -> JobDetailResponse {
         try await request("/jobs/\(id)")
     }
