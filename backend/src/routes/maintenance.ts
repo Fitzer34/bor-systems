@@ -17,6 +17,7 @@ import { and, eq, desc, inArray, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import { sendEmail } from "../services/notifications.js";
+import { isAiConfigured, draftScopeOfWorks, rankQuotes } from "../services/ai.js";
 
 const QUOTE_BASE = "https://app.hazardlink.ie";
 
@@ -525,6 +526,69 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .returning();
     if (!row) return reply.code(404).send({ error: "not_found" });
     return row;
+  });
+
+  // ─── AI helpers (Claude) ───────────────────────────────────────────────────
+  // Gated on ANTHROPIC_API_KEY — the web only shows the buttons when configured.
+  app.get("/ai/status", { preHandler: [app.authenticate, staff] }, async () => {
+    return { configured: isAiConfigured() };
+  });
+
+  const aiScopeBody = z.object({
+    title: z.string().min(1).max(200),
+    description: z.string().max(4000).nullable().optional(),
+    trade: z.string().max(120).nullable().optional(),
+    building: z.string().max(160).nullable().optional(),
+  });
+  app.post("/ai/scope", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    if (!isAiConfigured()) return reply.code(503).send({ error: "ai_not_configured" });
+    const parsed = aiScopeBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    try {
+      const scope = await draftScopeOfWorks(parsed.data);
+      return { scope };
+    } catch (err) {
+      req.log.error({ err }, "ai scope draft failed");
+      return reply.code(502).send({ error: "ai_failed" });
+    }
+  });
+
+  // Rank the submitted quotes on a job by value (needs ≥2 submitted).
+  app.post("/jobs/:id/rank-quotes", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    if (!isAiConfigured()) return reply.code(503).send({ error: "ai_not_configured" });
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    const [job] = await db
+      .select()
+      .from(schema.maintenanceJobs)
+      .where(and(eq(schema.maintenanceJobs.id, id), eq(schema.maintenanceJobs.organisationId, c.orgId)))
+      .limit(1);
+    if (!job) return reply.code(404).send({ error: "not_found" });
+    const quotes = await db
+      .select({
+        id: schema.jobQuotes.id,
+        amountCents: schema.jobQuotes.amountCents,
+        proposedStartDate: schema.jobQuotes.proposedStartDate,
+        notes: schema.jobQuotes.notes,
+        contractorName: schema.contractors.name,
+      })
+      .from(schema.jobQuotes)
+      .innerJoin(schema.contractors, eq(schema.contractors.id, schema.jobQuotes.contractorId))
+      .where(
+        and(
+          eq(schema.jobQuotes.jobId, id),
+          eq(schema.jobQuotes.organisationId, c.orgId),
+          inArray(schema.jobQuotes.status, ["submitted", "awarded"]),
+        ),
+      );
+    if (quotes.length < 2) return reply.code(400).send({ error: "need_two_quotes" });
+    try {
+      const ranking = await rankQuotes({ title: job.title, description: job.description, quotes });
+      return { ranking };
+    } catch (err) {
+      req.log.error({ err }, "ai quote ranking failed");
+      return reply.code(502).send({ error: "ai_failed" });
+    }
   });
 
   // ─── Parts & inventory ─────────────────────────────────────────────────────

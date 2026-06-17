@@ -276,6 +276,7 @@ function JobModal({
                   />
                 ))}
               </div>
+              <QuoteRanker jobId={jobId} quotes={d.quotes} />
             </Section>
           )}
 
@@ -427,11 +428,77 @@ function QuoteRow({
 
 // ─── Dialogs ─────────────────────────────────────────────────────────────────
 
+// Whether Claude AI helpers are available (ANTHROPIC_API_KEY set on the server).
+// Cached for the session so the "✨" buttons only show when they'll work.
+function useAiConfigured(): boolean {
+  const { data } = useQuery({
+    queryKey: ["ai-status"],
+    queryFn: () => api<{ configured: boolean }>("/ai/status"),
+    staleTime: 5 * 60_000,
+  });
+  return !!data?.configured;
+}
+
+// AI value-assessment of the submitted quotes on a job. Self-contained: renders
+// nothing unless AI is configured and there are ≥2 quotes to compare.
+function QuoteRanker({ jobId, quotes }: { jobId: string; quotes: Quote[] }) {
+  const aiConfigured = useAiConfigured();
+  const rankable = quotes.filter((q) => q.status === "submitted" || q.status === "awarded").length;
+  type Ranking = { recommendedQuoteId: string; summary: string; flags: string[] };
+  const [ranking, setRanking] = useState<Ranking | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const rank = useMutation({
+    mutationFn: () => api<{ ranking: Ranking }>(`/jobs/${jobId}/rank-quotes`, { method: "POST" }),
+    onSuccess: (r) => setRanking(r.ranking),
+    onError: () => setErr("Couldn't rank the quotes — try again."),
+  });
+  if (!aiConfigured || rankable < 2) return null;
+  const recName = ranking ? quotes.find((q) => q.id === ranking.recommendedQuoteId)?.contractorName : null;
+  return (
+    <div className="mt-3 border-t border-slate-200 pt-3">
+      {!ranking ? (
+        <button onClick={() => { setErr(null); rank.mutate(); }} disabled={rank.isPending}
+          className="text-xs text-indigo-700 hover:text-indigo-900 font-medium disabled:text-slate-400">
+          {rank.isPending ? "Analysing quotes…" : "✨ Rank these quotes with AI"}
+        </button>
+      ) : (
+        <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3 text-sm">
+          <div className="font-medium text-indigo-900 mb-1">✨ AI assessment</div>
+          {recName && <div className="text-slate-800 mb-1">Best value: <b>{recName}</b></div>}
+          <p className="text-slate-700 whitespace-pre-wrap">{ranking.summary}</p>
+          {ranking.flags.length > 0 && (
+            <ul className="mt-2 space-y-0.5">
+              {ranking.flags.map((f, i) => <li key={i} className="text-xs text-amber-800">⚠ {f}</li>)}
+            </ul>
+          )}
+          <p className="text-[10px] text-slate-400 mt-2">AI guidance — you make the final call.</p>
+        </div>
+      )}
+      {err && <p className="text-xs text-red-700 mt-1">{err}</p>}
+    </div>
+  );
+}
+
 function LogJobDialog({ trades, onClose, onLogged }: { trades: Trade[]; onClose: () => void; onLogged: () => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tradeId, setTradeId] = useState("");
   const [priority, setPriority] = useState("routine");
+  const aiConfigured = useAiConfigured();
+  const [aiErr, setAiErr] = useState<string | null>(null);
+  const draft = useMutation({
+    mutationFn: () =>
+      api<{ scope: string }>("/ai/scope", {
+        method: "POST",
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          trade: trades.find((t) => t.id === tradeId)?.name,
+        }),
+      }),
+    onSuccess: (r) => setDescription(r.scope),
+    onError: () => setAiErr("Couldn't draft the scope — try again."),
+  });
   const save = useMutation({
     mutationFn: () =>
       api("/jobs", { method: "POST", body: JSON.stringify({ title: title.trim(), description: description.trim() || undefined, tradeId: tradeId || undefined, priority }) }),
@@ -443,9 +510,24 @@ function LogJobDialog({ trades, onClose, onLogged }: { trades: Trade[]; onClose:
         <Field label="What needs doing?">
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus className={inputCls} placeholder="e.g. AC not cooling in the server room" />
         </Field>
-        <Field label="Any detail? (optional)">
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className={inputCls + " resize-none"} />
-        </Field>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs font-medium text-slate-600">Detail / scope of works (optional)</label>
+            {aiConfigured && (
+              <button
+                type="button"
+                disabled={!title.trim() || draft.isPending}
+                onClick={() => { setAiErr(null); draft.mutate(); }}
+                className="text-xs text-indigo-700 hover:text-indigo-900 disabled:text-slate-400 font-medium"
+              >
+                {draft.isPending ? "Drafting…" : "✨ Draft scope with AI"}
+              </button>
+            )}
+          </div>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} className={inputCls + " resize-none"}
+            placeholder="Or write it yourself — title plus any notes is enough for the AI draft." />
+          {aiErr && <p className="text-xs text-red-700 mt-1">{aiErr}</p>}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Trade">
             <select value={tradeId} onChange={(e) => setTradeId(e.target.value)} className={inputCls}>
