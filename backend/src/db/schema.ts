@@ -676,6 +676,10 @@ export const assets = pgTable(
     model: text("model"),
     serial: text("serial"),
     qrCode: text("qr_code"),
+    // Unguessable token behind the asset's "report a fault" QR. Any worker can
+    // scan it (no login) and raise a maintenance job against this asset — the
+    // cross-discipline pattern. Generated on create; backfilled for existing.
+    reportToken: text("report_token"),
     installDate: date("install_date"),
     expectedLifeYears: smallint("expected_life_years"),
     warrantyExpiry: date("warranty_expiry"),

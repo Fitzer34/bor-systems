@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { QRCodeSVG } from "qrcode.react";
 import { api } from "../lib/api";
 
 /**
@@ -25,6 +26,7 @@ interface Asset {
   purchaseCostCents: number | null;
   replacementCostCents: number | null;
   notes: string | null;
+  reportToken: string | null;
   retired: boolean;
 }
 interface Building { id: string; name: string }
@@ -107,22 +109,25 @@ export function Assets() {
           {list.map((a) => {
             const w = warranty(a.warrantyExpiry);
             return (
-              <button key={a.id} onClick={() => setEditing(a)} className="w-full text-left rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition p-4">
-                <div className="flex items-center gap-3 flex-wrap mb-1">
-                  <h3 className="font-medium text-slate-900">{a.name}</h3>
-                  {a.conditionScore != null && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + conditionCls(a.conditionScore)}>{CONDITION[a.conditionScore]}</span>}
-                  {w && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + w.cls}>{w.label}</span>}
-                </div>
-                <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
-                  {a.category && <Field label="Category" value={a.category} />}
-                  {bName(a.buildingId) && <Field label="Site" value={bName(a.buildingId)!} />}
-                  {tName(a.tradeId) && <Field label="Trade" value={tName(a.tradeId)!} />}
-                  {(a.make || a.model) && <Field label="Make/model" value={[a.make, a.model].filter(Boolean).join(" ")} />}
-                  {a.serial && <Field label="Serial" value={a.serial} />}
-                  {a.installDate && <Field label="Installed" value={fmtDate(a.installDate)} />}
-                  {a.replacementCostCents != null && <Field label="Replacement" value={euro(a.replacementCostCents)} />}
-                </div>
-              </button>
+              <div key={a.id} className="rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition p-4 flex gap-4">
+                <button onClick={() => setEditing(a)} className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center gap-3 flex-wrap mb-1">
+                    <h3 className="font-medium text-slate-900">{a.name}</h3>
+                    {a.conditionScore != null && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + conditionCls(a.conditionScore)}>{CONDITION[a.conditionScore]}</span>}
+                    {w && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + w.cls}>{w.label}</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
+                    {a.category && <Field label="Category" value={a.category} />}
+                    {bName(a.buildingId) && <Field label="Site" value={bName(a.buildingId)!} />}
+                    {tName(a.tradeId) && <Field label="Trade" value={tName(a.tradeId)!} />}
+                    {(a.make || a.model) && <Field label="Make/model" value={[a.make, a.model].filter(Boolean).join(" ")} />}
+                    {a.serial && <Field label="Serial" value={a.serial} />}
+                    {a.installDate && <Field label="Installed" value={fmtDate(a.installDate)} />}
+                    {a.replacementCostCents != null && <Field label="Replacement" value={euro(a.replacementCostCents)} />}
+                  </div>
+                </button>
+                {a.reportToken && <ReportQR token={a.reportToken} />}
+              </div>
             );
           })}
         </div>
@@ -141,6 +146,23 @@ export function Assets() {
 
 function Field({ label, value }: { label: string; value: string }) {
   return <span><span className="text-slate-500">{label}:</span> <span className="text-slate-900">{value}</span></span>;
+}
+
+// Printable "report a fault" QR for an asset — stick it on the kit; anyone can
+// scan to raise a maintenance job (no login). The cross-discipline entry point.
+function ReportQR({ token }: { token: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/report/${token}`;
+  return (
+    <div className="shrink-0 text-center">
+      <div className="bg-white p-1 border border-slate-200 rounded inline-block"><QRCodeSVG value={url} size={64} /></div>
+      <button
+        onClick={() => navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}
+        className="block w-full text-[11px] text-blue-700 hover:underline mt-1"
+        title="Print this and put it on the asset — anyone can scan to report a fault"
+      >{copied ? "Copied!" : "Report QR"}</button>
+    </div>
+  );
 }
 
 function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {

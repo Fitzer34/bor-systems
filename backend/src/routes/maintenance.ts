@@ -12,6 +12,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
 import { and, eq, desc, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
@@ -386,7 +387,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     const c = ctx(req);
     const [created] = await db
       .insert(schema.assets)
-      .values({ organisationId: c.orgId, ...parsed.data })
+      .values({ organisationId: c.orgId, reportToken: randomBytes(16).toString("hex"), ...parsed.data })
       .returning();
     return reply.code(201).send(created);
   });

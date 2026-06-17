@@ -72,6 +72,22 @@ const checkpointScanBody = z.object({
   flagged: z.boolean().optional(),
 });
 
+const reportRateLimit = {
+  config: {
+    rateLimit: {
+      max: 20,
+      timeWindow: "1 minute",
+      keyGenerator: (req: any) => `report:${req.ip}`,
+    },
+  },
+};
+
+const faultReportBody = z.object({
+  description: z.string().min(1).max(2000),
+  reporterName: z.string().max(120).optional(),
+  urgency: z.enum(["routine", "urgent", "emergency"]).optional(),
+});
+
 export default async function publicRoutes(app: FastifyInstance): Promise<void> {
   // ─── Get hanger status (page load) ──────────────────────────────────
   // Returns a minimal public-safe view of the hanger: zone name, current
@@ -316,6 +332,60 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       note: parsed.data.note?.trim() || null,
       flagged: parsed.data.flagged ?? false,
     });
+    return { ok: true };
+  });
+
+  // ─── Report a fault on an asset (magic link, cross-discipline) ───────────
+  // Any worker scans an asset's QR → opens this → describes the fault → it
+  // lands as a maintenance job against that asset + its building. No login.
+  app.get("/public/report/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const [a] = await db
+      .select({ id: schema.assets.id, organisationId: schema.assets.organisationId, name: schema.assets.name, buildingId: schema.assets.buildingId })
+      .from(schema.assets)
+      .where(eq(schema.assets.reportToken, token))
+      .limit(1);
+    if (!a) return reply.code(404).send({ error: "not_found" });
+    const [org] = await db.select({ name: schema.organisations.name }).from(schema.organisations).where(eq(schema.organisations.id, a.organisationId)).limit(1);
+    let buildingName: string | null = null;
+    if (a.buildingId) {
+      const [b] = await db.select({ name: schema.buildings.name }).from(schema.buildings).where(eq(schema.buildings.id, a.buildingId)).limit(1);
+      buildingName = b?.name ?? null;
+    }
+    return { orgName: org?.name ?? "Maintenance", assetName: a.name, buildingName };
+  });
+
+  app.post("/public/report/:token", reportRateLimit, async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const parsed = faultReportBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const [a] = await db.select().from(schema.assets).where(eq(schema.assets.reportToken, token)).limit(1);
+    if (!a) return reply.code(404).send({ error: "not_found" });
+    const b = parsed.data;
+    const who = b.reporterName?.trim();
+    const description = `${b.description.trim()}\n\n— Reported via QR${who ? ` by ${who}` : ""}`;
+    const [job] = await db
+      .insert(schema.maintenanceJobs)
+      .values({
+        organisationId: a.organisationId,
+        source: "manual",
+        assetId: a.id,
+        buildingId: a.buildingId,
+        title: `Fault reported: ${a.name}`,
+        description,
+        priority: b.urgency ?? "routine",
+        status: "logged",
+      })
+      .returning();
+    if (job) {
+      await db.insert(schema.jobEvents).values({
+        organisationId: a.organisationId,
+        jobId: job.id,
+        type: "logged",
+        actorUserId: null,
+        detail: `Fault reported via QR${who ? ` by ${who}` : ""}`,
+      });
+    }
     return { ok: true };
   });
 
