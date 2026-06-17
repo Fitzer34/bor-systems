@@ -17,7 +17,7 @@ import { and, eq, desc, inArray, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import { sendEmail } from "../services/notifications.js";
-import { isAiConfigured, draftScopeOfWorks, rankQuotes } from "../services/ai.js";
+import { isAiConfigured, draftScopeOfWorks, rankQuotes, suggestImprovements } from "../services/ai.js";
 import { toCsv, csvFilename } from "../services/csv.js";
 
 const QUOTE_BASE = "https://app.hazardlink.ie";
@@ -939,6 +939,54 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
   // Gated on ANTHROPIC_API_KEY — the web only shows the buttons when configured.
   app.get("/ai/status", { preHandler: [app.authenticate, staff] }, async () => {
     return { configured: isAiConfigured() };
+  });
+
+  // Continuous improvement — AI reads the reliability data and proposes actions.
+  app.post("/ai/improvements", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    if (!isAiConfigured()) return reply.code(503).send({ error: "ai_not_configured" });
+    const c = ctx(req);
+    const DAY = 86_400_000; const now = Date.now(); const d180 = now - 180 * DAY;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const toMs = (v: unknown): number | null => {
+      if (!v) return null; if (v instanceof Date) return v.getTime();
+      const s = String(v); const t = Date.parse(s.length === 10 ? s + "T00:00:00" : s); return isNaN(t) ? null : t;
+    };
+    const jobs = await db.select({ assetId: schema.maintenanceJobs.assetId, source: schema.maintenanceJobs.source, createdAt: schema.maintenanceJobs.createdAt })
+      .from(schema.maintenanceJobs).where(eq(schema.maintenanceJobs.organisationId, c.orgId));
+    const assetRows = await db.select({ id: schema.assets.id, name: schema.assets.name, criticality: schema.assets.criticality })
+      .from(schema.assets).where(and(eq(schema.assets.organisationId, c.orgId), eq(schema.assets.retired, false)));
+    const ppmRows = await db.select({ nextDueDate: schema.ppms.nextDueDate, active: schema.ppms.active })
+      .from(schema.ppms).where(eq(schema.ppms.organisationId, c.orgId));
+
+    const reactive = jobs.filter((j) => j.source !== "ppm");
+    const plannedN = jobs.length - reactive.length;
+    const recentReactive = reactive.filter((j) => (toMs(j.createdAt) ?? 0) >= d180);
+    const byAsset = new Map<string, number>();
+    for (const j of recentReactive) if (j.assetId) byAsset.set(j.assetId, (byAsset.get(j.assetId) ?? 0) + 1);
+    const assetById = new Map(assetRows.map((a) => [a.id, a]));
+    const top = [...byAsset.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
+      .map(([id, n]) => { const a = assetById.get(id); return a ? `- ${a.name} (criticality ${a.criticality}): ${n} reactive jobs in 180d` : null; })
+      .filter(Boolean) as string[];
+    const activePpms = ppmRows.filter((p) => p.active);
+    const overdue = activePpms.filter((p) => p.nextDueDate < todayStr);
+    const pmComp = activePpms.length ? Math.round(((activePpms.length - overdue.length) / activePpms.length) * 100) : null;
+
+    if (recentReactive.length < 2 && top.length === 0) return { suggestions: [] };
+
+    const summary = [
+      `Total work orders: ${jobs.length}. Reactive: ${reactive.length}, Planned (PPM): ${plannedN}.`,
+      `Reactive in last 180 days: ${recentReactive.length}.`,
+      pmComp != null ? `PM compliance: ${pmComp}% (${overdue.length} of ${activePpms.length} active PPMs overdue).` : "No active PPMs configured.",
+      top.length ? `Repeat-offender assets (most reactive work):\n${top.join("\n")}` : "No single asset dominates reactive work.",
+    ].join("\n");
+
+    try {
+      const suggestions = await suggestImprovements({ summary });
+      return { suggestions };
+    } catch (e) {
+      req.log.error(e);
+      return reply.code(502).send({ error: "ai_failed" });
+    }
   });
 
   const aiScopeBody = z.object({

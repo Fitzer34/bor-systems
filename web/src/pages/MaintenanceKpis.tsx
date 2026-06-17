@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 
@@ -25,6 +26,7 @@ interface Kpis {
   badActors: BadActor[];
   repairOrReplace: ReplaceItem[]; assetsPastLife: number;
 }
+interface Suggestion { title: string; area: string; observation: string; recommendation: string; impact: string }
 
 const STATUS_LABEL: Record<string, string> = {
   logged: "Logged", scoped: "Scoped", tendering: "Tendering", awarded: "Awarded",
@@ -48,6 +50,12 @@ function euro(cents: number | null): string {
 
 export function MaintenanceKpis() {
   const { data: k, isLoading, error } = useQuery({ queryKey: ["maintenance-kpis"], queryFn: () => api<Kpis>("/maintenance/kpis") });
+  const aiQ = useQuery({ queryKey: ["ai-status"], queryFn: () => api<{ configured: boolean }>("/ai/status"), staleTime: 5 * 60_000 });
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
+  const improve = useMutation({
+    mutationFn: () => api<{ suggestions: Suggestion[] }>("/ai/improvements", { method: "POST" }),
+    onSuccess: (r) => setSuggestions(r.suggestions),
+  });
 
   if (isLoading) return <div className="p-8 text-slate-500">Loading KPIs…</div>;
   if (error || !k) return <div className="p-8 text-red-600">Could not load KPIs.</div>;
@@ -159,8 +167,44 @@ export function MaintenanceKpis() {
           ))}
         </div>
       )}
+      {aiQ.data?.configured && (
+        <div className="mt-8">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <div>
+              <h2 className="text-lg font-semibold">Continuous improvement</h2>
+              <p className="text-sm text-slate-500">AI reviews your reliability data and proposes preventive actions.</p>
+            </div>
+            <button onClick={() => improve.mutate()} disabled={improve.isPending} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 disabled:text-slate-500 rounded text-white font-medium whitespace-nowrap">
+              {improve.isPending ? "Analysing…" : "✨ Suggest improvements"}
+            </button>
+          </div>
+          {improve.isError && <p className="text-sm text-red-600">Couldn't generate suggestions — try again.</p>}
+          {suggestions && suggestions.length === 0 && <p className="text-sm text-slate-500">Not enough maintenance history yet — come back once more jobs are logged.</p>}
+          {suggestions && suggestions.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {suggestions.map((s, i) => (
+                <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="font-medium text-slate-900">{s.title}</span>
+                    <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + impactCls(s.impact)}>{s.impact} impact</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mb-2">{s.area}</div>
+                  <p className="text-sm text-slate-600"><span className="text-slate-500">Observation:</span> {s.observation}</p>
+                  <p className="text-sm text-slate-800 mt-1"><span className="text-slate-500">Action:</span> {s.recommendation}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+function impactCls(i: string): string {
+  if (i === "high") return "bg-red-100 text-red-700";
+  if (i === "medium") return "bg-amber-100 text-amber-700";
+  return "bg-slate-100 text-slate-600";
 }
 
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: string }) {

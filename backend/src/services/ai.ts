@@ -306,6 +306,58 @@ export async function summariseAssetHistory(input: {
   return textOf(msg);
 }
 
+// ─── 7. Continuous-improvement suggestions ──────────────────────────────────
+// Reads a summary of the org's maintenance reliability data and proposes
+// concrete, prioritised preventive actions (the Continuous Improvement pillar).
+
+export interface ImprovementSuggestion {
+  title: string;
+  area: string;
+  observation: string;
+  recommendation: string;
+  impact: string; // low | medium | high
+}
+
+export async function suggestImprovements(input: { summary: string }): Promise<ImprovementSuggestion[]> {
+  const c = getClient();
+  const system =
+    "You are a reliability engineer running continuous improvement for a facilities maintenance team. " +
+    "Given a summary of their maintenance data (planned vs reactive work, repeat-offender assets, costs, PM compliance, assets past life), " +
+    "propose concrete, prioritised improvement actions. Reference the actual assets and numbers from the summary; never invent data. " +
+    "Prefer practical actions: add or adjust a PPM, root-cause review, replacement, training, or stock changes. " +
+    "If there is too little data to be useful, return an empty list. Respond only with JSON matching the schema.";
+  const schema = {
+    type: "object",
+    properties: {
+      suggestions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            area: { type: "string" },
+            observation: { type: "string" },
+            recommendation: { type: "string" },
+            impact: { type: "string", enum: ["low", "medium", "high"] },
+          },
+          required: ["title", "area", "observation", "recommendation", "impact"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["suggestions"],
+    additionalProperties: false,
+  } as const;
+  const msg = await c.messages.create({
+    model: MODEL_FAST,
+    max_tokens: 1500,
+    system,
+    output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
+    messages: [{ role: "user", content: input.summary }],
+  });
+  return (JSON.parse(textOf(msg)) as { suggestions: ImprovementSuggestion[] }).suggestions;
+}
+
 // ─── 6. Data assistant (ask-your-data, tool-using) ───────────────────────────
 // A small agent loop: Claude answers questions about the org's own data by
 // calling the tools the route provides (each backed by an org-scoped DB query),
