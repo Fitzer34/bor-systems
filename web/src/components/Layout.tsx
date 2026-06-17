@@ -79,7 +79,7 @@ export function Layout() {
               onClick={() => navigate("/choose")}
               className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-100"
             >
-              <span className="font-medium">{activeSection === "maintenance" ? "🔧 Maintenance" : "🧹 Cleaning"}</span>
+              <span className="font-medium">{activeSection === "maintenance" ? "🔧 Maintenance" : activeSection === "security" ? "🛡️ Security" : "🧹 Cleaning"}</span>
               <span className="text-xs text-slate-400">Switch ⇄</span>
             </button>
           )}
@@ -107,6 +107,13 @@ export function Layout() {
               <NavItem to="/maintenance">Jobs</NavItem>
               <NavItem to="/assets">Assets</NavItem>
               <NavItem to="/ppms">PPMs</NavItem>
+            </>
+          )}
+
+          {/* ─── Security side ─── */}
+          {activeSection === "security" && isStaff && (
+            <>
+              <NavItem to="/incidents">Incidents</NavItem>
             </>
           )}
 

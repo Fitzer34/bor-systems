@@ -260,6 +260,37 @@ export const ppmScheduleRequests = pgTable(
   }),
 );
 
+/// Security incidents logged on site (Security section) — intruder, theft,
+/// damage, suspicious activity, safety hazard, etc. Tied to a building so it
+/// shares the site model with cleaning + maintenance, and can later spawn a
+/// maintenance work order (the cross-discipline pattern).
+export const incidentSeverity = pgEnum("incident_severity", ["low", "medium", "high", "critical"]);
+export const incidentStatus = pgEnum("incident_status", ["open", "investigating", "resolved"]);
+
+export const securityIncidents = pgTable(
+  "security_incidents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    reportedByUserId: uuid("reported_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind"), // Intruder / Theft / Damage / Suspicious activity / Safety hazard / Other
+    severity: incidentSeverity("severity").notNull().default("medium"),
+    status: incidentStatus("status").notNull().default("open"),
+    title: text("title").notNull(),
+    description: text("description"),
+    photoUrl: text("photo_url"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolutionNote: text("resolution_note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("incidents_org_idx").on(t.organisationId),
+    buildingIdx: index("incidents_building_idx").on(t.buildingId),
+  }),
+);
+
 export const hangers = pgTable(
   "hangers",
   {

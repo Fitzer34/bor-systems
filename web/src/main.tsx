@@ -29,6 +29,7 @@ import { Sites } from "./pages/Sites";
 import { Analytics } from "./pages/Analytics";
 import { Maintenance } from "./pages/Maintenance";
 import { Assets } from "./pages/Assets";
+import { Incidents } from "./pages/Incidents";
 import { ChooseSection } from "./pages/ChooseSection";
 import { SectionProvider, useSection } from "./lib/section";
 import { initWebSentry } from "./lib/sentry";
@@ -53,6 +54,7 @@ function SectionHome() {
   const { section } = useSection();
   const isStaff = user?.role === "admin" || user?.role === "supervisor";
   if (isStaff && section === "maintenance") return <Navigate to="/maintenance" replace />;
+  if (isStaff && section === "security") return <Navigate to="/incidents" replace />;
   return <Dashboard />;
 }
 
@@ -98,6 +100,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="ppms" element={<RequireAuth role={["admin", "supervisor"]}><Ppms /></RequireAuth>} />
               <Route path="maintenance" element={<RequireAuth role={["admin", "supervisor"]}><Maintenance /></RequireAuth>} />
               <Route path="assets" element={<RequireAuth role={["admin", "supervisor"]}><Assets /></RequireAuth>} />
+              <Route path="incidents" element={<RequireAuth role={["admin", "supervisor"]}><Incidents /></RequireAuth>} />
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />
               <Route path="floor-plans" element={<RequireAuth role={["admin"]}><FloorPlans /></RequireAuth>} />
               <Route path="reports" element={<RequireAuth role={["admin", "supervisor"]}><Reports /></RequireAuth>} />

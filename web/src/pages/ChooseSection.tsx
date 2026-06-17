@@ -14,7 +14,8 @@ export function ChooseSection() {
 
   function pick(s: Section) {
     setSection(s);
-    nav(s === "cleaning" ? "/" : "/maintenance", { replace: true });
+    const home = s === "cleaning" ? "/" : s === "maintenance" ? "/maintenance" : "/incidents";
+    nav(home, { replace: true });
   }
 
   return (
@@ -25,7 +26,7 @@ export function ChooseSection() {
         <p className="text-slate-600 mt-4 text-lg">What would you like to work on?</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full max-w-3xl">
         <button
           onClick={() => pick("cleaning")}
           className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm hover:shadow-md hover:border-blue-400 transition"
@@ -42,6 +43,15 @@ export function ChooseSection() {
           <div className="text-5xl mb-3">🔧</div>
           <div className="text-xl font-semibold text-slate-900">Maintenance</div>
           <p className="text-sm text-slate-500 mt-2">Jobs, assets, planned maintenance &amp; contractor scheduling.</p>
+        </button>
+
+        <button
+          onClick={() => pick("security")}
+          className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm hover:shadow-md hover:border-blue-400 transition"
+        >
+          <div className="text-5xl mb-3">🛡️</div>
+          <div className="text-xl font-semibold text-slate-900">Security</div>
+          <p className="text-sm text-slate-500 mt-2">Incident reports, guard patrols &amp; on-site safety.</p>
         </button>
       </div>
 
