@@ -836,6 +836,28 @@ export const meterReadings = pgTable(
   (t) => ({ meterIdx: index("meter_readings_meter_idx").on(t.meterId, t.recordedAt) }),
 );
 
+/// Workforce competency: a certification / qualification held by a staff member,
+/// with optional expiry so lapsing tickets can be surfaced before they expire.
+export const staffCertifications = pgTable(
+  "staff_certifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    issuer: text("issuer"),
+    reference: text("reference"),
+    issuedOn: date("issued_on", { mode: "string" }),
+    expiresOn: date("expires_on", { mode: "string" }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("staff_certifications_org_idx").on(t.organisationId),
+    userIdx: index("staff_certifications_user_idx").on(t.userId),
+  }),
+);
+
 export const contractors = pgTable(
   "contractors",
   {

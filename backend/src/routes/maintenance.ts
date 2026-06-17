@@ -853,6 +853,88 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     return { meter: { ...row!, ...withMeterStatus(row!) } };
   });
 
+  // ─── Workforce competency (staff certifications) ───────────────────────────
+  const certStatus = (expiresOn: string | null): { status: "valid" | "expiring" | "expired"; daysToExpiry: number | null } => {
+    if (!expiresOn) return { status: "valid", daysToExpiry: null };
+    const t = Date.parse(expiresOn + "T00:00:00");
+    if (isNaN(t)) return { status: "valid", daysToExpiry: null };
+    const days = Math.round((t - Date.now()) / 86_400_000);
+    if (days < 0) return { status: "expired", daysToExpiry: days };
+    if (days <= 60) return { status: "expiring", daysToExpiry: days };
+    return { status: "valid", daysToExpiry: days };
+  };
+
+  app.get("/certifications", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const rows = await db
+      .select({
+        id: schema.staffCertifications.id, userId: schema.staffCertifications.userId,
+        name: schema.staffCertifications.name, issuer: schema.staffCertifications.issuer,
+        reference: schema.staffCertifications.reference, issuedOn: schema.staffCertifications.issuedOn,
+        expiresOn: schema.staffCertifications.expiresOn, notes: schema.staffCertifications.notes,
+        userName: schema.users.name, userRole: schema.users.role, userDeactivatedAt: schema.users.deactivatedAt,
+      })
+      .from(schema.staffCertifications)
+      .leftJoin(schema.users, eq(schema.users.id, schema.staffCertifications.userId))
+      .where(eq(schema.staffCertifications.organisationId, c.orgId))
+      .orderBy(schema.staffCertifications.expiresOn);
+    return { certifications: rows.map((r) => ({ ...r, ...certStatus(r.expiresOn) })) };
+  });
+
+  const certBody = z.object({
+    userId: z.string().uuid(),
+    name: z.string().min(1).max(160),
+    issuer: z.string().max(160).optional(),
+    reference: z.string().max(160).optional(),
+    issuedOn: z.string().optional(),
+    expiresOn: z.string().optional(),
+    notes: z.string().max(1000).optional(),
+  });
+  app.post("/certifications", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const parsed = certBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const b = parsed.data;
+    const [u] = await db.select({ id: schema.users.id }).from(schema.users)
+      .where(and(eq(schema.users.id, b.userId), eq(schema.users.organisationId, c.orgId))).limit(1);
+    if (!u) return reply.code(400).send({ error: "invalid_user" });
+    const [row] = await db.insert(schema.staffCertifications).values({
+      organisationId: c.orgId, userId: b.userId, name: b.name.trim(),
+      issuer: b.issuer?.trim() || null, reference: b.reference?.trim() || null,
+      issuedOn: b.issuedOn || null, expiresOn: b.expiresOn || null, notes: b.notes?.trim() || null,
+    }).returning();
+    return reply.code(201).send({ certification: row ? { ...row, ...certStatus(row.expiresOn) } : null });
+  });
+
+  app.patch("/certifications/:id", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = certBody.partial().safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const b = parsed.data;
+    const updates: Record<string, unknown> = {};
+    if (b.name !== undefined) updates.name = b.name.trim();
+    if (b.issuer !== undefined) updates.issuer = b.issuer?.trim() || null;
+    if (b.reference !== undefined) updates.reference = b.reference?.trim() || null;
+    if (b.issuedOn !== undefined) updates.issuedOn = b.issuedOn || null;
+    if (b.expiresOn !== undefined) updates.expiresOn = b.expiresOn || null;
+    if (b.notes !== undefined) updates.notes = b.notes?.trim() || null;
+    if (Object.keys(updates).length === 0) return { ok: true };
+    const [row] = await db.update(schema.staffCertifications).set(updates)
+      .where(and(eq(schema.staffCertifications.id, id), eq(schema.staffCertifications.organisationId, c.orgId))).returning();
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return { certification: { ...row, ...certStatus(row.expiresOn) } };
+  });
+
+  app.delete("/certifications/:id", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    const res = await db.delete(schema.staffCertifications)
+      .where(and(eq(schema.staffCertifications.id, id), eq(schema.staffCertifications.organisationId, c.orgId))).returning();
+    if (res.length === 0) return reply.code(404).send({ error: "not_found" });
+    return { ok: true };
+  });
+
   // ─── AI helpers (Claude) ───────────────────────────────────────────────────
   // Gated on ANTHROPIC_API_KEY — the web only shows the buttons when configured.
   app.get("/ai/status", { preHandler: [app.authenticate, staff] }, async () => {

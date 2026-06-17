@@ -113,6 +113,7 @@ export function Layout() {
               <NavItem to="/meters">Meters</NavItem>
               <NavItem to="/parts">Parts</NavItem>
               <NavItem to="/ppms">PPMs</NavItem>
+              <NavItem to="/competency">Competency</NavItem>
             </>
           )}
 
