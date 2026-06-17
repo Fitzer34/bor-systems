@@ -296,3 +296,68 @@ export async function summariseAssetHistory(input: {
   });
   return textOf(msg);
 }
+
+// ─── 6. Data assistant (ask-your-data, tool-using) ───────────────────────────
+// A small agent loop: Claude answers questions about the org's own data by
+// calling the tools the route provides (each backed by an org-scoped DB query),
+// so all data access stays in the route and nothing is invented.
+
+export interface AssistantToolDef {
+  name: string;
+  description: string;
+  input_schema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required?: string[];
+    additionalProperties?: boolean;
+  };
+}
+
+export async function runDataAssistant(input: {
+  question: string;
+  tools: AssistantToolDef[];
+  executeTool: (name: string, args: any) => Promise<unknown>;
+}): Promise<string> {
+  const c = getClient();
+  const system =
+    "You are HazardLink's assistant for a facilities team spanning cleaning, maintenance, and security. " +
+    "Answer the user's question about THEIR data by calling the tools — maintenance jobs, security incidents, assets, and live counts. " +
+    "Always fetch with tools before answering; never invent ids, names, dates, counts, or statuses. " +
+    "Be concise and specific — cite real job titles, asset names, dates, and numbers from the results. " +
+    "If the tools return nothing relevant, say so plainly and suggest what you could look up instead. Use short markdown.";
+
+  // Loose typing on the SDK message/tool shapes keeps the tool-use round-trip
+  // simple; the structured calls elsewhere stay strictly typed.
+  const messages: any[] = [{ role: "user", content: input.question }];
+
+  for (let i = 0; i < 6; i++) {
+    const msg = await c.messages.create({
+      model: MODEL,
+      max_tokens: 1500,
+      system,
+      tools: input.tools as any,
+      messages: messages as any,
+    });
+    if (msg.stop_reason !== "tool_use") return textOf(msg);
+
+    const toolUses = (msg.content as any[]).filter((b) => b.type === "tool_use");
+    messages.push({ role: "assistant", content: msg.content });
+
+    const results: any[] = [];
+    for (const tu of toolUses) {
+      let out: unknown;
+      try {
+        out = await input.executeTool(tu.name, tu.input);
+      } catch (e) {
+        out = { error: (e as Error).message };
+      }
+      results.push({
+        type: "tool_result",
+        tool_use_id: tu.id,
+        content: JSON.stringify(out).slice(0, 12000),
+      });
+    }
+    messages.push({ role: "user", content: results });
+  }
+  return "I couldn't finish that lookup — try a more specific question.";
+}
