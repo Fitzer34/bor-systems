@@ -283,6 +283,9 @@ export const securityIncidents = pgTable(
     occurredAt: timestamp("occurred_at", { withTimezone: true }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolutionNote: text("resolution_note"),
+    // The maintenance job this incident was turned into, if any (cross-discipline
+    // bridge — e.g. a broken-door incident becomes a tracked repair job).
+    raisedJobId: uuid("raised_job_id").references(() => maintenanceJobs.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

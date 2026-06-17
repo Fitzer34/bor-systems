@@ -114,6 +114,43 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
     return { incident: row };
   });
 
+  // Turn an incident into a maintenance job (cross-discipline bridge).
+  app.post("/incidents/:id/raise-job", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    const [inc] = await db
+      .select()
+      .from(schema.securityIncidents)
+      .where(and(eq(schema.securityIncidents.id, id), eq(schema.securityIncidents.organisationId, c.orgId)))
+      .limit(1);
+    if (!inc) return reply.code(404).send({ error: "not_found" });
+    if (inc.raisedJobId) return { ok: true, jobId: inc.raisedJobId };
+
+    const priority = inc.severity === "critical" ? "emergency" : inc.severity === "high" ? "urgent" : "routine";
+    const [job] = await db
+      .insert(schema.maintenanceJobs)
+      .values({
+        organisationId: c.orgId,
+        source: "manual",
+        buildingId: inc.buildingId,
+        title: `From incident: ${inc.title}`,
+        description: `${inc.kind ? inc.kind + " — " : ""}${inc.description ?? ""}\n\n— Raised from a security incident`.trim(),
+        priority,
+        status: "logged",
+      })
+      .returning();
+    if (!job) return reply.code(500).send({ error: "failed" });
+    await db.insert(schema.jobEvents).values({
+      organisationId: c.orgId,
+      jobId: job.id,
+      type: "logged",
+      actorUserId: c.sub,
+      detail: `Raised from security incident: ${inc.title}`,
+    });
+    await db.update(schema.securityIncidents).set({ raisedJobId: job.id }).where(eq(schema.securityIncidents.id, inc.id));
+    return { ok: true, jobId: job.id };
+  });
+
   // ─── Checkpoints (guard tours) ──────────────────────────────────────────
   const checkpointBody = z.object({
     name: z.string().min(1).max(160),

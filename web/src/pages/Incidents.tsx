@@ -23,6 +23,7 @@ interface Incident {
   occurredAt: string | null;
   resolvedAt: string | null;
   resolutionNote: string | null;
+  raisedJobId: string | null;
   createdAt: string;
 }
 interface Building { id: string; name: string }
@@ -166,6 +167,11 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
     onSuccess: onSaved,
     onError: () => setErr("Couldn't save — check the fields and try again."),
   });
+  const raiseJob = useMutation({
+    mutationFn: () => api(`/incidents/${incident!.id}/raise-job`, { method: "POST" }),
+    onSuccess: onSaved,
+    onError: () => setErr("Couldn't raise a job — try again."),
+  });
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -221,11 +227,18 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-          <button onClick={() => { setErr(null); save.mutate(); }} disabled={!title.trim() || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
-            {save.isPending ? "Saving…" : isEdit ? "Save" : "Log incident"}
-          </button>
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-2">
+          {isEdit ? (
+            incident!.raisedJobId
+              ? <span className="text-sm text-emerald-700">🔧 Maintenance job raised</span>
+              : <button onClick={() => { setErr(null); raiseJob.mutate(); }} disabled={raiseJob.isPending} className="px-3 py-1.5 text-sm text-blue-700 hover:bg-blue-50 rounded">{raiseJob.isPending ? "…" : "🔧 Raise maintenance job"}</button>
+          ) : <span />}
+          <div className="flex gap-2 ml-auto">
+            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
+            <button onClick={() => { setErr(null); save.mutate(); }} disabled={!title.trim() || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
+              {save.isPending ? "Saving…" : isEdit ? "Save" : "Log incident"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
