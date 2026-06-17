@@ -19,10 +19,13 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import argon2 from "argon2";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { sendEmail } from "../services/notifications.js";
 import { uploadPhoto } from "../services/storage.js";
+import { validatePassword } from "../services/password-policy.js";
+import { hashInviteToken } from "../services/invites.js";
 
 const feedbackSchema = z.object({
   isDry: z.boolean(),
@@ -101,6 +104,14 @@ const quoteSubmitBody = z.object({
   proposedStartDate: z.string().optional(),
   notes: z.string().max(2000).optional(),
 });
+
+const inviteRateLimit = {
+  config: {
+    rateLimit: { max: 20, timeWindow: "1 minute", keyGenerator: (req: any) => `invite:${req.ip}` },
+  },
+};
+
+const inviteAcceptBody = z.object({ password: z.string().min(1).max(200) });
 
 export default async function publicRoutes(app: FastifyInstance): Promise<void> {
   // ─── Get hanger status (page load) ──────────────────────────────────
@@ -490,6 +501,112 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       detail: `${con?.name ?? "Contractor"} submitted €${(parsed.data.amountCents / 100).toFixed(0)}`,
     });
     return { ok: true, status: "submitted" };
+  });
+
+  // ─── Staff invite acceptance (magic link) ────────────────────────────────
+  // A new hire opens app.hazardlink.ie/accept-invite/:token from their welcome
+  // email. This returns a public-safe greeting so the page can say "Welcome,
+  // <name>" before they set a password. No login. We look the user up by the
+  // SHA-256 of the token — the raw token never touches the DB.
+  app.get("/public/invite/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const [u] = await db
+      .select({
+        name: schema.users.name,
+        email: schema.users.email,
+        role: schema.users.role,
+        organisationId: schema.users.organisationId,
+        inviteExpiresAt: schema.users.inviteExpiresAt,
+        inviteAcceptedAt: schema.users.inviteAcceptedAt,
+        deactivatedAt: schema.users.deactivatedAt,
+      })
+      .from(schema.users)
+      .where(eq(schema.users.inviteTokenHash, hashInviteToken(token)))
+      .limit(1);
+    if (!u) return reply.code(404).send({ error: "not_found" });
+    const [org] = await db
+      .select({ name: schema.organisations.name })
+      .from(schema.organisations)
+      .where(eq(schema.organisations.id, u.organisationId))
+      .limit(1);
+    const expired = !u.inviteExpiresAt || u.inviteExpiresAt.getTime() < Date.now();
+    return {
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      orgName: org?.name ?? "HazardLink",
+      expired,
+      accepted: !!u.inviteAcceptedAt || !!u.deactivatedAt,
+    };
+  });
+
+  // The new hire submits a password. We validate the token (exists, not expired,
+  // not already accepted, account live), set their real password hash, burn the
+  // token, and mint a normal session JWT — so the web app drops them straight
+  // into the dashboard, logged in. Same response shape as /auth/login.
+  app.post("/public/invite/:token", inviteRateLimit, async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const parsed = inviteAcceptBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const pwCheck = validatePassword(parsed.data.password);
+    if (!pwCheck.ok) return reply.code(400).send({ error: pwCheck.reason });
+
+    const [u] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.inviteTokenHash, hashInviteToken(token)))
+      .limit(1);
+    if (!u) return reply.code(404).send({ error: "not_found" });
+    if (u.deactivatedAt) return reply.code(409).send({ error: "deactivated" });
+    if (u.inviteAcceptedAt) return reply.code(409).send({ error: "already_accepted" });
+    if (!u.inviteExpiresAt || u.inviteExpiresAt.getTime() < Date.now()) {
+      return reply.code(409).send({ error: "expired" });
+    }
+
+    const passwordHash = await argon2.hash(parsed.data.password);
+    await db
+      .update(schema.users)
+      .set({
+        passwordHash,
+        inviteAcceptedAt: new Date(),
+        inviteTokenHash: null,
+        inviteExpiresAt: null,
+      })
+      .where(eq(schema.users.id, u.id));
+
+    const [org] = await db
+      .select({ name: schema.organisations.name })
+      .from(schema.organisations)
+      .where(eq(schema.organisations.id, u.organisationId))
+      .limit(1);
+
+    await db.insert(schema.auditLog).values({
+      organisationId: u.organisationId,
+      actorUserId: u.id,
+      action: "user.invite_accepted",
+      targetType: "user",
+      targetId: u.id,
+    });
+
+    const sessionToken = app.jwt.sign({
+      sub: u.id,
+      orgId: u.organisationId,
+      role: u.role,
+      name: u.name,
+    });
+    return {
+      token: sessionToken,
+      user: {
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        onDuty: u.onDuty,
+        phoneE164: u.phoneE164,
+        organisationId: u.organisationId,
+        organisationName: org?.name ?? "",
+      },
+    };
   });
 
   // Best-effort: email the org's admins + supervisors that a contractor replied,

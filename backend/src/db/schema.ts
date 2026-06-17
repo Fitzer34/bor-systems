@@ -539,6 +539,15 @@ export const users = pgTable(
     totpPendingSecret: text("totp_pending_secret"),
     totpEnrolledAt: timestamp("totp_enrolled_at", { withTimezone: true }),
     recoveryCodes: jsonb("recovery_codes"),
+    // ---- Staff invite onboarding ----
+    // When an admin adds a user without a password, we email them a one-time
+    // link to set their own + log straight in. We store only the SHA-256 of the
+    // token. A pending invite = invitedAt set, inviteAcceptedAt null. See
+    // services/invites.ts.
+    inviteTokenHash: text("invite_token_hash"),
+    inviteExpiresAt: timestamp("invite_expires_at", { withTimezone: true }),
+    invitedAt: timestamp("invited_at", { withTimezone: true }),
+    inviteAcceptedAt: timestamp("invite_accepted_at", { withTimezone: true }),
   },
   (t) => ({ emailOrgUnique: uniqueIndex("users_org_email_unique").on(t.organisationId, t.email) }),
 );

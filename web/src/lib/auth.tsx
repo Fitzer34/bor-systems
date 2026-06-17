@@ -22,6 +22,8 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
   completeTotpLogin: (challengeToken: string, code: string) => Promise<void>;
+  /** Adopt a session minted elsewhere (e.g. accepting a staff invite). */
+  adoptSession: (token: string, user: CurrentUser) => void;
   logout: () => void;
   setOnDuty: (onDuty: boolean) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -69,6 +71,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   };
 
+  const adoptSession = (token: string, u: CurrentUser) => {
+    setToken(token);
+    setUser(u);
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -91,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, loading, login, completeTotpLogin, logout, setOnDuty, refreshUser }}>
+    <Ctx.Provider value={{ user, loading, login, completeTotpLogin, adoptSession, logout, setOnDuty, refreshUser }}>
       {children}
     </Ctx.Provider>
   );

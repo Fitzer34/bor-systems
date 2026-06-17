@@ -42,6 +42,7 @@ import { CheckpointScan } from "./pages/CheckpointScan";
 import { LoneWorker } from "./pages/LoneWorker";
 import { ReportFault } from "./pages/ReportFault";
 import { QuoteSubmit } from "./pages/QuoteSubmit";
+import { AcceptInvite } from "./pages/AcceptInvite";
 import { ChooseSection } from "./pages/ChooseSection";
 import { SectionProvider, useSection } from "./lib/section";
 import { initWebSentry } from "./lib/sentry";
@@ -92,6 +93,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/report/:token" element={<ReportFault />} />
             {/* Public, no-login contractor quote page from a tender email. */}
             <Route path="/quote/:token" element={<QuoteSubmit />} />
+            {/* Public, no-login page a new staff member opens from their invite
+                email — set a password and get dropped into the app, logged in. */}
+            <Route path="/accept-invite/:token" element={<AcceptInvite />} />
             {/* Section chooser — pick Cleaning or Maintenance on entry. */}
             <Route path="/choose" element={<RequireAuth><ChooseSection /></RequireAuth>} />
             <Route

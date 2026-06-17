@@ -10,49 +10,73 @@ interface UserRow {
   role: "admin" | "supervisor" | "cleaner";
   onDuty: boolean;
   deactivatedAt: string | null;
+  invitedAt?: string | null;
+  inviteAcceptedAt?: string | null;
 }
+
+interface CreateResult {
+  user: UserRow;
+  invited?: boolean;
+  emailSent?: boolean;
+  inviteUrl?: string;
+}
+
+type Notice = { kind: "ok"; text: string } | { kind: "link"; text: string; url: string };
 
 export function Users() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const isAdmin = user?.role === "admin";
-  const [form, setForm] = useState({ email: "", name: "", password: "", role: "cleaner" as UserRow["role"], phoneE164: "" });
+  const [form, setForm] = useState({ email: "", name: "", role: "cleaner" as UserRow["role"], phoneE164: "" });
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   const users = useQuery({ queryKey: ["users"], queryFn: () => api<{ users: UserRow[] }>("/users") });
+
   const create = useMutation({
-    mutationFn: () => api("/users", {
+    mutationFn: () => api<CreateResult>("/users", {
       method: "POST",
       body: JSON.stringify({
         email: form.email,
         name: form.name,
-        password: form.password,
         role: form.role,
         phoneE164: form.phoneE164 || undefined,
+        sendInvite: true,
       }),
     }),
-    onSuccess: () => {
-      setForm({ email: "", name: "", password: "", role: "cleaner", phoneE164: "" });
+    onSuccess: (res) => {
+      setForm({ email: "", name: "", role: "cleaner", phoneE164: "" });
       setErr(null);
+      if (res.emailSent) {
+        setNotice({ kind: "ok", text: `Invite emailed to ${res.user.email}. They'll set a password and be signed straight in.` });
+      } else if (res.inviteUrl) {
+        setNotice({ kind: "link", text: `User created, but email couldn't be sent. Share this private link with ${res.user.email}:`, url: res.inviteUrl });
+      } else {
+        setNotice({ kind: "ok", text: `${res.user.email} added.` });
+      }
       qc.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (e: unknown) => {
-      // Surface the actual server reason so the admin knows whether to fix
-      // the password, change the email, or something else. ApiError.payload
-      // is the parsed JSON body (or text if non-JSON).
+      setNotice(null);
       const payload = (e as { payload?: unknown })?.payload;
       const reason = typeof payload === "object" && payload !== null && "error" in payload
         ? (payload as { error?: string }).error
         : undefined;
       const friendly: Record<string, string> = {
-        password_too_short: "Password is too short — needs at least 10 characters.",
-        password_too_long: "Password is too long.",
-        password_too_common: "Password is too common — pick something less guessable.",
-        password_too_simple: "Password needs at least 3 of: lowercase, uppercase, digit, symbol.",
         email_taken: "Someone in your organisation already uses that email.",
         invalid_input: "One of the fields is invalid (check email format, phone in +country format).",
       };
-      setErr(friendly[reason ?? ""] ?? "Could not create user.");
+      setErr(friendly[reason ?? ""] ?? "Could not add user.");
+    },
+  });
+
+  const resend = useMutation({
+    mutationFn: (id: string) => api<{ ok: boolean; emailSent?: boolean; inviteUrl?: string }>(`/users/${id}/resend-invite`, { method: "POST" }),
+    onSuccess: (res, id) => {
+      const u = users.data?.users.find((x) => x.id === id);
+      if (res.emailSent) setNotice({ kind: "ok", text: `Invite re-sent to ${u?.email ?? "the user"}.` });
+      else if (res.inviteUrl) setNotice({ kind: "link", text: `Couldn't send email. Share this private link with ${u?.email ?? "the user"}:`, url: res.inviteUrl });
+      qc.invalidateQueries({ queryKey: ["users"] });
     },
   });
 
@@ -66,17 +90,21 @@ export function Users() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 
+  const isPending = (u: UserRow) => !!u.invitedAt && !u.inviteAcceptedAt && !u.deactivatedAt;
+
   return (
     <div>
       <h1 className="text-2xl font-semibold mb-6">Users</h1>
 
       {isAdmin && (
         <div className="mb-8 bg-white border rounded-lg p-4">
-          <div className="font-medium mb-3">Create user</div>
+          <div className="font-medium mb-1">Add a staff member</div>
+          <div className="text-xs text-slate-500 mb-3">
+            We'll email them a secure link to set their own password and sign in — no need to share one.
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="border rounded px-3 py-2" />
             <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="border rounded px-3 py-2" />
-            <input placeholder="Password (10+ chars, mix of types)" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="border rounded px-3 py-2" />
             <input placeholder="Phone (E.164, e.g. +353…)" value={form.phoneE164} onChange={(e) => setForm({ ...form, phoneE164: e.target.value })} className="border rounded px-3 py-2" />
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as UserRow["role"] })} className="border rounded px-3 py-2">
               <option value="cleaner">Cleaner</option>
@@ -85,16 +113,20 @@ export function Users() {
             </select>
             <button
               onClick={() => create.mutate()}
-              disabled={!form.email || !form.name || form.password.length < 10 || create.isPending}
+              disabled={!form.email || !form.name || create.isPending}
               className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50"
             >
-              {create.isPending ? "Creating…" : "Create user"}
+              {create.isPending ? "Sending invite…" : "Send invite"}
             </button>
           </div>
-          <div className="text-xs text-slate-500 mt-2">
-            Password must be at least 10 characters and include at least 3 of:
-            lowercase letter, uppercase letter, digit, symbol.
-          </div>
+          {notice && (
+            <div className="mt-3 text-sm rounded border border-green-200 bg-green-50 text-green-800 px-3 py-2">
+              <div>{notice.text}</div>
+              {notice.kind === "link" && (
+                <code className="block mt-1 break-all text-xs bg-white border rounded px-2 py-1 text-slate-700">{notice.url}</code>
+              )}
+            </div>
+          )}
           {err && <div className="text-sm text-red-600 mt-2">{err}</div>}
         </div>
       )}
@@ -118,10 +150,14 @@ export function Users() {
               <td className="p-2">{u.role}</td>
               <td className="p-2">
                 {u.deactivatedAt ? <span className="text-slate-500">deactivated</span> :
+                  isPending(u) ? <span className="text-amber-600">invited — pending</span> :
                   u.onDuty ? <span className="text-green-700">on duty</span> :
                   <span className="text-slate-500">off duty</span>}
               </td>
               <td className="p-2 text-right space-x-3">
+                {isAdmin && isPending(u) && (
+                  <button onClick={() => resend.mutate(u.id)} disabled={resend.isPending} className="text-blue-600 hover:underline disabled:opacity-50">Resend invite</button>
+                )}
                 {isAdmin && !u.deactivatedAt && u.id !== user?.id && (
                   <button onClick={() => deactivate.mutate(u.id)} className="text-amber-700 hover:underline">Deactivate</button>
                 )}
