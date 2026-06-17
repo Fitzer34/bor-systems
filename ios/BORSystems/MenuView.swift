@@ -62,6 +62,7 @@ struct MenuView: View {
                     }
 
                     Section("Insights") {
+                        NavigationLink { MaintenanceKpisView() } label: { Label("Maintenance KPIs", systemImage: "chart.line.uptrend.xyaxis") }
                         NavigationLink { ReportsView() } label: { Label("Reports", systemImage: "chart.bar") }
                         NavigationLink { NotificationsLogView() } label: { Label("Notifications log", systemImage: "bell") }
                         if auth.user?.role == .admin {

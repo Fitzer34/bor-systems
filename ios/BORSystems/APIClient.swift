@@ -561,6 +561,11 @@ extension APIClient {
         let res: CertificationsResponse = try await request("/certifications")
         return res.certifications
     }
+
+    // MARK: Maintenance KPIs
+    func maintenanceKpis() async throws -> MaintKpis {
+        try await request("/maintenance/kpis")
+    }
     func maintenanceJobDetail(_ id: String) async throws -> JobDetailResponse {
         try await request("/jobs/\(id)")
     }

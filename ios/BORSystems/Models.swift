@@ -292,6 +292,28 @@ struct StaffCertification: Codable, Identifiable, Hashable {
 }
 struct CertificationsResponse: Codable { let certifications: [StaffCertification] }
 
+/// Maintenance KPI scorecard (read-only; all computed server-side).
+struct MaintBadActor: Codable, Identifiable, Hashable {
+    let assetId: String
+    let name: String
+    let criticality: String
+    let reactiveJobs: Int
+    let spendCents: Int
+    var id: String { assetId }
+}
+struct MaintKpis: Codable {
+    let pmCompliancePct: Int?
+    let mttrDays: Double?
+    let mtbfDays: Int?
+    let openBacklog: Int
+    let backlogOldestDays: Int
+    let completedThisMonth: Int
+    let plannedSharePct: Int?
+    let spend90Cents: Int
+    let assetsPastLife: Int
+    let badActors: [MaintBadActor]
+}
+
 /// One line in a job's append-only timeline.
 struct JobEvent: Codable, Identifiable, Hashable {
     let id: String
