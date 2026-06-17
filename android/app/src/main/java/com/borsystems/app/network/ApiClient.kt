@@ -406,4 +406,11 @@ object ApiClient {
     suspend fun serviceMeter(id: String) {
         request<Unit>("/meters/$id/service", "POST")
     }
+
+    // ─── Workforce competency ──────────────────────────────────────────────
+    suspend fun certifications(): List<StaffCertification> =
+        request<CertificationsResponse>("/certifications").certifications
+
+    // ─── Maintenance KPIs ──────────────────────────────────────────────────
+    suspend fun maintenanceKpis(): MaintKpis = request("/maintenance/kpis")
 }

@@ -315,6 +315,46 @@ data class Meter(
 @Serializable
 data class MetersResponse(val meters: List<Meter>)
 
+/** A staff certification / qualification with expiry (workforce competency). */
+@Serializable
+data class StaffCertification(
+    val id: String,
+    val name: String,
+    val issuer: String? = null,
+    val userName: String? = null,
+    val userRole: String? = null,
+    val expiresOn: String? = null,
+    val status: String,   // valid | expiring | expired
+    val daysToExpiry: Int? = null,
+)
+
+@Serializable
+data class CertificationsResponse(val certifications: List<StaffCertification>)
+
+/** Maintenance KPI scorecard (all computed server-side). */
+@Serializable
+data class MaintBadActor(
+    val assetId: String,
+    val name: String,
+    val criticality: String,
+    val reactiveJobs: Int,
+    val spendCents: Int,
+)
+
+@Serializable
+data class MaintKpis(
+    val pmCompliancePct: Int? = null,
+    val mttrDays: Double? = null,
+    val mtbfDays: Int? = null,
+    val openBacklog: Int,
+    val backlogOldestDays: Int,
+    val completedThisMonth: Int,
+    val plannedSharePct: Int? = null,
+    val spend90Cents: Int,
+    val assetsPastLife: Int,
+    val badActors: List<MaintBadActor> = emptyList(),
+)
+
 @Serializable
 data class JobEvent(
     val id: String,

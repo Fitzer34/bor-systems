@@ -21,6 +21,8 @@ import com.borsystems.app.ui.home.HomeScreen
 import com.borsystems.app.ui.maintenance.MaintenanceDetailScreen
 import com.borsystems.app.ui.maintenance.MaintenanceScreen
 import com.borsystems.app.ui.maintenance.MetersScreen
+import com.borsystems.app.ui.maintenance.CompetencyScreen
+import com.borsystems.app.ui.maintenance.MaintenanceKpisScreen
 import com.borsystems.app.ui.more.MoreScreen
 import com.borsystems.app.ui.ppms.PpmsScreen
 import com.borsystems.app.ui.profile.EditProfileScreen
@@ -110,6 +112,8 @@ fun MainScaffold() {
             composable("settings")          { SettingsScreen(onBack = { nav.popBackStack() }) }
             composable("ppms")              { PpmsScreen(onBack = { nav.popBackStack() }) }
             composable("meters")            { MetersScreen(onBack = { nav.popBackStack() }) }
+            composable("competency")        { CompetencyScreen(onBack = { nav.popBackStack() }) }
+            composable("maintenance-kpis")  { MaintenanceKpisScreen(onBack = { nav.popBackStack() }) }
             composable("maintenance")       {
                 MaintenanceScreen(
                     onBack = { nav.popBackStack() },

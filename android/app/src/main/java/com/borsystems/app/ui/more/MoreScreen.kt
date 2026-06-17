@@ -91,6 +91,8 @@ private fun buildItems(
         list += MoreItemSpec(Icons.Default.Construction,  "Maintenance jobs")   { nav.navigate("maintenance") }
         list += MoreItemSpec(Icons.Default.Speed,         "Meters")             { nav.navigate("meters") }
         list += MoreItemSpec(Icons.Default.Build,         "PPMs")               { nav.navigate("ppms") }
+        list += MoreItemSpec(Icons.Default.VerifiedUser,  "Competency")         { nav.navigate("competency") }
+        list += MoreItemSpec(Icons.Default.QueryStats,    "Maintenance KPIs")   { nav.navigate("maintenance-kpis") }
         // Analytics + Notifications log remain web-only — heavy charting /
         // long-tail screens that aren't worth a native port yet.
         list += MoreItemSpec(Icons.Default.Analytics,     "Analytics")          { openWeb(ctx, "/analytics") }
