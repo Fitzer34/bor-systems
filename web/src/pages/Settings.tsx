@@ -9,6 +9,7 @@ interface AllSettings {
   lowBatteryThreshold: number;
   defaultAudibleAlarm: boolean;
   expectedCleaningMinutes: number;
+  plan: string;
 }
 
 export function Settings() {
@@ -23,6 +24,7 @@ export function Settings() {
   const [lowBattery, setLowBattery] = useState("");
   const [audibleAlarm, setAudibleAlarm] = useState(false);
   const [cleaning, setCleaning] = useState("");
+  const [plan, setPlan] = useState("starter");
   const [savedKey, setSavedKey] = useState<string | null>(null);
 
   const { user, refreshUser } = useAuth();
@@ -36,6 +38,7 @@ export function Settings() {
     setLowBattery(String(current.data.lowBatteryThreshold));
     setAudibleAlarm(current.data.defaultAudibleAlarm);
     setCleaning(String(current.data.expectedCleaningMinutes));
+    setPlan(current.data.plan ?? "starter");
   }, [current.data]);
 
   // Keep the field in sync with the live org name (e.g. after a save refreshes it).
@@ -73,6 +76,10 @@ export function Settings() {
     mutationFn: () => api("/settings/expected-cleaning-time", { method: "PUT", body: JSON.stringify({ minutes: Number(cleaning) }) }),
     onSuccess: onSaved("cleaning"),
   });
+  const savePlan = useMutation({
+    mutationFn: () => api("/settings/plan", { method: "PUT", body: JSON.stringify({ plan }) }),
+    onSuccess: onSaved("plan"),
+  });
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -95,6 +102,26 @@ export function Settings() {
               {saveOrgName.isPending ? "Saving…" : "Save"}
             </button>
             {savedKey?.startsWith("org-name@") && <span className="text-sm text-green-700 mb-2">Saved</span>}
+          </div>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card title="Subscription plan" description="This organisation's plan. It sets the monthly AI Assistant allowance (Starter 100, Growth 500, Enterprise unlimited). Everyday AI helpers stay free on every plan.">
+          <div className="flex items-end gap-3 flex-wrap">
+            <select value={plan} onChange={(e) => setPlan(e.target.value)} className="border rounded px-3 py-2 w-full max-w-sm">
+              <option value="starter">Starter — 100 AI questions/mo</option>
+              <option value="growth">Growth — 500 AI questions/mo</option>
+              <option value="enterprise">Enterprise — unlimited (fair use)</option>
+            </select>
+            <button
+              onClick={() => savePlan.mutate()}
+              disabled={savePlan.isPending || plan === (current.data?.plan ?? "starter")}
+              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm whitespace-nowrap"
+            >
+              {savePlan.isPending ? "Saving…" : "Save"}
+            </button>
+            {savedKey?.startsWith("plan@") && <span className="text-sm text-green-700 mb-2">Saved</span>}
           </div>
         </Card>
       )}

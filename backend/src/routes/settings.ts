@@ -46,7 +46,12 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
           getDefaultAudibleAlarm(c.orgId),
           getExpectedCleaningTimeMinutes(c.orgId),
         ]);
-      return { resolutionMinutes, ackMinutes, lowBatteryThreshold, defaultAudibleAlarm, expectedCleaningMinutes };
+      const [org] = await db
+        .select({ plan: schema.organisations.plan })
+        .from(schema.organisations)
+        .where(eq(schema.organisations.id, c.orgId))
+        .limit(1);
+      return { resolutionMinutes, ackMinutes, lowBatteryThreshold, defaultAudibleAlarm, expectedCleaningMinutes, plan: org?.plan ?? "starter" };
     },
   );
 
@@ -128,6 +133,20 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       await db.update(schema.organisations).set({ name }).where(eq(schema.organisations.id, c.orgId));
       await audit(req, "settings.org_name_set", "org_name", { name });
       return { name };
+    },
+  );
+
+  // Subscription plan. Gates the monthly AI Assistant allowance; admin-only.
+  app.put(
+    "/settings/plan",
+    { preHandler: [app.authenticate, requireRole(["admin"])] },
+    async (req, reply) => {
+      const body = z.object({ plan: z.enum(schema.orgPlan.enumValues) }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
+      await db.update(schema.organisations).set({ plan: body.data.plan }).where(eq(schema.organisations.id, c.orgId));
+      await audit(req, "settings.plan_set", "plan", { plan: body.data.plan });
+      return { plan: body.data.plan };
     },
   );
 }
