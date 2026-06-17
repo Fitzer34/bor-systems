@@ -291,8 +291,8 @@
       <div class="phone">
         <div class="phone-notch"></div>
         <div class="phone-screen">
-          <div class="phone-time">9:41</div>
-          <div class="phone-hint">HazardLink · live</div>
+          <div class="phone-time" id="phoneTime">9:41</div>
+          <div class="phone-hint" id="phoneDate">HazardLink · live</div>
           <div class="push-stack" id="pushStack"></div>
         </div>
       </div>
@@ -575,6 +575,19 @@
       el.classList.add('swap');
       setTimeout(function () { i = (i + 1) % words.length; el.textContent = words[i]; el.classList.remove('swap'); }, 300);
     }, 2600);
+  })();
+
+  // ── Live clock + date on the hero phone ────────────────────────────────
+  (function () {
+    var t = document.getElementById('phoneTime'), d = document.getElementById('phoneDate');
+    if (!t) return;
+    function tick() {
+      var now = new Date();
+      t.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (d) d.textContent = now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+    tick();
+    setInterval(tick, 30000);
   })();
 
   // ── Hero push notifications ────────────────────────────────────────────
