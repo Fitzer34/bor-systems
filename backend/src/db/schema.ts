@@ -369,6 +369,26 @@ export const loneWorkerSessions = pgTable(
   }),
 );
 
+/// Spare-parts catalogue + stock levels (CMMS inventory). Low stock when
+/// stock_qty <= reorder_level. Parts-used-per-work-order links in a later pass.
+export const parts = pgTable(
+  "parts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    sku: text("sku"),
+    unit: text("unit").notNull().default("each"),
+    stockQty: integer("stock_qty").notNull().default(0),
+    reorderLevel: integer("reorder_level").notNull().default(0),
+    unitCostCents: integer("unit_cost_cents"),
+    supplier: text("supplier"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgIdx: index("parts_org_idx").on(t.organisationId) }),
+);
+
 export const hangers = pgTable(
   "hangers",
   {

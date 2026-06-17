@@ -472,6 +472,50 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     return row;
   });
 
+  // ─── Parts & inventory ─────────────────────────────────────────────────────
+  const partBody = z.object({
+    name: z.string().min(1).max(160),
+    sku: z.string().max(80).nullable().optional(),
+    unit: z.string().max(20).optional(),
+    stockQty: z.number().int().min(0).optional(),
+    reorderLevel: z.number().int().min(0).optional(),
+    unitCostCents: z.number().int().min(0).nullable().optional(),
+    supplier: z.string().max(160).nullable().optional(),
+    notes: z.string().max(1000).nullable().optional(),
+  });
+
+  app.get("/parts", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.parts)
+      .where(eq(schema.parts.organisationId, c.orgId))
+      .orderBy(schema.parts.name);
+    return { parts: rows };
+  });
+
+  app.post("/parts", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const parsed = partBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [row] = await db.insert(schema.parts).values({ organisationId: c.orgId, ...parsed.data }).returning();
+    return reply.code(201).send({ part: row });
+  });
+
+  app.patch("/parts/:id", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = partBody.partial().safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [row] = await db
+      .update(schema.parts)
+      .set(parsed.data)
+      .where(and(eq(schema.parts.id, id), eq(schema.parts.organisationId, c.orgId)))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return { part: row };
+  });
+
   // ─── Tenants (light register) ──────────────────────────────────────────────
   app.get("/tenants", { preHandler: [app.authenticate, staff] }, async (req) => {
     const c = ctx(req);

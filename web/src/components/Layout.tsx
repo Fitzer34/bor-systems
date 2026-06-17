@@ -106,6 +106,7 @@ export function Layout() {
             <>
               <NavItem to="/maintenance">Jobs</NavItem>
               <NavItem to="/assets">Assets</NavItem>
+              <NavItem to="/parts">Parts</NavItem>
               <NavItem to="/ppms">PPMs</NavItem>
             </>
           )}
