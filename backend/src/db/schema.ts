@@ -334,6 +334,38 @@ export const checkpointScans = pgTable(
   }),
 );
 
+/// Lone-worker safety sessions (an OVERALL capability — cleaners, techs AND
+/// guards). A worker starts a session with a check-in interval; if they miss a
+/// check-in the watcher (services/lone-worker-watcher.ts) raises an alarm, and
+/// a panic button raises one immediately. Status moves active → ended | alarm.
+/// NOTE: deliberately NO fall/man-down detection (needs a wearable + monitoring
+/// service = liability we avoid). See [[fm-platform-feature-roadmap]] caveats.
+export const loneWorkerStatus = pgEnum("lone_worker_status", ["active", "ended", "alarm"]);
+
+export const loneWorkerSessions = pgTable(
+  "lone_worker_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    status: loneWorkerStatus("status").notNull().default("active"),
+    intervalMinutes: integer("interval_minutes").notNull().default(30),
+    note: text("note"), // what they're doing / where
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+    lastCheckInAt: timestamp("last_check_in_at", { withTimezone: true }),
+    nextCheckInDueAt: timestamp("next_check_in_due_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    alarmReason: text("alarm_reason"), // missed_check_in | panic
+    alarmAt: timestamp("alarm_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("lws_org_idx").on(t.organisationId),
+    userIdx: index("lws_user_idx").on(t.userId),
+    statusIdx: index("lws_status_idx").on(t.status),
+  }),
+);
+
 export const hangers = pgTable(
   "hangers",
   {

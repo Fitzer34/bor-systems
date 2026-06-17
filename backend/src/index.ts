@@ -30,10 +30,12 @@ import analyticsRoutes from "./routes/analytics.js";
 import publicRoutes from "./routes/public.js";
 import maintenanceRoutes from "./routes/maintenance.js";
 import securityRoutes from "./routes/security.js";
+import loneWorkerRoutes from "./routes/lone-worker.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
 import { startPpmReminderJob } from "./services/ppm-reminder.js";
+import { startLoneWorkerWatcher } from "./services/lone-worker-watcher.js";
 import { initSentry, Sentry, captureException } from "./services/observability.js";
 import { seedDemoOrgOnBoot } from "./services/demo-seed.js";
 
@@ -173,11 +175,13 @@ async function main(): Promise<void> {
   await app.register(publicRoutes);
   await app.register(maintenanceRoutes);
   await app.register(securityRoutes);
+  await app.register(loneWorkerRoutes);
 
   startEscalationTimer();
   startAntiTheftWatcher();
   startSignConditionWatcher();
   startPpmReminderJob();
+  startLoneWorkerWatcher();
 
   // Graceful shutdown — flushes Sentry events on SIGTERM (Render restarts).
   const shutdown = async (sig: string) => {

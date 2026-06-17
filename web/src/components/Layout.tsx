@@ -124,6 +124,7 @@ export function Layout() {
             {isStaff && <NavItem to="/settings">Settings</NavItem>}
             {isStaff && <NavItem to="/notifications-log">Notifications</NavItem>}
             {user.role === "admin" && <NavItem to="/audit-log">Audit log</NavItem>}
+            <NavItem to="/lone-worker">Lone worker</NavItem>
             <NavItem to="/profile">My profile</NavItem>
             <NavItem to="/status">System status</NavItem>
           </div>

@@ -32,6 +32,7 @@ import { Assets } from "./pages/Assets";
 import { Incidents } from "./pages/Incidents";
 import { Checkpoints } from "./pages/Checkpoints";
 import { CheckpointScan } from "./pages/CheckpointScan";
+import { LoneWorker } from "./pages/LoneWorker";
 import { ChooseSection } from "./pages/ChooseSection";
 import { SectionProvider, useSection } from "./lib/section";
 import { initWebSentry } from "./lib/sentry";
@@ -105,6 +106,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="maintenance" element={<RequireAuth role={["admin", "supervisor"]}><Maintenance /></RequireAuth>} />
               <Route path="assets" element={<RequireAuth role={["admin", "supervisor"]}><Assets /></RequireAuth>} />
               <Route path="incidents" element={<RequireAuth role={["admin", "supervisor"]}><Incidents /></RequireAuth>} />
+              <Route path="checkpoints" element={<RequireAuth role={["admin", "supervisor"]}><Checkpoints /></RequireAuth>} />
+              <Route path="lone-worker" element={<LoneWorker />} />
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />
               <Route path="floor-plans" element={<RequireAuth role={["admin"]}><FloorPlans /></RequireAuth>} />
               <Route path="reports" element={<RequireAuth role={["admin", "supervisor"]}><Reports /></RequireAuth>} />
