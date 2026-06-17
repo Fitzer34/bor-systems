@@ -279,7 +279,7 @@
 <section class="hero">
   <div class="container">
     <span class="eyebrow">Cleaning · Maintenance · Security</span>
-    <h1><span class="rotate-word" id="rotateWord">Cleaning</span>, maintenance &amp; security<br><span class="accent">in one platform.</span></h1>
+    <h1>One platform for<br><span class="accent rotate-word" id="rotateWord">Cleaning.</span></h1>
     <p class="lede">HazardLink runs every on-site team from a single app — cleaners, technicians and guards. Jobs, inspections, patrols, assets and live alerts, all in one place.</p>
     <div class="cta">
       <a class="btn pulse-cta" href="#contact">Book a 15-minute demo</a>
@@ -570,7 +570,7 @@
   // ── Rotating hero word ─────────────────────────────────────────────────
   (function () {
     var el = document.getElementById('rotateWord'); if (!el || reduce) return;
-    var words = ['Cleaning', 'Maintenance', 'Security'], i = 0;
+    var words = ['Cleaning.', 'Maintenance.', 'Security.'], i = 0;
     setInterval(function () {
       el.classList.add('swap');
       setTimeout(function () { i = (i + 1) % words.length; el.textContent = words[i]; el.classList.remove('swap'); }, 300);
