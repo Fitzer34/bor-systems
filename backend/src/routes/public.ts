@@ -22,6 +22,7 @@ import { z } from "zod";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { sendEmail } from "../services/notifications.js";
+import { uploadPhoto } from "../services/storage.js";
 
 const feedbackSchema = z.object({
   isDry: z.boolean(),
@@ -70,6 +71,7 @@ const checkpointScanBody = z.object({
   guardName: z.string().max(120).optional(),
   note: z.string().max(1000).optional(),
   flagged: z.boolean().optional(),
+  photoUrl: z.string().max(500).optional(),
 });
 
 const reportRateLimit = {
@@ -342,9 +344,41 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       checkpointId: cp.id,
       guardName: parsed.data.guardName?.trim() || null,
       note: parsed.data.note?.trim() || null,
+      photoUrl: parsed.data.photoUrl || null,
       flagged: parsed.data.flagged ?? false,
     });
     return { ok: true };
+  });
+
+  // Public, no-login photo upload for a checkpoint scan — token-gated (must be a
+  // valid, active checkpoint) + rate-limited. Returns the stored URL to attach
+  // to the scan. Mirrors the authed /uploads/photo route.
+  const CP_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+  app.post("/public/checkpoint/:token/photo", checkpointScanRateLimit, async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const [cp] = await db
+      .select({ id: schema.checkpoints.id, active: schema.checkpoints.active })
+      .from(schema.checkpoints)
+      .where(eq(schema.checkpoints.token, token))
+      .limit(1);
+    if (!cp || !cp.active) return reply.code(404).send({ error: "not_found" });
+    const file = await (req as any).file();
+    if (!file) return reply.code(400).send({ error: "no_file" });
+    if (file.mimetype && !CP_PHOTO_TYPES.includes(file.mimetype)) {
+      return reply.code(415).send({ error: "must_be_image" });
+    }
+    let buf: Buffer;
+    try {
+      buf = await file.toBuffer();
+    } catch {
+      return reply.code(413).send({ error: "too_large" });
+    }
+    const { url } = await uploadPhoto({
+      filename: file.filename || "checkpoint.jpg",
+      mimetype: file.mimetype || "image/jpeg",
+      body: buf,
+    });
+    return { url };
   });
 
   // ─── Report a fault on an asset (magic link, cross-discipline) ───────────

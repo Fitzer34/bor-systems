@@ -28,6 +28,8 @@ export function CheckpointScan() {
   const [flagged, setFlagged] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -45,11 +47,27 @@ export function CheckpointScan() {
       await fetch(apiUrl(`/public/checkpoint/${token}`), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ guardName: guardName.trim() || undefined, note: note.trim() || undefined, flagged }),
+        body: JSON.stringify({ guardName: guardName.trim() || undefined, note: note.trim() || undefined, flagged, photoUrl: photoUrl || undefined }),
       });
       setDone(true);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function uploadArea(f: File) {
+    setUploadingPhoto(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const r = await fetch(apiUrl(`/public/checkpoint/${token}/photo`), { method: "POST", body: fd });
+      if (!r.ok) throw new Error("upload failed");
+      const d = (await r.json()) as { url: string };
+      setPhotoUrl(d.url);
+    } catch {
+      /* leave photo unset so they can retry */
+    } finally {
+      setUploadingPhoto(false);
     }
   }
 
@@ -112,6 +130,22 @@ export function CheckpointScan() {
                   <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={1000}
                     placeholder={flagged ? "Describe the issue" : "Anything to note"}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-400" />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Photo of the area {flagged ? "(recommended)" : "(optional)"}</label>
+                  {photoUrl ? (
+                    <div className="flex items-center gap-3">
+                      <img src={photoUrl} alt="area" className="w-16 h-16 rounded-lg object-cover border border-slate-200" />
+                      <button type="button" onClick={() => setPhotoUrl(null)} className="text-sm text-slate-500 hover:text-slate-800">Remove</button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-dashed border-slate-300 text-slate-600 text-sm cursor-pointer hover:bg-slate-50">
+                      <input type="file" accept="image/*" capture="environment" className="hidden" disabled={uploadingPhoto}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadArea(f); }} />
+                      {uploadingPhoto ? "Uploading…" : "📷 Add a photo"}
+                    </label>
+                  )}
                 </div>
 
                 <button onClick={submit} disabled={submitting || (flagged && !note.trim())}

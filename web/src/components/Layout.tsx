@@ -96,6 +96,7 @@ export function Layout() {
               <NavItem to="/dispatch">Dispatch</NavItem>
               <NavItem to="/schedule">Schedule</NavItem>
               <NavItem to="/inspections">Inspections</NavItem>
+              {isStaff && <NavItem to="/checkpoints">Checkpoints</NavItem>}
               {isStaff && <NavItem to="/devices">Devices</NavItem>}
               {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}
               {isStaff && <NavItem to="/reports">Reports</NavItem>}

@@ -328,6 +328,7 @@ export const checkpointScans = pgTable(
     checkpointId: uuid("checkpoint_id").references(() => checkpoints.id, { onDelete: "cascade" }).notNull(),
     guardName: text("guard_name"),
     note: text("note"),
+    photoUrl: text("photo_url"),
     flagged: boolean("flagged").notNull().default(false),
     scannedAt: timestamp("scanned_at", { withTimezone: true }).defaultNow().notNull(),
   },
