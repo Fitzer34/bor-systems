@@ -15,6 +15,8 @@ interface Job { id: string; title: string; status: string; priority?: string; cr
 interface Ppm { id: string; title: string; nextDueDate: string; active: boolean; reminderLeadDays: number; contractorName: string | null }
 interface Asset { id: string; name: string; warrantyExpiry: string | null }
 interface Part { id: string; name: string; stockQty: number; reorderLevel: number }
+interface Meter { id: string; name: string; assetName: string | null; status: "due" | "due_soon" | "ok" | "tracking"; remaining: number | null }
+interface Cert { id: string; name: string; userName: string | null; status: "valid" | "expiring" | "expired"; daysToExpiry: number | null }
 
 const DONE = new Set(["completed", "cancelled"]);
 
@@ -74,12 +76,16 @@ export function MaintenanceDashboard() {
   const ppmsQ = useQuery({ queryKey: ["ppms"], queryFn: () => api<{ ppms: Ppm[] }>("/ppms"), refetchInterval: 60_000 });
   const assetsQ = useQuery({ queryKey: ["assets"], queryFn: () => api<{ assets: Asset[] }>("/assets") });
   const partsQ = useQuery({ queryKey: ["parts"], queryFn: () => api<{ parts: Part[] }>("/parts") });
+  const metersQ = useQuery({ queryKey: ["meters"], queryFn: () => api<{ meters: Meter[] }>("/meters") });
+  const certsQ = useQuery({ queryKey: ["certifications"], queryFn: () => api<{ certifications: Cert[] }>("/certifications") });
 
   const m = useMemo(() => {
     const jobs = jobsQ.data?.jobs ?? [];
     const ppms = (ppmsQ.data?.ppms ?? []).filter((p) => p.active);
     const assets = assetsQ.data?.assets ?? [];
     const parts = partsQ.data?.parts ?? [];
+    const meters = metersQ.data?.meters ?? [];
+    const certs = certsQ.data?.certifications ?? [];
 
     const openJobs = jobs.filter((j) => !DONE.has(j.status));
     const emergencyOpen = openJobs.filter((j) => j.priority === "emergency");
@@ -90,6 +96,10 @@ export function MaintenanceDashboard() {
       .filter((a) => a.warrantyExpiry && daysUntil(a.warrantyExpiry) >= 0 && daysUntil(a.warrantyExpiry) <= 90)
       .sort((a, b) => (a.warrantyExpiry ?? "").localeCompare(b.warrantyExpiry ?? ""));
     const lowParts = parts.filter((p) => p.stockQty <= 0 || (p.reorderLevel > 0 && p.stockQty <= p.reorderLevel));
+    const metersDue = meters.filter((x) => x.status === "due" || x.status === "due_soon")
+      .sort((a, b) => (a.remaining ?? 1e9) - (b.remaining ?? 1e9));
+    const certsAlert = certs.filter((x) => x.status === "expired" || x.status === "expiring")
+      .sort((a, b) => (a.daysToExpiry ?? 1e9) - (b.daysToExpiry ?? 1e9));
 
     // Open work orders grouped by status (donut). Only statuses with ≥1 open job.
     const statusOrder = ["logged", "scoped", "tendering", "awarded", "scheduled", "in_progress"];
@@ -103,8 +113,8 @@ export function MaintenanceDashboard() {
       count: jobs.filter((j) => { const t = j.createdAt ? Date.parse(j.createdAt) : NaN; return t >= start && t < end; }).length,
     }));
 
-    return { openJobs, emergencyOpen, overduePpms, dueSoonPpms, compliance, warrantyExpiring, lowParts, ppmCount: ppms.length, byStatus, weekly };
-  }, [jobsQ.data, ppmsQ.data, assetsQ.data, partsQ.data]);
+    return { openJobs, emergencyOpen, overduePpms, dueSoonPpms, compliance, warrantyExpiring, lowParts, metersDue, certsAlert, ppmCount: ppms.length, byStatus, weekly };
+  }, [jobsQ.data, ppmsQ.data, assetsQ.data, partsQ.data, metersQ.data, certsQ.data]);
 
   const loading = jobsQ.isLoading || ppmsQ.isLoading || assetsQ.isLoading || partsQ.isLoading;
 
@@ -122,9 +132,11 @@ export function MaintenanceDashboard() {
         <div className="text-slate-500">Loading…</div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <Kpi to="/maintenance" label="Open work orders" value={m.openJobs.length} sub={m.emergencyOpen.length ? `${m.emergencyOpen.length} emergency` : "none urgent"} tone={m.emergencyOpen.length ? "red" : "default"} />
             <Kpi to="/ppms" label="PPM compliance" value={`${m.compliance}%`} sub={`${m.overduePpms.length} overdue · ${m.dueSoonPpms.length} due soon`} tone={m.overduePpms.length ? "amber" : "emerald"} />
+            <Kpi to="/meters" label="Meters due" value={m.metersDue.length} sub="service by usage" tone={m.metersDue.length ? "amber" : "default"} />
+            <Kpi to="/competency" label="Certs expiring" value={m.certsAlert.length} sub="expired or ≤60 days" tone={m.certsAlert.some((x) => x.status === "expired") ? "red" : m.certsAlert.length ? "amber" : "default"} />
             <Kpi to="/assets" label="Warranties expiring" value={m.warrantyExpiring.length} sub="next 90 days" tone={m.warrantyExpiring.length ? "amber" : "default"} />
             <Kpi to="/parts" label="Low-stock parts" value={m.lowParts.length} sub="at/below reorder" tone={m.lowParts.length ? "red" : "default"} />
           </div>
@@ -182,6 +194,19 @@ export function MaintenanceDashboard() {
             <Panel title={`Warranties expiring (${m.warrantyExpiring.length})`} to="/assets">
               {m.warrantyExpiring.length === 0 ? <Empty>None in the next 90 days</Empty> : m.warrantyExpiring.slice(0, 6).map((a) => (
                 <Row key={a.id} main={a.name} sub="warranty" tag={fmtDate(a.warrantyExpiry!)} tone="amber" />
+              ))}
+            </Panel>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-6">
+            <Panel title={`Meters due (${m.metersDue.length})`} to="/meters">
+              {m.metersDue.length === 0 ? <Empty>Nothing due by usage</Empty> : m.metersDue.slice(0, 6).map((x) => (
+                <Row key={x.id} main={x.assetName ?? x.name} sub={x.name} tag={x.status === "due" ? "Due" : "Due soon"} tone={x.status === "due" ? "red" : "amber"} />
+              ))}
+            </Panel>
+            <Panel title={`Certs expiring (${m.certsAlert.length})`} to="/competency">
+              {m.certsAlert.length === 0 ? <Empty>None expiring soon</Empty> : m.certsAlert.slice(0, 6).map((x) => (
+                <Row key={x.id} main={x.name} sub={x.userName ?? "—"} tag={x.status === "expired" ? "Expired" : `${x.daysToExpiry}d`} tone={x.status === "expired" ? "red" : "amber"} />
               ))}
             </Panel>
           </div>
