@@ -58,6 +58,15 @@ function conditionCls(n: number | null): string {
   return "bg-emerald-100 text-emerald-700";
 }
 
+function useAiConfigured(): boolean {
+  const { data } = useQuery({
+    queryKey: ["ai-status"],
+    queryFn: () => api<{ configured: boolean }>("/ai/status"),
+    staleTime: 5 * 60_000,
+  });
+  return !!data?.configured;
+}
+
 export function Assets() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: ["assets"], queryFn: () => api<{ assets: Asset[] }>("/assets") });
@@ -223,6 +232,13 @@ function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {
     mutationFn: () => api(`/assets/${asset!.id}`, { method: "PATCH", body: JSON.stringify({ retired: true }) }),
     onSuccess: onSaved,
   });
+  const aiConfigured = useAiConfigured();
+  const [summary, setSummary] = useState<string | null>(null);
+  const summarise = useMutation({
+    mutationFn: () => api<{ summary: string }>(`/ai/assets/${asset!.id}/summary`, { method: "POST" }),
+    onSuccess: (r) => setSummary(r.summary),
+    onError: () => setErr("Couldn't summarise — try again."),
+  });
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -274,6 +290,25 @@ function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {
           <Group label="Notes">
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={2000} className={inp + " resize-none"} />
           </Group>
+          {isEdit && aiConfigured && (
+            <div className="border-t border-slate-200 pt-4">
+              {!summary ? (
+                <button
+                  type="button"
+                  onClick={() => { setErr(null); summarise.mutate(); }}
+                  disabled={summarise.isPending}
+                  className="text-sm text-indigo-700 hover:text-indigo-900 font-medium disabled:text-slate-400"
+                >
+                  {summarise.isPending ? "Summarising…" : "✨ Summarise this asset's history"}
+                </button>
+              ) : (
+                <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3 text-sm">
+                  <div className="font-medium text-indigo-900 mb-1">✨ History summary</div>
+                  <p className="text-slate-700 whitespace-pre-wrap">{summary}</p>
+                </div>
+              )}
+            </div>
+          )}
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
 
