@@ -14,9 +14,13 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("org.jetbrains.kotlin.plugin.compose")
-    // Apply google-services only when google-services.json is present —
-    // keeps the project building before Firebase is set up.
-    // id("com.google.gms.google-services")
+}
+
+// Firebase: apply the google-services plugin only when its config file is
+// present (google-services.json is gitignored — it holds the client key), so a
+// fresh clone or CI without the file still builds cleanly. Present locally now.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 // Release (Play upload) signing — credentials live in the gitignored
