@@ -53,6 +53,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Shares exported CSV files (maintenance work orders) from the app's
+             cache dir via a content:// URI. Authority is derived from the
+             applicationId so it stays unique to this install. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- FCM message receiver. -->
         <service
             android:name=".notifications.BorMessagingService"

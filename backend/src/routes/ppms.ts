@@ -5,6 +5,7 @@ import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import { sendEmail } from "../services/notifications.js";
 import { requestPpmSchedule, scheduleUrl } from "../services/ppm-schedule.js";
+import { toCsv, csvFilename } from "../services/csv.js";
 
 /**
  * PPM (Planned Preventive Maintenance) routes — admin + supervisor only.
@@ -120,6 +121,38 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     return { ppms: rows.map((p) => ({ ...p, schedule: latest[p.id] ?? null })) };
+  });
+
+  // PPM schedule as CSV (soonest-due first) — the "PPM compliance" export on
+  // the maintenance dashboard. `days_until_due` is negative when overdue.
+  app.get("/ppms.csv", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.ppms)
+      .where(eq(schema.ppms.organisationId, c.orgId))
+      .orderBy(asc(schema.ppms.nextDueDate));
+    const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z").getTime();
+    const daysUntil = (iso: string) => Math.round((new Date(iso + "T00:00:00Z").getTime() - today) / 86_400_000);
+    const csv = toCsv<typeof rows[number]>(
+      [
+        { header: "id", value: (r) => r.id },
+        { header: "title", value: (r) => r.title },
+        { header: "active", value: (r) => (r.active ? "yes" : "no") },
+        { header: "frequency_per_year", value: (r) => r.frequencyPerYear },
+        { header: "next_due_date", value: (r) => r.nextDueDate },
+        { header: "days_until_due", value: (r) => daysUntil(r.nextDueDate) },
+        { header: "reminder_lead_days", value: (r) => r.reminderLeadDays },
+        { header: "contractor_name", value: (r) => r.contractorName },
+        { header: "contact_email", value: (r) => r.contactEmail },
+        { header: "contact_phone", value: (r) => r.contactPhone },
+        { header: "last_completed_at", value: (r) => r.lastCompletedAt },
+      ],
+      rows,
+    );
+    reply.header("content-type", "text/csv");
+    reply.header("content-disposition", `attachment; filename="${csvFilename("ppms")}"`);
+    return csv;
   });
 
   // Create a task.

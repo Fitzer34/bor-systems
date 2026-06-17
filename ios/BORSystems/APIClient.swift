@@ -114,6 +114,38 @@ final class APIClient {
             throw APIError.decode(error)
         }
     }
+
+    /// Authenticated GET that returns the raw response bytes (no JSON decode) —
+    /// used for non-JSON downloads like CSV exports. Shares the auth header,
+    /// sliding-token refresh and error handling with `request`.
+    func requestData(_ path: String, method: String = "GET") async throws -> Data {
+        let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: ["/"])
+        let suffix = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: base + suffix) else {
+            throw APIError.transport(URLError(.badURL))
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        if let token = token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw APIError.transport(error)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.transport(URLError(.badServerResponse))
+        }
+        if let refreshed = http.value(forHTTPHeaderField: "X-Refreshed-Token"), !refreshed.isEmpty {
+            self.token = refreshed
+        }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        return data
+    }
 }
 
 struct EmptyResponse: Decodable { init() {} }
@@ -524,5 +556,23 @@ extension APIClient {
     }
     func cancelJob(_ id: String) async throws {
         let _: EmptyResponse = try await request("/jobs/\(id)/cancel", method: "POST")
+    }
+
+    /// Fetch the work-order register as a CSV file written to a temp URL, ready
+    /// to hand to a share sheet. The backend builds the CSV (`GET /jobs.csv`) so
+    /// this matches the web and Android exports byte-for-byte.
+    func maintenanceJobsCSV() async throws -> URL {
+        let data = try await requestData("/jobs.csv")
+        let name = "work-orders-\(Self.csvDateStamp()).csv"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    private static func csvDateStamp() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: Date())
     }
 }

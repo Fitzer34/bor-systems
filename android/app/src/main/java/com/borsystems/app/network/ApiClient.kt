@@ -149,6 +149,33 @@ object ApiClient {
         }
     }
 
+    /**
+     * Authenticated GET returning the raw response bytes (no JSON decode) — for
+     * non-JSON downloads like CSV exports. Shares the auth header, sliding-token
+     * refresh and error handling with [requestImpl].
+     */
+    private suspend fun requestRaw(path: String): ByteArray = withContext(Dispatchers.IO) {
+        val url = BuildConfig.API_BASE_URL.trimEnd('/') +
+                  if (path.startsWith("/")) path else "/$path"
+        val builder = Request.Builder().url(url).get()
+        token?.let { builder.addHeader("Authorization", "Bearer $it") }
+
+        val response = try {
+            http.newCall(builder.build()).execute()
+        } catch (e: IOException) {
+            throw ApiException.Transport(e)
+        }
+        response.use { r ->
+            r.header("X-Refreshed-Token")?.takeIf { it.isNotEmpty() }?.let { token = it }
+            val bytes = r.body?.bytes() ?: ByteArray(0)
+            when {
+                r.code == 401 -> throw ApiException.Unauthorized()
+                r.code >= 400 -> throw ApiException.Http(r.code, String(bytes))
+                else -> bytes
+            }
+        }
+    }
+
     // ─── Endpoints (mirror iOS APIClient extension) ───────────────────
 
     @kotlinx.serialization.Serializable
@@ -361,4 +388,8 @@ object ApiClient {
     suspend fun cancelJob(id: String) {
         request<Unit>("/jobs/$id/cancel", "POST")
     }
+
+    /** Work-order register as CSV bytes (`GET /jobs.csv`) — server-built, so it
+     * matches the web and iOS exports byte-for-byte. Caller writes + shares it. */
+    suspend fun maintenanceJobsCsv(): ByteArray = requestRaw("/jobs.csv")
 }

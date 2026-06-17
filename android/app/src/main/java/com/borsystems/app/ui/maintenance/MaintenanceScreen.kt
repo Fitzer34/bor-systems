@@ -6,15 +6,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.borsystems.app.network.ApiClient
 import com.borsystems.app.network.MaintenanceJob
+import kotlinx.coroutines.launch
 
 /**
  * Maintenance work orders — the CMMS jobs board (admin + supervisor).
@@ -28,6 +31,11 @@ fun MaintenanceScreen(onBack: () -> Unit, onOpenJob: (String) -> Unit) {
     var list by remember { mutableStateOf<List<MaintenanceJob>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var exporting by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
 
     suspend fun load() {
         try { list = ApiClient.maintenanceJobs(); error = null }
@@ -36,16 +44,41 @@ fun MaintenanceScreen(onBack: () -> Unit, onOpenJob: (String) -> Unit) {
     }
     LaunchedEffect(Unit) { load() }
 
+    fun exportCsv() {
+        if (exporting) return
+        exporting = true
+        scope.launch {
+            try {
+                val bytes = ApiClient.maintenanceJobsCsv()
+                CsvShare.share(context, "work-orders", bytes)
+            } catch (e: Exception) {
+                snackbar.showSnackbar("Could not export CSV.")
+            } finally {
+                exporting = false
+            }
+        }
+    }
+
     val open = list.filter { !jobIsClosed(it.status) }
     val closed = list.filter { jobIsClosed(it.status) }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text("Maintenance") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { exportCsv() }, enabled = !exporting && list.isNotEmpty()) {
+                        if (exporting) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.Share, contentDescription = "Export CSV")
+                        }
                     }
                 },
             )

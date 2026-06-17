@@ -18,6 +18,7 @@ import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import { sendEmail } from "../services/notifications.js";
 import { isAiConfigured, draftScopeOfWorks, rankQuotes } from "../services/ai.js";
+import { toCsv, csvFilename } from "../services/csv.js";
 
 const QUOTE_BASE = "https://app.hazardlink.ie";
 
@@ -122,6 +123,35 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .where(eq(schema.maintenanceJobs.organisationId, c.orgId))
       .orderBy(desc(schema.maintenanceJobs.createdAt));
     return { jobs: rows };
+  });
+
+  // Work-order register as CSV (newest first) — drives the "Export CSV" button
+  // on the maintenance dashboard and the share action on iOS / Android.
+  app.get("/jobs.csv", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.maintenanceJobs)
+      .where(eq(schema.maintenanceJobs.organisationId, c.orgId))
+      .orderBy(desc(schema.maintenanceJobs.createdAt));
+    const csv = toCsv<typeof rows[number]>(
+      [
+        { header: "id", value: (r) => r.id },
+        { header: "title", value: (r) => r.title },
+        { header: "priority", value: (r) => r.priority },
+        { header: "status", value: (r) => r.status },
+        { header: "source", value: (r) => r.source },
+        { header: "created_at", value: (r) => r.createdAt },
+        { header: "scheduled_start", value: (r) => r.scheduledStartAt },
+        { header: "completed_at", value: (r) => r.completedAt },
+        { header: "description", value: (r) => r.description },
+        { header: "completion_note", value: (r) => r.completionNote },
+      ],
+      rows,
+    );
+    reply.header("content-type", "text/csv");
+    reply.header("content-disposition", `attachment; filename="${csvFilename("work-orders")}"`);
+    return csv;
   });
 
   const jobBody = z.object({
@@ -489,6 +519,34 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     return { assets: rows };
   });
 
+  // Asset register as CSV — includes warranty expiry so it doubles as the
+  // "warranties expiring" export from the dashboard.
+  app.get("/assets.csv", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.assets)
+      .where(and(eq(schema.assets.organisationId, c.orgId), eq(schema.assets.retired, false)))
+      .orderBy(schema.assets.name);
+    const csv = toCsv<typeof rows[number]>(
+      [
+        { header: "id", value: (r) => r.id },
+        { header: "name", value: (r) => r.name },
+        { header: "category", value: (r) => r.category },
+        { header: "make", value: (r) => r.make },
+        { header: "model", value: (r) => r.model },
+        { header: "serial", value: (r) => r.serial },
+        { header: "install_date", value: (r) => r.installDate },
+        { header: "warranty_expiry", value: (r) => r.warrantyExpiry },
+        { header: "condition_score", value: (r) => r.conditionScore },
+      ],
+      rows,
+    );
+    reply.header("content-type", "text/csv");
+    reply.header("content-disposition", `attachment; filename="${csvFilename("assets")}"`);
+    return csv;
+  });
+
   const assetBody = z.object({
     name: z.string().min(1).max(160),
     category: z.string().max(120).optional(),
@@ -614,6 +672,34 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .where(eq(schema.parts.organisationId, c.orgId))
       .orderBy(schema.parts.name);
     return { parts: rows };
+  });
+
+  // Parts / inventory register as CSV. `low_stock` flags rows at/below reorder
+  // level so the spreadsheet can be filtered to a reorder list.
+  app.get("/parts.csv", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.parts)
+      .where(eq(schema.parts.organisationId, c.orgId))
+      .orderBy(schema.parts.name);
+    const csv = toCsv<typeof rows[number]>(
+      [
+        { header: "id", value: (r) => r.id },
+        { header: "name", value: (r) => r.name },
+        { header: "sku", value: (r) => r.sku },
+        { header: "unit", value: (r) => r.unit },
+        { header: "stock_qty", value: (r) => r.stockQty },
+        { header: "reorder_level", value: (r) => r.reorderLevel },
+        { header: "low_stock", value: (r) => (r.stockQty <= 0 || (r.reorderLevel > 0 && r.stockQty <= r.reorderLevel) ? "yes" : "no") },
+        { header: "unit_cost_eur", value: (r) => (r.unitCostCents == null ? "" : (r.unitCostCents / 100).toFixed(2)) },
+        { header: "supplier", value: (r) => r.supplier },
+      ],
+      rows,
+    );
+    reply.header("content-type", "text/csv");
+    reply.header("content-disposition", `attachment; filename="${csvFilename("parts")}"`);
+    return csv;
   });
 
   app.post("/parts", { preHandler: [app.authenticate, staff] }, async (req, reply) => {

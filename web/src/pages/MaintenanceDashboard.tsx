@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, apiUrl, getToken } from "../lib/api";
 
 /**
  * Maintenance dashboard — the CMMS home. KPIs over everything already captured:
@@ -26,6 +26,23 @@ function daysUntil(iso: string): number {
 function fmtDate(iso: string): string {
   const d = new Date(iso + "T00:00:00");
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+/**
+ * Download a server-generated CSV from one of the maintenance export endpoints
+ * (/jobs.csv, /ppms.csv, /parts.csv, /assets.csv). The backend builds the CSV
+ * so the web, iOS and Android all export identical files. We fetch with the
+ * auth header (an `<a download>` can't set headers) and save the blob.
+ */
+async function downloadCsv(path: string, base: string): Promise<void> {
+  const res = await fetch(apiUrl(path), { headers: { authorization: `Bearer ${getToken() ?? ""}` } });
+  if (!res.ok) throw new Error(`export failed (${res.status})`);
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${base}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 export function MaintenanceDashboard() {
@@ -57,8 +74,13 @@ export function MaintenanceDashboard() {
 
   return (
     <div className="p-6 max-w-6xl">
-      <h1 className="text-2xl font-semibold mb-1">Maintenance dashboard</h1>
-      <p className="text-sm text-slate-500 mb-6">Live overview of work, planned maintenance, assets and stock.</p>
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">Maintenance dashboard</h1>
+          <p className="text-sm text-slate-500">Live overview of work, planned maintenance, assets and stock.</p>
+        </div>
+        <ExportMenu disabled={loading} />
+      </div>
 
       {loading ? (
         <div className="text-slate-500">Loading…</div>
@@ -127,4 +149,77 @@ function Row({ main, sub, tag, tone }: { main: string; sub: string; tag: string;
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-slate-500">{children}</p>;
+}
+
+const EXPORTS: { path: string; base: string; label: string }[] = [
+  { path: "/jobs.csv", base: "work-orders", label: "Work orders" },
+  { path: "/ppms.csv", base: "ppms", label: "Planned maintenance (PPMs)" },
+  { path: "/assets.csv", base: "assets", label: "Assets & warranties" },
+  { path: "/parts.csv", base: "parts", label: "Parts & inventory" },
+];
+
+/** Header "Export CSV ▾" menu — one row per dataset, each a server-side CSV. */
+function ExportMenu({ disabled }: { disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click / Escape — the behaviour a native <details> lacks.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const run = async (path: string, base: string) => {
+    setBusy(path);
+    setError(false);
+    try {
+      await downloadCsv(path, base);
+      setOpen(false);
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded px-3 py-1.5 text-sm"
+      >
+        Export CSV ▾
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 mt-1 w-60 rounded-lg border border-slate-200 bg-white shadow-lg z-10 p-1">
+          {EXPORTS.map((e) => (
+            <button
+              key={e.path}
+              role="menuitem"
+              onClick={() => run(e.path, e.base)}
+              disabled={busy !== null}
+              className="w-full text-left text-sm px-3 py-1.5 rounded hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {busy === e.path ? `Exporting ${e.label}…` : e.label}
+            </button>
+          ))}
+          {error && <p className="text-xs text-red-600 px-3 py-1.5">Export failed — please try again.</p>}
+        </div>
+      )}
+    </div>
+  );
 }

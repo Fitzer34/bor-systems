@@ -10,6 +10,8 @@ struct MaintenanceJobsView: View {
     @State private var jobs: [MaintenanceJob] = []
     @State private var error: String?
     @State private var loaded = false
+    @State private var exporting = false
+    @State private var shareItem: ShareItem?
 
     private var openJobs: [MaintenanceJob] { jobs.filter { !jobIsClosed($0.status) } }
     private var closedJobs: [MaintenanceJob] { jobs.filter { jobIsClosed($0.status) } }
@@ -27,8 +29,25 @@ struct MaintenanceJobsView: View {
         }
         .navigationTitle("Maintenance")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { Task { await exportCsv() } } label: {
+                    if exporting { ProgressView() } else { Image(systemName: "square.and.arrow.up") }
+                }
+                .disabled(exporting || jobs.isEmpty)
+                .accessibilityLabel("Export CSV")
+            }
+        }
+        .sheet(item: $shareItem) { ActivityView(items: [$0.url]) }
         .refreshable { await refresh() }
         .task { await refresh() }
+    }
+
+    private func exportCsv() async {
+        exporting = true
+        defer { exporting = false }
+        do { shareItem = ShareItem(url: try await APIClient.shared.maintenanceJobsCSV()) }
+        catch { self.error = "Could not export CSV." }
     }
 
     @ViewBuilder private func row(_ j: MaintenanceJob) -> some View {
@@ -95,4 +114,22 @@ func priorityColor(_ p: String) -> Color {
     case "urgent": return .orange
     default: return .secondary
     }
+}
+
+// MARK: - CSV share
+
+/// Identifiable wrapper so a freshly-written CSV file URL can drive `.sheet(item:)`.
+struct ShareItem: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
+}
+
+/// Thin SwiftUI bridge to `UIActivityViewController` — the system share sheet,
+/// which lets the user save the CSV to Files, AirDrop or email it, etc.
+struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

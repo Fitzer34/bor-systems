@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exposes a "shares" subfolder of the app cache dir to the FileProvider so
+     exported CSV files can be handed to other apps via a content:// URI. -->
+<paths>
+    <cache-path name="shares" path="shares/" />
+</paths>
