@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, apiUrl, getToken } from "../lib/api";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from "recharts";
 
 /**
  * Maintenance dashboard — the CMMS home. KPIs over everything already captured:
@@ -10,7 +11,7 @@ import { api, apiUrl, getToken } from "../lib/api";
  * existing endpoints (no extra backend).
  */
 
-interface Job { id: string; title: string; status: string; priority?: string }
+interface Job { id: string; title: string; status: string; priority?: string; createdAt?: string }
 interface Ppm { id: string; title: string; nextDueDate: string; active: boolean; reminderLeadDays: number; contractorName: string | null }
 interface Asset { id: string; name: string; warrantyExpiry: string | null }
 interface Part { id: string; name: string; stockQty: number; reorderLevel: number }
@@ -26,6 +27,29 @@ function daysUntil(iso: string): number {
 function fmtDate(iso: string): string {
   const d = new Date(iso + "T00:00:00");
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  logged: "Logged", scoped: "Scoped", tendering: "Tendering", awarded: "Awarded",
+  scheduled: "Scheduled", in_progress: "In progress", completed: "Completed", cancelled: "Cancelled",
+};
+const STATUS_COLOR: Record<string, string> = {
+  logged: "#94a3b8", scoped: "#94a3b8", tendering: "#2563eb", awarded: "#4f46e5",
+  scheduled: "#4f46e5", in_progress: "#f59e0b", completed: "#16a34a", cancelled: "#94a3b8",
+};
+
+/** Rolling 7-day buckets, oldest→newest, ending today (for the trend chart). */
+function lastNWeeks(n: number): { start: number; end: number; label: string }[] {
+  const dayMs = 86_400_000;
+  const now = new Date();
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() + dayMs;
+  const out: { start: number; end: number; label: string }[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const end = todayEnd - i * 7 * dayMs;
+    const start = end - 7 * dayMs;
+    out.push({ start, end, label: new Date(start).toLocaleDateString(undefined, { day: "numeric", month: "short" }) });
+  }
+  return out;
 }
 
 /**
@@ -67,7 +91,19 @@ export function MaintenanceDashboard() {
       .sort((a, b) => (a.warrantyExpiry ?? "").localeCompare(b.warrantyExpiry ?? ""));
     const lowParts = parts.filter((p) => p.stockQty <= 0 || (p.reorderLevel > 0 && p.stockQty <= p.reorderLevel));
 
-    return { openJobs, emergencyOpen, overduePpms, dueSoonPpms, compliance, warrantyExpiring, lowParts, ppmCount: ppms.length };
+    // Open work orders grouped by status (donut). Only statuses with ≥1 open job.
+    const statusOrder = ["logged", "scoped", "tendering", "awarded", "scheduled", "in_progress"];
+    const byStatus = statusOrder
+      .map((s) => ({ key: s, label: STATUS_LABEL[s] ?? s, value: openJobs.filter((j) => j.status === s).length, color: STATUS_COLOR[s] ?? "#94a3b8" }))
+      .filter((d) => d.value > 0);
+
+    // Jobs logged per week for the last 12 weeks (trend area chart).
+    const weekly = lastNWeeks(12).map(({ start, end, label }) => ({
+      week: label,
+      count: jobs.filter((j) => { const t = j.createdAt ? Date.parse(j.createdAt) : NaN; return t >= start && t < end; }).length,
+    }));
+
+    return { openJobs, emergencyOpen, overduePpms, dueSoonPpms, compliance, warrantyExpiring, lowParts, ppmCount: ppms.length, byStatus, weekly };
   }, [jobsQ.data, ppmsQ.data, assetsQ.data, partsQ.data]);
 
   const loading = jobsQ.isLoading || ppmsQ.isLoading || assetsQ.isLoading || partsQ.isLoading;
@@ -91,6 +127,50 @@ export function MaintenanceDashboard() {
             <Kpi to="/ppms" label="PPM compliance" value={`${m.compliance}%`} sub={`${m.overduePpms.length} overdue · ${m.dueSoonPpms.length} due soon`} tone={m.overduePpms.length ? "amber" : "emerald"} />
             <Kpi to="/assets" label="Warranties expiring" value={m.warrantyExpiring.length} sub="next 90 days" tone={m.warrantyExpiring.length ? "amber" : "default"} />
             <Kpi to="/parts" label="Low-stock parts" value={m.lowParts.length} sub="at/below reorder" tone={m.lowParts.length ? "red" : "default"} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-6">
+            <ChartCard title="Work orders logged — last 12 weeks">
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={m.weekly} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="jobsGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2563eb" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="week" tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} interval="preserveStartEnd" />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false} axisLine={false} width={28} />
+                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
+                  <Area type="monotone" dataKey="count" name="Jobs" stroke="#2563eb" strokeWidth={2} fill="url(#jobsGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Open work orders by status">
+              {m.byStatus.length === 0 ? (
+                <div className="h-[220px] flex items-center justify-center text-sm text-slate-500">No open work orders 🎉</div>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={188}>
+                    <PieChart>
+                      <Pie data={m.byStatus} dataKey="value" nameKey="label" cx="50%" cy="50%" innerRadius={52} outerRadius={84} paddingAngle={2}>
+                        {m.byStatus.map((d) => <Cell key={d.key} fill={d.color} />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center">
+                    {m.byStatus.map((d) => (
+                      <span key={d.key} className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} /> {d.label} ({d.value})
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
+            </ChartCard>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-6">
@@ -130,6 +210,15 @@ function Panel({ title, to, children }: { title: string; to: string; children: R
         <Link to={to} className="text-xs text-blue-700 hover:underline">View all →</Link>
       </div>
       <div className="space-y-1.5">{children}</div>
+    </div>
+  );
+}
+
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-semibold text-slate-900 mb-3">{title}</h2>
+      {children}
     </div>
   );
 }
