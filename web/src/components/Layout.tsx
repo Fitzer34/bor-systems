@@ -107,6 +107,7 @@ export function Layout() {
           {activeSection === "maintenance" && isStaff && (
             <>
               <NavItem to="/maintenance-dashboard">Dashboard</NavItem>
+              <NavItem to="/maintenance-kpis">KPIs</NavItem>
               <NavItem to="/maintenance">Jobs</NavItem>
               <NavItem to="/assets">Assets</NavItem>
               <NavItem to="/parts">Parts</NavItem>

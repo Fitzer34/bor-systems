@@ -591,6 +591,155 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     return row;
   });
 
+  // ─── Maintenance KPIs / reliability (read-only, computed) ──────────────────
+  // The "world-class maintenance" metrics: PM compliance, MTTR, MTBF, backlog,
+  // planned-vs-reactive, cost, reliability bad-actors and repair-or-replace.
+  // All derived from data already captured — no extra tables.
+  app.get("/maintenance/kpis", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const DAY = 86_400_000;
+    const now = Date.now();
+    const monthStart = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); })();
+    const d90 = now - 90 * DAY;
+    const d180 = now - 180 * DAY;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const toMs = (v: unknown): number | null => {
+      if (!v) return null;
+      if (v instanceof Date) return v.getTime();
+      const s = String(v);
+      const t = Date.parse(s.length === 10 ? s + "T00:00:00" : s);
+      return isNaN(t) ? null : t;
+    };
+
+    // Jobs with the awarded-quote amount (cost) joined in.
+    const jobs = await db
+      .select({
+        assetId: schema.maintenanceJobs.assetId,
+        source: schema.maintenanceJobs.source,
+        status: schema.maintenanceJobs.status,
+        createdAt: schema.maintenanceJobs.createdAt,
+        completedAt: schema.maintenanceJobs.completedAt,
+        amountCents: schema.jobQuotes.amountCents,
+      })
+      .from(schema.maintenanceJobs)
+      .leftJoin(schema.jobQuotes, eq(schema.jobQuotes.id, schema.maintenanceJobs.awardedQuoteId))
+      .where(eq(schema.maintenanceJobs.organisationId, c.orgId));
+
+    const ppmRows = await db
+      .select({ nextDueDate: schema.ppms.nextDueDate, active: schema.ppms.active })
+      .from(schema.ppms)
+      .where(eq(schema.ppms.organisationId, c.orgId));
+
+    const assetRows = await db
+      .select({
+        id: schema.assets.id, name: schema.assets.name, criticality: schema.assets.criticality,
+        installDate: schema.assets.installDate, expectedLifeYears: schema.assets.expectedLifeYears,
+        replacementCostCents: schema.assets.replacementCostCents,
+      })
+      .from(schema.assets)
+      .where(and(eq(schema.assets.organisationId, c.orgId), eq(schema.assets.retired, false)));
+
+    const planned = (j: typeof jobs[number]) => j.source === "ppm";
+    const done = (j: typeof jobs[number]) => j.status === "completed" && !!j.completedAt;
+
+    // Backlog
+    const open = jobs.filter((j) => j.status !== "completed" && j.status !== "cancelled");
+    let backlogOldestDays = 0;
+    for (const j of open) backlogOldestDays = Math.max(backlogOldestDays, Math.round((now - (toMs(j.createdAt) ?? now)) / DAY));
+
+    // Throughput
+    const completed = jobs.filter(done);
+    const completedThisMonth = completed.filter((j) => (toMs(j.completedAt) ?? 0) >= monthStart).length;
+    const comp90 = completed.filter((j) => (toMs(j.completedAt) ?? 0) >= d90);
+    const planned90 = comp90.filter(planned).length;
+    const reactive90 = comp90.length - planned90;
+    const plannedSharePct = comp90.length ? Math.round((planned90 / comp90.length) * 100) : null;
+
+    // MTTR — mean days to close a reactive job (last 180d)
+    const reactiveComp = completed.filter((j) => !planned(j) && (toMs(j.completedAt) ?? 0) >= d180 && j.createdAt);
+    const mttrDays = reactiveComp.length
+      ? Math.round((reactiveComp.reduce((s, j) => s + ((toMs(j.completedAt)! - toMs(j.createdAt)!)), 0) / reactiveComp.length / DAY) * 10) / 10
+      : null;
+
+    // Cost (awarded quotes) on jobs completed in the last 90 days
+    const spend90Cents = comp90.reduce((s, j) => s + (j.amountCents ?? 0), 0);
+
+    // Status mix
+    const byStatus: Record<string, number> = {};
+    for (const j of jobs) byStatus[j.status] = (byStatus[j.status] ?? 0) + 1;
+
+    // PM compliance — active PPMs not overdue
+    const activePpms = ppmRows.filter((p) => p.active);
+    const overduePpms = activePpms.filter((p) => p.nextDueDate < todayStr);
+    const pmCompliancePct = activePpms.length ? Math.round(((activePpms.length - overduePpms.length) / activePpms.length) * 100) : null;
+
+    // Per-asset reactive history → MTBF + bad actors; per-asset spend → repair-or-replace
+    const reactiveTimes = new Map<string, number[]>();
+    const reactiveCount = new Map<string, number>();
+    const spendByAsset = new Map<string, number>();
+    for (const j of jobs) {
+      if (!j.assetId) continue;
+      if (!planned(j)) {
+        reactiveCount.set(j.assetId, (reactiveCount.get(j.assetId) ?? 0) + 1);
+        const t = toMs(j.createdAt);
+        if (t) { const a = reactiveTimes.get(j.assetId) ?? []; a.push(t); reactiveTimes.set(j.assetId, a); }
+      }
+      if (done(j) && j.amountCents) spendByAsset.set(j.assetId, (spendByAsset.get(j.assetId) ?? 0) + j.amountCents);
+    }
+    // MTBF — mean gap between consecutive reactive jobs, averaged across assets with ≥2
+    const mtbfVals: number[] = [];
+    for (const times of reactiveTimes.values()) {
+      if (times.length < 2) continue;
+      times.sort((a, b) => a - b);
+      let gaps = 0; for (let i = 1; i < times.length; i++) gaps += times[i]! - times[i - 1]!;
+      mtbfVals.push(gaps / (times.length - 1));
+    }
+    const mtbfDays = mtbfVals.length ? Math.round(mtbfVals.reduce((a, b) => a + b, 0) / mtbfVals.length / DAY) : null;
+
+    const assetById = new Map(assetRows.map((a) => [a.id, a]));
+    const badActors = [...reactiveCount.entries()]
+      .map(([id, count]) => ({ id, count, asset: assetById.get(id) }))
+      .filter((x) => x.asset)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6)
+      .map((x) => ({ assetId: x.id, name: x.asset!.name, criticality: x.asset!.criticality, reactiveJobs: x.count, spendCents: spendByAsset.get(x.id) ?? 0 }));
+
+    const ageYears = (installDate: unknown): number | null => {
+      const t = toMs(installDate);
+      return t == null ? null : Math.round(((now - t) / DAY / 365.25) * 10) / 10;
+    };
+    let assetsPastLife = 0;
+    const repairOrReplace = assetRows
+      .map((a) => {
+        const age = ageYears(a.installDate);
+        const spend = spendByAsset.get(a.id) ?? 0;
+        const pastLife = age != null && a.expectedLifeYears != null && age >= a.expectedLifeYears;
+        if (pastLife) assetsPastLife++;
+        const ratio = a.replacementCostCents && a.replacementCostCents > 0 ? spend / a.replacementCostCents : null;
+        const costFlag = ratio != null && ratio >= 0.5;
+        if (!pastLife && !costFlag) return null;
+        const reasons: string[] = [];
+        if (pastLife) reasons.push("past expected life");
+        if (costFlag) reasons.push("repairs ≥ 50% of replacement");
+        return { assetId: a.id, name: a.name, criticality: a.criticality, ageYears: age, expectedLifeYears: a.expectedLifeYears, spendCents: spend, replacementCostCents: a.replacementCostCents, reasons };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.spendCents - a.spendCents)
+      .slice(0, 8);
+
+    return {
+      pmCompliancePct, activePpms: activePpms.length, overduePpms: overduePpms.length,
+      mttrDays, mtbfDays,
+      openBacklog: open.length, backlogOldestDays,
+      completedThisMonth,
+      plannedSharePct, planned90, reactive90,
+      spend90Cents,
+      byStatus,
+      badActors,
+      repairOrReplace, assetsPastLife,
+    };
+  });
+
   // ─── AI helpers (Claude) ───────────────────────────────────────────────────
   // Gated on ANTHROPIC_API_KEY — the web only shows the buttons when configured.
   app.get("/ai/status", { preHandler: [app.authenticate, staff] }, async () => {

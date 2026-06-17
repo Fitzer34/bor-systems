@@ -31,6 +31,7 @@ import { Maintenance } from "./pages/Maintenance";
 import { Assets } from "./pages/Assets";
 import { Parts } from "./pages/Parts";
 import { MaintenanceDashboard } from "./pages/MaintenanceDashboard";
+import { MaintenanceKpis } from "./pages/MaintenanceKpis";
 import { Inspections } from "./pages/Inspections";
 import { Incidents } from "./pages/Incidents";
 import { Checkpoints } from "./pages/Checkpoints";
@@ -117,6 +118,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="assets" element={<RequireAuth role={["admin", "supervisor"]}><Assets /></RequireAuth>} />
               <Route path="parts" element={<RequireAuth role={["admin", "supervisor"]}><Parts /></RequireAuth>} />
               <Route path="maintenance-dashboard" element={<RequireAuth role={["admin", "supervisor"]}><MaintenanceDashboard /></RequireAuth>} />
+              <Route path="maintenance-kpis" element={<RequireAuth role={["admin", "supervisor"]}><MaintenanceKpis /></RequireAuth>} />
               <Route path="incidents" element={<RequireAuth role={["admin", "supervisor"]}><Incidents /></RequireAuth>} />
               <Route path="checkpoints" element={<RequireAuth role={["admin", "supervisor"]}><Checkpoints /></RequireAuth>} />
               <Route path="lone-worker" element={<LoneWorker />} />
