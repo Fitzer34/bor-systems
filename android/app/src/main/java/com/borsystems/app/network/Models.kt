@@ -298,6 +298,23 @@ data class MaintenanceJob(
 @Serializable
 data class MaintenanceJobsResponse(val jobs: List<MaintenanceJob>)
 
+/** A predictive-maintenance usage meter on an asset (server computes status). */
+@Serializable
+data class Meter(
+    val id: String,
+    val name: String,
+    val unit: String? = null,
+    val assetName: String? = null,
+    val currentValue: Int,
+    val intervalValue: Int? = null,
+    val remaining: Int? = null,
+    val pct: Int? = null,
+    val status: String,   // due | due_soon | ok | tracking
+)
+
+@Serializable
+data class MetersResponse(val meters: List<Meter>)
+
 @Serializable
 data class JobEvent(
     val id: String,

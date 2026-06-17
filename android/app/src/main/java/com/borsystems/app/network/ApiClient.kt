@@ -392,4 +392,18 @@ object ApiClient {
     /** Work-order register as CSV bytes (`GET /jobs.csv`) — server-built, so it
      * matches the web and iOS exports byte-for-byte. Caller writes + shares it. */
     suspend fun maintenanceJobsCsv(): ByteArray = requestRaw("/jobs.csv")
+
+    // ─── Meters (predictive maintenance) ───────────────────────────────────
+    suspend fun meters(): List<Meter> = request<MetersResponse>("/meters").meters
+
+    @kotlinx.serialization.Serializable
+    private data class MeterReadingBody(val value: Int, val note: String?)
+
+    suspend fun logMeterReading(id: String, value: Int, note: String?) {
+        post<Unit, MeterReadingBody>("/meters/$id/readings", MeterReadingBody(value, note))
+    }
+
+    suspend fun serviceMeter(id: String) {
+        request<Unit>("/meters/$id/service", "POST")
+    }
 }

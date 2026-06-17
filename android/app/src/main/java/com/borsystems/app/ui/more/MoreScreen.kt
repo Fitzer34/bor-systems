@@ -89,6 +89,7 @@ private fun buildItems(
         list += MoreItemSpec(Icons.Default.Group,         "Users")              { nav.navigate("users") }
         list += MoreItemSpec(Icons.Default.Settings,      "Settings")           { nav.navigate("settings") }
         list += MoreItemSpec(Icons.Default.Construction,  "Maintenance jobs")   { nav.navigate("maintenance") }
+        list += MoreItemSpec(Icons.Default.Speed,         "Meters")             { nav.navigate("meters") }
         list += MoreItemSpec(Icons.Default.Build,         "PPMs")               { nav.navigate("ppms") }
         // Analytics + Notifications log remain web-only — heavy charting /
         // long-tail screens that aren't worth a native port yet.

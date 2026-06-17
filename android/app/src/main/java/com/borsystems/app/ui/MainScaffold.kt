@@ -20,6 +20,7 @@ import com.borsystems.app.ui.hangers.HangersScreen
 import com.borsystems.app.ui.home.HomeScreen
 import com.borsystems.app.ui.maintenance.MaintenanceDetailScreen
 import com.borsystems.app.ui.maintenance.MaintenanceScreen
+import com.borsystems.app.ui.maintenance.MetersScreen
 import com.borsystems.app.ui.more.MoreScreen
 import com.borsystems.app.ui.ppms.PpmsScreen
 import com.borsystems.app.ui.profile.EditProfileScreen
@@ -108,6 +109,7 @@ fun MainScaffold() {
             composable("users")             { UsersScreen(onBack = { nav.popBackStack() }) }
             composable("settings")          { SettingsScreen(onBack = { nav.popBackStack() }) }
             composable("ppms")              { PpmsScreen(onBack = { nav.popBackStack() }) }
+            composable("meters")            { MetersScreen(onBack = { nav.popBackStack() }) }
             composable("maintenance")       {
                 MaintenanceScreen(
                     onBack = { nav.popBackStack() },
