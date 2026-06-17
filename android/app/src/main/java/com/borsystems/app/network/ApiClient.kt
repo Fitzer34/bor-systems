@@ -89,22 +89,39 @@ object ApiClient {
 
     private val JSON_TYPE = "application/json".toMediaType()
 
+    // Separate names so callers don't have to disambiguate overloads.
+    // `request` for GETs and bodyless POSTs; `post` for POSTs with a body
+    // (B is reified so kotlinx.serialization knows the serializer at the
+    // call site — passing Any? at runtime fails because there's no
+    // serializer for kotlin.Any).
     private suspend inline fun <reified T> request(
         path: String,
         method: String = "GET",
-        body: Any? = null,
+    ): T = requestImpl(path, method, null)
+
+    private suspend inline fun <reified T, reified B : Any> post(
+        path: String,
+        body: B,
+    ): T = requestImpl(path, "POST", json.encodeToString(kotlinx.serialization.serializer<B>(), body))
+
+    private suspend inline fun <reified T, reified B : Any> patch(
+        path: String,
+        body: B,
+    ): T = requestImpl(path, "PATCH", json.encodeToString(kotlinx.serialization.serializer<B>(), body))
+
+    private suspend inline fun <reified T> requestImpl(
+        path: String,
+        method: String,
+        bodyJson: String?,
     ): T = withContext(Dispatchers.IO) {
         val url = BuildConfig.API_BASE_URL.trimEnd('/') +
                   if (path.startsWith("/")) path else "/$path"
 
-        val reqBody: RequestBody? = body?.let {
-            json.encodeToString(kotlinx.serialization.serializer(), it)
-                .toRequestBody(JSON_TYPE)
-        }
+        val reqBody: RequestBody? = bodyJson?.toRequestBody(JSON_TYPE)
 
         val builder = Request.Builder().url(url).method(method, reqBody)
         token?.let { builder.addHeader("Authorization", "Bearer $it") }
-        if (body != null) builder.addHeader("Content-Type", "application/json")
+        if (bodyJson != null) builder.addHeader("Content-Type", "application/json")
 
         val response = try {
             http.newCall(builder.build()).execute()
@@ -146,17 +163,33 @@ object ApiClient {
     @kotlinx.serialization.Serializable
     private data class CloseBody(val reason: String, val note: String? = null)
 
+    @kotlinx.serialization.Serializable
+    private data class ProfileBody(val name: String, val phoneE164: String? = null)
+
+    @kotlinx.serialization.Serializable
+    private data class PasswordBody(val currentPassword: String, val newPassword: String)
+
     suspend fun login(email: String, password: String): LoginResponse =
-        request("/auth/login", "POST", LoginBody(email, password))
+        post("/auth/login", LoginBody(email, password))
 
     suspend fun currentUser(): CurrentUser = request("/users/me")
 
+    suspend fun updateProfile(name: String, phoneE164: String?): CurrentUser =
+        patch<CurrentUser, ProfileBody>("/users/me", ProfileBody(name, phoneE164))
+
+    suspend fun changePassword(currentPassword: String, newPassword: String) {
+        post<Unit, PasswordBody>(
+            "/users/me/password",
+            PasswordBody(currentPassword, newPassword),
+        )
+    }
+
     suspend fun setOnDuty(onDuty: Boolean) {
-        request<Unit>("/auth/duty", "POST", DutyBody(onDuty))
+        post<Unit, DutyBody>("/auth/duty", DutyBody(onDuty))
     }
 
     suspend fun registerPushToken(fcmToken: String) {
-        request<Unit>("/users/me/push-token", "POST", PushTokenBody(fcmToken))
+        post<Unit, PushTokenBody>("/users/me/push-token", PushTokenBody(fcmToken))
     }
 
     suspend fun activeAlerts(): List<ActiveAlert> {
@@ -177,7 +210,7 @@ object ApiClient {
             },
             note = note,
         )
-        request<Unit>("/alerts/$id/close", "POST", body)
+        post<Unit, CloseBody>("/alerts/$id/close", body)
     }
 
     // ─── Dispatches ─────────────────────────────────────────────────
@@ -190,8 +223,8 @@ object ApiClient {
         return res.dispatches
     }
     suspend fun sendDispatch(recipientUserId: String, zoneId: String?, message: String): DispatchItem {
-        return request<DispatchItem>(
-            "/dispatches", "POST",
+        return post<DispatchItem, DispatchBody>(
+            "/dispatches",
             DispatchBody(recipientUserId, zoneId, message),
         )
     }
@@ -235,6 +268,33 @@ object ApiClient {
 
     suspend fun appSettings(): AppSettings = request("/settings")
 
+    @kotlinx.serialization.Serializable
+    private data class SettingBody(val value: Int? = null, val enabled: Boolean? = null)
+
+    suspend fun setAckTimer(minutes: Int) {
+        post<Unit, SettingBody>("/settings/ack-timer", SettingBody(value = minutes))
+    }
+    suspend fun setResolutionTimer(minutes: Int) {
+        post<Unit, SettingBody>("/settings/resolution-timer", SettingBody(value = minutes))
+    }
+    suspend fun setExpectedCleaningTime(minutes: Int) {
+        post<Unit, SettingBody>("/settings/expected-cleaning-time", SettingBody(value = minutes))
+    }
+    suspend fun setLowBatteryThreshold(pct: Int) {
+        post<Unit, SettingBody>("/settings/low-battery-threshold", SettingBody(value = pct))
+    }
+    suspend fun setDefaultAudibleAlarm(enabled: Boolean) {
+        post<Unit, SettingBody>("/settings/default-audible-alarm", SettingBody(enabled = enabled))
+    }
+
+    suspend fun spillsReport(fromIso: String, toIso: String): SpillsResponse =
+        request("/reports/spills?from=$fromIso&to=$toIso")
+
+    suspend fun auditLog(): List<AuditEntry> {
+        val res = request<AuditResponse>("/admin/audit-log")
+        return res.entries
+    }
+
     // ─── Users ──────────────────────────────────────────────────────
 
     suspend fun listUsers(): List<UserSummary> {
@@ -260,4 +320,45 @@ object ApiClient {
     )
     suspend fun fetchSignTagForAlert(alertId: String): SignTagInfo =
         request("/sign-tags/for-alert/$alertId")
+
+    // ─── PPMs (planned preventive maintenance) ──────────────────────
+
+    suspend fun listPpms(): List<PPM> = request<PPMsResponse>("/ppms").ppms
+    suspend fun createPpm(body: PpmInput): Unit = post("/ppms", body)
+    suspend fun updatePpm(id: String, body: PpmInput): Unit = patch("/ppms/$id", body)
+    suspend fun completePpm(id: String): Unit = request("/ppms/$id/complete", "POST")
+    suspend fun deletePpm(id: String): Unit = request("/ppms/$id", "DELETE")
+
+    // ─── Maintenance jobs (CMMS work orders) ─────────────────────────
+    // Mirror the iOS APIClient extension. Lifecycle only (tender/quote/award
+    // stay on the web). start/cancel are bodyless POSTs — same as the alert
+    // and dispatch acknowledge calls above.
+
+    @kotlinx.serialization.Serializable
+    private data class ScheduleJobBody(val scheduledStartAt: String)
+
+    @kotlinx.serialization.Serializable
+    private data class CompleteJobBody(val completionNote: String? = null)
+
+    suspend fun maintenanceJobs(): List<MaintenanceJob> =
+        request<MaintenanceJobsResponse>("/jobs").jobs
+
+    suspend fun maintenanceJobDetail(id: String): JobDetailResponse =
+        request("/jobs/$id")
+
+    suspend fun scheduleJob(id: String, scheduledStartAt: String) {
+        post<Unit, ScheduleJobBody>("/jobs/$id/schedule", ScheduleJobBody(scheduledStartAt))
+    }
+
+    suspend fun startJob(id: String) {
+        request<Unit>("/jobs/$id/start", "POST")
+    }
+
+    suspend fun completeJob(id: String, note: String?) {
+        post<Unit, CompleteJobBody>("/jobs/$id/complete", CompleteJobBody(note))
+    }
+
+    suspend fun cancelJob(id: String) {
+        request<Unit>("/jobs/$id/cancel", "POST")
+    }
 }

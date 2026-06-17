@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DispatchScreen() {
+fun DispatchScreen(nav: androidx.navigation.NavController? = null) {
     val user by AuthStore.user.collectAsState()
     val canSend = user?.role == UserRole.admin || user?.role == UserRole.supervisor
 

@@ -45,8 +45,8 @@ fun MoreScreen(nav: NavController) {
 private data class MoreItemSpec(
     val icon: ImageVector,
     val label: String,
-    val onClick: () -> Unit,
     val destructive: Boolean = false,
+    val onClick: () -> Unit,
 )
 
 @Composable
@@ -80,17 +80,23 @@ private fun buildItems(
     onLogout: () -> Unit,
 ): List<MoreItemSpec> {
     val list = mutableListOf<MoreItemSpec>()
+    // Hangers shows for everyone — cleaners need to see the inventory
+    // they're responsible for; admins manage devices.
+    list += MoreItemSpec(Icons.Default.Inventory2,    "Hangers")            { nav.navigate("hangers") }
     if (isStaff) {
         list += MoreItemSpec(Icons.Default.LocationCity,  "Sites overview")     { nav.navigate("sites") }
+        list += MoreItemSpec(Icons.Default.Description,   "Reports")            { nav.navigate("reports") }
+        list += MoreItemSpec(Icons.Default.Group,         "Users")              { nav.navigate("users") }
+        list += MoreItemSpec(Icons.Default.Settings,      "Settings")           { nav.navigate("settings") }
+        list += MoreItemSpec(Icons.Default.Construction,  "Maintenance jobs")   { nav.navigate("maintenance") }
+        list += MoreItemSpec(Icons.Default.Build,         "PPMs")               { nav.navigate("ppms") }
+        // Analytics + Notifications log remain web-only — heavy charting /
+        // long-tail screens that aren't worth a native port yet.
         list += MoreItemSpec(Icons.Default.Analytics,     "Analytics")          { openWeb(ctx, "/analytics") }
-        list += MoreItemSpec(Icons.Default.Map,           "Floor plans")        { openWeb(ctx, "/floor-plans") }
-        list += MoreItemSpec(Icons.Default.Group,         "Users")              { openWeb(ctx, "/users") }
-        list += MoreItemSpec(Icons.Default.Settings,      "Settings")           { openWeb(ctx, "/settings") }
-        list += MoreItemSpec(Icons.Default.Description,   "Reports")            { openWeb(ctx, "/reports") }
         list += MoreItemSpec(Icons.Default.Notifications, "Notifications log")  { openWeb(ctx, "/notifications-log") }
     }
     if (isAdmin) {
-        list += MoreItemSpec(Icons.Default.History,       "Audit log")          { openWeb(ctx, "/audit-log") }
+        list += MoreItemSpec(Icons.Default.History,       "Audit log")          { nav.navigate("audit-log") }
     }
     list += MoreItemSpec(Icons.Default.Person,            "My profile")         { nav.navigate("profile") }
     list += MoreItemSpec(Icons.Default.Logout,            "Log out", destructive = true, onClick = onLogout)

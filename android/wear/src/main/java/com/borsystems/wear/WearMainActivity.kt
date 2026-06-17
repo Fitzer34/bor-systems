@@ -3,6 +3,7 @@ package com.borsystems.wear
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
@@ -151,8 +152,3 @@ private fun AlertRow(alert: WatchAlert, onAck: () -> Unit, onClose: () -> Unit) 
     }
 }
 
-// background() needs to be from foundation, not wear
-@Composable
-private fun Modifier.background(color: Color) = this.then(
-    androidx.compose.foundation.background(color)
-)

@@ -1,18 +1,24 @@
 package com.borsystems.app.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.borsystems.app.auth.AuthStore
 import com.borsystems.app.network.ActiveAlert
 import com.borsystems.app.network.AlertKind
 import com.borsystems.app.network.AlertStatus
@@ -24,23 +30,21 @@ import kotlinx.coroutines.launch
 /**
  * Active alerts list — mirrors iOS HomeView.swift.
  *
- * Auto-refreshes every 5 seconds while on screen. Each row shows zone +
- * floor + status, with "I'm on it" / "It's done" actions (same UX as
- * the Apple Watch view).
+ * Top bar matches iOS: user name + role, with the duty-switch toggle on
+ * the trailing side so a cleaner can come on/off duty from one tap.
+ * Auto-refreshes every 5 seconds while on screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onAlertTap: (ActiveAlert) -> Unit = {}) {
     val scope = rememberCoroutineScope()
+    val user by AuthStore.user.collectAsState()
     var alerts by remember { mutableStateOf<List<ActiveAlert>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
     suspend fun refresh() {
         try {
-            // Filter planned_cleaning out of the alerts list — they only
-            // appear as blue map pins, never as actionable alerts. Same as
-            // iOS + web + watch.
             alerts = ApiClient.activeAlerts().filter { it.kind == AlertKind.spill }
             error = null
         } catch (e: Exception) {
@@ -60,7 +64,33 @@ fun HomeScreen() {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Active alerts") })
+            CenterAlignedTopAppBar(
+                title = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            user?.name ?: "HazardLink",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        user?.role?.let {
+                            Text(
+                                it.name.replaceFirstChar(Char::uppercase),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    user?.let { u ->
+                        DutyChip(
+                            onDuty = u.onDuty,
+                            onToggle = { AuthStore.setOnDuty(!u.onDuty) },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                },
+            )
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
@@ -76,6 +106,7 @@ fun HomeScreen() {
                     items(alerts, key = { it.id }) { alert ->
                         AlertCard(
                             alert = alert,
+                            onTap = { onAlertTap(alert) },
                             onAck = {
                                 scope.launch {
                                     try { ApiClient.acknowledgeAlert(alert.id); refresh() }
@@ -106,49 +137,112 @@ fun HomeScreen() {
 }
 
 @Composable
+private fun DutyChip(onDuty: Boolean, onToggle: () -> Unit) {
+    val color = if (onDuty) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(color.copy(alpha = 0.15f))
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(8.dp)
+                .background(color, CircleShape)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            if (onDuty) "On duty" else "Off duty",
+            style = MaterialTheme.typography.labelMedium,
+            color = color,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
 private fun AllClear(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            Icons.Default.CheckCircle,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.size(64.dp),
+        Box(
+            Modifier
+                .size(96.dp)
+                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(56.dp),
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        Text(
+            "All clear",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.height(12.dp))
-        Text("All clear", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(4.dp))
         Text(
             "No active alerts",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 @Composable
-private fun AlertCard(alert: ActiveAlert, onAck: () -> Void = {}, onDone: () -> Void = {}) {
+private fun AlertCard(
+    alert: ActiveAlert,
+    onTap: () -> Unit = {},
+    onAck: () -> Unit = {},
+    onDone: () -> Unit = {},
+) {
     val isAcked = alert.status == AlertStatus.acknowledged
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val dotColor = if (isAcked) Color(0xFFFFA000) else Color(0xFFE53935)
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onTap),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier.size(10.dp)
-                        .background(if (isAcked) Color(0xFFFFA000) else Color(0xFFE53935), CircleShape)
-                )
-                Spacer(Modifier.width(8.dp))
+                    Modifier
+                        .size(36.dp)
+                        .background(dotColor.copy(alpha = 0.15f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = dotColor,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        alert.zoneName ?: "Unknown zone",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    alert.floorName?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Text(
-                    alert.zoneName ?: "Unknown zone",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-            alert.floorName?.let {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (isAcked) "Acknowledged" else "Live",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = dotColor,
+                    fontWeight = FontWeight.Bold,
                 )
             }
             Spacer(Modifier.height(12.dp))
@@ -169,7 +263,3 @@ private fun AlertCard(alert: ActiveAlert, onAck: () -> Void = {}, onDone: () -> 
         }
     }
 }
-
-// Kotlin doesn't have a Void return type for lambdas — Unit serves that
-// purpose. Type alias so the call-site signatures read like iOS callbacks.
-private typealias Void = Unit

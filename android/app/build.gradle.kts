@@ -11,6 +11,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlin.plugin.compose")
     // Apply google-services only when google-services.json is present —
     // keeps the project building before Firebase is set up.
     // id("com.google.gms.google-services")
@@ -126,6 +127,11 @@ dependencies {
 
     // ─── UWB (AirTag-style Find Sign) ──────────────────────────────────
     implementation("androidx.core.uwb:uwb:1.0.0-alpha10")
+
+    // ─── Image loading (Compose) ──────────────────────────────────────
+    // Coil 2 — loads remote floor-plan images from /uploads/. Same role
+    // as AsyncImage on iOS.
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     // ─── Bluetooth Low Energy (mirrors iOS CoreBluetooth) ─────────────
     // No external lib — Android's android.bluetooth.* package is fine.
