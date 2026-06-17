@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, getToken } from "../lib/api";
+import { api, apiUrl, getToken } from "../lib/api";
 
 interface Spill {
   alertId: string;
@@ -30,7 +30,9 @@ export function Reports() {
   });
 
   const downloadCsv = () => {
-    const url = `/api/reports/spills.csv?${params}`;
+    // Use apiUrl() so this resolves to the Render backend in prod — a hardcoded
+    // /api prefix only works behind the Vite dev proxy and 404s once deployed.
+    const url = apiUrl(`/reports/spills.csv?${params}`);
     fetch(url, { headers: { authorization: `Bearer ${getToken() ?? ""}` } })
       .then((r) => r.blob())
       .then((blob) => {
