@@ -7,6 +7,8 @@
 //   HangersView  → ui/hangers/HangersScreen.kt  (TODO)
 //   ...etc.
 
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,6 +17,14 @@ plugins {
     // Apply google-services only when google-services.json is present —
     // keeps the project building before Firebase is set up.
     // id("com.google.gms.google-services")
+}
+
+// Release (Play upload) signing — credentials live in the gitignored
+// keystore.properties. Absent on a fresh checkout, so guard on it: release
+// builds then fall back to unsigned and the bundle task notes it.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
 android {
@@ -74,6 +84,17 @@ android {
         }
     }
 
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -86,6 +107,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Use the upload key when keystore.properties is present; otherwise
+            // the bundle is unsigned (CI without secrets still compiles).
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

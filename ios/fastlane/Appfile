@@ -1,0 +1,4 @@
+app_identifier("com.borsystems.app")
+team_id("5N49SBC46L")
+# apple_id is read from the App Store Connect API key at runtime; no need to
+# hardcode an Apple ID here.

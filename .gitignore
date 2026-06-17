@@ -20,6 +20,17 @@ android/build/
 *.pem
 *.keystore
 
+# ─── Signing secrets — NEVER commit ──────────────────────────────────────
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+android/keystore.properties
+android/keystores/
+ios/fastlane/.env
+google-services.json
+GoogleService-Info.plist
+
 # Machine-specific & stray media (keep out of the repo)
 *.HEIC
 *.heic
