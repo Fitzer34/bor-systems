@@ -8,12 +8,21 @@ import Anthropic from "@anthropic-ai/sdk";
  *      and recommend one, flagging suspicious outliers.
  *
  * Reads the key from ANTHROPIC_API_KEY (the SDK picks it up automatically).
- * Model defaults to Claude Opus 4.8 but can be overridden with ANTHROPIC_MODEL
- * (e.g. claude-sonnet-4-6 / claude-haiku-4-5) for a cheaper tier — no code change.
- * Non-streaming: both calls are short, well under the request timeout.
+ *
+ * Two cost tiers, both env-overridable with no code change:
+ *   ANTHROPIC_MODEL       — "smart" tier for the open-ended Assistant. Default
+ *                           Claude Opus 4.8 (best reasoning over the org's data).
+ *   ANTHROPIC_MODEL_FAST  — "fast" tier for the focused helpers (scope draft,
+ *                           quote ranking, work-request parse, incident triage,
+ *                           asset summary). Default Claude Sonnet 4.6 — very
+ *                           capable on these well-scoped tasks at a lower price.
+ * Set ANTHROPIC_MODEL_FAST=claude-opus-4-8 to put the helpers back on Opus, or
+ * =claude-haiku-4-5 to push helper cost lower once you've validated quality.
+ * Non-streaming: every call is short, well under the request timeout.
  */
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
+const MODEL_FAST = process.env.ANTHROPIC_MODEL_FAST || "claude-sonnet-4-6";
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -61,7 +70,7 @@ export async function draftScopeOfWorks(input: {
     .join("\n");
 
   const msg = await c.messages.create({
-    model: MODEL,
+    model: MODEL_FAST,
     max_tokens: 1500,
     system,
     messages: [{ role: "user", content: user }],
@@ -136,7 +145,7 @@ export async function rankQuotes(input: {
   } as const;
 
   const msg = await c.messages.create({
-    model: MODEL,
+    model: MODEL_FAST,
     max_tokens: 1200,
     system,
     output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
@@ -200,7 +209,7 @@ export async function parseWorkRequest(input: {
   };
 
   const msg = await c.messages.create({
-    model: MODEL,
+    model: MODEL_FAST,
     max_tokens: 800,
     system,
     output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
@@ -249,7 +258,7 @@ export async function triageIncident(input: {
   };
 
   const msg = await c.messages.create({
-    model: MODEL,
+    model: MODEL_FAST,
     max_tokens: 600,
     system,
     output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
@@ -289,7 +298,7 @@ export async function summariseAssetHistory(input: {
   const user = `Asset: ${input.assetName}\n\nMaintenance jobs:\n${jobLines}\n\nIncidents:\n${incLines}`;
 
   const msg = await c.messages.create({
-    model: MODEL,
+    model: MODEL_FAST,
     max_tokens: 700,
     system,
     messages: [{ role: "user", content: user }],
