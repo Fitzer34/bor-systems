@@ -116,7 +116,13 @@ private fun UserRow(user: UserSummary, active: Boolean) {
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                if (active) {
+                if (active && user.invitedAt != null && user.inviteAcceptedAt == null) {
+                    Text(
+                        "Invited — pending",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFF59E0B),
+                    )
+                } else if (active) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             Modifier

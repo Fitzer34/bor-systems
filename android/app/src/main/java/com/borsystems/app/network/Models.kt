@@ -219,6 +219,9 @@ data class UserSummary(
     val role: UserRole,
     val onDuty: Boolean,
     val deactivatedAt: String? = null,
+    // Staff-invite state. Pending = invitedAt set, inviteAcceptedAt null.
+    val invitedAt: String? = null,
+    val inviteAcceptedAt: String? = null,
 )
 
 @Serializable

@@ -122,6 +122,9 @@ struct UserRow: Codable, Identifiable, Hashable {
     let role: UserRole
     let onDuty: Bool
     let deactivatedAt: Date?
+    // Staff-invite state. Pending = invitedAt set, inviteAcceptedAt nil.
+    var invitedAt: Date? = nil
+    var inviteAcceptedAt: Date? = nil
 }
 struct UsersResponse: Codable { let users: [UserRow] }
 

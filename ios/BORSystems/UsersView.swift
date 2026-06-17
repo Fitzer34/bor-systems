@@ -18,6 +18,9 @@ struct UsersView: View {
                             }
                             Button("Erase", role: .destructive) { Task { await erase(u) } }
                         }
+                        if auth.user?.role == .admin && u.deactivatedAt == nil && u.invitedAt != nil && u.inviteAcceptedAt == nil {
+                            Button("Resend") { Task { await resend(u) } }.tint(.blue)
+                        }
                     }
             }
             if let err = error {
@@ -46,6 +49,10 @@ struct UsersView: View {
         do { try await APIClient.shared.deactivateUser(u.id); await refresh() }
         catch { self.error = "Failed." }
     }
+    private func resend(_ u: UserRow) async {
+        do { try await APIClient.shared.resendInvite(u.id); await refresh() }
+        catch { self.error = "Couldn't resend the invite." }
+    }
     private func erase(_ u: UserRow) async {
         do { try await APIClient.shared.eraseUser(u.id); await refresh() }
         catch { self.error = "Failed." }
@@ -65,6 +72,8 @@ private struct UserRowItem: View {
             HStack(spacing: 6) {
                 if user.deactivatedAt != nil {
                     Text("deactivated").font(.caption2).foregroundStyle(.gray)
+                } else if user.invitedAt != nil && user.inviteAcceptedAt == nil {
+                    Text("invited — pending").font(.caption2).foregroundStyle(.orange)
                 } else if user.onDuty {
                     Text("on duty").font(.caption2).foregroundStyle(.green)
                 } else {
@@ -81,76 +90,92 @@ private struct CreateUserSheet: View {
 
     @State private var name = ""
     @State private var email = ""
-    @State private var password = ""
     @State private var phone = ""
     @State private var role: UserRole = .cleaner
     @State private var error: String?
-    @State private var creating = false
+    @State private var sending = false
+    @State private var sentMessage: String?   // success: invite emailed / user added
+    @State private var inviteLink: String?     // fallback when email couldn't send
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    TextField("Name", text: $name)
-                    TextField("Email", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("Password (10+ chars, mix of types)", text: $password)
-                    TextField("Phone (E.164, optional)", text: $phone)
-                        .keyboardType(.phonePad)
-                    Picker("Role", selection: $role) {
-                        Text("Cleaner").tag(UserRole.cleaner)
-                        Text("Supervisor").tag(UserRole.supervisor)
-                        Text("Admin").tag(UserRole.admin)
-                    }
-                }
-                if let err = error {
-                    Section { Text(err).foregroundStyle(.red) }
-                }
-                Section {
-                    Button {
-                        Task { await create() }
-                    } label: {
-                        HStack {
-                            if creating { ProgressView() }
-                            Text("Create user").frame(maxWidth: .infinity)
+                if let msg = sentMessage {
+                    Section {
+                        Label(msg, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        if let link = inviteLink {
+                            Text("Email couldn't be sent — share this private link with them:")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text(link).font(.caption2).textSelection(.enabled)
                         }
                     }
-                    .disabled(!canCreate)
+                    Section {
+                        Button("Done") { onCreated(); dismiss() }.frame(maxWidth: .infinity)
+                    }
+                } else {
+                    Section {
+                        TextField("Name", text: $name)
+                        TextField("Email", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        TextField("Phone (E.164, optional)", text: $phone)
+                            .keyboardType(.phonePad)
+                        Picker("Role", selection: $role) {
+                            Text("Cleaner").tag(UserRole.cleaner)
+                            Text("Supervisor").tag(UserRole.supervisor)
+                            Text("Admin").tag(UserRole.admin)
+                        }
+                    } footer: {
+                        Text("We'll email them a secure link to set their own password and sign in.")
+                    }
+                    if let err = error {
+                        Section { Text(err).foregroundStyle(.red) }
+                    }
+                    Section {
+                        Button {
+                            Task { await send() }
+                        } label: {
+                            HStack {
+                                if sending { ProgressView() }
+                                Text("Send invite").frame(maxWidth: .infinity)
+                            }
+                        }
+                        .disabled(!canSend)
+                    }
                 }
             }
-            .navigationTitle("New user")
+            .navigationTitle("Invite staff")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } } }
         }
     }
 
-    private var canCreate: Bool {
-        !name.isEmpty && email.contains("@") && password.count >= 10 && !creating
+    private var canSend: Bool {
+        !name.isEmpty && email.contains("@") && !sending
     }
 
-    private func create() async {
-        creating = true; error = nil
+    private func send() async {
+        sending = true; error = nil
         do {
-            try await APIClient.shared.createUser(email: email, name: name, password: password, role: role,
-                                                  phoneE164: phone.isEmpty ? nil : phone)
-            onCreated()
-            dismiss()
+            let res = try await APIClient.shared.inviteUser(email: email, name: name, role: role,
+                                                            phoneE164: phone.isEmpty ? nil : phone)
+            if res.emailSent == true {
+                sentMessage = "Invite emailed to \(email)."
+            } else if let url = res.inviteUrl {
+                sentMessage = "\(name) added."
+                inviteLink = url
+            } else {
+                sentMessage = "\(name) added."
+            }
         } catch let APIError.http(_, body) {
-            // Surface the specific reason returned by the backend so the
-            // admin knows whether to fix the password, change the email, etc.
-            let reason = body.contains("password_too_short") ? "Password is too short — needs at least 10 characters."
-                : body.contains("password_too_common") ? "Password is too common — pick something less guessable."
-                : body.contains("password_too_simple") ? "Password needs at least 3 of: lowercase, uppercase, digit, symbol."
-                : body.contains("password_too_long") ? "Password is too long."
-                : body.contains("email_taken") ? "Someone in your organisation already uses that email."
+            let reason = body.contains("email_taken") ? "Someone in your organisation already uses that email."
                 : body.contains("invalid_input") ? "One of the fields is invalid (check email format, phone in +country format)."
-                : "Could not create user."
+                : "Could not send the invite."
             self.error = reason
         } catch {
-            self.error = "Could not create user."
+            self.error = "Could not send the invite."
         }
-        creating = false
+        sending = false
     }
 }

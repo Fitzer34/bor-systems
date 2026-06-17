@@ -392,16 +392,27 @@ extension APIClient {
 
     // MARK: Users management (admin)
 
-    struct CreateUserBody: Encodable {
+    struct InviteUserBody: Encodable {
         let email: String
         let name: String
-        let password: String
         let role: String
         let phoneE164: String?
+        let sendInvite: Bool
     }
-    func createUser(email: String, name: String, password: String, role: UserRole, phoneE164: String?) async throws {
-        let _: EmptyResponse = try await request("/users", method: "POST",
-            body: CreateUserBody(email: email, name: name, password: password, role: role.rawValue, phoneE164: phoneE164))
+    struct InviteUserResult: Decodable {
+        let invited: Bool?
+        let emailSent: Bool?
+        let inviteUrl: String?
+    }
+    /// Add a staff member and email them a one-time link to set their own
+    /// password + sign in. Mirrors the web "Send invite" flow.
+    @discardableResult
+    func inviteUser(email: String, name: String, role: UserRole, phoneE164: String?) async throws -> InviteUserResult {
+        return try await request("/users", method: "POST",
+            body: InviteUserBody(email: email, name: name, role: role.rawValue, phoneE164: phoneE164, sendInvite: true))
+    }
+    func resendInvite(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/users/\(id)/resend-invite", method: "POST")
     }
     func deactivateUser(_ id: String) async throws {
         let _: EmptyResponse = try await request("/users/\(id)/deactivate", method: "POST")
