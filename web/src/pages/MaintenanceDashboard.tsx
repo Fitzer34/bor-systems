@@ -194,7 +194,7 @@ export function MaintenanceDashboard() {
 function Kpi({ to, label, value, sub, tone }: { to: string; label: string; value: number | string; sub: string; tone: "default" | "red" | "amber" | "emerald" }) {
   const valueCls = tone === "red" ? "text-red-700" : tone === "amber" ? "text-amber-700" : tone === "emerald" ? "text-emerald-700" : "text-slate-900";
   return (
-    <Link to={to} className="rounded-xl border border-slate-200 bg-white p-4 hover:border-slate-300 transition">
+    <Link to={to} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300 transition">
       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
       <div className={"text-3xl font-semibold mt-1 " + valueCls}>{value}</div>
       <div className="text-xs text-slate-500 mt-1">{sub}</div>
@@ -204,7 +204,7 @@ function Kpi({ to, label, value, sub, tone }: { to: string; label: string; value
 
 function Panel({ title, to, children }: { title: string; to: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
         <Link to={to} className="text-xs text-blue-700 hover:underline">View all →</Link>
@@ -216,7 +216,7 @@ function Panel({ title, to, children }: { title: string; to: string; children: R
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <h2 className="text-sm font-semibold text-slate-900 mb-3">{title}</h2>
       {children}
     </div>
