@@ -23,6 +23,7 @@ interface Asset {
   expectedLifeYears: number | null;
   warrantyExpiry: string | null;
   conditionScore: number | null;
+  criticality: "low" | "medium" | "high" | "critical";
   purchaseCostCents: number | null;
   replacementCostCents: number | null;
   notes: string | null;
@@ -33,6 +34,17 @@ interface Building { id: string; name: string }
 interface Trade { id: string; name: string; groupName: string | null }
 
 const CONDITION = ["—", "Poor", "Fair", "OK", "Good", "Excellent"];
+
+// Risk-Based Maintenance: how badly a failure of this asset hurts. Drives the
+// register sort (critical floats to the top) and the badge colour.
+const CRIT_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
+const CRIT_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+function critCls(c: string): string {
+  if (c === "critical") return "bg-red-100 text-red-700";
+  if (c === "high") return "bg-orange-100 text-orange-700";
+  if (c === "low") return "bg-slate-100 text-slate-500";
+  return "bg-blue-100 text-blue-700"; // medium
+}
 
 function euro(cents: number | null): string {
   if (cents == null) return "—";
@@ -84,9 +96,14 @@ export function Assets() {
   const list = useMemo(() => {
     const all = data?.assets ?? [];
     const needle = q.trim().toLowerCase();
-    if (!needle) return all;
-    return all.filter((a) =>
-      [a.name, a.category, a.make, a.model, a.serial].filter(Boolean).join(" ").toLowerCase().includes(needle),
+    const matched = needle
+      ? all.filter((a) =>
+          [a.name, a.category, a.make, a.model, a.serial].filter(Boolean).join(" ").toLowerCase().includes(needle),
+        )
+      : all;
+    // Risk-first: critical assets at the top, then alphabetical.
+    return [...matched].sort(
+      (a, b) => (CRIT_RANK[a.criticality] ?? 2) - (CRIT_RANK[b.criticality] ?? 2) || a.name.localeCompare(b.name),
     );
   }, [data, q]);
 
@@ -122,6 +139,7 @@ export function Assets() {
                 <button onClick={() => setEditing(a)} className="flex-1 min-w-0 text-left">
                   <div className="flex items-center gap-3 flex-wrap mb-1">
                     <h3 className="font-medium text-slate-900">{a.name}</h3>
+                    {(a.criticality === "critical" || a.criticality === "high") && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + critCls(a.criticality)}>{CRIT_LABEL[a.criticality]} risk</span>}
                     {a.conditionScore != null && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + conditionCls(a.conditionScore)}>{CONDITION[a.conditionScore]}</span>}
                     {w && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + w.cls}>{w.label}</span>}
                   </div>
@@ -189,6 +207,7 @@ function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {
   const [expectedLifeYears, setExpectedLifeYears] = useState(asset?.expectedLifeYears != null ? String(asset.expectedLifeYears) : "");
   const [warrantyExpiry, setWarrantyExpiry] = useState(asset?.warrantyExpiry ?? "");
   const [conditionScore, setConditionScore] = useState(asset?.conditionScore != null ? String(asset.conditionScore) : "");
+  const [criticality, setCriticality] = useState(asset?.criticality ?? "medium");
   const [purchase, setPurchase] = useState(asset?.purchaseCostCents != null ? String(asset.purchaseCostCents / 100) : "");
   const [replacement, setReplacement] = useState(asset?.replacementCostCents != null ? String(asset.replacementCostCents / 100) : "");
   const [notes, setNotes] = useState(asset?.notes ?? "");
@@ -215,6 +234,7 @@ function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {
       expectedLifeYears: int(expectedLifeYears) ?? undefined,
       warrantyExpiry: warrantyExpiry || undefined,
       conditionScore: conditionScore ? Number(conditionScore) : null,
+      criticality,
       purchaseCostCents: eur(purchase),
       replacementCostCents: eur(replacement),
       notes: notes.trim() || undefined,
@@ -270,6 +290,14 @@ function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {
               <select value={conditionScore} onChange={(e) => setConditionScore(e.target.value)} className={inp}>
                 <option value="">— Not set —</option>
                 {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} · {CONDITION[n]}</option>)}
+              </select>
+            </Group>
+            <Group label="Criticality (risk if it fails)">
+              <select value={criticality} onChange={(e) => setCriticality(e.target.value as Asset["criticality"])} className={inp}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
               </select>
             </Group>
           </div>

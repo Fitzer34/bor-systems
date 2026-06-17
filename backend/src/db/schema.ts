@@ -755,6 +755,11 @@ export const trades = pgTable(
   (t) => ({ orgIdx: index("trades_org_idx").on(t.organisationId) }),
 );
 
+/// How badly a failure of an asset hurts — the basis of Risk-Based Maintenance.
+/// Drives prioritisation of PPMs and jobs (a 'critical' asset's overdue work
+/// outranks a 'low' one's). Existing assets default to 'medium'.
+export const assetCriticality = pgEnum("asset_criticality", ["low", "medium", "high", "critical"]);
+
 export const assets = pgTable(
   "assets",
   {
@@ -778,6 +783,7 @@ export const assets = pgTable(
     expectedLifeYears: smallint("expected_life_years"),
     warrantyExpiry: date("warranty_expiry"),
     conditionScore: smallint("condition_score"), // 1 (poor) .. 5 (excellent)
+    criticality: assetCriticality("criticality").notNull().default("medium"),
     purchaseCostCents: integer("purchase_cost_cents"),
     replacementCostCents: integer("replacement_cost_cents"),
     notes: text("notes"),

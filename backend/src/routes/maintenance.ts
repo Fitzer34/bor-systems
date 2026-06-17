@@ -539,6 +539,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
         { header: "install_date", value: (r) => r.installDate },
         { header: "warranty_expiry", value: (r) => r.warrantyExpiry },
         { header: "condition_score", value: (r) => r.conditionScore },
+        { header: "criticality", value: (r) => r.criticality },
       ],
       rows,
     );
@@ -560,6 +561,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     expectedLifeYears: z.number().int().min(0).max(100).optional(),
     warrantyExpiry: z.string().optional(),
     conditionScore: z.number().int().min(1).max(5).nullable().optional(),
+    criticality: z.enum(["low", "medium", "high", "critical"]).optional(),
     purchaseCostCents: z.number().int().min(0).nullable().optional(),
     replacementCostCents: z.number().int().min(0).nullable().optional(),
     notes: z.string().max(2000).optional(),
