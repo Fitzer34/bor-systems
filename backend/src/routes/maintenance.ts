@@ -740,6 +740,119 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     };
   });
 
+  // ─── Meters (predictive / usage-based maintenance) ─────────────────────────
+  // A meter's "due" state from its interval. tracking = no interval set.
+  const withMeterStatus = (m: { intervalValue: number | null; lastServiceValue: number; currentValue: number }) => {
+    const nextServiceAt = m.intervalValue != null ? m.lastServiceValue + m.intervalValue : null;
+    const remaining = nextServiceAt != null ? nextServiceAt - m.currentValue : null;
+    const pct = m.intervalValue && m.intervalValue > 0
+      ? Math.min(100, Math.max(0, Math.round(((m.currentValue - m.lastServiceValue) / m.intervalValue) * 100)))
+      : null;
+    let status: "due" | "due_soon" | "ok" | "tracking" = "tracking";
+    if (m.intervalValue != null && remaining != null) {
+      if (remaining <= 0) status = "due";
+      else if (remaining <= Math.max(1, Math.round(m.intervalValue * 0.1))) status = "due_soon";
+      else status = "ok";
+    }
+    return { nextServiceAt, remaining, pct, status };
+  };
+
+  app.get("/meters", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const rows = await db
+      .select({
+        id: schema.assetMeters.id, assetId: schema.assetMeters.assetId, name: schema.assetMeters.name,
+        unit: schema.assetMeters.unit, intervalValue: schema.assetMeters.intervalValue,
+        lastServiceValue: schema.assetMeters.lastServiceValue, currentValue: schema.assetMeters.currentValue,
+        lastReadingAt: schema.assetMeters.lastReadingAt, assetName: schema.assets.name,
+      })
+      .from(schema.assetMeters)
+      .leftJoin(schema.assets, eq(schema.assets.id, schema.assetMeters.assetId))
+      .where(and(eq(schema.assetMeters.organisationId, c.orgId), eq(schema.assetMeters.active, true)))
+      .orderBy(schema.assetMeters.name);
+    return { meters: rows.map((m) => ({ ...m, ...withMeterStatus(m) })) };
+  });
+
+  const meterBody = z.object({
+    assetId: z.string().uuid(),
+    name: z.string().min(1).max(120),
+    unit: z.string().max(30).optional(),
+    intervalValue: z.number().int().min(1).nullable().optional(),
+    currentValue: z.number().int().min(0).optional(),
+  });
+  app.post("/meters", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const parsed = meterBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const b = parsed.data;
+    const [asset] = await db.select({ id: schema.assets.id }).from(schema.assets)
+      .where(and(eq(schema.assets.id, b.assetId), eq(schema.assets.organisationId, c.orgId))).limit(1);
+    if (!asset) return reply.code(400).send({ error: "invalid_asset" });
+    const cur = b.currentValue ?? 0;
+    const [row] = await db.insert(schema.assetMeters).values({
+      organisationId: c.orgId, assetId: b.assetId, name: b.name.trim(), unit: b.unit?.trim() || null,
+      intervalValue: b.intervalValue ?? null, currentValue: cur, lastServiceValue: cur,
+      lastReadingAt: b.currentValue != null ? new Date() : null,
+    }).returning();
+    if (!row) return reply.code(500).send({ error: "insert_failed" });
+    if (b.currentValue != null) {
+      await db.insert(schema.meterReadings).values({ organisationId: c.orgId, meterId: row.id, value: cur });
+    }
+    return reply.code(201).send({ meter: { ...row, ...withMeterStatus(row) } });
+  });
+
+  app.patch("/meters/:id", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = z.object({
+      name: z.string().min(1).max(120).optional(),
+      unit: z.string().max(30).nullable().optional(),
+      intervalValue: z.number().int().min(1).nullable().optional(),
+      lastServiceValue: z.number().int().min(0).optional(),
+      active: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const b = parsed.data;
+    const updates: Record<string, unknown> = {};
+    if (b.name !== undefined) updates.name = b.name.trim();
+    if (b.unit !== undefined) updates.unit = b.unit?.trim() || null;
+    if (b.intervalValue !== undefined) updates.intervalValue = b.intervalValue;
+    if (b.lastServiceValue !== undefined) updates.lastServiceValue = b.lastServiceValue;
+    if (b.active !== undefined) updates.active = b.active;
+    if (Object.keys(updates).length === 0) return { ok: true };
+    const [row] = await db.update(schema.assetMeters).set(updates)
+      .where(and(eq(schema.assetMeters.id, id), eq(schema.assetMeters.organisationId, c.orgId))).returning();
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return { meter: { ...row, ...withMeterStatus(row) } };
+  });
+
+  app.post("/meters/:id/readings", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = z.object({ value: z.number().int().min(0), note: z.string().max(500).optional() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [meter] = await db.select().from(schema.assetMeters)
+      .where(and(eq(schema.assetMeters.id, id), eq(schema.assetMeters.organisationId, c.orgId))).limit(1);
+    if (!meter) return reply.code(404).send({ error: "not_found" });
+    await db.insert(schema.meterReadings).values({ organisationId: c.orgId, meterId: id, value: parsed.data.value, note: parsed.data.note?.trim() || null });
+    const [row] = await db.update(schema.assetMeters)
+      .set({ currentValue: parsed.data.value, lastReadingAt: new Date() })
+      .where(eq(schema.assetMeters.id, id)).returning();
+    return { meter: { ...row!, ...withMeterStatus(row!) } };
+  });
+
+  app.post("/meters/:id/service", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    const [meter] = await db.select().from(schema.assetMeters)
+      .where(and(eq(schema.assetMeters.id, id), eq(schema.assetMeters.organisationId, c.orgId))).limit(1);
+    if (!meter) return reply.code(404).send({ error: "not_found" });
+    const [row] = await db.update(schema.assetMeters)
+      .set({ lastServiceValue: meter.currentValue })
+      .where(eq(schema.assetMeters.id, id)).returning();
+    return { meter: { ...row!, ...withMeterStatus(row!) } };
+  });
+
   // ─── AI helpers (Claude) ───────────────────────────────────────────────────
   // Gated on ANTHROPIC_API_KEY — the web only shows the buttons when configured.
   app.get("/ai/status", { preHandler: [app.authenticate, staff] }, async () => {

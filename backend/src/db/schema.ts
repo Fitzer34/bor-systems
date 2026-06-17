@@ -796,6 +796,46 @@ export const assets = pgTable(
   }),
 );
 
+/// Predictive maintenance: a usage meter on an asset (runtime hours, cycles,
+/// km…). current_value accumulates via readings; when it passes
+/// last_service_value + interval_value the meter is "due". Marking it serviced
+/// rolls last_service_value up to current_value. Whole units.
+export const assetMeters = pgTable(
+  "asset_meters",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    assetId: uuid("asset_id").references(() => assets.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    unit: text("unit"),
+    intervalValue: integer("interval_value"),
+    lastServiceValue: integer("last_service_value").notNull().default(0),
+    currentValue: integer("current_value").notNull().default(0),
+    lastReadingAt: timestamp("last_reading_at", { withTimezone: true }),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("asset_meters_org_idx").on(t.organisationId),
+    assetIdx: index("asset_meters_asset_idx").on(t.assetId),
+  }),
+);
+
+/// Append-only log of meter readings (the audit trail behind each meter's
+/// current value).
+export const meterReadings = pgTable(
+  "meter_readings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    meterId: uuid("meter_id").references(() => assetMeters.id, { onDelete: "cascade" }).notNull(),
+    value: integer("value").notNull(),
+    note: text("note"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ meterIdx: index("meter_readings_meter_idx").on(t.meterId, t.recordedAt) }),
+);
+
 export const contractors = pgTable(
   "contractors",
   {
