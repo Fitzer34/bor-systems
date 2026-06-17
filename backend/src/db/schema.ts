@@ -858,6 +858,19 @@ export const staffCertifications = pgTable(
   }),
 );
 
+/// Dedup log for the daily maintenance reminder digest — one row per org per day
+/// guarantees the meters-due / certs-expiring email is sent at most once daily.
+export const maintenanceReminderLog = pgTable(
+  "maintenance_reminder_log",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    sentOn: date("sent_on", { mode: "string" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgDay: uniqueIndex("maintenance_reminder_log_org_day").on(t.organisationId, t.sentOn) }),
+);
+
 export const contractors = pgTable(
   "contractors",
   {

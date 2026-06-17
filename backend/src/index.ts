@@ -38,6 +38,7 @@ import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
 import { startPpmReminderJob } from "./services/ppm-reminder.js";
+import { startMaintenanceReminderJob } from "./services/maintenance-reminder.js";
 import { startLoneWorkerWatcher } from "./services/lone-worker-watcher.js";
 import { initSentry, Sentry, captureException } from "./services/observability.js";
 import { seedDemoOrgOnBoot } from "./services/demo-seed.js";
@@ -187,6 +188,7 @@ async function main(): Promise<void> {
   startAntiTheftWatcher();
   startSignConditionWatcher();
   startPpmReminderJob();
+  startMaintenanceReminderJob();
   startLoneWorkerWatcher();
 
   // Graceful shutdown — flushes Sentry events on SIGTERM (Render restarts).
