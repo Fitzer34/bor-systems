@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 
@@ -55,6 +55,19 @@ export function MaintenanceKpis() {
   const improve = useMutation({
     mutationFn: () => api<{ suggestions: Suggestion[] }>("/ai/improvements", { method: "POST" }),
     onSuccess: (r) => setSuggestions(r.suggestions),
+  });
+  // Close the loop: turn a suggestion into a work order.
+  const qc = useQueryClient();
+  const [woPending, setWoPending] = useState<number | null>(null);
+  const [woDone, setWoDone] = useState<Set<number>>(new Set());
+  const raiseWO = useMutation({
+    mutationFn: (v: { s: Suggestion; i: number }) => api("/jobs", { method: "POST", body: JSON.stringify({
+      title: v.s.title.slice(0, 160), priority: "routine",
+      description: `${v.s.observation}\n\nRecommended action: ${v.s.recommendation}\n\n(From AI continuous-improvement · area: ${v.s.area})`,
+    }) }),
+    onMutate: (v) => setWoPending(v.i),
+    onSuccess: (_d, v) => { setWoDone((s) => new Set(s).add(v.i)); setWoPending(null); qc.invalidateQueries({ queryKey: ["jobs"] }); },
+    onError: () => setWoPending(null),
   });
 
   if (isLoading) return <div className="p-8 text-slate-500">Loading KPIs…</div>;
@@ -191,6 +204,11 @@ export function MaintenanceKpis() {
                   <div className="text-xs text-slate-500 mb-2">{s.area}</div>
                   <p className="text-sm text-slate-600"><span className="text-slate-500">Observation:</span> {s.observation}</p>
                   <p className="text-sm text-slate-800 mt-1"><span className="text-slate-500">Action:</span> {s.recommendation}</p>
+                  <div className="mt-2.5">
+                    {woDone.has(i)
+                      ? <span className="text-sm text-emerald-600">✓ Work order created</span>
+                      : <button onClick={() => raiseWO.mutate({ s, i })} disabled={woPending === i} className="text-sm text-blue-700 hover:underline disabled:text-slate-400">{woPending === i ? "Creating…" : "Create work order"}</button>}
+                  </div>
                 </div>
               ))}
             </div>

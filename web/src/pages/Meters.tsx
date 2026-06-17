@@ -40,6 +40,19 @@ export function Meters() {
     mutationFn: (id: string) => api(`/meters/${id}/service`, { method: "POST" }),
     onSuccess: invalidate,
   });
+  // Close the loop: turn a due meter straight into a work order.
+  const [raisingId, setRaisingId] = useState<string | null>(null);
+  const [raisedIds, setRaisedIds] = useState<Set<string>>(new Set());
+  const raiseWO = useMutation({
+    mutationFn: (mt: Meter) => api("/jobs", { method: "POST", body: JSON.stringify({
+      title: `Service due: ${mt.name}${mt.assetName ? ` — ${mt.assetName}` : ""}`,
+      assetId: mt.assetId, priority: "routine",
+      description: `Predictive maintenance: meter "${mt.name}" has reached its service point at ${fmt(mt.currentValue)}${mt.unit ? " " + mt.unit : ""}.`,
+    }) }),
+    onMutate: (mt: Meter) => setRaisingId(mt.id),
+    onSuccess: (_d, mt) => { setRaisedIds((s) => new Set(s).add(mt.id)); setRaisingId(null); qc.invalidateQueries({ queryKey: ["jobs"] }); },
+    onError: () => setRaisingId(null),
+  });
 
   if (metersQ.isLoading) return <div className="p-8 text-slate-500">Loading meters…</div>;
   if (metersQ.error) return <div className="p-8 text-red-600">Could not load meters.</div>;
@@ -104,11 +117,16 @@ export function Meters() {
                   <div className="mt-2 text-xs text-slate-400">No service interval set — tracking only.</div>
                 )}
 
-                <div className="mt-3 flex gap-3 text-sm">
+                <div className="mt-3 flex gap-3 text-sm flex-wrap">
                   <button onClick={() => setReading(m)} className="text-blue-700 hover:underline">Log reading</button>
+                  {(m.status === "due" || m.status === "due_soon") && (
+                    raisedIds.has(m.id)
+                      ? <span className="text-emerald-600">✓ Work order raised</span>
+                      : <button onClick={() => raiseWO.mutate(m)} disabled={raisingId === m.id} className="text-blue-700 hover:underline disabled:text-slate-400">{raisingId === m.id ? "Raising…" : "Raise work order"}</button>
+                  )}
                   <button
                     onClick={() => { if (window.confirm(`Mark "${m.name}" on ${m.assetName} as serviced now? The next-service threshold rolls forward from ${fmt(m.currentValue)}${m.unit ? " " + m.unit : ""}.`)) service.mutate(m.id); }}
-                    className="text-slate-500 hover:text-slate-800"
+                    className="text-slate-500 hover:text-slate-800 ml-auto"
                   >Mark serviced</button>
                 </div>
               </div>
