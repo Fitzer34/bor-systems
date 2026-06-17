@@ -30,6 +30,8 @@ import { Analytics } from "./pages/Analytics";
 import { Maintenance } from "./pages/Maintenance";
 import { Assets } from "./pages/Assets";
 import { Incidents } from "./pages/Incidents";
+import { Checkpoints } from "./pages/Checkpoints";
+import { CheckpointScan } from "./pages/CheckpointScan";
 import { ChooseSection } from "./pages/ChooseSection";
 import { SectionProvider, useSection } from "./lib/section";
 import { initWebSentry } from "./lib/sentry";
@@ -74,6 +76,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             {/* Public, no-login page a contractor opens from the PPM scheduling
                 magic link we email them. */}
             <Route path="/schedule/:token" element={<SchedulePage />} />
+            {/* Public, no-login page a guard opens by scanning a checkpoint QR. */}
+            <Route path="/c/:token" element={<CheckpointScan />} />
             {/* Section chooser — pick Cleaning or Maintenance on entry. */}
             <Route path="/choose" element={<RequireAuth><ChooseSection /></RequireAuth>} />
             <Route

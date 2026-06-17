@@ -114,6 +114,7 @@ export function Layout() {
           {activeSection === "security" && isStaff && (
             <>
               <NavItem to="/incidents">Incidents</NavItem>
+              <NavItem to="/checkpoints">Checkpoints</NavItem>
             </>
           )}
 

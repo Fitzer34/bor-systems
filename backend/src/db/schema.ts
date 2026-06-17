@@ -291,6 +291,49 @@ export const securityIncidents = pgTable(
   }),
 );
 
+/// Guard-tour checkpoints (Security). A checkpoint is a QR-tagged point at a
+/// site that guards scan on patrol. `instructions` is the per-checkpoint action
+/// shown to the guard on scan (the TrackTik-style "do this here" pattern).
+/// `token` powers a no-login scan URL, reusing the magic-link pattern.
+export const checkpoints = pgTable(
+  "checkpoints",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    locationNote: text("location_note"),
+    instructions: text("instructions"),
+    token: text("token").notNull().unique(),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("checkpoints_org_idx").on(t.organisationId),
+    buildingIdx: index("checkpoints_building_idx").on(t.buildingId),
+  }),
+);
+
+/// One row per checkpoint scan — the patrol log. Public (no-login) scan via the
+/// checkpoint's QR, so the guard types their name; `flagged` lets them raise an
+/// issue at the point (a hook for auto-creating an incident/work order later).
+export const checkpointScans = pgTable(
+  "checkpoint_scans",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    checkpointId: uuid("checkpoint_id").references(() => checkpoints.id, { onDelete: "cascade" }).notNull(),
+    guardName: text("guard_name"),
+    note: text("note"),
+    flagged: boolean("flagged").notNull().default(false),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    cpIdx: index("checkpoint_scans_cp_idx").on(t.checkpointId),
+    orgIdx: index("checkpoint_scans_org_idx").on(t.organisationId),
+  }),
+);
+
 export const hangers = pgTable(
   "hangers",
   {

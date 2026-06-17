@@ -1,8 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+
+// A checkpoint's QR points here — a no-login scan page (reuses the magic-link
+// pattern). Guards open it by scanning, confirm, and the scan is logged.
+const SCAN_BASE = "https://app.hazardlink.ie";
+export function checkpointScanUrl(token: string): string {
+  return `${SCAN_BASE}/c/${token}`;
+}
 
 /**
  * Security section routes. First feature: incident reporting — guards/staff log
@@ -104,5 +112,96 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
       .returning();
     if (!row) return reply.code(404).send({ error: "not_found" });
     return { incident: row };
+  });
+
+  // ─── Checkpoints (guard tours) ──────────────────────────────────────────
+  const checkpointBody = z.object({
+    name: z.string().min(1).max(160),
+    buildingId: z.string().uuid().nullable().optional(),
+    locationNote: z.string().max(300).nullable().optional(),
+    instructions: z.string().max(2000).nullable().optional(),
+    active: z.boolean().optional(),
+  });
+
+  app.get("/checkpoints", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const rows = await db
+      .select()
+      .from(schema.checkpoints)
+      .leftJoin(schema.buildings, eq(schema.buildings.id, schema.checkpoints.buildingId))
+      .where(eq(schema.checkpoints.organisationId, c.orgId))
+      .orderBy(schema.checkpoints.name);
+    return {
+      checkpoints: rows.map((r) => ({
+        ...r.checkpoints,
+        scanUrl: checkpointScanUrl(r.checkpoints.token),
+        building: r.buildings?.id ? { id: r.buildings.id, name: r.buildings.name } : null,
+      })),
+    };
+  });
+
+  app.post("/checkpoints", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const parsed = checkpointBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const b = parsed.data;
+    const [row] = await db
+      .insert(schema.checkpoints)
+      .values({
+        organisationId: c.orgId,
+        name: b.name.trim(),
+        buildingId: b.buildingId ?? null,
+        locationNote: b.locationNote?.trim() || null,
+        instructions: b.instructions?.trim() || null,
+        token: randomBytes(18).toString("base64url"),
+      })
+      .returning();
+    if (!row) return reply.code(500).send({ error: "insert_failed" });
+    return reply.code(201).send({ checkpoint: { ...row, scanUrl: checkpointScanUrl(row.token) } });
+  });
+
+  app.patch("/checkpoints/:id", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = checkpointBody.partial().safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const b = parsed.data;
+    const updates: Record<string, unknown> = {};
+    if (b.name !== undefined) updates.name = b.name.trim();
+    if (b.buildingId !== undefined) updates.buildingId = b.buildingId || null;
+    if (b.locationNote !== undefined) updates.locationNote = b.locationNote?.trim() || null;
+    if (b.instructions !== undefined) updates.instructions = b.instructions?.trim() || null;
+    if (b.active !== undefined) updates.active = b.active;
+    if (Object.keys(updates).length === 0) return { ok: true };
+    const [row] = await db
+      .update(schema.checkpoints)
+      .set(updates)
+      .where(and(eq(schema.checkpoints.id, id), eq(schema.checkpoints.organisationId, c.orgId)))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return { checkpoint: { ...row, scanUrl: checkpointScanUrl(row.token) } };
+  });
+
+  // Recent patrol scans (newest first), joined to checkpoint + building.
+  app.get("/checkpoint-scans", { preHandler: [app.authenticate, staff] }, async (req) => {
+    const c = ctx(req);
+    const rows = await db
+      .select({
+        id: schema.checkpointScans.id,
+        checkpointId: schema.checkpointScans.checkpointId,
+        guardName: schema.checkpointScans.guardName,
+        note: schema.checkpointScans.note,
+        flagged: schema.checkpointScans.flagged,
+        scannedAt: schema.checkpointScans.scannedAt,
+        checkpointName: schema.checkpoints.name,
+        buildingName: schema.buildings.name,
+      })
+      .from(schema.checkpointScans)
+      .leftJoin(schema.checkpoints, eq(schema.checkpoints.id, schema.checkpointScans.checkpointId))
+      .leftJoin(schema.buildings, eq(schema.buildings.id, schema.checkpoints.buildingId))
+      .where(eq(schema.checkpointScans.organisationId, c.orgId))
+      .orderBy(desc(schema.checkpointScans.scannedAt))
+      .limit(100);
+    return { scans: rows };
   });
 }

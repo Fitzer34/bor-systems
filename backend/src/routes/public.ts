@@ -56,6 +56,22 @@ const scheduleRateLimit = {
   },
 };
 
+const checkpointScanRateLimit = {
+  config: {
+    rateLimit: {
+      max: 40,
+      timeWindow: "1 minute",
+      keyGenerator: (req: any) => `cpscan:${req.ip}`,
+    },
+  },
+};
+
+const checkpointScanBody = z.object({
+  guardName: z.string().max(120).optional(),
+  note: z.string().max(1000).optional(),
+  flagged: z.boolean().optional(),
+});
+
 export default async function publicRoutes(app: FastifyInstance): Promise<void> {
   // ─── Get hanger status (page load) ──────────────────────────────────
   // Returns a minimal public-safe view of the hanger: zone name, current
@@ -252,6 +268,55 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       .where(eq(schema.ppmScheduleRequests.id, r.id));
     await notifyStaffOfResponse(r.organisationId, r.ppmId, "proposed", date, note);
     return { ok: true, status: "proposed", proposedDate: date };
+  });
+
+  // ─── Guard checkpoint scan (magic link) ─────────────────────────────────
+  // A guard scans a checkpoint's QR → opens this → confirms → scan is logged.
+  app.get("/public/checkpoint/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const [cp] = await db
+      .select()
+      .from(schema.checkpoints)
+      .where(eq(schema.checkpoints.token, token))
+      .limit(1);
+    if (!cp || !cp.active) return reply.code(404).send({ error: "not_found" });
+    const [org] = await db
+      .select({ name: schema.organisations.name })
+      .from(schema.organisations)
+      .where(eq(schema.organisations.id, cp.organisationId))
+      .limit(1);
+    let buildingName: string | null = null;
+    if (cp.buildingId) {
+      const [b] = await db.select({ name: schema.buildings.name }).from(schema.buildings).where(eq(schema.buildings.id, cp.buildingId)).limit(1);
+      buildingName = b?.name ?? null;
+    }
+    return {
+      orgName: org?.name ?? "Security",
+      name: cp.name,
+      locationNote: cp.locationNote,
+      instructions: cp.instructions,
+      buildingName,
+    };
+  });
+
+  app.post("/public/checkpoint/:token", checkpointScanRateLimit, async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const parsed = checkpointScanBody.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const [cp] = await db
+      .select()
+      .from(schema.checkpoints)
+      .where(eq(schema.checkpoints.token, token))
+      .limit(1);
+    if (!cp || !cp.active) return reply.code(404).send({ error: "not_found" });
+    await db.insert(schema.checkpointScans).values({
+      organisationId: cp.organisationId,
+      checkpointId: cp.id,
+      guardName: parsed.data.guardName?.trim() || null,
+      note: parsed.data.note?.trim() || null,
+      flagged: parsed.data.flagged ?? false,
+    });
+    return { ok: true };
   });
 
   // Best-effort: email the org's admins + supervisors that a contractor replied,
