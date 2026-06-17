@@ -88,6 +88,18 @@ const faultReportBody = z.object({
   urgency: z.enum(["routine", "urgent", "emergency"]).optional(),
 });
 
+const quoteRateLimit = {
+  config: {
+    rateLimit: { max: 20, timeWindow: "1 minute", keyGenerator: (req: any) => `quote:${req.ip}` },
+  },
+};
+
+const quoteSubmitBody = z.object({
+  amountCents: z.number().int().min(0),
+  proposedStartDate: z.string().optional(),
+  notes: z.string().max(2000).optional(),
+});
+
 export default async function publicRoutes(app: FastifyInstance): Promise<void> {
   // ─── Get hanger status (page load) ──────────────────────────────────
   // Returns a minimal public-safe view of the hanger: zone name, current
@@ -387,6 +399,63 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       });
     }
     return { ok: true };
+  });
+
+  // ─── Contractor quote submission (magic link) ────────────────────────────
+  // A contractor opens app.hazardlink.ie/quote/:token from their tender email,
+  // sees the job, and submits a price + earliest start date. No login.
+  app.get("/public/quote/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const [q] = await db.select().from(schema.jobQuotes).where(eq(schema.jobQuotes.token, token)).limit(1);
+    if (!q) return reply.code(404).send({ error: "not_found" });
+    const [job] = await db.select().from(schema.maintenanceJobs).where(eq(schema.maintenanceJobs.id, q.jobId)).limit(1);
+    const [org] = await db.select({ name: schema.organisations.name }).from(schema.organisations).where(eq(schema.organisations.id, q.organisationId)).limit(1);
+    const [con] = await db.select({ name: schema.contractors.name }).from(schema.contractors).where(eq(schema.contractors.id, q.contractorId)).limit(1);
+    let buildingName: string | null = null;
+    if (job?.buildingId) {
+      const [b] = await db.select({ name: schema.buildings.name }).from(schema.buildings).where(eq(schema.buildings.id, job.buildingId)).limit(1);
+      buildingName = b?.name ?? null;
+    }
+    return {
+      orgName: org?.name ?? "Maintenance",
+      contractorName: con?.name ?? null,
+      jobTitle: job?.title ?? "Maintenance work",
+      jobDescription: job?.description ?? null,
+      buildingName,
+      status: q.status,
+      amountCents: q.amountCents,
+      proposedStartDate: q.proposedStartDate,
+      canSubmit: job?.status === "tendering" && (q.status === "pending" || q.status === "submitted"),
+    };
+  });
+
+  app.post("/public/quote/:token", quoteRateLimit, async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const parsed = quoteSubmitBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const [q] = await db.select().from(schema.jobQuotes).where(eq(schema.jobQuotes.token, token)).limit(1);
+    if (!q) return reply.code(404).send({ error: "not_found" });
+    const [job] = await db.select().from(schema.maintenanceJobs).where(eq(schema.maintenanceJobs.id, q.jobId)).limit(1);
+    if (!job || job.status !== "tendering") return reply.code(409).send({ error: "closed" });
+    await db
+      .update(schema.jobQuotes)
+      .set({
+        amountCents: parsed.data.amountCents,
+        proposedStartDate: parsed.data.proposedStartDate || null,
+        notes: parsed.data.notes?.trim() || null,
+        status: "submitted",
+        submittedAt: new Date(),
+      })
+      .where(eq(schema.jobQuotes.id, q.id));
+    const [con] = await db.select({ name: schema.contractors.name }).from(schema.contractors).where(eq(schema.contractors.id, q.contractorId)).limit(1);
+    await db.insert(schema.jobEvents).values({
+      organisationId: q.organisationId,
+      jobId: q.jobId,
+      type: "quoted",
+      actorUserId: null,
+      detail: `${con?.name ?? "Contractor"} submitted €${(parsed.data.amountCents / 100).toFixed(0)}`,
+    });
+    return { ok: true, status: "submitted" };
   });
 
   // Best-effort: email the org's admins + supervisors that a contractor replied,

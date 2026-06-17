@@ -13,9 +13,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
-import { and, eq, desc, isNull, or } from "drizzle-orm";
+import { and, eq, desc, inArray, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { sendEmail } from "../services/notifications.js";
+
+const QUOTE_BASE = "https://app.hazardlink.ie";
 
 const requireRole =
   (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
@@ -181,6 +184,8 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
         proposedStartDate: schema.jobQuotes.proposedStartDate,
         notes: schema.jobQuotes.notes,
         submittedAt: schema.jobQuotes.submittedAt,
+        token: schema.jobQuotes.token,
+        contractorEmail: schema.contractors.email,
       })
       .from(schema.jobQuotes)
       .innerJoin(schema.contractors, eq(schema.contractors.id, schema.jobQuotes.contractorId))
@@ -212,19 +217,69 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .limit(1);
     if (!job) return reply.code(404).send({ error: "not_found" });
 
-    await db.insert(schema.jobQuotes).values(
-      parsed.data.contractorIds.map((cid) => ({
-        jobId: id,
-        organisationId: c.orgId,
-        contractorId: cid,
-        status: "pending" as const,
-      })),
-    );
+    const inserted = await db
+      .insert(schema.jobQuotes)
+      .values(
+        parsed.data.contractorIds.map((cid) => ({
+          jobId: id,
+          organisationId: c.orgId,
+          contractorId: cid,
+          status: "pending" as const,
+          token: randomBytes(18).toString("base64url"),
+        })),
+      )
+      .returning();
     await db
       .update(schema.maintenanceJobs)
       .set({ status: "tendering", updatedAt: new Date() })
       .where(eq(schema.maintenanceJobs.id, id));
     await logJobEvent(c.orgId, id, "tendered", c.sub, `${parsed.data.contractorIds.length} contractor(s)`);
+
+    // Email each invited contractor a no-login "submit your quote" magic link
+    // (white-label; best-effort). They reply with a price + start date.
+    void (async () => {
+      try {
+        const [org] = await db.select({ name: schema.organisations.name }).from(schema.organisations).where(eq(schema.organisations.id, c.orgId)).limit(1);
+        const orgName = org?.name ?? "Your client";
+        const building = job.buildingId
+          ? (await db.select({ name: schema.buildings.name }).from(schema.buildings).where(eq(schema.buildings.id, job.buildingId)).limit(1))[0]?.name ?? null
+          : null;
+        const cons = await db
+          .select({ id: schema.contractors.id, name: schema.contractors.name, email: schema.contractors.email })
+          .from(schema.contractors)
+          .where(and(eq(schema.contractors.organisationId, c.orgId), inArray(schema.contractors.id, parsed.data.contractorIds)));
+        const byId = new Map(cons.map((x) => [x.id, x]));
+        for (const q of inserted) {
+          const con = byId.get(q.contractorId);
+          if (!con?.email || !q.token) continue;
+          const url = `${QUOTE_BASE}/quote/${q.token}`;
+          await sendEmail({
+            to: con.email,
+            fromName: orgName,
+            subject: `Quote request: ${job.title}`,
+            text: [
+              con.name ? `Dear ${con.name},` : "Dear Sir or Madam,",
+              ``,
+              `${orgName} invites you to quote for the following work:`,
+              ``,
+              `    Job:   ${job.title}`,
+              ...(building ? [`    Site:  ${building}`] : []),
+              ...(job.description ? [`    Details: ${job.description}`] : []),
+              ``,
+              `Submit your quote (price + earliest start date) here — no login or account needed:`,
+              ``,
+              url,
+              ``,
+              `Kind regards,`,
+              orgName,
+            ].join("\n"),
+          });
+        }
+      } catch (err) {
+        console.error("tender email failed:", err);
+      }
+    })();
+
     return { ok: true };
   });
 

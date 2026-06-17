@@ -37,6 +37,7 @@ import { Checkpoints } from "./pages/Checkpoints";
 import { CheckpointScan } from "./pages/CheckpointScan";
 import { LoneWorker } from "./pages/LoneWorker";
 import { ReportFault } from "./pages/ReportFault";
+import { QuoteSubmit } from "./pages/QuoteSubmit";
 import { ChooseSection } from "./pages/ChooseSection";
 import { SectionProvider, useSection } from "./lib/section";
 import { initWebSentry } from "./lib/sentry";
@@ -85,6 +86,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/c/:token" element={<CheckpointScan />} />
             {/* Public, no-login "report a fault" page behind each asset's QR. */}
             <Route path="/report/:token" element={<ReportFault />} />
+            {/* Public, no-login contractor quote page from a tender email. */}
+            <Route path="/quote/:token" element={<QuoteSubmit />} />
             {/* Section chooser — pick Cleaning or Maintenance on entry. */}
             <Route path="/choose" element={<RequireAuth><ChooseSection /></RequireAuth>} />
             <Route

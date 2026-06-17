@@ -24,6 +24,7 @@ interface Quote {
   id: string; contractorId: string; contractorName: string; isPreferred: boolean; status: string;
   amountCents: number | null; upfrontCents: number | null; upfrontPct: number | null;
   proposedStartDate: string | null; notes: string | null; submittedAt: string | null;
+  token: string | null; contractorEmail: string | null;
 }
 interface JobEvent { id: string; type: string; detail: string | null; createdAt: string }
 
@@ -348,6 +349,7 @@ function QuoteRow({
   const [amount, setAmount] = useState("");
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const submitted = quote.status === "submitted" || quote.status === "awarded";
   const overCheapest = quote.amountCents != null && cheapestCents != null ? quote.amountCents - cheapestCents : 0;
@@ -358,7 +360,7 @@ function QuoteRow({
   };
 
   return (
-    <div className={"rounded border p-2.5 " + (quote.status === "awarded" ? "border-emerald-600 bg-emerald-950/20" : "border-slate-200 bg-white")}>
+    <div className={"rounded border p-2.5 " + (quote.status === "awarded" ? "border-emerald-600 bg-emerald-50" : "border-slate-200 bg-white")}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-slate-800 text-sm truncate">{quote.contractorName}</span>
@@ -372,26 +374,37 @@ function QuoteRow({
         </div>
       </div>
 
-      {/* Enter a returned quote (pending) */}
+      {/* Pending — emailed a magic link; copy/resend it, or enter the quote manually. */}
       {quote.status === "pending" && (
-        entering ? (
-          <div className="mt-2 flex items-end gap-2">
-            <div className="flex-1">
-              <label className="block text-xs text-slate-500 mb-1">Quote (€)</label>
-              <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric"
-                className="w-full px-2 py-1.5 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" placeholder="1450" />
+        <div className="mt-1.5 space-y-1.5">
+          {quote.token && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-slate-500">{quote.contractorEmail ? "📧 Emailed — awaiting their quote" : "⚠ No email on file"}</span>
+              <button
+                onClick={() => { const u = `${window.location.origin}/quote/${quote.token}`; navigator.clipboard?.writeText(u).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
+                className="text-blue-700 hover:underline"
+              >{copied ? "Copied!" : "Copy link"}</button>
             </div>
-            <button
-              disabled={!amount}
-              onClick={() =>
-                api(`/quotes/${quote.id}`, { method: "PATCH", body: JSON.stringify({ amountCents: Math.round(Number(amount) * 100) }) })
-                  .then(() => { setEntering(false); onSubmitted(); })
-              }
-              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 rounded text-white">Save</button>
-          </div>
-        ) : (
-          <button onClick={() => setEntering(true)} className="mt-1 text-xs text-blue-700 hover:text-blue-700">+ Enter their quote</button>
-        )
+          )}
+          {entering ? (
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="block text-xs text-slate-500 mb-1">Quote (€)</label>
+                <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric"
+                  className="w-full px-2 py-1.5 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" placeholder="1450" />
+              </div>
+              <button
+                disabled={!amount}
+                onClick={() =>
+                  api(`/quotes/${quote.id}`, { method: "PATCH", body: JSON.stringify({ amountCents: Math.round(Number(amount) * 100) }) })
+                    .then(() => { setEntering(false); onSubmitted(); })
+                }
+                className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 rounded text-white">Save</button>
+            </div>
+          ) : (
+            <button onClick={() => setEntering(true)} className="text-xs text-slate-500 hover:text-slate-700">+ Enter it manually</button>
+          )}
+        </div>
       )}
 
       {/* Award (when a quote is submitted and the job isn't awarded yet) */}

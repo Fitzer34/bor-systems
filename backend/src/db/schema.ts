@@ -857,12 +857,16 @@ export const jobQuotes = pgTable(
     upfrontPct: smallint("upfront_pct"),
     proposedStartDate: date("proposed_start_date"),
     notes: text("notes"),
+    // Unguessable token behind the contractor's no-login "submit your quote"
+    // magic link, emailed on tender.
+    token: text("token"),
     invitedAt: timestamp("invited_at", { withTimezone: true }).defaultNow().notNull(),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
   },
   (t) => ({
     jobIdx: index("job_quotes_job_idx").on(t.jobId),
     contractorIdx: index("job_quotes_contractor_idx").on(t.contractorId),
+    tokenIdx: uniqueIndex("job_quotes_token_idx").on(t.token),
   }),
 );
 
