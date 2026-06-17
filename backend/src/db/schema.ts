@@ -389,6 +389,46 @@ export const parts = pgTable(
   (t) => ({ orgIdx: index("parts_org_idx").on(t.organisationId) }),
 );
 
+/// Cleaning quality inspections. A walk-through scores each checklist item;
+/// the overall score rolls up; a deficient item can spawn a maintenance/cleaning
+/// work order (CleanTelligent pattern, cross-discipline). photo_url is for
+/// tamper-evident proof once object storage is configured.
+export const inspectionRating = pgEnum("inspection_rating", ["meets", "acceptable", "needs_improvement", "na"]);
+
+export const inspections = pgTable(
+  "inspections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    area: text("area"),
+    inspectorUserId: uuid("inspector_user_id").references(() => users.id, { onDelete: "set null" }),
+    inspectorName: text("inspector_name"),
+    score: integer("score"), // 0-100, rolled up from item ratings
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("inspections_org_idx").on(t.organisationId),
+    buildingIdx: index("inspections_building_idx").on(t.buildingId),
+  }),
+);
+
+export const inspectionItems = pgTable(
+  "inspection_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    inspectionId: uuid("inspection_id").references(() => inspections.id, { onDelete: "cascade" }).notNull(),
+    label: text("label").notNull(),
+    rating: inspectionRating("rating").notNull().default("meets"),
+    note: text("note"),
+    photoUrl: text("photo_url"),
+    raisedJobId: uuid("raised_job_id").references(() => maintenanceJobs.id, { onDelete: "set null" }),
+  },
+  (t) => ({ inspectionIdx: index("inspection_items_inspection_idx").on(t.inspectionId) }),
+);
+
 export const hangers = pgTable(
   "hangers",
   {

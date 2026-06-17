@@ -31,6 +31,7 @@ import { Maintenance } from "./pages/Maintenance";
 import { Assets } from "./pages/Assets";
 import { Parts } from "./pages/Parts";
 import { MaintenanceDashboard } from "./pages/MaintenanceDashboard";
+import { Inspections } from "./pages/Inspections";
 import { Incidents } from "./pages/Incidents";
 import { Checkpoints } from "./pages/Checkpoints";
 import { CheckpointScan } from "./pages/CheckpointScan";
@@ -125,6 +126,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   itself renders different content based on role (read-only
                   for cleaners, full-create for admin/supervisor). */}
               <Route path="schedule" element={<Schedule />} />
+              <Route path="inspections" element={<Inspections />} />
               <Route path="dispatch" element={<Dispatch />} />
               {/* System status — visible to every authed user. Backed by the
                   public /status endpoint (also consumed by external uptime
