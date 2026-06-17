@@ -11,7 +11,18 @@ struct MaintenanceJobsView: View {
     @State private var error: String?
     @State private var loaded = false
     @State private var exporting = false
-    @State private var shareItem: ShareItem?
+    @State private var sheet: Sheet?
+
+    private enum Sheet: Identifiable {
+        case share(URL)
+        case log
+        var id: String {
+            switch self {
+            case .share(let u): return "share:\(u.absoluteString)"
+            case .log: return "log"
+            }
+        }
+    }
 
     private var openJobs: [MaintenanceJob] { jobs.filter { !jobIsClosed($0.status) } }
     private var closedJobs: [MaintenanceJob] { jobs.filter { jobIsClosed($0.status) } }
@@ -31,6 +42,10 @@ struct MaintenanceJobsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
+                Button { sheet = .log } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Log a job")
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await exportCsv() } } label: {
                     if exporting { ProgressView() } else { Image(systemName: "square.and.arrow.up") }
                 }
@@ -38,7 +53,12 @@ struct MaintenanceJobsView: View {
                 .accessibilityLabel("Export CSV")
             }
         }
-        .sheet(item: $shareItem) { ActivityView(items: [$0.url]) }
+        .sheet(item: $sheet) { s in
+            switch s {
+            case .share(let url): ActivityView(items: [url])
+            case .log: LogJobView(onLogged: { Task { await refresh() } })
+            }
+        }
         .refreshable { await refresh() }
         .task { await refresh() }
     }
@@ -46,7 +66,7 @@ struct MaintenanceJobsView: View {
     private func exportCsv() async {
         exporting = true
         defer { exporting = false }
-        do { shareItem = ShareItem(url: try await APIClient.shared.maintenanceJobsCSV()) }
+        do { sheet = .share(try await APIClient.shared.maintenanceJobsCSV()) }
         catch { self.error = "Could not export CSV." }
     }
 

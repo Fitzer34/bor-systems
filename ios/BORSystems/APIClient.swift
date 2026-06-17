@@ -576,3 +576,47 @@ extension APIClient {
         return f.string(from: Date())
     }
 }
+
+// MARK: - AI (Claude)
+
+extension APIClient {
+    struct AiStatus: Decodable { let configured: Bool }
+
+    /// Whether the server has an ANTHROPIC_API_KEY set — gate AI buttons on it.
+    func aiStatus() async throws -> Bool {
+        let res: AiStatus = try await request("/ai/status")
+        return res.configured
+    }
+
+    /// A worker's free-text (or dictated) report, structured by Claude into a
+    /// work order the user confirms before logging. Empty strings = "none".
+    struct WorkRequestParse: Decodable {
+        let title: String
+        let description: String
+        let priority: String
+        let assetId: String
+        let buildingId: String
+        let needsClarification: String
+    }
+    private struct ParseWorkRequestBody: Encodable { let text: String }
+    func parseWorkRequest(text: String) async throws -> WorkRequestParse {
+        try await request("/ai/parse-work-request", method: "POST", body: ParseWorkRequestBody(text: text))
+    }
+
+    struct CreateJobBody: Encodable {
+        let title: String
+        let description: String?
+        let priority: String
+        let buildingId: String?
+        let assetId: String?
+    }
+    func createJob(title: String, description: String?, priority: String,
+                   buildingId: String? = nil, assetId: String? = nil) async throws {
+        // Backend returns the created job (201); we just need success — refresh
+        // the list afterwards. EmptyResponse skips decoding the body.
+        let _: EmptyResponse = try await request(
+            "/jobs", method: "POST",
+            body: CreateJobBody(title: title, description: description, priority: priority,
+                                buildingId: buildingId, assetId: assetId))
+    }
+}
