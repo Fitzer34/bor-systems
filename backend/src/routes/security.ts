@@ -159,16 +159,27 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
     buildingId: z.string().uuid().nullable().optional(),
     locationNote: z.string().max(300).nullable().optional(),
     instructions: z.string().max(2000).nullable().optional(),
+    discipline: z.enum(["cleaning", "security"]).optional(),
     active: z.boolean().optional(),
   });
 
+  // Cleaning rounds and security patrols share this table; `?discipline=` keeps
+  // each section's list separate. Omitted → all (backwards-compatible).
+  const disciplineOf = (req: any): "cleaning" | "security" | null => {
+    const d = (req.query as { discipline?: string })?.discipline;
+    return d === "cleaning" || d === "security" ? d : null;
+  };
+
   app.get("/checkpoints", { preHandler: [app.authenticate, staff] }, async (req) => {
     const c = ctx(req);
+    const disc = disciplineOf(req);
     const rows = await db
       .select()
       .from(schema.checkpoints)
       .leftJoin(schema.buildings, eq(schema.buildings.id, schema.checkpoints.buildingId))
-      .where(eq(schema.checkpoints.organisationId, c.orgId))
+      .where(disc
+        ? and(eq(schema.checkpoints.organisationId, c.orgId), eq(schema.checkpoints.discipline, disc))
+        : eq(schema.checkpoints.organisationId, c.orgId))
       .orderBy(schema.checkpoints.name);
     return {
       checkpoints: rows.map((r) => ({
@@ -192,6 +203,7 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
         buildingId: b.buildingId ?? null,
         locationNote: b.locationNote?.trim() || null,
         instructions: b.instructions?.trim() || null,
+        discipline: b.discipline ?? "security",
         token: randomBytes(18).toString("base64url"),
       })
       .returning();
@@ -221,15 +233,18 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
     return { checkpoint: { ...row, scanUrl: checkpointScanUrl(row.token) } };
   });
 
-  // Recent patrol scans (newest first), joined to checkpoint + building.
+  // Recent scans (newest first), joined to checkpoint + building. `?discipline=`
+  // scopes to cleaning rounds or security patrols; photoUrl is the proof photo.
   app.get("/checkpoint-scans", { preHandler: [app.authenticate, staff] }, async (req) => {
     const c = ctx(req);
+    const disc = disciplineOf(req);
     const rows = await db
       .select({
         id: schema.checkpointScans.id,
         checkpointId: schema.checkpointScans.checkpointId,
         guardName: schema.checkpointScans.guardName,
         note: schema.checkpointScans.note,
+        photoUrl: schema.checkpointScans.photoUrl,
         flagged: schema.checkpointScans.flagged,
         scannedAt: schema.checkpointScans.scannedAt,
         checkpointName: schema.checkpoints.name,
@@ -238,7 +253,9 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
       .from(schema.checkpointScans)
       .leftJoin(schema.checkpoints, eq(schema.checkpoints.id, schema.checkpointScans.checkpointId))
       .leftJoin(schema.buildings, eq(schema.buildings.id, schema.checkpoints.buildingId))
-      .where(eq(schema.checkpointScans.organisationId, c.orgId))
+      .where(disc
+        ? and(eq(schema.checkpointScans.organisationId, c.orgId), eq(schema.checkpoints.discipline, disc))
+        : eq(schema.checkpointScans.organisationId, c.orgId))
       .orderBy(desc(schema.checkpointScans.scannedAt))
       .limit(100);
     return { scans: rows };

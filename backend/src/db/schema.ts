@@ -294,10 +294,16 @@ export const securityIncidents = pgTable(
   }),
 );
 
-/// Guard-tour checkpoints (Security). A checkpoint is a QR-tagged point at a
-/// site that guards scan on patrol. `instructions` is the per-checkpoint action
-/// shown to the guard on scan (the TrackTik-style "do this here" pattern).
-/// `token` powers a no-login scan URL, reusing the magic-link pattern.
+/// Which side a checkpoint belongs to. Cleaning rounds (a cleaner surveys an
+/// area and photographs it clean) and Security patrols (a guard scans a tour
+/// point) share the same table + scan loop but are kept separate per section.
+export const checkpointDiscipline = pgEnum("checkpoint_discipline", ["cleaning", "security"]);
+
+/// Guard-tour checkpoints (Security) and cleaning rounds (Cleaning). A
+/// checkpoint is a QR-tagged point at a site that staff scan on their round.
+/// `instructions` is the per-checkpoint action shown on scan (the TrackTik-style
+/// "do this here" pattern). `token` powers a no-login scan URL, reusing the
+/// magic-link pattern. `discipline` keeps cleaning + security lists separate.
 export const checkpoints = pgTable(
   "checkpoints",
   {
@@ -308,12 +314,14 @@ export const checkpoints = pgTable(
     locationNote: text("location_note"),
     instructions: text("instructions"),
     token: text("token").notNull().unique(),
+    discipline: checkpointDiscipline("discipline").notNull().default("security"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
     orgIdx: index("checkpoints_org_idx").on(t.organisationId),
     buildingIdx: index("checkpoints_building_idx").on(t.buildingId),
+    disciplineIdx: index("checkpoints_discipline_idx").on(t.organisationId, t.discipline),
   }),
 );
 
