@@ -29,6 +29,7 @@ const createBody = z.object({
     label: z.string().min(1).max(200),
     rating: z.enum(["meets", "acceptable", "needs_improvement", "na"]),
     note: z.string().max(1000).optional(),
+    photoUrl: z.string().max(500).nullable().optional(),
   })).min(1).max(100),
 });
 
@@ -96,6 +97,7 @@ export default async function inspectionRoutes(app: FastifyInstance): Promise<vo
         label: i.label.trim(),
         rating: i.rating,
         note: i.note?.trim() || null,
+        photoUrl: i.photoUrl || null,
       })),
     );
     return reply.code(201).send({ inspection: insp });

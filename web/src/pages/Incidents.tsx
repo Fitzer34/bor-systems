@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { PhotoUpload } from "../components/PhotoUpload";
 
 /**
  * Security — incident reporting. Guards/staff log on-site incidents (intruder,
@@ -23,6 +24,7 @@ interface Incident {
   occurredAt: string | null;
   resolvedAt: string | null;
   resolutionNote: string | null;
+  photoUrl: string | null;
   raisedJobId: string | null;
   createdAt: string;
 }
@@ -139,6 +141,7 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
   const [buildingId, setBuildingId] = useState(incident?.buildingId ?? "");
   const [occurredAt, setOccurredAt] = useState(incident?.occurredAt ? incident.occurredAt.slice(0, 16) : "");
   const [description, setDescription] = useState(incident?.description ?? "");
+  const [photoUrl, setPhotoUrl] = useState(incident?.photoUrl ?? "");
   const [resolutionNote, setResolutionNote] = useState(incident?.resolutionNote ?? "");
   const [err, setErr] = useState<string | null>(null);
 
@@ -156,6 +159,7 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
       buildingId: buildingId || null,
       occurredAt: occurredAt ? new Date(occurredAt).toISOString() : null,
       description: description.trim() || null,
+      photoUrl: photoUrl || null,
       ...(isEdit ? { status, resolutionNote: resolutionNote.trim() || null } : {}),
     };
   }
@@ -209,6 +213,9 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
           </div>
           <Group2 label="Details">
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={4000} placeholder="What you saw, who was involved, action taken…" className={inp + " resize-none"} />
+          </Group2>
+          <Group2 label="Photo evidence">
+            <PhotoUpload url={photoUrl || null} onUploaded={setPhotoUrl} label="add photo" />
           </Group2>
 
           {isEdit && (

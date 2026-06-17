@@ -62,6 +62,14 @@ export async function uploadClosePhoto(input: UploadInput): Promise<UploadResult
   return uploadInternal(input, "close-photos");
 }
 
+/**
+ * Evidence / proof photos for inspections, incidents and job completion.
+ * Same storage backend; "photos" prefix keeps them grouped in the bucket.
+ */
+export async function uploadPhoto(input: UploadInput): Promise<UploadResult> {
+  return uploadInternal(input, "photos");
+}
+
 async function uploadInternal(input: UploadInput, prefix: string): Promise<UploadResult> {
   const ext = extname(input.filename) || (input.mimetype === "image/png" ? ".png" : ".jpg");
   const key = `${prefix}/${randomUUID()}${ext}`;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { PhotoUpload, PhotoThumb } from "../components/PhotoUpload";
 
 /**
  * Maintenance — the Phase-1 core loop, one screen:
@@ -18,7 +19,7 @@ interface Contractor {
 interface Job {
   id: string; title: string; description: string | null; status: string; priority: string;
   tradeId: string | null; awardReason: string | null; createdAt: string;
-  scheduledStartAt: string | null; completedAt: string | null; completionNote: string | null;
+  scheduledStartAt: string | null; completedAt: string | null; completionNote: string | null; completionPhotoUrl: string | null;
 }
 interface Quote {
   id: string; contractorId: string; contractorName: string; isPreferred: boolean; status: string;
@@ -199,6 +200,7 @@ function JobModal({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [scheduleAt, setScheduleAt] = useState("");
   const [completeNote, setCompleteNote] = useState("");
+  const [completePhoto, setCompletePhoto] = useState("");
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const refresh = () => { qc.invalidateQueries({ queryKey: ["mx-job", jobId] }); onChanged(); };
   const act = (path: string, body?: unknown) =>
@@ -301,11 +303,15 @@ function JobModal({
               {d.job.status === "in_progress" && (
                 <div className="space-y-2">
                   <input value={completeNote} onChange={(e) => setCompleteNote(e.target.value)} placeholder="Completion note (optional)" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
-                  <button onClick={() => act("complete", { completionNote: completeNote.trim() || undefined })} className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium">Mark complete</button>
+                  <PhotoUpload url={completePhoto || null} onUploaded={setCompletePhoto} label="completion photo" />
+                  <button onClick={() => act("complete", { completionNote: completeNote.trim() || undefined, completionPhotoUrl: completePhoto || undefined })} className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium">Mark complete</button>
                 </div>
               )}
               {d.job.status === "completed" && (
-                <p className="text-sm text-emerald-700">✓ Completed{d.job.completedAt ? ` · ${fmtDateTime(d.job.completedAt)}` : ""}{d.job.completionNote ? ` — ${d.job.completionNote}` : ""}</p>
+                <div className="space-y-2">
+                  <p className="text-sm text-emerald-700">✓ Completed{d.job.completedAt ? ` · ${fmtDateTime(d.job.completedAt)}` : ""}{d.job.completionNote ? ` — ${d.job.completionNote}` : ""}</p>
+                  {d.job.completionPhotoUrl && <PhotoThumb url={d.job.completionPhotoUrl} />}
+                </div>
               )}
               {d.job.status !== "completed" && (
                 <div className="mt-3">

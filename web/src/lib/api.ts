@@ -32,6 +32,14 @@ export class ApiError extends Error {
   }
 }
 
+/** Upload one image to /uploads/photo and return its stored URL. */
+export async function uploadPhotoFile(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await api<{ url: string }>("/uploads/photo", { method: "POST", body: fd });
+  return r.url;
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(init.headers);

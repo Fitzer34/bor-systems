@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { PhotoUpload, PhotoThumb } from "../components/PhotoUpload";
 
 /**
- * Cleaning quality inspections. Run a checklist (score each item), submit, and
- * get an overall score; supervisors can turn a failed item into a maintenance
- * job. (Photo proof per item lands once object storage is configured.)
+ * Cleaning quality inspections. Run a checklist (score each item), attach
+ * tamper-evident photo proof, submit, and get an overall score; supervisors can
+ * turn a failed item into a maintenance job.
  */
 
 type Rating = "meets" | "acceptable" | "needs_improvement" | "na";
@@ -15,7 +16,7 @@ interface Inspection {
   id: string; buildingId: string | null; building: { id: string; name: string } | null;
   area: string | null; inspectorName: string | null; score: number | null; note: string | null; createdAt: string;
 }
-interface Item { id: string; label: string; rating: Rating; note: string | null; raisedJobId: string | null }
+interface Item { id: string; label: string; rating: Rating; note: string | null; photoUrl: string | null; raisedJobId: string | null }
 interface Building { id: string; name: string }
 
 const RATINGS: { v: Rating; label: string; on: string }[] = [
@@ -93,8 +94,8 @@ function NewInspectionModal({ buildings, onClose, onSaved }: { buildings: Buildi
   const { user } = useAuth();
   const [buildingId, setBuildingId] = useState("");
   const [area, setArea] = useState("");
-  const [items, setItems] = useState<{ label: string; rating: Rating; note: string }[]>(
-    DEFAULT_ITEMS.map((label) => ({ label, rating: "meets", note: "" })),
+  const [items, setItems] = useState<{ label: string; rating: Rating; note: string; photo: string }[]>(
+    DEFAULT_ITEMS.map((label) => ({ label, rating: "meets", note: "", photo: "" })),
   );
   const [newLabel, setNewLabel] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -107,6 +108,7 @@ function NewInspectionModal({ buildings, onClose, onSaved }: { buildings: Buildi
 
   const setRating = (i: number, r: Rating) => setItems((arr) => arr.map((it, n) => (n === i ? { ...it, rating: r } : it)));
   const setNote = (i: number, v: string) => setItems((arr) => arr.map((it, n) => (n === i ? { ...it, note: v } : it)));
+  const setPhoto = (i: number, v: string) => setItems((arr) => arr.map((it, n) => (n === i ? { ...it, photo: v } : it)));
   const remove = (i: number) => setItems((arr) => arr.filter((_, n) => n !== i));
 
   const scored = items.filter((i) => i.rating !== "na");
@@ -118,7 +120,7 @@ function NewInspectionModal({ buildings, onClose, onSaved }: { buildings: Buildi
       buildingId: buildingId || null,
       area: area.trim() || undefined,
       inspectorName: user?.name,
-      items: items.map((i) => ({ label: i.label.trim(), rating: i.rating, note: i.note.trim() || undefined })),
+      items: items.map((i) => ({ label: i.label.trim(), rating: i.rating, note: i.note.trim() || undefined, photoUrl: i.photo || undefined })),
     }) }),
     onSuccess: onSaved,
     onError: () => setErr("Couldn't save — check the items and try again."),
@@ -162,14 +164,17 @@ function NewInspectionModal({ buildings, onClose, onSaved }: { buildings: Buildi
                 {it.rating === "needs_improvement" && (
                   <input value={it.note} onChange={(e) => setNote(i, e.target.value)} placeholder="What's the issue?" className={"mt-2 " + inp} />
                 )}
+                <div className="mt-2">
+                  <PhotoUpload url={it.photo || null} onUploaded={(u) => setPhoto(i, u)} label="photo proof" />
+                </div>
               </div>
             ))}
           </div>
 
           <div className="flex gap-2">
             <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Add a checklist item…" className={inp}
-              onKeyDown={(e) => { if (e.key === "Enter" && newLabel.trim()) { setItems((a) => [...a, { label: newLabel.trim(), rating: "meets", note: "" }]); setNewLabel(""); } }} />
-            <button onClick={() => { if (newLabel.trim()) { setItems((a) => [...a, { label: newLabel.trim(), rating: "meets", note: "" }]); setNewLabel(""); } }} className="px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded text-slate-700 whitespace-nowrap">Add</button>
+              onKeyDown={(e) => { if (e.key === "Enter" && newLabel.trim()) { setItems((a) => [...a, { label: newLabel.trim(), rating: "meets", note: "", photo: "" }]); setNewLabel(""); } }} />
+            <button onClick={() => { if (newLabel.trim()) { setItems((a) => [...a, { label: newLabel.trim(), rating: "meets", note: "", photo: "" }]); setNewLabel(""); } }} className="px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded text-slate-700 whitespace-nowrap">Add</button>
           </div>
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
@@ -219,6 +224,7 @@ function DetailModal({ inspection, onClose }: { inspection: Inspection; onClose:
                   <div className="min-w-0 flex-1">
                     <div className="text-slate-900">{it.label}</div>
                     {it.note && <div className="text-xs text-slate-500">{it.note}</div>}
+                    {it.photoUrl && <div className="mt-1"><PhotoThumb url={it.photoUrl} /></div>}
                   </div>
                   {it.rating === "needs_improvement" && (
                     it.raisedJobId

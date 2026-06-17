@@ -32,6 +32,7 @@ const incidentBody = z.object({
   buildingId: z.string().uuid().nullable().optional(),
   description: z.string().max(4000).nullable().optional(),
   occurredAt: z.string().datetime().nullable().optional(),
+  photoUrl: z.string().max(500).nullable().optional(),
 });
 
 export default async function securityRoutes(app: FastifyInstance): Promise<void> {
@@ -71,6 +72,7 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
         buildingId: b.buildingId ?? null,
         description: b.description?.trim() || null,
         occurredAt: b.occurredAt ? new Date(b.occurredAt) : null,
+        photoUrl: b.photoUrl || null,
       })
       .returning();
     return reply.code(201).send({ incident: row });

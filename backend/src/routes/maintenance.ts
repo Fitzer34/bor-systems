@@ -414,12 +414,15 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
 
   app.post("/jobs/:id/complete", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = z.object({ completionNote: z.string().max(2000).optional() }).safeParse(req.body ?? {});
+    const body = z.object({
+      completionNote: z.string().max(2000).optional(),
+      completionPhotoUrl: z.string().max(500).optional(),
+    }).safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
     const c = ctx(req);
     const [job] = await db
       .update(schema.maintenanceJobs)
-      .set({ status: "completed", completedAt: new Date(), completionNote: body.data.completionNote?.trim() || null, updatedAt: new Date() })
+      .set({ status: "completed", completedAt: new Date(), completionNote: body.data.completionNote?.trim() || null, completionPhotoUrl: body.data.completionPhotoUrl || null, updatedAt: new Date() })
       .where(and(eq(schema.maintenanceJobs.id, id), eq(schema.maintenanceJobs.organisationId, c.orgId)))
       .returning();
     if (!job) return reply.code(404).send({ error: "not_found" });
