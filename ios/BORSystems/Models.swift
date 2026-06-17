@@ -279,6 +279,19 @@ struct Meter: Codable, Identifiable, Hashable {
 }
 struct MetersResponse: Codable { let meters: [Meter] }
 
+/// A staff certification / qualification with expiry (workforce competency).
+struct StaffCertification: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let issuer: String?
+    let userName: String?
+    let userRole: String?
+    let expiresOn: String?
+    let status: String   // valid | expiring | expired
+    let daysToExpiry: Int?
+}
+struct CertificationsResponse: Codable { let certifications: [StaffCertification] }
+
 /// One line in a job's append-only timeline.
 struct JobEvent: Codable, Identifiable, Hashable {
     let id: String

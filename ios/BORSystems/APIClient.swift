@@ -555,6 +555,12 @@ extension APIClient {
     func serviceMeter(_ id: String) async throws {
         let _: EmptyResponse = try await request("/meters/\(id)/service", method: "POST")
     }
+
+    // MARK: Workforce competency (certifications)
+    func certifications() async throws -> [StaffCertification] {
+        let res: CertificationsResponse = try await request("/certifications")
+        return res.certifications
+    }
     func maintenanceJobDetail(_ id: String) async throws -> JobDetailResponse {
         try await request("/jobs/\(id)")
     }

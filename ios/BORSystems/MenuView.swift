@@ -56,6 +56,7 @@ struct MenuView: View {
                         NavigationLink { MaintenanceJobsView() } label: { Label("Maintenance jobs", systemImage: "hammer") }
                         NavigationLink { MetersView() } label: { Label("Meters", systemImage: "gauge") }
                         NavigationLink { PPMsView() } label: { Label("PPMs", systemImage: "wrench.and.screwdriver") }
+                        NavigationLink { CompetencyView() } label: { Label("Competency", systemImage: "checkmark.seal") }
                         NavigationLink { UsersView() } label: { Label("Users", systemImage: "person.3") }
                         NavigationLink { ScheduleView() } label: { Label("Schedule", systemImage: "calendar") }
                     }
