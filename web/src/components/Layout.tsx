@@ -104,6 +104,7 @@ export function Layout() {
           {/* ─── Maintenance side (CMMS / FM) ─── */}
           {activeSection === "maintenance" && isStaff && (
             <>
+              <NavItem to="/maintenance-dashboard">Dashboard</NavItem>
               <NavItem to="/maintenance">Jobs</NavItem>
               <NavItem to="/assets">Assets</NavItem>
               <NavItem to="/parts">Parts</NavItem>

@@ -30,6 +30,7 @@ import { Analytics } from "./pages/Analytics";
 import { Maintenance } from "./pages/Maintenance";
 import { Assets } from "./pages/Assets";
 import { Parts } from "./pages/Parts";
+import { MaintenanceDashboard } from "./pages/MaintenanceDashboard";
 import { Incidents } from "./pages/Incidents";
 import { Checkpoints } from "./pages/Checkpoints";
 import { CheckpointScan } from "./pages/CheckpointScan";
@@ -58,7 +59,7 @@ function SectionHome() {
   const { user } = useAuth();
   const { section } = useSection();
   const isStaff = user?.role === "admin" || user?.role === "supervisor";
-  if (isStaff && section === "maintenance") return <Navigate to="/maintenance" replace />;
+  if (isStaff && section === "maintenance") return <Navigate to="/maintenance-dashboard" replace />;
   if (isStaff && section === "security") return <Navigate to="/incidents" replace />;
   return <Dashboard />;
 }
@@ -110,6 +111,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="maintenance" element={<RequireAuth role={["admin", "supervisor"]}><Maintenance /></RequireAuth>} />
               <Route path="assets" element={<RequireAuth role={["admin", "supervisor"]}><Assets /></RequireAuth>} />
               <Route path="parts" element={<RequireAuth role={["admin", "supervisor"]}><Parts /></RequireAuth>} />
+              <Route path="maintenance-dashboard" element={<RequireAuth role={["admin", "supervisor"]}><MaintenanceDashboard /></RequireAuth>} />
               <Route path="incidents" element={<RequireAuth role={["admin", "supervisor"]}><Incidents /></RequireAuth>} />
               <Route path="checkpoints" element={<RequireAuth role={["admin", "supervisor"]}><Checkpoints /></RequireAuth>} />
               <Route path="lone-worker" element={<LoneWorker />} />
