@@ -52,6 +52,15 @@ function fmtDateTime(iso: string | null): string {
   return isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function useAiConfigured(): boolean {
+  const { data } = useQuery({
+    queryKey: ["ai-status"],
+    queryFn: () => api<{ configured: boolean }>("/ai/status"),
+    staleTime: 5 * 60_000,
+  });
+  return !!data?.configured;
+}
+
 export function Incidents() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: ["incidents"], queryFn: () => api<{ incidents: Incident[] }>("/incidents") });
@@ -144,6 +153,24 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
   const [photoUrl, setPhotoUrl] = useState(incident?.photoUrl ?? "");
   const [resolutionNote, setResolutionNote] = useState(incident?.resolutionNote ?? "");
   const [err, setErr] = useState<string | null>(null);
+  const aiConfigured = useAiConfigured();
+  const [aiSuggestion, setAiSuggestion] = useState<{ actions: string[]; rationale: string } | null>(null);
+  const triage = useMutation({
+    mutationFn: () =>
+      api<{ severity: Severity; suggestedActions: string[]; rationale: string }>("/ai/triage-incident", {
+        method: "POST",
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          kind: kind || undefined,
+        }),
+      }),
+    onSuccess: (r) => {
+      setSeverity(r.severity);
+      setAiSuggestion({ actions: r.suggestedActions, rationale: r.rationale });
+    },
+    onError: () => setErr("Couldn't get an AI suggestion — try again."),
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -189,6 +216,40 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
           <Group2 label="What happened?">
             <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus maxLength={200} placeholder="e.g. Rear fire door found propped open" className={inp} />
           </Group2>
+          {aiConfigured && (
+            <button
+              type="button"
+              onClick={() => { setErr(null); triage.mutate(); }}
+              disabled={!title.trim() || triage.isPending}
+              className="text-sm text-blue-700 hover:bg-blue-50 rounded px-2 py-1 disabled:text-slate-400"
+            >
+              {triage.isPending ? "✨ Thinking…" : "✨ Suggest severity & actions"}
+            </button>
+          )}
+          {aiSuggestion && (
+            <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm">
+              <p className="text-slate-700">{aiSuggestion.rationale}</p>
+              {aiSuggestion.actions.length > 0 && (
+                <>
+                  <p className="text-xs font-medium text-slate-500 mt-2 mb-1">Suggested actions</p>
+                  <ul className="list-disc list-inside text-slate-700 space-y-0.5">
+                    {aiSuggestion.actions.map((a, i) => (
+                      <li key={i}>{a}</li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDescription((d) => (d ? d + "\n\n" : "") + "Actions:\n" + aiSuggestion.actions.map((a) => "- " + a).join("\n"))
+                    }
+                    className="text-xs text-blue-700 hover:underline mt-2"
+                  >
+                    Add to details
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Group2 label="Type">
               <select value={kind} onChange={(e) => setKind(e.target.value)} className={inp}>
