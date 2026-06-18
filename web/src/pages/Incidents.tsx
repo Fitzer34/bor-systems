@@ -35,15 +35,15 @@ const SEVERITIES: Severity[] = ["low", "medium", "high", "critical"];
 const STATUSES: Status[] = ["open", "investigating", "resolved"];
 
 const sevCls: Record<Severity, string> = {
-  low: "bg-slate-200 text-slate-700",
-  medium: "bg-amber-100 text-amber-700",
-  high: "bg-orange-100 text-orange-700",
-  critical: "bg-red-100 text-red-700",
+  low: "pill-muted",
+  medium: "pill-offline",
+  high: "pill bg-orange-100 text-orange-700",
+  critical: "pill-alert",
 };
 const statusCls: Record<Status, string> = {
-  open: "bg-red-100 text-red-700",
-  investigating: "bg-blue-100 text-blue-700",
-  resolved: "bg-emerald-100 text-emerald-700",
+  open: "pill-alert",
+  investigating: "pill-info",
+  resolved: "pill-online",
 };
 
 function fmtDateTime(iso: string | null): string {
@@ -84,13 +84,16 @@ export function Incidents() {
           <h1 className="text-2xl font-semibold">Security incidents</h1>
           <p className="text-sm text-slate-500 mt-1">Log and track on-site incidents — intruders, theft, damage, safety hazards.</p>
         </div>
-        <button onClick={() => setCreating(true)} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium whitespace-nowrap">+ Log incident</button>
+        <button onClick={() => setCreating(true)} className="btn-primary whitespace-nowrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          Log incident
+        </button>
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <p className="text-slate-800">No incidents logged.</p>
-          <p className="text-sm text-slate-500 mt-2">Log anything that happens on site so it's recorded, triaged, and followed up.</p>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <p className="text-slate-900 font-medium">No incidents logged.</p>
+          <p className="text-sm text-slate-500 mt-1">Log anything that happens on site so it's recorded, triaged, and followed up.</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -113,14 +116,14 @@ export function Incidents() {
 function Group({ title, items, onClick }: { title: string; items: Incident[]; onClick: (i: Incident) => void }) {
   return (
     <div>
-      <h2 className="text-xs uppercase tracking-wider text-slate-500 mb-2">{title}</h2>
+      <h2 className="section-title">{title}</h2>
       <div className="space-y-3">
         {items.map((i) => (
-          <button key={i.id} onClick={() => onClick(i)} className="w-full text-left rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition p-4">
+          <button key={i.id} onClick={() => onClick(i)} className="card card-hover w-full text-left">
             <div className="flex items-center gap-3 flex-wrap mb-1">
               <h3 className="font-medium text-slate-900">{i.title}</h3>
-              <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + sevCls[i.severity]}>{i.severity}</span>
-              <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + statusCls[i.status]}>{i.status}</span>
+              <span className={sevCls[i.severity] + " capitalize"}>{i.severity}</span>
+              <span className={statusCls[i.status] + " capitalize"}>{i.status}</span>
             </div>
             <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
               {i.kind && <Field label="Type" value={i.kind} />}
@@ -209,7 +212,9 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
       <div className="bg-white rounded-xl w-full max-w-2xl border border-slate-300 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-medium text-slate-900">{isEdit ? "Incident" : "Log incident"}</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-2xl leading-none" aria-label="Close">×</button>
+          <button onClick={onClose} className="btn-ghost -mr-2 p-1.5" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
         </div>
 
         <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -221,13 +226,14 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
               type="button"
               onClick={() => { setErr(null); triage.mutate(); }}
               disabled={!title.trim() || triage.isPending}
-              className="text-sm text-blue-700 hover:bg-blue-50 rounded px-2 py-1 disabled:text-slate-400"
+              className="btn-ghost text-blue-700 hover:text-blue-800 hover:bg-blue-50 disabled:text-slate-400"
             >
-              {triage.isPending ? "✨ Thinking…" : "✨ Suggest severity & actions"}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z" /><path d="M19 14l.8 2 .2.8.8.2-2 .8-.8 2-.8-2-2-.8 2-.8z" /></svg>
+              {triage.isPending ? "Thinking…" : "Suggest severity & actions"}
             </button>
           )}
           {aiSuggestion && (
-            <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
               <p className="text-slate-700">{aiSuggestion.rationale}</p>
               {aiSuggestion.actions.length > 0 && (
                 <>
@@ -298,12 +304,18 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-2">
           {isEdit ? (
             incident!.raisedJobId
-              ? <span className="text-sm text-emerald-700">🔧 Maintenance job raised</span>
-              : <button onClick={() => { setErr(null); raiseJob.mutate(); }} disabled={raiseJob.isPending} className="px-3 py-1.5 text-sm text-blue-700 hover:bg-blue-50 rounded">{raiseJob.isPending ? "…" : "🔧 Raise maintenance job"}</button>
+              ? <span className="inline-flex items-center gap-1.5 text-sm text-emerald-700">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-2.5z" /></svg>
+                  Maintenance job raised
+                </span>
+              : <button onClick={() => { setErr(null); raiseJob.mutate(); }} disabled={raiseJob.isPending} className="btn-ghost text-blue-700 hover:text-blue-800 hover:bg-blue-50">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-2.5z" /></svg>
+                  {raiseJob.isPending ? "…" : "Raise maintenance job"}
+                </button>
           ) : <span />}
           <div className="flex gap-2 ml-auto">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-            <button onClick={() => { setErr(null); save.mutate(); }} disabled={!title.trim() || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
+            <button onClick={onClose} className="btn-ghost">Cancel</button>
+            <button onClick={() => { setErr(null); save.mutate(); }} disabled={!title.trim() || save.isPending} className="btn-primary">
               {save.isPending ? "Saving…" : isEdit ? "Save" : "Log incident"}
             </button>
           </div>
@@ -313,8 +325,8 @@ function IncidentDialog({ incident, buildings, onClose, onSaved }: {
   );
 }
 
-const inp = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
+const inp = "input";
 
 function Group2({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-xs text-slate-500 mb-1">{label}</label>{children}</div>;
+  return <div><label className="field-label">{label}</label>{children}</div>;
 }

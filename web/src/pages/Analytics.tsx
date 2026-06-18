@@ -91,14 +91,14 @@ export function Analytics() {
             <button
               onClick={() => loadSample.mutate()}
               disabled={loadSample.isPending}
-              className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 text-white font-medium"
+              className="btn-primary"
             >
               {loadSample.isPending ? "Loading…" : "Load sample data"}
             </button>
             <button
               onClick={() => clearSample.mutate()}
               disabled={clearSample.isPending}
-              className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+              className="btn-secondary"
             >
               {clearSample.isPending ? "Clearing…" : "Clear sample data"}
             </button>
@@ -154,8 +154,8 @@ export function Analytics() {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
-      <h2 className="text-lg font-medium mb-3">{title}</h2>
+    <div className="card">
+      <h2 className="text-base font-semibold text-slate-900 mb-3">{title}</h2>
       {children}
     </div>
   );
@@ -237,14 +237,14 @@ function ZoneList({ zones }: { zones: HeatmapZone[] }) {
         return (
           <div
             key={z.zoneId}
-            className={`p-3 rounded ${colour} flex justify-between items-center`}
+            className={`p-3 rounded-lg ${colour} flex justify-between items-center`}
           >
             <div>
-              <div className="font-medium text-sm">{z.zoneName}</div>
+              <div className="font-medium text-sm text-slate-900">{z.zoneName}</div>
               <div className="text-xs text-slate-500">{z.floorName}</div>
             </div>
             <div className="text-right">
-              <div className="font-semibold text-sm">{z.spillCount} spills</div>
+              <div className="font-semibold text-sm text-slate-900">{z.spillCount} spills</div>
               {z.avgResponseSeconds !== null && (
                 <div className="text-xs text-slate-500">
                   Avg response {formatDuration(z.avgResponseSeconds)}
@@ -283,9 +283,20 @@ function ResponderTable({ responders }: { responders: Responder[] }) {
         {responders.map((r, i) => (
           <tr key={r.userId} className="border-b border-slate-100">
             <td className="py-2">
-              {i === 0 && <span className="mr-1">🥇</span>}
-              {i === 1 && <span className="mr-1">🥈</span>}
-              {i === 2 && <span className="mr-1">🥉</span>}
+              {i < 3 && (
+                <span
+                  className={
+                    "inline-flex items-center justify-center w-5 h-5 mr-2 rounded-full text-xs font-semibold tabular-nums " +
+                    (i === 0
+                      ? "bg-amber-100 text-amber-700"
+                      : i === 1
+                      ? "bg-slate-200 text-slate-600"
+                      : "bg-orange-100 text-orange-700")
+                  }
+                >
+                  {i + 1}
+                </span>
+              )}
               {r.userName}
             </td>
             <td className="py-2 text-right font-medium">{r.ackCount}</td>

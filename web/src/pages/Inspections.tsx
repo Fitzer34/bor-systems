@@ -56,18 +56,23 @@ export function Inspections() {
           <h1 className="text-2xl font-semibold">Cleaning inspections</h1>
           <p className="text-sm text-slate-500 mt-1">Score a walk-through; failed items can become maintenance jobs.</p>
         </div>
-        <button onClick={() => setCreating(true)} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium whitespace-nowrap">+ New inspection</button>
+        <button onClick={() => setCreating(true)} className="btn-primary whitespace-nowrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          New inspection
+        </button>
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <p className="text-slate-800">No inspections yet.</p>
-          <p className="text-sm text-slate-500 mt-2">Run a quality walk-through — score each area, and any fails turn into tracked work.</p>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <div className="text-slate-900 font-medium">No inspections yet</div>
+          <div className="text-sm text-slate-500 mt-1">Run a quality walk-through — score each area, and any fails turn into tracked work.</div>
         </div>
       ) : (
         <div className="space-y-3">
           {list.map((i) => (
-            <button key={i.id} onClick={() => setViewing(i)} className="w-full text-left rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition p-4 flex items-center gap-4">
+            <button key={i.id} onClick={() => setViewing(i)} className="card card-hover w-full text-left flex items-center gap-4">
               <span className={"px-2.5 py-1 text-sm font-semibold rounded-full shrink-0 " + scoreCls(i.score)}>{i.score == null ? "—" : `${i.score}%`}</span>
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-slate-900">{i.building?.name ?? "No site"}{i.area ? ` · ${i.area}` : ""}</div>
@@ -135,13 +140,13 @@ function NewInspectionModal({ buildings, onClose, onSaved }: { buildings: Buildi
         </div>
         <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div><label className="block text-xs text-slate-500 mb-1">Site / building</label>
+            <div><label className="field-label">Site / building</label>
               <select value={buildingId} onChange={(e) => setBuildingId(e.target.value)} className={inp}>
                 <option value="">— None —</option>
                 {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
-            <div><label className="block text-xs text-slate-500 mb-1">Area (optional)</label>
+            <div><label className="field-label">Area (optional)</label>
               <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Level 2 offices" className={inp} />
             </div>
           </div>
@@ -154,12 +159,16 @@ function NewInspectionModal({ buildings, onClose, onSaved }: { buildings: Buildi
                   <div className="flex gap-1">
                     {RATINGS.map((r) => (
                       <button key={r.v} onClick={() => setRating(i, r.v)}
-                        className={"px-2 py-1 text-xs rounded border " + (it.rating === r.v ? r.on : "bg-white text-slate-600 border-slate-300")}>
+                        className={"px-2 py-1 text-xs rounded-lg border " + (it.rating === r.v ? r.on : "bg-white text-slate-600 border-slate-300")}>
                         {r.label}
                       </button>
                     ))}
                   </div>
-                  <button onClick={() => remove(i)} className="text-slate-400 hover:text-red-600 text-lg leading-none px-1" aria-label="Remove">×</button>
+                  <button onClick={() => remove(i)} className="text-slate-400 hover:text-red-600 px-1" aria-label="Remove">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
                 </div>
                 {it.rating === "needs_improvement" && (
                   <input value={it.note} onChange={(e) => setNote(i, e.target.value)} placeholder="What's the issue?" className={"mt-2 " + inp} />
@@ -174,13 +183,13 @@ function NewInspectionModal({ buildings, onClose, onSaved }: { buildings: Buildi
           <div className="flex gap-2">
             <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Add a checklist item…" className={inp}
               onKeyDown={(e) => { if (e.key === "Enter" && newLabel.trim()) { setItems((a) => [...a, { label: newLabel.trim(), rating: "meets", note: "", photo: "" }]); setNewLabel(""); } }} />
-            <button onClick={() => { if (newLabel.trim()) { setItems((a) => [...a, { label: newLabel.trim(), rating: "meets", note: "", photo: "" }]); setNewLabel(""); } }} className="px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded text-slate-700 whitespace-nowrap">Add</button>
+            <button onClick={() => { if (newLabel.trim()) { setItems((a) => [...a, { label: newLabel.trim(), rating: "meets", note: "", photo: "" }]); setNewLabel(""); } }} className="btn-secondary whitespace-nowrap">Add</button>
           </div>
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
         <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-          <button onClick={() => { setErr(null); save.mutate(); }} disabled={items.length === 0 || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={() => { setErr(null); save.mutate(); }} disabled={items.length === 0 || save.isPending} className="btn-primary">
             {save.isPending ? "Saving…" : "Submit inspection"}
           </button>
         </div>
@@ -228,8 +237,13 @@ function DetailModal({ inspection, onClose }: { inspection: Inspection; onClose:
                   </div>
                   {it.rating === "needs_improvement" && (
                     it.raisedJobId
-                      ? <span className="text-xs text-emerald-700 shrink-0">🔧 job raised</span>
-                      : isStaff && <button onClick={() => raise.mutate(it.id)} disabled={raise.isPending} className="text-xs text-blue-700 hover:underline shrink-0">Raise job</button>
+                      ? <span className="inline-flex items-center gap-1 text-xs text-emerald-700 shrink-0">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2 2.5-2.5z" />
+                          </svg>
+                          Job raised
+                        </span>
+                      : isStaff && <button onClick={() => raise.mutate(it.id)} disabled={raise.isPending} className="btn-ghost shrink-0">Raise job</button>
                   )}
                 </div>
               ))}
@@ -241,4 +255,4 @@ function DetailModal({ inspection, onClose }: { inspection: Inspection; onClose:
   );
 }
 
-const inp = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
+const inp = "input";

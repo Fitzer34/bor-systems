@@ -18,10 +18,10 @@ interface Meter {
 interface AssetLite { id: string; name: string }
 
 const STATUS: Record<Status, { label: string; badge: string; bar: string }> = {
-  due: { label: "Service due", badge: "bg-red-100 text-red-700", bar: "bg-red-500" },
-  due_soon: { label: "Due soon", badge: "bg-amber-100 text-amber-700", bar: "bg-amber-500" },
-  ok: { label: "OK", badge: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500" },
-  tracking: { label: "Tracking", badge: "bg-slate-100 text-slate-500", bar: "bg-slate-400" },
+  due: { label: "Service due", badge: "pill-alert", bar: "bg-red-500" },
+  due_soon: { label: "Due soon", badge: "pill-offline", bar: "bg-amber-500" },
+  ok: { label: "OK", badge: "pill-online", bar: "bg-emerald-500" },
+  tracking: { label: "Tracking", badge: "pill-muted", bar: "bg-slate-400" },
 };
 const RANK: Record<Status, number> = { due: 0, due_soon: 1, ok: 2, tracking: 3 };
 const fmt = (n: number) => n.toLocaleString();
@@ -68,7 +68,7 @@ export function Meters() {
           <h1 className="text-2xl font-semibold">Meters</h1>
           <p className="text-sm text-slate-500 mt-1">Usage-based (predictive) maintenance. Log readings; HazardLink flags each asset when it's due by actual use.</p>
         </div>
-        <button onClick={() => setAdding(true)} disabled={assets.length === 0} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium whitespace-nowrap">+ Add meter</button>
+        <button onClick={() => setAdding(true)} disabled={assets.length === 0} className="btn-primary whitespace-nowrap">Add meter</button>
       </div>
 
       {(dueCount > 0 || soonCount > 0) && (
@@ -79,26 +79,26 @@ export function Meters() {
       )}
 
       {meters.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <p className="text-slate-800">No meters yet.</p>
-          <p className="text-sm text-slate-500 mt-2">{assets.length === 0 ? "Add an asset first, then put a usage meter on it." : "Add a meter to an asset (e.g. runtime hours on a boiler) and log readings."}</p>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <p className="text-slate-900 font-medium">No meters yet.</p>
+          <p className="text-sm text-slate-500 mt-1">{assets.length === 0 ? "Add an asset first, then put a usage meter on it." : "Add a meter to an asset (e.g. runtime hours on a boiler) and log readings."}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {meters.map((m) => {
             const s = STATUS[m.status];
             return (
-              <div key={m.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={m.id} className="card">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-medium text-slate-900 truncate">{m.assetName ?? "—"}</div>
                     <div className="text-sm text-slate-500">{m.name}</div>
                   </div>
-                  <span className={"px-2 py-0.5 text-xs font-medium rounded-full shrink-0 " + s.badge}>{s.label}</span>
+                  <span className={s.badge + " shrink-0"}>{s.label}</span>
                 </div>
 
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-2xl font-semibold text-slate-900">{fmt(m.currentValue)}</span>
+                  <span className="stat-value">{fmt(m.currentValue)}</span>
                   {m.unit && <span className="text-sm text-slate-500">{m.unit}</span>}
                 </div>
 
@@ -121,7 +121,10 @@ export function Meters() {
                   <button onClick={() => setReading(m)} className="text-blue-700 hover:underline">Log reading</button>
                   {(m.status === "due" || m.status === "due_soon") && (
                     raisedIds.has(m.id)
-                      ? <span className="text-emerald-600">✓ Work order raised</span>
+                      ? <span className="inline-flex items-center gap-1 text-emerald-600">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+                          Work order raised
+                        </span>
                       : <button onClick={() => raiseWO.mutate(m)} disabled={raisingId === m.id} className="text-blue-700 hover:underline disabled:text-slate-400">{raisingId === m.id ? "Raising…" : "Raise work order"}</button>
                   )}
                   <button
@@ -141,7 +144,7 @@ export function Meters() {
   );
 }
 
-const inp = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
+const inp = "input";
 
 function MeterDialog({ assets, onClose, onSaved }: { assets: AssetLite[]; onClose: () => void; onSaved: () => void }) {
   const [assetId, setAssetId] = useState(assets[0]?.id ?? "");
@@ -194,8 +197,8 @@ function MeterDialog({ assets, onClose, onSaved }: { assets: AssetLite[]; onClos
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
         <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-          <button onClick={() => { setErr(null); save.mutate(); }} disabled={!assetId || !name.trim() || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">{save.isPending ? "Saving…" : "Add meter"}</button>
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={() => { setErr(null); save.mutate(); }} disabled={!assetId || !name.trim() || save.isPending} className="btn-primary">{save.isPending ? "Saving…" : "Add meter"}</button>
         </div>
       </div>
     </div>
@@ -236,8 +239,8 @@ function ReadingDialog({ meter, onClose, onSaved }: { meter: Meter; onClose: () 
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
         <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-          <button onClick={() => { setErr(null); save.mutate(); }} disabled={value.trim() === "" || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">{save.isPending ? "Saving…" : "Save reading"}</button>
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={() => { setErr(null); save.mutate(); }} disabled={value.trim() === "" || save.isPending} className="btn-primary">{save.isPending ? "Saving…" : "Save reading"}</button>
         </div>
       </div>
     </div>
@@ -245,5 +248,5 @@ function ReadingDialog({ meter, onClose, onSaved }: { meter: Meter; onClose: () 
 }
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-xs text-slate-500 mb-1">{label}</label>{children}</div>;
+  return <div><label className="field-label">{label}</label>{children}</div>;
 }

@@ -93,13 +93,13 @@ function Banner({
       : severity === "degraded"
       ? "bg-amber-50 border-amber-200 text-amber-900"
       : "bg-rose-50 border-rose-200 text-rose-900";
-  return <div className={`p-4 rounded-lg border ${cls}`}>{children}</div>;
+  return <div className={`p-4 rounded-xl border ${cls}`}>{children}</div>;
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="p-4 rounded-lg border bg-white shadow-sm">
-      <div className="text-sm font-medium text-slate-700 mb-2">{title}</div>
+    <div className="card">
+      <div className="section-title">{title}</div>
       <div className="space-y-1">{children}</div>
     </div>
   );

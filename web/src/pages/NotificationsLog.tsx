@@ -33,9 +33,10 @@ export function NotificationsLog() {
       {error && <div className="text-red-600">Could not load notifications log.</div>}
 
       {data && (
+        <div className="card p-0 overflow-hidden">
         <div className="table-wrap">
-        <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
-          <thead className="bg-slate-100 text-slate-600 text-left">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left">
             <tr>
               <th className="p-2">Sent</th>
               <th className="p-2">Recipient</th>
@@ -46,18 +47,18 @@ export function NotificationsLog() {
           </thead>
           <tbody>
             {data.entries.map((n) => (
-              <tr key={n.id} className="border-t align-top">
+              <tr key={n.id} className="border-t border-slate-200/80 align-top">
                 <td className="p-2 whitespace-nowrap text-slate-500">{new Date(n.sentAt).toLocaleString()}</td>
-                <td className="p-2">{n.recipientName ?? <span className="text-slate-500">deleted user</span>}<div className="text-xs text-slate-500">{n.recipientEmail}</div></td>
+                <td className="p-2">{n.recipientName ?? <span className="text-slate-500">Deleted user</span>}<div className="text-xs text-slate-500">{n.recipientEmail}</div></td>
                 <td className="p-2"><span className="font-mono text-xs">{n.channel}</span></td>
                 <td className="p-2"><span className="font-mono text-xs">{n.kind}</span></td>
                 <td className="p-2">
                   {n.delivered === true ? (
-                    <span className="text-green-700">delivered</span>
+                    <span className="pill-online">Delivered</span>
                   ) : n.delivered === false && n.error ? (
-                    <span className="text-red-600" title={n.error}>{n.error.length > 40 ? `${n.error.slice(0, 40)}…` : n.error}</span>
+                    <span className="pill-alert" title={n.error}>{n.error.length > 40 ? `${n.error.slice(0, 40)}…` : n.error}</span>
                   ) : (
-                    <span className="text-slate-500">pending</span>
+                    <span className="pill-muted">Pending</span>
                   )}
                 </td>
               </tr>
@@ -67,6 +68,7 @@ export function NotificationsLog() {
             )}
           </tbody>
         </table>
+        </div>
         </div>
       )}
     </div>

@@ -119,54 +119,54 @@ export function Schedule() {
       </p>
 
       {!isReadOnly && (
-      <div className="bg-white border rounded-lg p-4 mb-8">
-        <div className="font-medium mb-3">New shift</div>
+      <div className="card mb-8">
+        <div className="font-semibold text-slate-900 mb-3">New shift</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">Assigned to</label>
-            <select value={userId} onChange={(e) => setUserId(e.target.value)} className="border rounded px-3 py-2 w-full">
+            <label className="field-label">Assigned to</label>
+            <select value={userId} onChange={(e) => setUserId(e.target.value)} className="input">
               <option value="">— pick someone —</option>
               {assignableUsers.map((u) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Starts</label>
-            <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className="border rounded px-3 py-2 w-full" />
+            <label className="field-label">Starts</label>
+            <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className="input" />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Ends</label>
-            <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className="border rounded px-3 py-2 w-full" />
+            <label className="field-label">Ends</label>
+            <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className="input" />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Building (optional)</label>
-            <select value={buildingId} onChange={(e) => { setBuildingId(e.target.value); setFloorId(""); setZoneId(""); }} className="border rounded px-3 py-2 w-full">
+            <label className="field-label">Building (optional)</label>
+            <select value={buildingId} onChange={(e) => { setBuildingId(e.target.value); setFloorId(""); setZoneId(""); }} className="input">
               <option value="">— whole site —</option>
               {buildings.data?.buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Floor (optional)</label>
-            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
+            <label className="field-label">Floor (optional)</label>
+            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="input disabled:bg-slate-100">
               <option value="">— whole building —</option>
               {floors.data?.floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Zone (optional)</label>
-            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
+            <label className="field-label">Zone (optional)</label>
+            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="input disabled:bg-slate-100">
               <option value="">— whole floor —</option>
               {zones.data?.zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Notes (optional)</label>
-            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. focus on toilets" className="border rounded px-3 py-2 w-full" />
+            <label className="field-label">Notes (optional)</label>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. focus on toilets" className="input" />
           </div>
           <div className="sm:col-span-2">
             <button
               onClick={() => create.mutate()}
               disabled={!valid || create.isPending}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50"
+              className="btn-primary"
             >
               {create.isPending ? "Adding…" : "Add shift"}
             </button>
@@ -199,7 +199,7 @@ export function Schedule() {
               <tr key={s.id} className={`border-t ${status === "now" ? "bg-green-50" : status === "past" ? "text-slate-500" : ""}`}>
                 <td className="p-2">
                   {s.userName ?? "deleted"}
-                  {status === "now" && <span className="ml-2 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-xs">on now</span>}
+                  {status === "now" && <span className="pill-online ml-2">On now</span>}
                 </td>
                 <td className="p-2 whitespace-nowrap">{new Date(s.startsAt).toLocaleString()}</td>
                 <td className="p-2 whitespace-nowrap">{new Date(s.endsAt).toLocaleString()}</td>
@@ -207,7 +207,7 @@ export function Schedule() {
                 <td className="p-2 text-slate-500">{s.notes ?? ""}</td>
                 <td className="p-2 text-right">
                   {!isReadOnly && (
-                    <button onClick={() => { if (confirm("Delete this shift?")) remove.mutate(s.id); }} className="text-red-600 hover:underline">Delete</button>
+                    <button onClick={() => { if (confirm("Delete this shift?")) remove.mutate(s.id); }} className="btn-danger">Delete</button>
                   )}
                 </td>
               </tr>

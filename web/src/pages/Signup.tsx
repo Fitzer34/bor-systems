@@ -51,68 +51,68 @@ export function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <form onSubmit={onSubmit} className="bg-white shadow rounded-lg p-8 w-full max-w-md space-y-4">
+    <div className="min-h-screen flex items-start sm:items-center justify-center bg-slate-100 p-4 sm:p-6">
+      <form onSubmit={onSubmit} className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm w-full max-w-md space-y-4">
         <div>
-          <h1 className="text-xl font-semibold">Create your HazardLink organisation</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Create your HazardLink organisation</h1>
+          <p className="text-sm text-slate-600 mt-1">
             Get your own private workspace. You'll be the admin and can add cleaners and supervisors after.
           </p>
         </div>
 
         <div>
-          <label className="block text-xs text-slate-500 mb-1">Organisation name</label>
+          <label className="field-label">Organisation name</label>
           <input
             value={organisationName}
             onChange={(e) => setOrgName(e.target.value)}
             placeholder="e.g. Acme Cleaning Ltd"
             required
-            className="w-full border rounded px-3 py-2"
+            className="input"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-slate-500 mb-1">Your name</label>
+          <label className="field-label">Your name</label>
           <input
             value={adminName}
             onChange={(e) => setAdminName(e.target.value)}
             placeholder="Jane Doe"
             required
-            className="w-full border rounded px-3 py-2"
+            className="input"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-slate-500 mb-1">Email</label>
+          <label className="field-label">Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="jane@example.com"
             required
-            className="w-full border rounded px-3 py-2"
+            className="input"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-slate-500 mb-1">Password (min 8 characters)</label>
+          <label className="field-label">Password (min 8 characters)</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full border rounded px-3 py-2"
+            className="input"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-slate-500 mb-1">Confirm password</label>
+          <label className="field-label">Confirm password</label>
           <input
             type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             required
-            className="w-full border rounded px-3 py-2"
+            className="input"
           />
           {confirm && !passwordOk && (
             <div className="text-xs text-red-600 mt-1">
@@ -126,13 +126,13 @@ export function Signup() {
         <button
           type="submit"
           disabled={!valid || busy}
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded py-2 disabled:opacity-50"
+          className="btn-primary w-full"
         >
           {busy ? "Creating…" : "Create organisation"}
         </button>
 
-        <div className="text-sm text-center text-slate-500 pt-2">
-          Already have an account? <Link to="/login" className="text-blue-600 underline">Sign in</Link>
+        <div className="text-sm text-center text-slate-600 pt-2">
+          Already have an account? <Link to="/login" className="text-blue-700 font-medium hover:underline">Sign in</Link>
         </div>
       </form>
     </div>

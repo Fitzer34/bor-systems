@@ -32,9 +32,10 @@ export function AuditLog() {
       {error && <div className="text-red-600">Could not load audit log.</div>}
 
       {data && (
+        <div className="card p-0 overflow-hidden">
         <div className="table-wrap">
-        <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
-          <thead className="bg-slate-100 text-slate-600 text-left">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left">
             <tr>
               <th className="p-2">When</th>
               <th className="p-2">Who</th>
@@ -45,7 +46,7 @@ export function AuditLog() {
           </thead>
           <tbody>
             {data.entries.map((e) => (
-              <tr key={e.id} className="border-t align-top">
+              <tr key={e.id} className="border-t border-slate-200/80 align-top">
                 <td className="p-2 whitespace-nowrap text-slate-500">{new Date(e.at).toLocaleString()}</td>
                 <td className="p-2">{e.actorName ?? <span className="text-slate-500">system</span>}</td>
                 <td className="p-2 font-mono text-xs">{e.action}</td>
@@ -62,6 +63,7 @@ export function AuditLog() {
             )}
           </tbody>
         </table>
+        </div>
         </div>
       )}
     </div>

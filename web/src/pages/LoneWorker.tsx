@@ -63,34 +63,36 @@ export function LoneWorker() {
       <p className="text-sm text-slate-500 mt-1">Working alone? Start a check-in session. If you miss a check-in, or hit panic, your supervisors are alerted.</p>
 
       {/* ─── My session ─── */}
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+      <div className="mt-6 card p-5">
         {!s || s.status === "ended" ? (
           <>
-            <div className="font-medium text-slate-900 mb-3">Start a session</div>
+            <div className="font-semibold text-slate-900 mb-3">Start a session</div>
             <div className="flex flex-wrap items-end gap-3">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Check in every</label>
-                <select value={interval} onChange={(e) => setIntervalMin(Number(e.target.value))} className="px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm">
+                <label className="field-label">Check in every</label>
+                <select value={interval} onChange={(e) => setIntervalMin(Number(e.target.value))} className="input">
                   {INTERVALS.map((m) => <option key={m} value={m}>{m} min</option>)}
                 </select>
               </div>
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-xs text-slate-500 mb-1">What / where (optional)</label>
-                <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="e.g. Roof inspection, Block B" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                <label className="field-label">What / where (optional)</label>
+                <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="e.g. Roof inspection, Block B" className="input" />
               </div>
-              <button onClick={() => start.mutate()} disabled={start.isPending} className="px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 rounded text-white font-medium">
+              <button onClick={() => start.mutate()} disabled={start.isPending} className="px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 rounded-lg text-white font-medium transition active:scale-[0.98]">
                 {start.isPending ? "Starting…" : "Start session"}
               </button>
             </div>
           </>
         ) : s.status === "alarm" ? (
           <div className="text-center py-3">
-            <div className="text-3xl mb-2">⚠️</div>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-2 text-red-600" aria-hidden="true">
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
             <div className="text-lg font-semibold text-red-700">Alarm raised — {s.alarmReason === "panic" ? "PANIC / SOS" : "missed check-in"}</div>
             <p className="text-sm text-slate-600 mt-1">Your supervisors have been alerted. Stand down once you're safe.</p>
             <div className="flex justify-center gap-2 mt-4">
-              <button onClick={() => checkIn.mutate()} disabled={checkIn.isPending} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium">I'm OK — resume</button>
-              <button onClick={() => end.mutate()} disabled={end.isPending} className="px-4 py-2 text-sm bg-slate-200 hover:bg-slate-300 rounded text-slate-800 font-medium">End session</button>
+              <button onClick={() => checkIn.mutate()} disabled={checkIn.isPending} className="btn-primary">I'm OK — resume</button>
+              <button onClick={() => end.mutate()} disabled={end.isPending} className="btn-secondary">End session</button>
             </div>
           </div>
         ) : (
@@ -112,8 +114,11 @@ export function LoneWorker() {
               })()}
             </div>
             <div className="flex flex-wrap gap-2 mt-4">
-              <button onClick={() => checkIn.mutate()} disabled={checkIn.isPending} className="px-5 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 rounded text-white font-semibold">✓ I'm OK</button>
-              <button onClick={() => end.mutate()} disabled={end.isPending} className="px-4 py-2.5 text-sm bg-slate-200 hover:bg-slate-300 rounded text-slate-800 font-medium">End session</button>
+              <button onClick={() => checkIn.mutate()} disabled={checkIn.isPending} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 rounded-lg text-white font-semibold transition active:scale-[0.98]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+                I'm OK
+              </button>
+              <button onClick={() => end.mutate()} disabled={end.isPending} className="btn-secondary">End session</button>
             </div>
           </>
         )}
@@ -123,11 +128,14 @@ export function LoneWorker() {
       <div className="mt-4">
         {confirmPanic ? (
           <div className="flex items-center gap-2">
-            <button onClick={() => panic.mutate()} disabled={panic.isPending} className="px-5 py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold">{panic.isPending ? "Sending…" : "CONFIRM — send SOS"}</button>
-            <button onClick={() => setConfirmPanic(false)} className="px-3 py-2 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
+            <button onClick={() => panic.mutate()} disabled={panic.isPending} className="px-5 py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition active:scale-[0.98]">{panic.isPending ? "Sending…" : "CONFIRM — send SOS"}</button>
+            <button onClick={() => setConfirmPanic(false)} className="btn-ghost">Cancel</button>
           </div>
         ) : (
-          <button onClick={() => setConfirmPanic(true)} className="w-full sm:w-auto px-6 py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold">🆘 Panic / SOS</button>
+          <button onClick={() => setConfirmPanic(true)} className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition active:scale-[0.98]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+            Panic / SOS
+          </button>
         )}
         <p className="text-xs text-slate-400 mt-1.5">Alerts your supervisors immediately. (Works while the app is open.)</p>
       </div>
@@ -135,20 +143,28 @@ export function LoneWorker() {
       {/* ─── Monitoring (staff) ─── */}
       {isStaff && (
         <>
-          <h2 className="text-xs uppercase tracking-wider text-slate-500 mt-10 mb-2">Live sessions</h2>
+          <h2 className="section-title mt-10">Live sessions</h2>
           {(monitor.data?.sessions ?? []).length === 0 ? (
-            <p className="text-sm text-slate-500">No one is currently in a session.</p>
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+              <div className="text-slate-900 font-medium">No active sessions</div>
+              <div className="text-slate-500 text-sm mt-1">No one is currently in a check-in session.</div>
+            </div>
           ) : (
-            <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+            <div className="card p-0 overflow-hidden divide-y divide-slate-100">
               {(monitor.data?.sessions ?? []).map((m) => {
                 const ms = m.nextCheckInDueAt ? Date.parse(m.nextCheckInDueAt) - Date.now() : 0;
                 const alarm = m.status === "alarm";
                 const overdue = !alarm && ms <= 0;
-                const cls = alarm ? "bg-red-100 text-red-700" : overdue ? "bg-red-100 text-red-700" : ms < 120_000 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700";
-                const label = alarm ? (m.alarmReason === "panic" ? "⚠ PANIC" : "⚠ MISSED") : overdue ? "OVERDUE" : "OK";
+                const pillCls = alarm ? "pill-alert" : overdue ? "pill-alert" : ms < 120_000 ? "pill-offline" : "pill-online";
+                const label = alarm ? (m.alarmReason === "panic" ? "Panic" : "Missed") : overdue ? "Overdue" : "OK";
                 return (
                   <div key={m.id} className="px-4 py-2.5 flex items-center gap-3 text-sm flex-wrap">
-                    <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + cls}>{label}</span>
+                    <span className={pillCls}>
+                      {(alarm || overdue) && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                      )}
+                      {label}
+                    </span>
                     <span className="font-medium text-slate-900">{m.userName ?? "Worker"}</span>
                     {m.note && <span className="text-slate-500">· {m.note}</span>}
                     <span className="text-slate-400 ml-auto">

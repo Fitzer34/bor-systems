@@ -46,25 +46,26 @@ export function Reports() {
   return (
     <div>
       <h1 className="text-2xl font-semibold mb-6">Reports</h1>
-      <div className="bg-white border rounded-lg p-4 mb-6 flex gap-4 items-end">
+      <div className="card mb-6 flex gap-4 items-end">
         <div>
-          <label className="block text-xs text-slate-500">From</label>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border rounded px-2 py-1" />
+          <label className="field-label">From</label>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="input" />
         </div>
         <div>
-          <label className="block text-xs text-slate-500">To</label>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="border rounded px-2 py-1" />
+          <label className="field-label">To</label>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input" />
         </div>
-        <button onClick={downloadCsv} className="ml-auto bg-blue-600 hover:bg-blue-500 text-white rounded px-3 py-1 text-sm">Download CSV</button>
+        <button onClick={downloadCsv} className="btn-primary ml-auto">Download CSV</button>
       </div>
 
       {isLoading && <div className="text-slate-500">Loading…</div>}
       {data && (
         <>
           <div className="text-sm text-slate-600 mb-3">{data.count} spill{data.count === 1 ? "" : "s"} in range</div>
+          <div className="card p-0 overflow-hidden">
           <div className="table-wrap">
-          <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
-            <thead className="bg-slate-100 text-slate-600 text-left">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left">
               <tr>
                 <th className="p-2">Opened</th>
                 <th className="p-2">Building / Floor / Zone</th>
@@ -75,7 +76,7 @@ export function Reports() {
             </thead>
             <tbody>
               {data.spills.map((s) => (
-                <tr key={s.alertId} className="border-t">
+                <tr key={s.alertId} className="border-t border-slate-200/80">
                   <td className="p-2">{new Date(s.openedAt).toLocaleString()}</td>
                   <td className="p-2">{[s.buildingName, s.floorName, s.zoneName].filter(Boolean).join(" / ") || "—"}</td>
                   <td className="p-2">{fmtSeconds(s.responseSeconds)}</td>
@@ -85,6 +86,7 @@ export function Reports() {
               ))}
             </tbody>
           </table>
+          </div>
           </div>
         </>
       )}

@@ -92,12 +92,12 @@ export function Settings() {
               type="text" value={orgName} maxLength={120}
               onChange={(e) => setOrgName(e.target.value)}
               placeholder="e.g. Cork Facilities Ltd"
-              className="border rounded px-3 py-2 w-full max-w-sm"
+              className="input max-w-sm"
             />
             <button
               onClick={() => saveOrgName.mutate()}
               disabled={!orgName.trim() || orgName.trim() === (user?.organisationName ?? "") || saveOrgName.isPending}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm whitespace-nowrap"
+              className="btn-primary whitespace-nowrap"
             >
               {saveOrgName.isPending ? "Saving…" : "Save"}
             </button>
@@ -109,7 +109,7 @@ export function Settings() {
       {isAdmin && (
         <Card title="Subscription plan" description="This organisation's plan. It sets the monthly AI Assistant allowance (Starter 100, Growth 500, Enterprise unlimited). Everyday AI helpers stay free on every plan.">
           <div className="flex items-end gap-3 flex-wrap">
-            <select value={plan} onChange={(e) => setPlan(e.target.value)} className="border rounded px-3 py-2 w-full max-w-sm">
+            <select value={plan} onChange={(e) => setPlan(e.target.value)} className="input max-w-sm">
               <option value="starter">Starter — 100 AI questions/mo</option>
               <option value="growth">Growth — 500 AI questions/mo</option>
               <option value="enterprise">Enterprise — unlimited (fair use)</option>
@@ -117,7 +117,7 @@ export function Settings() {
             <button
               onClick={() => savePlan.mutate()}
               disabled={savePlan.isPending || plan === (current.data?.plan ?? "starter")}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm whitespace-nowrap"
+              className="btn-primary whitespace-nowrap"
             >
               {savePlan.isPending ? "Saving…" : "Save"}
             </button>
@@ -163,7 +163,7 @@ export function Settings() {
           <button
             onClick={() => saveAudibleAlarm.mutate()}
             disabled={current.data ? audibleAlarm === current.data.defaultAudibleAlarm : true}
-            className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
+            className="btn-primary"
           >
             {saveAudibleAlarm.isPending ? "Saving…" : "Save"}
           </button>
@@ -176,8 +176,8 @@ export function Settings() {
 
 function Card({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white border rounded-lg p-6">
-      <div className="font-medium">{title}</div>
+    <div className="card p-6">
+      <div className="font-semibold text-slate-900">{title}</div>
       <p className="text-sm text-slate-500 mt-1 mb-4">{description}</p>
       {children}
     </div>
@@ -196,13 +196,13 @@ function NumberRow({
       <input
         type="number" min={min} max={max} value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="border rounded px-3 py-2 w-32"
+        className="w-32 px-3 py-2 text-sm"
       />
       <span className="text-sm text-slate-500 mb-2">{suffix}</span>
       <button
         onClick={onSave}
         disabled={!valid || !dirty || pending}
-        className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
+        className="btn-primary"
       >
         {pending ? "Saving…" : "Save"}
       </button>

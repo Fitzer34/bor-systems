@@ -44,16 +44,16 @@ export function Parts() {
             Spare-parts stock with reorder levels.{lowCount > 0 && <span className="text-red-700 font-medium"> {lowCount} low on stock.</span>}
           </p>
         </div>
-        <button onClick={() => setCreating(true)} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium whitespace-nowrap">+ Add part</button>
+        <button onClick={() => setCreating(true)} className="btn-primary whitespace-nowrap">Add part</button>
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <p className="text-slate-800">No parts yet.</p>
-          <p className="text-sm text-slate-500 mt-2">Add the spares you keep (filters, belts, fuses…) with a reorder level and we'll flag when stock runs low.</p>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <p className="text-slate-900 font-medium">No parts yet.</p>
+          <p className="text-sm text-slate-500 mt-1">Add the spares you keep (filters, belts, fuses…) with a reorder level and we'll flag when stock runs low.</p>
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+        <div className="card !p-0 divide-y divide-slate-100">
           {list.map((p) => <PartRow key={p.id} part={p} onEdit={() => setEditing(p)} onChanged={refresh} />)}
         </div>
       )}
@@ -81,7 +81,7 @@ function PartRow({ part, onEdit, onChanged }: { part: Part; onEdit: () => void; 
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-slate-900">{part.name}</span>
           {part.sku && <span className="text-xs text-slate-400">{part.sku}</span>}
-          {low && <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">Low stock</span>}
+          {low && <span className="pill-alert">Low stock</span>}
         </div>
         <div className="text-xs text-slate-500 mt-0.5">
           {part.supplier ? `${part.supplier} · ` : ""}reorder at {part.reorderLevel} · {euro(part.unitCostCents)}/{part.unit}
@@ -156,8 +156,8 @@ function PartDialog({ part, onClose, onSaved }: { part: Part | null; onClose: ()
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
         <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-          <button onClick={() => { setErr(null); save.mutate(); }} disabled={!name.trim() || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={() => { setErr(null); save.mutate(); }} disabled={!name.trim() || save.isPending} className="btn-primary">
             {save.isPending ? "Saving…" : isEdit ? "Save" : "Add part"}
           </button>
         </div>
@@ -166,8 +166,8 @@ function PartDialog({ part, onClose, onSaved }: { part: Part | null; onClose: ()
   );
 }
 
-const inp = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
+const inp = "input";
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-xs text-slate-500 mb-1">{label}</label>{children}</div>;
+  return <div><label className="field-label">{label}</label>{children}</div>;
 }

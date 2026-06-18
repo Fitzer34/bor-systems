@@ -38,10 +38,10 @@ const STATUS_COLOR: Record<string, string> = {
 };
 const CRIT_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 function critCls(c: string): string {
-  if (c === "critical") return "bg-red-100 text-red-700";
-  if (c === "high") return "bg-orange-100 text-orange-700";
-  if (c === "low") return "bg-slate-100 text-slate-500";
-  return "bg-blue-100 text-blue-700";
+  if (c === "critical") return "pill-alert";
+  if (c === "high") return "pill-offline";
+  if (c === "low") return "pill-muted";
+  return "pill-info";
 }
 function euro(cents: number | null): string {
   if (cents == null) return "—";
@@ -132,27 +132,29 @@ export function MaintenanceKpis() {
       {k.badActors.length === 0 ? (
         <p className="text-sm text-slate-500">No reactive work logged against assets yet.</p>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-100">
-                <th className="px-4 py-2.5 font-medium">Asset</th>
-                <th className="px-4 py-2.5 font-medium">Criticality</th>
-                <th className="px-4 py-2.5 font-medium text-right">Reactive jobs</th>
-                <th className="px-4 py-2.5 font-medium text-right">Spend</th>
-              </tr>
-            </thead>
-            <tbody>
-              {k.badActors.map((a) => (
-                <tr key={a.assetId} className="border-b border-slate-50 last:border-0">
-                  <td className="px-4 py-2.5 font-medium text-slate-900">{a.name}</td>
-                  <td className="px-4 py-2.5"><span className={"px-2 py-0.5 text-xs font-medium rounded-full " + critCls(a.criticality)}>{CRIT_LABEL[a.criticality] ?? a.criticality}</span></td>
-                  <td className="px-4 py-2.5 text-right text-slate-900">{a.reactiveJobs}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-600">{euro(a.spendCents)}</td>
+        <div className="card">
+          <div className="table-wrap">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-100">
+                  <th className="px-4 py-2.5 font-medium">Asset</th>
+                  <th className="px-4 py-2.5 font-medium">Criticality</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Reactive jobs</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Spend</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {k.badActors.map((a) => (
+                  <tr key={a.assetId} className="border-b border-slate-50 last:border-0">
+                    <td className="px-4 py-2.5 font-medium text-slate-900">{a.name}</td>
+                    <td className="px-4 py-2.5"><span className={critCls(a.criticality)}>{CRIT_LABEL[a.criticality] ?? a.criticality}</span></td>
+                    <td className="px-4 py-2.5 text-right text-slate-900">{a.reactiveJobs}</td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">{euro(a.spendCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -163,10 +165,10 @@ export function MaintenanceKpis() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {k.repairOrReplace.map((a) => (
-            <div key={a.assetId} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div key={a.assetId} className="card">
               <div className="flex items-center gap-2 flex-wrap mb-1.5">
                 <span className="font-medium text-slate-900">{a.name}</span>
-                <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + critCls(a.criticality)}>{CRIT_LABEL[a.criticality] ?? a.criticality}</span>
+                <span className={critCls(a.criticality)}>{CRIT_LABEL[a.criticality] ?? a.criticality}</span>
               </div>
               <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600">
                 {a.ageYears != null && <span>Age: <span className="text-slate-900">{a.ageYears} yr{a.expectedLifeYears != null ? ` / ${a.expectedLifeYears}` : ""}</span></span>}
@@ -174,7 +176,7 @@ export function MaintenanceKpis() {
                 {a.replacementCostCents != null && <span>Replace: <span className="text-slate-900">{euro(a.replacementCostCents)}</span></span>}
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {a.reasons.map((r) => <span key={r} className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-800">{r}</span>)}
+                {a.reasons.map((r) => <span key={r} className="pill-offline">{r}</span>)}
               </div>
             </div>
           ))}
@@ -187,8 +189,8 @@ export function MaintenanceKpis() {
               <h2 className="text-lg font-semibold">Continuous improvement</h2>
               <p className="text-sm text-slate-500">AI reviews your reliability data and proposes preventive actions.</p>
             </div>
-            <button onClick={() => improve.mutate()} disabled={improve.isPending} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 disabled:text-slate-500 rounded text-white font-medium whitespace-nowrap">
-              {improve.isPending ? "Analysing…" : "✨ Suggest improvements"}
+            <button onClick={() => improve.mutate()} disabled={improve.isPending} className="btn-primary whitespace-nowrap">
+              {improve.isPending ? "Analysing…" : <><SparkleIcon /> Suggest improvements</>}
             </button>
           </div>
           {improve.isError && <p className="text-sm text-red-600">Couldn't generate suggestions — try again.</p>}
@@ -196,17 +198,22 @@ export function MaintenanceKpis() {
           {suggestions && suggestions.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {suggestions.map((s, i) => (
-                <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div key={i} className="card">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className="font-medium text-slate-900">{s.title}</span>
-                    <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + impactCls(s.impact)}>{s.impact} impact</span>
+                    <span className={impactCls(s.impact)}>{s.impact} impact</span>
                   </div>
                   <div className="text-xs text-slate-500 mb-2">{s.area}</div>
                   <p className="text-sm text-slate-600"><span className="text-slate-500">Observation:</span> {s.observation}</p>
                   <p className="text-sm text-slate-800 mt-1"><span className="text-slate-500">Action:</span> {s.recommendation}</p>
                   <div className="mt-2.5">
                     {woDone.has(i)
-                      ? <span className="text-sm text-emerald-600">✓ Work order created</span>
+                      ? <span className="text-sm text-emerald-600 inline-flex items-center gap-1.5">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          Work order created
+                        </span>
                       : <button onClick={() => raiseWO.mutate({ s, i })} disabled={woPending === i} className="text-sm text-blue-700 hover:underline disabled:text-slate-400">{woPending === i ? "Creating…" : "Create work order"}</button>}
                   </div>
                 </div>
@@ -220,23 +227,23 @@ export function MaintenanceKpis() {
 }
 
 function impactCls(i: string): string {
-  if (i === "high") return "bg-red-100 text-red-700";
-  if (i === "medium") return "bg-amber-100 text-amber-700";
-  return "bg-slate-100 text-slate-600";
+  if (i === "high") return "pill-alert";
+  if (i === "medium") return "pill-offline";
+  return "pill-muted";
 }
 
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={"text-2xl font-semibold mt-1 " + (tone ?? "text-slate-900")}>{value}</div>
+    <div className="card">
+      <div className="stat-label">{label}</div>
+      <div className={"stat-value mt-1 " + (tone ?? "")}>{value}</div>
       {sub && <div className="text-xs text-slate-500 mt-1">{sub}</div>}
     </div>
   );
 }
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="card">
       <h3 className="text-sm font-medium text-slate-700 mb-2">{title}</h3>
       {children}
     </div>
@@ -244,6 +251,13 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 }
 function Empty() {
   return <div className="h-[250px] flex items-center justify-center text-sm text-slate-400">No data yet</div>;
+}
+function SparkleIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0" aria-hidden="true">
+      <path d="M12 2l1.9 5.1L19 9l-5.1 1.9L12 16l-1.9-5.1L5 9l5.1-1.9L12 2z" />
+    </svg>
+  );
 }
 function complianceTone(pct: number | null): string {
   if (pct == null) return "text-slate-900";

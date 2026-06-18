@@ -33,7 +33,7 @@ export function Sites() {
 
   if (isLoading) return <div className="text-slate-500">Loading…</div>;
   if (isError || !data) {
-    return <div className="text-rose-600">Could not load sites.</div>;
+    return <div className="text-red-600">Could not load sites.</div>;
   }
 
   const totalOpenAlerts = data.sites.reduce((sum, s) => sum + s.openAlerts, 0);
@@ -49,7 +49,10 @@ export function Sites() {
       </div>
 
       {data.sites.length === 0 ? (
-        <div className="text-slate-500">No buildings yet. Add one under Floor plans.</div>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <div className="text-slate-900 font-medium">No buildings yet</div>
+          <div className="text-slate-500 text-sm mt-1">Add one under Floor plans.</div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {data.sites.map((s) => (
@@ -71,14 +74,14 @@ function SiteCard({ site }: { site: SiteSummary }) {
     <Link
       to={`/floor-plans?building=${site.buildingId}`}
       className={
-        "block p-4 rounded-lg border bg-white shadow-sm hover:shadow transition-shadow " +
-        (needsAttention ? "border-amber-400" : "border-slate-300")
+        "card card-hover block " +
+        (needsAttention ? "border-amber-300" : "")
       }
     >
       <div className="flex items-start justify-between">
-        <div className="font-medium">{site.buildingName}</div>
+        <div className="font-medium text-slate-900">{site.buildingName}</div>
         {site.openAlerts > 0 && (
-          <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-rose-100 text-rose-700">
+          <span className="pill-alert">
             {site.openAlerts} open
           </span>
         )}
@@ -114,8 +117,8 @@ function SiteCard({ site }: { site: SiteSummary }) {
 function Stat({ label, value, good }: { label: string; value: string; good: boolean }) {
   return (
     <div>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={"text-sm font-medium " + (good ? "text-emerald-700" : "text-amber-700")}>
+      <div className="stat-label">{label}</div>
+      <div className={"text-sm font-medium mt-0.5 " + (good ? "text-emerald-700" : "text-amber-700")}>
         {value}
       </div>
     </div>

@@ -54,84 +54,95 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      {challengeToken ? (
-        <form onSubmit={onSubmitCode} className="bg-white shadow rounded-lg p-8 w-full max-w-sm space-y-4">
-          <div>
-            <h1 className="text-xl font-semibold">Two-factor authentication</h1>
-            <p className="text-sm text-slate-500">
-              Enter the 6-digit code from your authenticator app, or a recovery code.
-            </p>
-          </div>
-          <input
-            autoFocus
-            required
-            inputMode="numeric"
-            placeholder="123 456"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="w-full border rounded px-3 py-2 tracking-widest text-center"
-          />
-          {err && <div className="text-sm text-red-600">{err}</div>}
-          <button
-            type="submit"
-            disabled={busy || code.length < 6}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded py-2 disabled:opacity-50"
-          >
-            {busy ? "Verifying…" : "Verify"}
-          </button>
-          <button
-            type="button"
-            className="w-full text-sm text-slate-500"
-            onClick={() => { setChallengeToken(null); setCode(""); setErr(null); }}
-          >
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={onSubmit} className="bg-white shadow rounded-lg p-8 w-full max-w-sm space-y-4">
-          <div>
-            <h1 className="text-xl font-semibold">HazardLink</h1>
-            <p className="text-sm text-slate-500">Sign in</p>
-          </div>
-          <input
-            type="email"
-            required
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full border rounded px-3 py-2"
-          />
-          <input
-            type="password"
-            required
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full border rounded px-3 py-2"
-          />
-          {err && <div className="text-sm text-red-600">{err}</div>}
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded py-2 disabled:opacity-50"
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 sm:p-6">
+      <div className="w-full max-w-sm">
+        {challengeToken ? (
+          <form onSubmit={onSubmitCode} className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm space-y-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Two-factor authentication</h1>
+              <p className="text-sm text-slate-600 mt-1">
+                Enter the 6-digit code from your authenticator app, or a recovery code.
+              </p>
+            </div>
+            <div>
+              <label className="field-label">Authentication code</label>
+              <input
+                autoFocus
+                required
+                inputMode="numeric"
+                placeholder="123 456"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="input tracking-widest text-center"
+              />
+            </div>
+            {err && <div className="text-sm text-red-600">{err}</div>}
+            <button
+              type="submit"
+              disabled={busy || code.length < 6}
+              className="btn-primary w-full"
+            >
+              {busy ? "Verifying…" : "Verify"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost w-full"
+              onClick={() => { setChallengeToken(null); setCode(""); setErr(null); }}
+            >
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={onSubmit} className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm space-y-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">HazardLink</h1>
+              <p className="text-sm text-slate-600 mt-1">Sign in to your account</p>
+            </div>
+            <div>
+              <label className="field-label">Email</label>
+              <input
+                type="email"
+                required
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="field-label">Password</label>
+              <input
+                type="password"
+                required
+                placeholder="Your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input"
+              />
+            </div>
+            {err && <div className="text-sm text-red-600">{err}</div>}
+            <button
+              type="submit"
+              disabled={busy}
+              className="btn-primary w-full"
+            >
+              {busy ? "Signing in…" : "Sign in"}
+            </button>
 
-          <div className="pt-3 border-t text-sm text-center text-slate-500">
-            New to HazardLink?{" "}
-            <Link to="/signup" className="text-blue-600 underline font-medium">
-              Create an organisation
-            </Link>
-          </div>
-          <div className="text-xs text-center text-slate-500">
-            By signing in you agree to our{" "}
-            <Link to="/terms" className="underline">Terms</Link> and{" "}
-            <Link to="/privacy" className="underline">Privacy Policy</Link>.
-          </div>
-        </form>
-      )}
+            <div className="pt-3 border-t border-slate-200 text-sm text-center text-slate-600">
+              New to HazardLink?{" "}
+              <Link to="/signup" className="text-blue-700 font-medium hover:underline">
+                Create an organisation
+              </Link>
+            </div>
+            <div className="text-xs text-center text-slate-500">
+              By signing in you agree to our{" "}
+              <Link to="/terms" className="underline">Terms</Link> and{" "}
+              <Link to="/privacy" className="underline">Privacy Policy</Link>.
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

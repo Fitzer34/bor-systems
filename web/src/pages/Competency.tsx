@@ -19,7 +19,7 @@ interface UserLite { id: string; name: string; role?: string; deactivatedAt?: st
 
 const RANK: Record<Status, number> = { expired: 0, expiring: 1, valid: 2 };
 const STATUS_BADGE: Record<Status, string> = {
-  expired: "bg-red-100 text-red-700", expiring: "bg-amber-100 text-amber-700", valid: "bg-emerald-100 text-emerald-700",
+  expired: "pill-alert", expiring: "pill-offline", valid: "pill-online",
 };
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -60,7 +60,7 @@ export function Competency() {
           <h1 className="text-2xl font-semibold">Competency</h1>
           <p className="text-sm text-slate-500 mt-1">Staff certifications &amp; qualifications, with expiry. Know who's qualified — and what's about to lapse.</p>
         </div>
-        <button onClick={() => setCreating(true)} disabled={users.length === 0} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium whitespace-nowrap">+ Add certification</button>
+        <button onClick={() => setCreating(true)} disabled={users.length === 0} className="btn-primary whitespace-nowrap">Add certification</button>
       </div>
 
       {(expired > 0 || expiring > 0) && (
@@ -71,18 +71,18 @@ export function Competency() {
       )}
 
       {certs.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <p className="text-slate-800">No certifications logged yet.</p>
-          <p className="text-sm text-slate-500 mt-2">{users.length === 0 ? "Add staff first, then record their tickets and qualifications." : "Record your team's tickets (Gas Safe, first aid, SIA licence…) and we'll flag what's expiring."}</p>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <p className="text-slate-900 font-medium">No certifications logged yet.</p>
+          <p className="text-sm text-slate-500 mt-1">{users.length === 0 ? "Add staff first, then record their tickets and qualifications." : "Record your team's tickets (Gas Safe, first aid, SIA licence…) and we'll flag what's expiring."}</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+        <div className="card !p-0 divide-y divide-slate-100">
           {certs.map((c) => (
             <div key={c.id} className="px-4 py-3 flex items-center gap-3 flex-wrap">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-slate-900">{c.name}</span>
-                  <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + STATUS_BADGE[c.status]}>{statusText(c)}</span>
+                  <span className={STATUS_BADGE[c.status]}>{statusText(c)}</span>
                 </div>
                 <div className="text-sm text-slate-500 mt-0.5">
                   {c.userName ?? "—"}{c.userRole ? ` · ${c.userRole}` : ""}
@@ -91,9 +91,9 @@ export function Competency() {
                   {c.reference ? ` · ${c.reference}` : ""}
                 </div>
               </div>
-              <div className="flex gap-3 text-sm shrink-0">
-                <button onClick={() => setEditing(c)} className="text-slate-500 hover:text-slate-800">Edit</button>
-                <button onClick={() => { if (window.confirm(`Delete "${c.name}" for ${c.userName}?`)) del.mutate(c.id); }} className="text-red-600 hover:text-red-700">Delete</button>
+              <div className="flex gap-1 shrink-0">
+                <button onClick={() => setEditing(c)} className="btn-ghost">Edit</button>
+                <button onClick={() => { if (window.confirm(`Delete "${c.name}" for ${c.userName}?`)) del.mutate(c.id); }} className="btn-danger">Delete</button>
               </div>
             </div>
           ))}
@@ -107,7 +107,7 @@ export function Competency() {
   );
 }
 
-const inp = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
+const inp = "input";
 
 function CertDialog({ cert, users, onClose, onSaved }: { cert: Cert | null; users: UserLite[]; onClose: () => void; onSaved: () => void }) {
   const isEdit = !!cert;
@@ -172,8 +172,8 @@ function CertDialog({ cert, users, onClose, onSaved }: { cert: Cert | null; user
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
         <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-          <button onClick={() => { setErr(null); save.mutate(); }} disabled={!userId || !name.trim() || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">{save.isPending ? "Saving…" : isEdit ? "Save" : "Add"}</button>
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={() => { setErr(null); save.mutate(); }} disabled={!userId || !name.trim() || save.isPending} className="btn-primary">{save.isPending ? "Saving…" : isEdit ? "Save" : "Add"}</button>
         </div>
       </div>
     </div>
@@ -181,5 +181,5 @@ function CertDialog({ cert, users, onClose, onSaved }: { cert: Cert | null; user
 }
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-xs text-slate-500 mb-1">{label}</label>{children}</div>;
+  return <div><label className="field-label">{label}</label>{children}</div>;
 }

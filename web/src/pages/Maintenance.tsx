@@ -38,13 +38,13 @@ const fmtDateTime = (iso: string) => {
 };
 
 const STATUS_STYLE: Record<string, string> = {
-  logged: "bg-slate-500/15 text-slate-600",
-  tendering: "bg-amber-100 text-amber-700",
-  awarded: "bg-blue-100 text-blue-700",
-  scheduled: "bg-indigo-100 text-indigo-700",
-  in_progress: "bg-indigo-100 text-indigo-700",
-  completed: "bg-emerald-100 text-emerald-700",
-  cancelled: "bg-slate-200 text-slate-500",
+  logged: "pill-muted",
+  tendering: "pill-offline",
+  awarded: "pill-info",
+  scheduled: "pill-info",
+  in_progress: "pill-info",
+  completed: "pill-online",
+  cancelled: "pill-muted",
 };
 
 export function Maintenance() {
@@ -67,15 +67,15 @@ export function Maintenance() {
 
   return (
     <div className="p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
+      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <h1 className="text-2xl font-semibold">Maintenance</h1>
         {tab === "jobs" ? (
-          <button onClick={() => setLogging(true)} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium">
-            + Log a job
+          <button onClick={() => setLogging(true)} className="btn-primary">
+            <PlusIcon /> Log a job
           </button>
         ) : (
-          <button onClick={() => setAddingContractor(true)} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium">
-            + Add contractor
+          <button onClick={() => setAddingContractor(true)} className="btn-primary">
+            <PlusIcon /> Add contractor
           </button>
         )}
       </div>
@@ -85,7 +85,7 @@ export function Maintenance() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={"px-3 py-1.5 rounded " + (tab === t ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100")}
+            className={"px-3 py-1.5 rounded-lg font-medium transition " + (tab === t ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100")}
           >
             {t === "jobs" ? "Jobs" : "Contractors"}
           </button>
@@ -103,19 +103,19 @@ export function Maintenance() {
               <button
                 key={j.id}
                 onClick={() => setOpenJobId(j.id)}
-                className="w-full text-left rounded-lg border border-slate-200 bg-white hover:bg-white hover:border-slate-300 transition p-4"
+                className="card card-hover w-full text-left"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-medium text-slate-900 truncate">{j.title}</h3>
-                      {j.priority === "emergency" && <Pill className="bg-red-100 text-red-700">Emergency</Pill>}
+                      {j.priority === "emergency" && <Pill className="pill-alert">Emergency</Pill>}
                     </div>
                     <p className="text-xs text-slate-500">
                       {tradeName(j.tradeId) || "Unclassified"} · {relTime(j.createdAt)}
                     </p>
                   </div>
-                  <Pill className={STATUS_STYLE[j.status] ?? "bg-slate-200 text-slate-600"}>
+                  <Pill className={STATUS_STYLE[j.status] ?? "pill-muted"}>
                     {j.status.replace("_", " ")}
                   </Pill>
                 </div>
@@ -133,12 +133,12 @@ export function Maintenance() {
         ) : (
           <div className="space-y-2">
             {contractorsQ.data!.contractors.map((c) => (
-              <div key={c.id} className="rounded-lg border border-slate-200 bg-white p-4 flex items-center justify-between gap-3">
+              <div key={c.id} className="card flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="font-medium text-slate-900 truncate">{c.name}</h3>
-                    {c.isPreferred && <Pill className="bg-emerald-100 text-emerald-700">★ Preferred</Pill>}
-                    {c.tier === "blocked" && <Pill className="bg-red-100 text-red-700">Blocked</Pill>}
+                    {c.isPreferred && <Pill className="pill-online">★ Preferred</Pill>}
+                    {c.tier === "blocked" && <Pill className="pill-alert">Blocked</Pill>}
                   </div>
                   <p className="text-xs text-slate-500">{[c.email, c.phone, c.region].filter(Boolean).join(" · ") || "—"}</p>
                 </div>
@@ -147,7 +147,7 @@ export function Maintenance() {
                     api(`/contractors/${c.id}`, { method: "PATCH", body: JSON.stringify({ isPreferred: !c.isPreferred }) })
                       .then(() => qc.invalidateQueries({ queryKey: ["mx-contractors"] }))
                   }
-                  className="text-xs text-slate-500 hover:text-amber-700 whitespace-nowrap"
+                  className="btn-ghost whitespace-nowrap"
                 >
                   {c.isPreferred ? "Unprefer" : "Make preferred"}
                 </button>
@@ -219,9 +219,9 @@ function JobModal({
       ) : (
         <div className="px-6 py-5 space-y-5 max-h-[72vh] overflow-y-auto">
           <div className="flex items-center gap-2 text-sm">
-            <Pill className={STATUS_STYLE[d.job.status] ?? "bg-slate-200 text-slate-600"}>{d.job.status.replace("_", " ")}</Pill>
+            <Pill className={STATUS_STYLE[d.job.status] ?? "pill-muted"}>{d.job.status.replace("_", " ")}</Pill>
             <span className="text-slate-500">{tradeName(d.job.tradeId) || "Unclassified"}</span>
-            {d.job.priority === "emergency" && <Pill className="bg-red-100 text-red-700">Emergency</Pill>}
+            {d.job.priority === "emergency" && <Pill className="pill-alert">Emergency</Pill>}
           </div>
           {d.job.description && <p className="text-sm text-slate-600">{d.job.description}</p>}
 
@@ -254,7 +254,7 @@ function JobModal({
                   api(`/jobs/${jobId}/tender`, { method: "POST", body: JSON.stringify({ contractorIds: [...picked] }) })
                     .then(() => { setPicked(new Set()); refresh(); })
                 }
-                className="mt-2 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white"
+                className="btn-primary mt-2"
               >
                 Send to {picked.size || ""} {picked.size === 1 ? "contractor" : "contractors"}
               </button>
@@ -288,28 +288,38 @@ function JobModal({
               {["logged", "scoped", "tendering", "awarded"].includes(d.job.status) && (
                 <div className="flex flex-wrap items-end gap-2">
                   <div>
-                    <label className="block text-xs text-slate-500 mb-1">Schedule start</label>
-                    <input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} className="px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                    <label className="field-label">Schedule start</label>
+                    <input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} className="input w-auto" />
                   </div>
-                  <button disabled={!scheduleAt} onClick={() => act("schedule", { scheduledStartAt: new Date(scheduleAt).toISOString() })} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white">Schedule</button>
+                  <button disabled={!scheduleAt} onClick={() => act("schedule", { scheduledStartAt: new Date(scheduleAt).toISOString() })} className="btn-primary">Schedule</button>
                 </div>
               )}
               {d.job.status === "scheduled" && (
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-sm text-slate-700">📅 Scheduled for <b>{d.job.scheduledStartAt ? fmtDateTime(d.job.scheduledStartAt) : "—"}</b></span>
-                  <button onClick={() => act("start")} className="px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 rounded text-white font-medium">Mark started</button>
+                  <span className="text-sm text-slate-700 inline-flex items-center gap-1.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+                      <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                    Scheduled for <b>{d.job.scheduledStartAt ? fmtDateTime(d.job.scheduledStartAt) : "—"}</b>
+                  </span>
+                  <button onClick={() => act("start")} className="btn-primary">Mark started</button>
                 </div>
               )}
               {d.job.status === "in_progress" && (
                 <div className="space-y-2">
-                  <input value={completeNote} onChange={(e) => setCompleteNote(e.target.value)} placeholder="Completion note (optional)" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                  <input value={completeNote} onChange={(e) => setCompleteNote(e.target.value)} placeholder="Completion note (optional)" className="input" />
                   <PhotoUpload url={completePhoto || null} onUploaded={setCompletePhoto} label="completion photo" />
-                  <button onClick={() => act("complete", { completionNote: completeNote.trim() || undefined, completionPhotoUrl: completePhoto || undefined })} className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium">Mark complete</button>
+                  <button onClick={() => act("complete", { completionNote: completeNote.trim() || undefined, completionPhotoUrl: completePhoto || undefined })} className="btn-primary">Mark complete</button>
                 </div>
               )}
               {d.job.status === "completed" && (
                 <div className="space-y-2">
-                  <p className="text-sm text-emerald-700">✓ Completed{d.job.completedAt ? ` · ${fmtDateTime(d.job.completedAt)}` : ""}{d.job.completionNote ? ` — ${d.job.completionNote}` : ""}</p>
+                  <p className="text-sm text-emerald-700 inline-flex items-center gap-1.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Completed{d.job.completedAt ? ` · ${fmtDateTime(d.job.completedAt)}` : ""}{d.job.completionNote ? ` — ${d.job.completionNote}` : ""}
+                  </p>
                   {d.job.completionPhotoUrl && <PhotoThumb url={d.job.completionPhotoUrl} />}
                 </div>
               )}
@@ -318,11 +328,11 @@ function JobModal({
                   {confirmingCancel ? (
                     <span className="flex items-center gap-2 text-sm">
                       <span className="text-red-600">Cancel this job?</span>
-                      <button onClick={() => act("cancel")} className="px-2 py-1 text-xs bg-red-600 text-white rounded">Yes, cancel</button>
-                      <button onClick={() => setConfirmingCancel(false)} className="px-2 py-1 text-xs text-slate-600 hover:text-slate-900">No</button>
+                      <button onClick={() => act("cancel")} className="btn-danger">Yes, cancel</button>
+                      <button onClick={() => setConfirmingCancel(false)} className="btn-ghost">No</button>
                     </span>
                   ) : (
-                    <button onClick={() => setConfirmingCancel(true)} className="text-xs text-red-600 hover:underline">Cancel job</button>
+                    <button onClick={() => setConfirmingCancel(true)} className="btn-danger">Cancel job</button>
                   )}
                 </div>
               )}
@@ -367,13 +377,13 @@ function QuoteRow({
   };
 
   return (
-    <div className={"rounded border p-2.5 " + (quote.status === "awarded" ? "border-emerald-600 bg-emerald-50" : "border-slate-200 bg-white")}>
+    <div className={"card " + (quote.status === "awarded" ? "border-emerald-300 bg-emerald-50" : "")}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-slate-800 text-sm truncate">{quote.contractorName}</span>
           {quote.isPreferred && <span className="text-emerald-700 text-xs">★ preferred</span>}
-          {isCheapest && submitted && <Pill className="bg-emerald-100 text-emerald-700">cheapest</Pill>}
-          {quote.status === "awarded" && <Pill className="bg-emerald-100 text-emerald-700">awarded</Pill>}
+          {isCheapest && submitted && <Pill className="pill-online">cheapest</Pill>}
+          {quote.status === "awarded" && <Pill className="pill-online">awarded</Pill>}
         </div>
         <div className="text-right shrink-0">
           <div className="text-slate-900 font-semibold">{euro(quote.amountCents)}</div>
@@ -386,7 +396,23 @@ function QuoteRow({
         <div className="mt-1.5 space-y-1.5">
           {quote.token && (
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-500">{quote.contractorEmail ? "📧 Emailed — awaiting their quote" : "⚠ No email on file"}</span>
+              <span className="text-slate-500 inline-flex items-center gap-1.5">
+                {quote.contractorEmail ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+                      <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" />
+                    </svg>
+                    Emailed — awaiting their quote
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+                      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    No email on file
+                  </>
+                )}
+              </span>
               <button
                 onClick={() => { const u = `${window.location.origin}/quote/${quote.token}`; navigator.clipboard?.writeText(u).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
                 className="text-blue-700 hover:underline"
@@ -396,9 +422,9 @@ function QuoteRow({
           {entering ? (
             <div className="flex items-end gap-2">
               <div className="flex-1">
-                <label className="block text-xs text-slate-500 mb-1">Quote (€)</label>
+                <label className="field-label">Quote (€)</label>
                 <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric"
-                  className="w-full px-2 py-1.5 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" placeholder="1450" />
+                  className="input" placeholder="1450" />
               </div>
               <button
                 disabled={!amount}
@@ -406,10 +432,10 @@ function QuoteRow({
                   api(`/quotes/${quote.id}`, { method: "PATCH", body: JSON.stringify({ amountCents: Math.round(Number(amount) * 100) }) })
                     .then(() => { setEntering(false); onSubmitted(); })
                 }
-                className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 rounded text-white">Save</button>
+                className="btn-primary">Save</button>
             </div>
           ) : (
-            <button onClick={() => setEntering(true)} className="text-xs text-slate-500 hover:text-slate-700">+ Enter it manually</button>
+            <button onClick={() => setEntering(true)} className="btn-ghost">+ Enter it manually</button>
           )}
         </div>
       )}
@@ -419,11 +445,11 @@ function QuoteRow({
         <div className="mt-2 space-y-2">
           {showReason && !isCheapest && (
             <input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus
-              className="w-full px-2 py-1.5 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+              className="input"
               placeholder="Not the cheapest — why this one? (preferred, faster, reliable…)" />
           )}
           <button onClick={award} disabled={showReason && !isCheapest && !reason.trim()}
-            className="text-xs px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 text-white">
+            className="btn-primary">
             {showReason && !isCheapest ? "Confirm award" : "Award this"}
           </button>
         </div>
@@ -464,17 +490,24 @@ function QuoteRanker({ jobId, quotes }: { jobId: string; quotes: Quote[] }) {
     <div className="mt-3 border-t border-slate-200 pt-3">
       {!ranking ? (
         <button onClick={() => { setErr(null); rank.mutate(); }} disabled={rank.isPending}
-          className="text-xs text-indigo-700 hover:text-indigo-900 font-medium disabled:text-slate-400">
-          {rank.isPending ? "Analysing quotes…" : "✨ Rank these quotes with AI"}
+          className="inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:text-indigo-900 font-medium disabled:text-slate-400">
+          {rank.isPending ? "Analysing quotes…" : <><SparkleIcon /> Rank these quotes with AI</>}
         </button>
       ) : (
         <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3 text-sm">
-          <div className="font-medium text-indigo-900 mb-1">✨ AI assessment</div>
+          <div className="font-medium text-indigo-900 mb-1 inline-flex items-center gap-1.5"><SparkleIcon /> AI assessment</div>
           {recName && <div className="text-slate-800 mb-1">Best value: <b>{recName}</b></div>}
           <p className="text-slate-700 whitespace-pre-wrap">{ranking.summary}</p>
           {ranking.flags.length > 0 && (
             <ul className="mt-2 space-y-0.5">
-              {ranking.flags.map((f, i) => <li key={i} className="text-xs text-amber-800">⚠ {f}</li>)}
+              {ranking.flags.map((f, i) => (
+                <li key={i} className="text-xs text-amber-800 flex items-start gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden="true">
+                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <span>{f}</span>
+                </li>
+              ))}
             </ul>
           )}
           <p className="text-[10px] text-slate-400 mt-2">AI guidance — you make the final call.</p>
@@ -518,15 +551,15 @@ function LogJobDialog({ trades, onClose, onLogged }: { trades: Trade[]; onClose:
         </Field>
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-xs font-medium text-slate-600">Detail / scope of works (optional)</label>
+            <label className="field-label mb-0">Detail / scope of works (optional)</label>
             {aiConfigured && (
               <button
                 type="button"
                 disabled={!title.trim() || draft.isPending}
                 onClick={() => { setAiErr(null); draft.mutate(); }}
-                className="text-xs text-indigo-700 hover:text-indigo-900 disabled:text-slate-400 font-medium"
+                className="inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:text-indigo-900 disabled:text-slate-400 font-medium"
               >
-                {draft.isPending ? "Drafting…" : "✨ Draft scope with AI"}
+                {draft.isPending ? "Drafting…" : <><SparkleIcon /> Draft scope with AI</>}
               </button>
             )}
           </div>
@@ -597,7 +630,7 @@ function AddContractorDialog({ trades, onClose, onAdded }: { trades: Trade[]; on
 
 // ─── Shared bits ─────────────────────────────────────────────────────────────
 
-const inputCls = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
+const inputCls = "input";
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -605,7 +638,11 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
       <div className="bg-white rounded-xl w-full max-w-lg border border-slate-300 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-medium text-slate-900">{title}</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-2xl leading-none" aria-label="Close">×</button>
+          <button onClick={onClose} className="btn-ghost -mr-2 p-2" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
         {children}
       </div>
@@ -615,22 +652,36 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 function Footer({ onClose, onSave, saveLabel, disabled }: { onClose: () => void; onSave: () => void; saveLabel: string; disabled: boolean }) {
   return (
     <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-      <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-      <button onClick={onSave} disabled={disabled} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">{saveLabel}</button>
+      <button onClick={onClose} className="btn-ghost">Cancel</button>
+      <button onClick={onSave} disabled={disabled} className="btn-primary">{saveLabel}</button>
     </div>
   );
 }
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (<div><h3 className="text-xs uppercase tracking-wider text-slate-500 mb-2">{title}</h3>{children}</div>);
+  return (<div><h3 className="section-title">{title}</h3>{children}</div>);
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (<div><label className="block text-xs text-slate-500 mb-1">{label}</label>{children}</div>);
+  return (<div><label className="field-label">{label}</label>{children}</div>);
 }
 function Pill({ className, children }: { className: string; children: React.ReactNode }) {
-  return <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + className}>{children}</span>;
+  return <span className={className}>{children}</span>;
 }
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-slate-600">{children}</div>;
+  return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500 text-sm">{children}</div>;
+}
+function PlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+function SparkleIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="shrink-0" aria-hidden="true">
+      <path d="M12 2l1.9 5.1L19 9l-5.1 1.9L12 16l-1.9-5.1L5 9l5.1-1.9L12 2z" />
+    </svg>
+  );
 }
 function relTime(iso: string): string {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;

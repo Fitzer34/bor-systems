@@ -204,9 +204,19 @@ export function FloorPlans() {
         <h1 className="text-2xl font-semibold">Floor plans</h1>
         <button
           onClick={() => { setEditMode((v) => !v); setPinningZoneId(null); }}
-          className={editMode ? "btn-primary" : "btn-ghost border border-slate-300"}
+          className={editMode ? "btn-primary" : "btn-secondary"}
         >
-          {editMode ? "✓ Done editing" : "✎ Edit"}
+          {editMode ? (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+              Done editing
+            </>
+          ) : (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
+              Edit
+            </>
+          )}
         </button>
       </div>
 
@@ -217,7 +227,7 @@ export function FloorPlans() {
           <select
             value={activeBuildingId ?? ""}
             onChange={(e) => { setActiveBuildingId(e.target.value || null); setActiveFloorId(null); }}
-            className="w-full px-3 py-2 text-sm rounded"
+            className="w-full px-3 py-2 text-sm rounded-lg"
           >
             <option value="">— Select building —</option>
             {buildingList.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -229,7 +239,7 @@ export function FloorPlans() {
             value={activeFloorId ?? ""}
             onChange={(e) => setActiveFloorId(e.target.value || null)}
             disabled={!activeBuildingId}
-            className="w-full px-3 py-2 text-sm rounded disabled:opacity-50"
+            className="w-full px-3 py-2 text-sm rounded-lg disabled:opacity-50"
           >
             <option value="">— Select floor —</option>
             {sortedFloors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -248,12 +258,12 @@ export function FloorPlans() {
                 <button
                   key={b.id}
                   onClick={() => { setActiveBuildingId(b.id); setActiveFloorId(null); }}
-                  className={"px-3 py-1.5 text-sm rounded " + (activeBuildingId === b.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200")}
+                  className={"px-3 py-1.5 text-sm rounded-lg font-medium transition " + (activeBuildingId === b.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200")}
                 >{b.name}</button>
               ))}
             </div>
             <div className="flex gap-2 max-w-md">
-              <input value={buildingName} onChange={(e) => setBuildingName(e.target.value)} placeholder="New building name" className="flex-1 px-3 py-2 text-sm rounded" />
+              <input value={buildingName} onChange={(e) => setBuildingName(e.target.value)} placeholder="New building name" className="input flex-1" />
               <button onClick={() => createBuilding.mutate()} disabled={!buildingName.trim() || createBuilding.isPending} className="btn-primary">
                 {createBuilding.isPending ? "…" : "Add"}
               </button>
@@ -272,21 +282,25 @@ export function FloorPlans() {
                     <div key={f.id} className="flex items-center gap-1">
                       <button
                         onClick={() => setActiveFloorId(f.id)}
-                        className={"flex-1 text-left px-3 py-1.5 text-sm rounded " + (activeFloorId === f.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200")}
+                        className={"flex-1 text-left px-3 py-1.5 text-sm rounded-lg font-medium transition " + (activeFloorId === f.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200")}
                       >
                         {f.name}
                         {f.floorPlanUrl
-                          ? <span className="ml-2 text-xs text-emerald-700">● plan</span>
-                          : <span className="ml-2 text-xs text-slate-500">○ no plan</span>}
+                          ? <span className={"ml-2 inline-flex items-center gap-1 text-xs " + (activeFloorId === f.id ? "text-white/80" : "text-emerald-700")}><span className="h-1.5 w-1.5 rounded-full bg-current" />plan</span>
+                          : <span className={"ml-2 inline-flex items-center gap-1 text-xs " + (activeFloorId === f.id ? "text-white/70" : "text-slate-500")}><span className="h-1.5 w-1.5 rounded-full border border-current" />no plan</span>}
                       </button>
-                      <button onClick={() => above && swapFloors.mutate({ a: f, b: above })} disabled={!above || swapFloors.isPending} title="Move up" className="px-2 py-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 rounded hover:bg-slate-100">↑</button>
-                      <button onClick={() => below && swapFloors.mutate({ a: f, b: below })} disabled={!below || swapFloors.isPending} title="Move down" className="px-2 py-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 rounded hover:bg-slate-100">↓</button>
+                      <button onClick={() => above && swapFloors.mutate({ a: f, b: above })} disabled={!above || swapFloors.isPending} title="Move up" className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 rounded-lg hover:bg-slate-100">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15" /></svg>
+                      </button>
+                      <button onClick={() => below && swapFloors.mutate({ a: f, b: below })} disabled={!below || swapFloors.isPending} title="Move down" className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 rounded-lg hover:bg-slate-100">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+                      </button>
                     </div>
                   );
                 })}
               </div>
               <div className="flex gap-2 max-w-md">
-                <input value={floorName} onChange={(e) => setFloorName(e.target.value)} placeholder="New floor name (e.g. Ground)" className="flex-1 px-3 py-2 text-sm rounded" />
+                <input value={floorName} onChange={(e) => setFloorName(e.target.value)} placeholder="New floor name (e.g. Ground)" className="input flex-1" />
                 <button onClick={() => createFloor.mutate()} disabled={!floorName.trim() || createFloor.isPending} className="btn-primary">
                   {createFloor.isPending ? "…" : "Add"}
                 </button>
@@ -301,12 +315,12 @@ export function FloorPlans() {
               {(zones.data?.zones.length ?? 0) > 0 && (
                 <div className="space-y-1 mb-2">
                   {zones.data?.zones.map((z) => (
-                    <div key={z.id} className="flex items-center justify-between bg-slate-100 rounded px-3 py-1.5 text-sm">
-                      <span>
+                    <div key={z.id} className="flex items-center justify-between bg-slate-100 rounded-lg px-3 py-1.5 text-sm">
+                      <span className="inline-flex items-center">
                         {z.name}
                         {z.pinX != null
-                          ? <span className="ml-2 text-xs text-emerald-700">● pinned</span>
-                          : <span className="ml-2 text-xs text-amber-700">○ needs pin</span>}
+                          ? <span className="ml-2 inline-flex items-center gap-1 text-xs text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-current" />pinned</span>
+                          : <span className="ml-2 inline-flex items-center gap-1 text-xs text-amber-700"><span className="h-1.5 w-1.5 rounded-full border border-current" />needs pin</span>}
                       </span>
                       <div className="flex items-center gap-3">
                         {activeFloor?.floorPlanUrl && (
@@ -326,9 +340,10 @@ export function FloorPlans() {
                           }}
                           disabled={deleteZone.isPending}
                           title="Delete zone"
-                          className="text-xs text-red-700 hover:text-red-700"
+                          aria-label="Delete zone"
+                          className="text-red-600 hover:text-red-700 disabled:opacity-50"
                         >
-                          🗑
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                         </button>
                       </div>
                     </div>
@@ -336,7 +351,7 @@ export function FloorPlans() {
                 </div>
               )}
               <div className="flex gap-2 max-w-md">
-                <input value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="New zone (e.g. Toilet, Reception)" className="flex-1 px-3 py-2 text-sm rounded" />
+                <input value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="New zone (e.g. Toilet, Reception)" className="input flex-1" />
                 <button onClick={() => createZone.mutate()} disabled={!zoneName.trim() || createZone.isPending} className="btn-primary">
                   {createZone.isPending ? "…" : "Add"}
                 </button>
@@ -348,15 +363,15 @@ export function FloorPlans() {
 
       {/* ── PLAN AREA ── */}
       {!activeBuildingId ? (
-        <div className="card text-center text-slate-500 py-10">
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">
           {buildingList.length === 0
-            ? <>No buildings yet. Tap <span className="text-slate-800 font-medium">✎ Edit</span> to add your first building, floor, and zones.</>
+            ? <>No buildings yet. Tap <span className="text-slate-800 font-medium">Edit</span> to add your first building, floor, and zones.</>
             : "Select a building above to view its floor plans."}
         </div>
       ) : !activeFloorId ? (
-        <div className="card text-center text-slate-500 py-10">
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">
           {sortedFloors.length === 0
-            ? <>No floors in this building yet. Tap <span className="text-slate-800 font-medium">✎ Edit</span> to add one.</>
+            ? <>No floors in this building yet. Tap <span className="text-slate-800 font-medium">Edit</span> to add one.</>
             : "Select a floor above."}
         </div>
       ) : (
@@ -379,7 +394,7 @@ export function FloorPlans() {
           />
 
           {uploadError && (
-            <div className="mb-3 text-sm text-red-700 bg-red-950/40 border border-red-900 rounded px-3 py-2">
+            <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {uploadError}
             </div>
           )}
@@ -437,14 +452,14 @@ export function FloorPlans() {
               onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
               onClick={() => fileInput.current?.click()}
               className={"cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition " +
-                (dragOver ? "border-blue-300 bg-blue-950/20" : "border-slate-300 hover:border-slate-300")}
+                (dragOver ? "border-blue-400 bg-blue-50" : "border-slate-300 hover:border-slate-400")}
             >
               <div className="text-slate-600 font-medium">Drop a floor-plan image here</div>
               <div className="text-sm text-slate-500 mt-1">or click to choose a file · PNG or JPEG · up to 8 MB</div>
             </div>
           ) : (
             <div className="text-sm text-slate-500">
-              No plan uploaded for this floor yet. Tap <span className="text-slate-800 font-medium">✎ Edit</span> to upload one.
+              No plan uploaded for this floor yet. Tap <span className="text-slate-800 font-medium">Edit</span> to upload one.
             </div>
           )}
         </div>

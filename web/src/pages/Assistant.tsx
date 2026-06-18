@@ -85,18 +85,18 @@ export function Assistant() {
       </div>
 
       {!aiQ.isLoading && !configured && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 mb-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 mb-4">
           The assistant isn't switched on yet. Add an <code>ANTHROPIC_API_KEY</code> in Render to enable it.
         </div>
       )}
 
       {configured && usage?.overIncluded && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 mb-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 mb-4">
           You've used all {usage.included} AI Assistant questions in your {planLabel(usage.plan)} plan this month. It still works — upgrade for a higher monthly allowance.
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 h-[60vh] overflow-y-auto">
+      <div className="card space-y-3 h-[60vh] overflow-y-auto">
         {messages.length === 0 ? (
           <div className="text-slate-500 text-sm">
             <p className="mb-3">Try asking:</p>
@@ -106,7 +106,7 @@ export function Assistant() {
                   key={s}
                   onClick={() => ask(s)}
                   disabled={!configured || busy}
-                  className="px-3 py-1.5 rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                  className="btn-secondary"
                 >
                   {s}
                 </button>
@@ -143,12 +143,12 @@ export function Assistant() {
           onChange={(e) => setInput(e.target.value)}
           disabled={!configured || busy}
           placeholder="Ask about your sites…"
-          className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded text-slate-900 text-sm disabled:bg-slate-100"
+          className="input flex-1 disabled:bg-slate-100"
         />
         <button
           type="submit"
           disabled={!configured || busy || !input.trim()}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 rounded text-white text-sm font-medium"
+          className="btn-primary"
         >
           Send
         </button>

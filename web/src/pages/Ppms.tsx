@@ -140,15 +140,15 @@ export function PpmReminderBanner() {
     <Link
       to="/ppms"
       className={
-        "flex items-center justify-between gap-3 mb-5 px-4 py-3 rounded-lg border text-sm " +
+        "flex items-center justify-between gap-3 mb-5 px-4 py-3 rounded-xl border text-sm " +
         (overdue > 0
           ? "bg-red-50 border-red-300 text-red-700"
           : "bg-amber-50 border-amber-300 text-amber-700")
       }
     >
-      <span>
-        🔧 <span className="font-medium">Maintenance:</span> {parts.join(" · ")} —{" "}
-        review planned preventive maintenance.
+      <span className="flex items-center gap-2 min-w-0">
+        <WrenchIcon />
+        <span className="min-w-0"><span className="font-medium">Maintenance:</span> {parts.join(" · ")} — review planned preventive maintenance.</span>
       </span>
       <span className="shrink-0 text-xs opacity-80">View PPMs →</span>
     </Link>
@@ -191,7 +191,7 @@ export function PpmDueList() {
             <Link
               to="/ppms"
               className={
-                "flex items-center justify-between gap-3 rounded-lg border bg-white p-4 shadow-sm hover:shadow " +
+                "card card-hover flex items-center justify-between gap-3 " +
                 (s.key === "overdue" ? "border-red-300" : "border-amber-300")
               }
             >
@@ -201,12 +201,7 @@ export function PpmDueList() {
                   {p.contractorName ? `${p.contractorName} · ` : ""}{frequencyLabel(p.frequencyPerYear)}
                 </div>
               </div>
-              <span
-                className={
-                  "px-2 py-0.5 text-xs font-medium rounded-full shrink-0 " +
-                  (s.key === "overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")
-                }
-              >
+              <span className={(s.key === "overdue" ? "pill-alert" : "pill-offline") + " shrink-0"}>
                 {s.label}
               </span>
             </Link>
@@ -245,16 +240,16 @@ export function Ppms() {
         </div>
         <button
           onClick={() => setCreating(true)}
-          className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium whitespace-nowrap"
+          className="btn-primary whitespace-nowrap"
         >
-          + Add PPM
+          Add PPM
         </button>
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <p className="text-slate-800">No maintenance tasks yet.</p>
-          <p className="text-sm text-slate-500 mt-2">
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <p className="text-slate-900 font-medium">No maintenance tasks yet.</p>
+          <p className="text-sm text-slate-500 mt-1">
             Add your recurring jobs (fire-extinguisher service, PAT testing, HVAC filters…)
             and HazardLink will remind your team before each one is due.
           </p>
@@ -288,7 +283,7 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
   });
 
   return (
-    <div className="w-full rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition p-4">
+    <div className="card w-full">
       <div className="flex items-start justify-between gap-4">
         <button type="button" onClick={onClick} className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
@@ -303,7 +298,12 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
             {ppm.contactPhone && <Field label="Phone" value={ppm.contactPhone} />}
             {ppm.contactEmail && <Field label="Email" value={ppm.contactEmail} />}
           </div>
-          {ppm.notes && <p className="mt-2 text-sm text-slate-600 italic">📝 {ppm.notes}</p>}
+          {ppm.notes && (
+            <p className="mt-2 text-sm text-slate-600 italic flex items-start gap-1.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+              <span>{ppm.notes}</span>
+            </p>
+          )}
           {ppm.lastCompletedAt && (
             <p className="mt-1 text-xs text-slate-500">
               Last done {formatDate(ppm.lastCompletedAt.slice(0, 10))}
@@ -315,7 +315,7 @@ function PpmCard({ ppm, onClick, onChanged }: { ppm: Ppm; onClick: () => void; o
           <button
             onClick={() => complete.mutate()}
             disabled={complete.isPending}
-            className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 rounded text-white font-medium whitespace-nowrap"
+            className="btn-secondary whitespace-nowrap"
             title="Mark done — schedules the next one"
           >
             {complete.isPending ? "…" : "Mark done"}
@@ -363,7 +363,7 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
   // Booked — show the confirmed date.
   if (ppm.scheduledDate || s?.status === "confirmed") {
     const d = ppm.scheduledDate ?? s?.confirmedDate ?? null;
-    return <Bar><span className="text-emerald-700">📅 Booked for <b>{d ? formatDate(d) : "—"}</b></span></Bar>;
+    return <Bar><span className="inline-flex items-center gap-1.5 text-emerald-700"><CalendarIcon /> Booked for <b>{d ? formatDate(d) : "—"}</b></span></Bar>;
   }
 
   // Contractor proposed a date — approve or cancel.
@@ -375,12 +375,10 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
           {s.contractorNote ? <span className="text-amber-700/70"> — “{s.contractorNote}”</span> : null}
         </span>
         <div className="flex gap-2 ml-auto">
-          <button onClick={() => confirm.mutate()} disabled={confirm.isPending}
-            className="px-3 py-1 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 rounded text-white font-medium">
+          <button onClick={() => confirm.mutate()} disabled={confirm.isPending} className="btn-primary">
             {confirm.isPending ? "…" : "Approve date"}
           </button>
-          <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
-            className="px-2 py-1 text-xs text-slate-500 hover:text-slate-800">Cancel</button>
+          <button onClick={() => cancel.mutate()} disabled={cancel.isPending} className="btn-ghost">Cancel</button>
         </div>
       </Bar>
     );
@@ -390,17 +388,15 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
   if (s?.status === "sent") {
     return (
       <Bar>
-        <span className="text-slate-600 min-w-0">
-          ⏳ Awaiting {ppm.contractorName ?? "contractor"}
+        <span className="inline-flex items-center gap-1.5 text-slate-600 min-w-0">
+          <ClockIcon /> Awaiting {ppm.contractorName ?? "contractor"}
           <span className="text-slate-500">{s.emailDelivered ? " · emailed" : " · not emailed yet — copy the link"}</span>
         </span>
         <div className="flex gap-2 ml-auto">
-          <button onClick={() => copyLink(s.scheduleUrl)}
-            className="px-3 py-1 text-xs bg-slate-200 hover:bg-slate-300 rounded text-slate-800">{copied ? "Copied!" : "Copy link"}</button>
-          <button onClick={() => cancel.mutate()} disabled={cancel.isPending}
-            className="px-2 py-1 text-xs text-slate-500 hover:text-slate-800">Cancel</button>
+          <button onClick={() => copyLink(s.scheduleUrl)} className="btn-secondary">{copied ? "Copied!" : "Copy link"}</button>
+          <button onClick={() => cancel.mutate()} disabled={cancel.isPending} className="btn-ghost">Cancel</button>
         </div>
-        {emailErr && <p className="w-full text-xs text-red-600 mt-1 break-all">✉️ Email send failed: {emailErr}</p>}
+        {emailErr && <p className="w-full text-xs text-red-600 mt-1 break-all">Email send failed: {emailErr}</p>}
       </Bar>
     );
   }
@@ -417,7 +413,7 @@ function ScheduleControls({ ppm, onChanged }: { ppm: Ppm; onChanged: () => void 
       </span>
       <button onClick={() => request.mutate()} disabled={request.isPending || !hasEmail}
         title={hasEmail ? "Email the contractor a link to pick a date" : "Add a contractor email on this task first"}
-        className="ml-auto px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
+        className="btn-primary ml-auto">
         {request.isPending ? "…" : declined ? "Ask again" : "Request a date"}
       </button>
     </Bar>
@@ -439,12 +435,12 @@ function Field({ label, value }: { label: string; value: string }) {
 
 function StatusPill({ status, label }: { status: PpmStatusKey; label: string }) {
   const styles: Record<PpmStatusKey, string> = {
-    overdue: "bg-red-100 text-red-700",
-    due: "bg-amber-100 text-amber-700",
-    ok: "bg-emerald-100 text-emerald-700",
-    paused: "bg-slate-200 text-slate-500",
+    overdue: "pill-alert",
+    due: "pill-offline",
+    ok: "pill-online",
+    paused: "pill-muted",
   };
-  return <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + styles[status]}>{label}</span>;
+  return <span className={styles[status]}>{label}</span>;
 }
 
 // ─── Create / edit dialog ────────────────────────────────────────────────────
@@ -569,14 +565,14 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <input
                 type="text" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus maxLength={200}
                 placeholder="e.g. Annual fire-extinguisher service"
-                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                className="input"
               />
             </FieldGroup>
             <FieldGroup label="Details / notes (optional)">
               <textarea
                 value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={2000}
                 placeholder="Scope, access notes, anything the contractor needs to know"
-                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm resize-none"
+                className="input resize-none"
               />
             </FieldGroup>
           </Section>
@@ -585,7 +581,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
             <FieldGroup label="Building / site">
               <select
                 value={buildingChoice} onChange={(e) => selectBuilding(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                className="input"
               >
                 <option value="">— None —</option>
                 {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -597,7 +593,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
                 <input
                   type="text" value={newBuildingName} onChange={(e) => setNewBuildingName(e.target.value)} maxLength={200}
                   placeholder="e.g. Riverside House"
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                  className="input"
                 />
               </FieldGroup>
             )}
@@ -607,21 +603,21 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
                   <input
                     type="text" value={addr} onChange={(e) => setAddr(e.target.value)} maxLength={500}
                     placeholder="e.g. 12 Main St, Cork — deliveries to rear entrance"
-                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                    className="input"
                   />
                 </FieldGroup>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <FieldGroup label="On-site contact">
                     <input type="text" value={scName} onChange={(e) => setScName(e.target.value)} maxLength={200}
-                      placeholder="Name" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                      placeholder="Name" className="input" />
                   </FieldGroup>
                   <FieldGroup label="Phone">
                     <input type="tel" value={scPhone} onChange={(e) => setScPhone(e.target.value)} maxLength={50}
-                      placeholder="Phone" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                      placeholder="Phone" className="input" />
                   </FieldGroup>
                   <FieldGroup label="Email">
                     <input type="email" value={scEmail} onChange={(e) => setScEmail(e.target.value)} maxLength={200}
-                      placeholder="Email" className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm" />
+                      placeholder="Email" className="input" />
                   </FieldGroup>
                 </div>
                 <p className="text-xs text-slate-500">Saved on the building and reused for every job here — and sent to the contractor so they know where to go and who to meet.</p>
@@ -634,7 +630,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <input
                 type="text" value={contractorName} onChange={(e) => setContractorName(e.target.value)} maxLength={200}
                 placeholder="e.g. Cork Fire & Safety Ltd"
-                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                className="input"
               />
             </FieldGroup>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -642,14 +638,14 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
                 <input
                   type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} maxLength={50}
                   placeholder="e.g. 021 123 4567"
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                  className="input"
                 />
               </FieldGroup>
               <FieldGroup label="Email">
                 <input
                   type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} maxLength={200}
                   placeholder="e.g. service@contractor.ie"
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                  className="input"
                 />
               </FieldGroup>
             </div>
@@ -660,7 +656,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <FieldGroup label="How often?">
                 <select
                   value={frequencyPerYear} onChange={(e) => setFrequencyPerYear(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                  className="input"
                 >
                   {FREQ_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
@@ -668,7 +664,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <FieldGroup label="Next due date">
                 <input
                   type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                  className="input"
                 />
               </FieldGroup>
             </div>
@@ -676,7 +672,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
               <input
                 type="number" min={0} max={365} value={reminderLeadDays}
                 onChange={(e) => setReminderLeadDays(Math.max(0, Math.min(365, Number(e.target.value) || 0)))}
-                className="w-32 px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm"
+                className="input !w-32"
               />
               <p className="mt-1 text-xs text-slate-500">First reminder fires this far ahead, then daily once overdue.</p>
             </FieldGroup>
@@ -697,29 +693,26 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
             confirmingDelete ? (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-red-700">Delete this PPM?</span>
-                <button onClick={() => remove.mutate()} disabled={remove.isPending}
-                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 disabled:bg-slate-200 rounded text-white">
+                <button onClick={() => remove.mutate()} disabled={remove.isPending} className="btn-danger">
                   {remove.isPending ? "…" : "Delete"}
                 </button>
-                <button onClick={() => setConfirmingDelete(false)} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
+                <button onClick={() => setConfirmingDelete(false)} className="btn-ghost">Cancel</button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <button onClick={() => complete.mutate()} disabled={complete.isPending}
-                  className="px-3 py-1.5 text-sm text-emerald-700 hover:text-emerald-700 hover:bg-emerald-950/30 rounded">
+                <button onClick={() => complete.mutate()} disabled={complete.isPending} className="btn-ghost">
                   {complete.isPending ? "…" : "Mark done"}
                 </button>
-                <button onClick={() => setConfirmingDelete(true)}
-                  className="px-3 py-1.5 text-sm text-red-700 hover:text-red-700 hover:bg-red-950/30 rounded">Delete</button>
+                <button onClick={() => setConfirmingDelete(true)} className="btn-danger">Delete</button>
               </div>
             )
           ) : <span />}
           <div className="flex gap-2 ml-auto">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
+            <button onClick={onClose} className="btn-ghost">Cancel</button>
             <button
               onClick={() => { setError(null); save.mutate(); }}
               disabled={!titleValid || !dateValid || save.isPending}
-              className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium"
+              className="btn-primary"
             >
               {save.isPending ? "Saving…" : isEdit ? "Save" : "Add PPM"}
             </button>
@@ -733,7 +726,7 @@ function PpmDialog({ ppm, onClose, onSaved }: { ppm: Ppm | null; onClose: () => 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-2">{title}</h3>
+      <h3 className="section-title">{title}</h3>
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -742,8 +735,32 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs text-slate-500 mb-1">{label}</label>
+      <label className="field-label">{label}</label>
       {children}
     </div>
+  );
+}
+
+function WrenchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-2.5 2.5-2.5Z" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" />
+    </svg>
   );
 }

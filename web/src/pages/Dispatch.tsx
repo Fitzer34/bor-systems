@@ -103,11 +103,11 @@ export function Dispatch() {
       </p>
 
       {!isReadOnly && (
-      <div className="bg-white border rounded-lg p-4 mb-8">
+      <div className="card mb-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">Cleaner</label>
-            <select value={recipientUserId} onChange={(e) => setRecipientUserId(e.target.value)} className="border rounded px-3 py-2 w-full">
+            <label className="field-label">Cleaner</label>
+            <select value={recipientUserId} onChange={(e) => setRecipientUserId(e.target.value)} className="input">
               <option value="">— pick a cleaner —</option>
               {cleaners.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -117,31 +117,31 @@ export function Dispatch() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Building (optional)</label>
-            <select value={buildingId} onChange={(e) => { setBuildingId(e.target.value); setFloorId(""); setZoneId(""); }} className="border rounded px-3 py-2 w-full">
+            <label className="field-label">Building (optional)</label>
+            <select value={buildingId} onChange={(e) => { setBuildingId(e.target.value); setFloorId(""); setZoneId(""); }} className="input">
               <option value="">—</option>
               {buildings.data?.buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Floor (optional)</label>
-            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
+            <label className="field-label">Floor (optional)</label>
+            <select value={floorId} disabled={!buildingId} onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }} className="input disabled:bg-slate-100">
               <option value="">—</option>
               {floors.data?.floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
           <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">Zone (optional)</label>
-            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="border rounded px-3 py-2 w-full disabled:bg-slate-100">
+            <label className="field-label">Zone (optional)</label>
+            <select value={zoneId} disabled={!floorId} onChange={(e) => setZoneId(e.target.value)} className="input disabled:bg-slate-100">
               <option value="">—</option>
               {zones.data?.zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select>
           </div>
           <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">Message</label>
+            <label className="field-label">Message</label>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} maxLength={500}
               placeholder="e.g. Please bring a mop and check the toilets on Floor 2."
-              className="border rounded px-3 py-2 w-full" />
+              className="input" />
           </div>
           <div className="col-span-2 flex items-center gap-3">
             <label className="flex items-center gap-2 text-sm">
@@ -151,12 +151,12 @@ export function Dispatch() {
             <button
               onClick={() => send.mutate()}
               disabled={!valid || send.isPending}
-              className="ml-auto bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50"
+              className="btn-primary ml-auto"
             >
               {send.isPending ? "Sending…" : "Send dispatch"}
             </button>
           </div>
-          {sentBanner && <div className="col-span-2 text-sm text-green-700">{sentBanner}</div>}
+          {sentBanner && <div className="col-span-2 text-sm text-emerald-700">{sentBanner}</div>}
         </div>
       </div>
       )}
@@ -184,15 +184,15 @@ export function Dispatch() {
               <td className="p-2">{d.zoneName ?? "—"}</td>
               <td className="p-2">{d.message}</td>
               <td className="p-2">
-                <span className={`px-1.5 py-0.5 rounded text-xs ${
-                  d.status === "sent" ? "bg-amber-100 text-amber-700" :
-                  d.status === "acknowledged" ? "bg-blue-100 text-blue-700" :
-                  "bg-green-100 text-green-700"
-                }`}>{d.status}</span>
+                <span className={
+                  d.status === "sent" ? "pill-offline" :
+                  d.status === "acknowledged" ? "pill-info" :
+                  "pill-online"
+                }>{d.status === "sent" ? "Sent" : d.status === "acknowledged" ? "Acknowledged" : "Completed"}</span>
               </td>
               <td className="p-2 text-right">
                 {d.status !== "completed" && (
-                  <button onClick={() => completeMut.mutate(d.id)} className="text-slate-500 hover:underline">Mark complete</button>
+                  <button onClick={() => completeMut.mutate(d.id)} className="btn-ghost">Mark complete</button>
                 )}
               </td>
             </tr>

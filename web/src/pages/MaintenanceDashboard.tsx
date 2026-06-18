@@ -162,7 +162,7 @@ export function MaintenanceDashboard() {
 
             <ChartCard title="Open work orders by status">
               {m.byStatus.length === 0 ? (
-                <div className="h-[220px] flex items-center justify-center text-sm text-slate-500">No open work orders 🎉</div>
+                <div className="h-[220px] flex items-center justify-center text-sm text-slate-500">No open work orders</div>
               ) : (
                 <>
                   <ResponsiveContainer width="100%" height={188}>
@@ -187,7 +187,7 @@ export function MaintenanceDashboard() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-6">
             <Panel title={`Overdue PPMs (${m.overduePpms.length})`} to="/ppms">
-              {m.overduePpms.length === 0 ? <Empty>Nothing overdue 🎉</Empty> : m.overduePpms.slice(0, 6).map((p) => (
+              {m.overduePpms.length === 0 ? <Empty>Nothing overdue</Empty> : m.overduePpms.slice(0, 6).map((p) => (
                 <Row key={p.id} main={p.title} sub={p.contractorName ?? "No contractor"} tag={`${-daysUntil(p.nextDueDate)}d over`} tone="red" />
               ))}
             </Panel>
@@ -217,11 +217,11 @@ export function MaintenanceDashboard() {
 }
 
 function Kpi({ to, label, value, sub, tone }: { to: string; label: string; value: number | string; sub: string; tone: "default" | "red" | "amber" | "emerald" }) {
-  const valueCls = tone === "red" ? "text-red-700" : tone === "amber" ? "text-amber-700" : tone === "emerald" ? "text-emerald-700" : "text-slate-900";
+  const valueCls = tone === "red" ? "text-red-700" : tone === "amber" ? "text-amber-700" : tone === "emerald" ? "text-emerald-700" : "";
   return (
-    <Link to={to} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300 transition">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={"text-3xl font-semibold mt-1 " + valueCls}>{value}</div>
+    <Link to={to} className="card card-hover">
+      <div className="stat-label">{label}</div>
+      <div className={"stat-value mt-1 " + valueCls}>{value}</div>
       <div className="text-xs text-slate-500 mt-1">{sub}</div>
     </Link>
   );
@@ -229,7 +229,7 @@ function Kpi({ to, label, value, sub, tone }: { to: string; label: string; value
 
 function Panel({ title, to, children }: { title: string; to: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="card">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
         <Link to={to} className="text-xs text-blue-700 hover:underline">View all →</Link>
@@ -241,7 +241,7 @@ function Panel({ title, to, children }: { title: string; to: string; children: R
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="card">
       <h2 className="text-sm font-semibold text-slate-900 mb-3">{title}</h2>
       {children}
     </div>
@@ -249,14 +249,14 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 }
 
 function Row({ main, sub, tag, tone }: { main: string; sub: string; tag: string; tone: "red" | "amber" }) {
-  const tagCls = tone === "red" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700";
+  const tagCls = tone === "red" ? "pill-alert" : "pill-offline";
   return (
     <div className="flex items-center gap-3 text-sm">
       <div className="min-w-0 flex-1">
         <div className="text-slate-900 truncate">{main}</div>
         <div className="text-xs text-slate-500 truncate">{sub}</div>
       </div>
-      <span className={"px-2 py-0.5 text-xs font-medium rounded-full shrink-0 " + tagCls}>{tag}</span>
+      <span className={"shrink-0 " + tagCls}>{tag}</span>
     </div>
   );
 }
@@ -314,9 +314,12 @@ function ExportMenu({ disabled }: { disabled: boolean }) {
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded px-3 py-1.5 text-sm"
+        className="btn-secondary"
       >
-        Export CSV ▾
+        Export CSV
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
       </button>
       {open && (
         <div role="menu" className="absolute right-0 mt-1 w-60 rounded-lg border border-slate-200 bg-white shadow-lg z-10 p-1">

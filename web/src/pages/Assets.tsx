@@ -40,10 +40,10 @@ const CONDITION = ["—", "Poor", "Fair", "OK", "Good", "Excellent"];
 const CRIT_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 const CRIT_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 function critCls(c: string): string {
-  if (c === "critical") return "bg-red-100 text-red-700";
-  if (c === "high") return "bg-orange-100 text-orange-700";
-  if (c === "low") return "bg-slate-100 text-slate-500";
-  return "bg-blue-100 text-blue-700"; // medium
+  if (c === "critical") return "pill-alert";
+  if (c === "high") return "pill bg-orange-100 text-orange-700";
+  if (c === "low") return "pill-muted";
+  return "pill-info"; // medium
 }
 
 function euro(cents: number | null): string {
@@ -59,15 +59,15 @@ function warranty(iso: string | null): { label: string; cls: string } | null {
   if (!iso) return null;
   const due = Date.parse(iso + "T00:00:00");
   const days = Math.round((due - Date.now()) / 86_400_000);
-  if (days < 0) return { label: "Warranty expired", cls: "bg-red-100 text-red-700" };
-  if (days <= 90) return { label: `Warranty ends ${fmtDate(iso)}`, cls: "bg-amber-100 text-amber-700" };
-  return { label: `In warranty to ${fmtDate(iso)}`, cls: "bg-emerald-100 text-emerald-700" };
+  if (days < 0) return { label: "Warranty expired", cls: "pill-alert" };
+  if (days <= 90) return { label: `Warranty ends ${fmtDate(iso)}`, cls: "pill-offline" };
+  return { label: `In warranty to ${fmtDate(iso)}`, cls: "pill-online" };
 }
 function conditionCls(n: number | null): string {
-  if (n == null) return "bg-slate-200 text-slate-600";
-  if (n <= 2) return "bg-red-100 text-red-700";
-  if (n === 3) return "bg-amber-100 text-amber-700";
-  return "bg-emerald-100 text-emerald-700";
+  if (n == null) return "pill-muted";
+  if (n <= 2) return "pill-alert";
+  if (n === 3) return "pill-offline";
+  return "pill-online";
 }
 
 function useAiConfigured(): boolean {
@@ -117,31 +117,31 @@ export function Assets() {
           <h1 className="text-2xl font-semibold">Asset register</h1>
           <p className="text-sm text-slate-500 mt-1">Everything you maintain — with location, warranty, condition and cost. PPMs and jobs link to these.</p>
         </div>
-        <button onClick={() => setCreating(true)} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium whitespace-nowrap">+ Add asset</button>
+        <button onClick={() => setCreating(true)} className="btn-primary whitespace-nowrap">Add asset</button>
       </div>
 
       <input
         value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, make, model, serial…"
-        className="w-full max-w-md mb-5 px-3 py-2 bg-white border border-slate-300 rounded text-slate-900 text-sm"
+        className="input max-w-md mb-5"
       />
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <p className="text-slate-800">{q ? "No assets match your search." : "No assets yet."}</p>
-          {!q && <p className="text-sm text-slate-500 mt-2">Add your plant + equipment (boilers, lifts, AC units, extinguishers…) to build the register.</p>}
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <p className="text-slate-900 font-medium">{q ? "No assets match your search." : "No assets yet."}</p>
+          {!q && <p className="text-sm text-slate-500 mt-1">Add your plant + equipment (boilers, lifts, AC units, extinguishers…) to build the register.</p>}
         </div>
       ) : (
         <div className="space-y-3">
           {list.map((a) => {
             const w = warranty(a.warrantyExpiry);
             return (
-              <div key={a.id} className="rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition p-4 flex gap-4">
+              <div key={a.id} className="card card-hover flex gap-4">
                 <button onClick={() => setEditing(a)} className="flex-1 min-w-0 text-left">
                   <div className="flex items-center gap-3 flex-wrap mb-1">
                     <h3 className="font-medium text-slate-900">{a.name}</h3>
-                    {(a.criticality === "critical" || a.criticality === "high") && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + critCls(a.criticality)}>{CRIT_LABEL[a.criticality]} risk</span>}
-                    {a.conditionScore != null && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + conditionCls(a.conditionScore)}>{CONDITION[a.conditionScore]}</span>}
-                    {w && <span className={"px-2 py-0.5 text-xs font-medium rounded-full " + w.cls}>{w.label}</span>}
+                    {(a.criticality === "critical" || a.criticality === "high") && <span className={critCls(a.criticality)}>{CRIT_LABEL[a.criticality]} risk</span>}
+                    {a.conditionScore != null && <span className={conditionCls(a.conditionScore)}>{CONDITION[a.conditionScore]}</span>}
+                    {w && <span className={w.cls}>{w.label}</span>}
                   </div>
                   <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
                     {a.category && <Field label="Category" value={a.category} />}
@@ -325,13 +325,14 @@ function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {
                   type="button"
                   onClick={() => { setErr(null); summarise.mutate(); }}
                   disabled={summarise.isPending}
-                  className="text-sm text-indigo-700 hover:text-indigo-900 font-medium disabled:text-slate-400"
+                  className="inline-flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium disabled:text-slate-400"
                 >
-                  {summarise.isPending ? "Summarising…" : "✨ Summarise this asset's history"}
+                  <SparkleIcon />
+                  {summarise.isPending ? "Summarising…" : "Summarise this asset's history"}
                 </button>
               ) : (
                 <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3 text-sm">
-                  <div className="font-medium text-indigo-900 mb-1">✨ History summary</div>
+                  <div className="font-medium text-indigo-900 mb-1 inline-flex items-center gap-2"><SparkleIcon /> History summary</div>
                   <p className="text-slate-700 whitespace-pre-wrap">{summary}</p>
                 </div>
               )}
@@ -342,11 +343,11 @@ function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {
 
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
           {isEdit
-            ? <button onClick={() => retire.mutate()} disabled={retire.isPending} className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded">{retire.isPending ? "…" : "Retire asset"}</button>
+            ? <button onClick={() => retire.mutate()} disabled={retire.isPending} className="btn-danger">{retire.isPending ? "…" : "Retire asset"}</button>
             : <span />}
           <div className="flex gap-2 ml-auto">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-            <button onClick={() => { setErr(null); save.mutate(); }} disabled={!name.trim() || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
+            <button onClick={onClose} className="btn-ghost">Cancel</button>
+            <button onClick={() => { setErr(null); save.mutate(); }} disabled={!name.trim() || save.isPending} className="btn-primary">
               {save.isPending ? "Saving…" : isEdit ? "Save" : "Add asset"}
             </button>
           </div>
@@ -356,8 +357,16 @@ function AssetDialog({ asset, buildings, trades, onClose, onSaved }: {
   );
 }
 
-const inp = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
+const inp = "input";
+
+function SparkleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2" />
+    </svg>
+  );
+}
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-xs text-slate-500 mb-1">{label}</label>{children}</div>;
+  return <div><label className="field-label">{label}</label>{children}</div>;
 }

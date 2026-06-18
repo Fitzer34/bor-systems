@@ -72,13 +72,16 @@ export function Checkpoints() {
             ? "Print a checkpoint's QR and place it in each area. Cleaners scan it on their round, confirm it's clean, and add a photo — every scan is logged below."
             : "Print a checkpoint's QR and place it on site. Guards scan it on patrol — every scan is logged below."}</p>
         </div>
-        <button onClick={() => setCreating(true)} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium whitespace-nowrap">{isCleaning ? "+ Add area" : "+ Add checkpoint"}</button>
+        <button onClick={() => setCreating(true)} className="btn-primary whitespace-nowrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          {isCleaning ? "Add area" : "Add checkpoint"}
+        </button>
       </div>
 
       {list.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <p className="text-slate-800">{isCleaning ? "No cleaning rounds yet." : "No checkpoints yet."}</p>
-          <p className="text-sm text-slate-500 mt-2">{isCleaning
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <p className="text-slate-900 font-medium">{isCleaning ? "No cleaning rounds yet." : "No checkpoints yet."}</p>
+          <p className="text-sm text-slate-500 mt-1">{isCleaning
             ? "Add areas cleaners should survey (washrooms, lobby, kitchen, stairwells…) and print each QR."
             : "Add points guards should visit (fire exits, plant rooms, perimeter gates…) and print each QR."}</p>
         </div>
@@ -88,16 +91,16 @@ export function Checkpoints() {
         </div>
       )}
 
-      <h2 className="text-xs uppercase tracking-wider text-slate-500 mt-10 mb-2">{isCleaning ? "Recent rounds" : "Recent patrols"}</h2>
+      <h2 className="section-title mt-10">{isCleaning ? "Recent rounds" : "Recent patrols"}</h2>
       {scanList.length === 0 ? (
         <p className="text-sm text-slate-500">No scans yet.</p>
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+        <div className="card !p-0 divide-y divide-slate-100">
           {scanList.map((s) => (
             <div key={s.id} className="px-4 py-2.5 flex items-center gap-3 text-sm flex-wrap">
               {s.flagged
-                ? <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">⚑ Issue</span>
-                : <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">✓ Clear</span>}
+                ? <span className="pill-alert"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></svg>Issue</span>
+                : <span className="pill-online"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>Clear</span>}
               <span className="font-medium text-slate-900">{s.checkpointName ?? "—"}</span>
               {s.buildingName && <span className="text-slate-500">· {s.buildingName}</span>}
               <span className="text-slate-500">· {s.guardName || (isCleaning ? "Cleaner" : "Guard")}</span>
@@ -129,7 +132,9 @@ export function Checkpoints() {
       {lightbox && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="Area proof" className="max-h-[90vh] max-w-full rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
-          <button onClick={() => setLightbox(null)} aria-label="Close" className="absolute top-4 right-5 text-white/80 hover:text-white text-4xl leading-none">×</button>
+          <button onClick={() => setLightbox(null)} aria-label="Close" className="absolute top-4 right-5 text-white/80 hover:text-white">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
         </div>
       )}
     </div>
@@ -139,8 +144,8 @@ export function Checkpoints() {
 function CheckpointCard({ cp, onEdit }: { cp: Checkpoint; onEdit: () => void }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 flex gap-4">
-      <div className="shrink-0 bg-white p-1.5 border border-slate-200 rounded">
+    <div className="card flex gap-4">
+      <div className="shrink-0 bg-white p-1.5 border border-slate-200 rounded-lg">
         <QRCodeSVG value={cp.scanUrl} size={84} />
       </div>
       <div className="min-w-0 flex-1">
@@ -148,7 +153,12 @@ function CheckpointCard({ cp, onEdit }: { cp: Checkpoint; onEdit: () => void }) 
         <div className="text-sm text-slate-500 mt-0.5">
           {cp.building?.name ?? "No site"}{cp.locationNote ? ` · ${cp.locationNote}` : ""}
         </div>
-        {cp.instructions && <div className="text-sm text-slate-600 mt-1 line-clamp-2">📋 {cp.instructions}</div>}
+        {cp.instructions && (
+          <div className="text-sm text-slate-600 mt-1 line-clamp-2 flex items-start gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0" aria-hidden="true"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /></svg>
+            <span>{cp.instructions}</span>
+          </div>
+        )}
         <div className="flex gap-3 mt-2">
           <button
             onClick={() => { navigator.clipboard?.writeText(cp.scanUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
@@ -203,7 +213,9 @@ function CheckpointDialog({ cp, buildings, discipline, isCleaning, onClose, onSa
       <div className="bg-white rounded-xl w-full max-w-lg border border-slate-300 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-medium text-slate-900">{isEdit ? (isCleaning ? "Edit area" : "Edit checkpoint") : (isCleaning ? "Add cleaning area" : "Add checkpoint")}</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-2xl leading-none" aria-label="Close">×</button>
+          <button onClick={onClose} className="btn-ghost -mr-2 p-1.5" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
         </div>
         <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
           <Group label={isCleaning ? "Area name" : "Checkpoint name"}>
@@ -227,11 +239,11 @@ function CheckpointDialog({ cp, buildings, discipline, isCleaning, onClose, onSa
         </div>
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
           {isEdit
-            ? <button onClick={() => deactivate.mutate()} disabled={deactivate.isPending} className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded">{deactivate.isPending ? "…" : "Deactivate"}</button>
+            ? <button onClick={() => deactivate.mutate()} disabled={deactivate.isPending} className="btn-danger">{deactivate.isPending ? "…" : "Deactivate"}</button>
             : <span />}
           <div className="flex gap-2 ml-auto">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900">Cancel</button>
-            <button onClick={() => { setErr(null); save.mutate(); }} disabled={!name.trim() || save.isPending} className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-500 rounded text-white font-medium">
+            <button onClick={onClose} className="btn-ghost">Cancel</button>
+            <button onClick={() => { setErr(null); save.mutate(); }} disabled={!name.trim() || save.isPending} className="btn-primary">
               {save.isPending ? "Saving…" : isEdit ? "Save" : (isCleaning ? "Add area" : "Add checkpoint")}
             </button>
           </div>
@@ -241,8 +253,8 @@ function CheckpointDialog({ cp, buildings, discipline, isCleaning, onClose, onSa
   );
 }
 
-const inp = "w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-slate-900 text-sm";
+const inp = "input";
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-xs text-slate-500 mb-1">{label}</label>{children}</div>;
+  return <div><label className="field-label">{label}</label>{children}</div>;
 }

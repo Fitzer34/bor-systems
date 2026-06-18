@@ -100,7 +100,11 @@ export function SchedulePage() {
           {/* ─── states ─────────────────────────────────────────────── */}
           {loadError ? (
             <Pad>
-              <Icon>🔍</Icon>
+              <Icon>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </Icon>
               <h1 className="text-xl font-semibold text-slate-900">Link not found</h1>
               <p className="text-slate-600 mt-2">
                 This scheduling link is invalid or has expired. Please contact the company that sent it.
@@ -110,7 +114,19 @@ export function SchedulePage() {
             <Pad><p className="text-slate-500 text-center py-8">Loading…</p></Pad>
           ) : done ? (
             <Pad>
-              <Icon>{done === "declined" ? "👍" : "✅"}</Icon>
+              <Icon>
+                <span className="text-emerald-600">
+                  {done === "declined" ? (
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                  ) : (
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                  )}
+                </span>
+              </Icon>
               <h1 className="text-xl font-semibold text-slate-900">
                 {done === "declined" ? "Thanks for letting us know" : "Date sent!"}
               </h1>
@@ -122,7 +138,13 @@ export function SchedulePage() {
             </Pad>
           ) : info.status === "confirmed" ? (
             <Pad>
-              <Icon>✅</Icon>
+              <Icon>
+                <span className="text-emerald-600">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                </span>
+              </Icon>
               <h1 className="text-xl font-semibold text-slate-900">You're booked in</h1>
               <p className="text-slate-600 mt-2">
                 <span className="font-medium">{info.title}</span> is confirmed for{" "}
@@ -131,7 +153,11 @@ export function SchedulePage() {
             </Pad>
           ) : info.status === "cancelled" || info.expired ? (
             <Pad>
-              <Icon>⌛</Icon>
+              <Icon>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+              </Icon>
               <h1 className="text-xl font-semibold text-slate-900">This request is closed</h1>
               <p className="text-slate-600 mt-2">
                 Please contact {info.orgName} directly to arrange a date.
@@ -155,13 +181,19 @@ export function SchedulePage() {
                   <div className="text-sm text-slate-500 mt-0.5">Recurs {freqLabel(info.frequencyPerYear)}</div>
                   {info.notes && <div className="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{info.notes}</div>}
                   {info.siteName && (
-                    <div className="text-sm text-slate-700 mt-2">
-                      📍 <span className="font-medium">{info.siteName}</span>{info.siteAddress ? `, ${info.siteAddress}` : ""}
+                    <div className="text-sm text-slate-700 mt-2 flex items-start gap-1.5">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5 text-slate-400" aria-hidden="true">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+                      </svg>
+                      <span><span className="font-medium">{info.siteName}</span>{info.siteAddress ? `, ${info.siteAddress}` : ""}</span>
                     </div>
                   )}
                   {(info.siteContactName || info.siteContactPhone || info.siteContactEmail) && (
-                    <div className="text-sm text-slate-700 mt-1">
-                      👤 On-site contact: {[info.siteContactName, info.siteContactPhone, info.siteContactEmail].filter(Boolean).join(" · ")}
+                    <div className="text-sm text-slate-700 mt-1 flex items-start gap-1.5">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5 text-slate-400" aria-hidden="true">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                      </svg>
+                      <span>On-site contact: {[info.siteContactName, info.siteContactPhone, info.siteContactEmail].filter(Boolean).join(" · ")}</span>
                     </div>
                   )}
                 </div>
@@ -250,5 +282,5 @@ function Pad({ children }: { children: React.ReactNode }) {
   return <div className="px-6 py-8 text-center">{children}</div>;
 }
 function Icon({ children }: { children: React.ReactNode }) {
-  return <div className="text-4xl mb-3">{children}</div>;
+  return <div className="mb-3 flex justify-center text-slate-400">{children}</div>;
 }

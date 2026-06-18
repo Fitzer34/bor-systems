@@ -67,8 +67,8 @@ function TwoFactorSection() {
   const s = status.data;
 
   return (
-    <div className="bg-white border rounded-lg p-6">
-      <div className="font-medium mb-1">Two-factor authentication</div>
+    <div className="card p-6">
+      <div className="font-semibold text-slate-900 mb-1">Two-factor authentication</div>
       <p className="text-sm text-slate-500 mb-4">
         Use an authenticator app (Google Authenticator, 1Password, Authy, etc.)
         for a 6-digit code on every sign-in.
@@ -109,13 +109,13 @@ function TwoFactorSection() {
             value={disableCode}
             onChange={(e) => setDisableCode(e.target.value)}
             placeholder="123 456"
-            className="border rounded px-3 py-2 w-48 tracking-widest"
+            className="w-48 px-3 py-2 text-sm tracking-widest"
           />
           <div>
             <button
               onClick={() => { setErr(null); disable.mutate(); }}
               disabled={!disableCode || disable.isPending}
-              className="bg-red-600 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+              className="btn-danger"
             >
               {disable.isPending ? "Disabling…" : "Disable 2FA"}
             </button>
@@ -137,19 +137,19 @@ function TwoFactorSection() {
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder="123 456"
-            className="border rounded px-3 py-2 w-48 tracking-widest"
+            className="w-48 px-3 py-2 text-sm tracking-widest"
           />
           <div className="flex gap-3">
             <button
               onClick={() => { setErr(null); confirm.mutate(); }}
               disabled={code.length < 6 || confirm.isPending}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+              className="btn-primary"
             >
               {confirm.isPending ? "Confirming…" : "Confirm and enable"}
             </button>
             <button
               onClick={() => { setEnrol(null); setCode(""); setErr(null); }}
-              className="text-sm text-slate-500"
+              className="btn-ghost"
             >
               Cancel
             </button>
@@ -159,7 +159,7 @@ function TwoFactorSection() {
         <button
           onClick={() => start.mutate()}
           disabled={start.isPending}
-          className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 text-sm disabled:opacity-50"
+          className="btn-primary"
         >
           {start.isPending ? "Starting…" : "Enable two-factor auth"}
         </button>
@@ -212,28 +212,28 @@ export function Profile() {
     <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-semibold">Profile</h1>
 
-      <div className="bg-white border rounded-lg p-6">
-        <div className="font-medium mb-1">Account details</div>
+      <div className="card p-6">
+        <div className="font-semibold text-slate-900 mb-1">Account details</div>
         <div className="text-sm text-slate-500 mb-4">
           {user.email} · {user.role}
         </div>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Name</label>
+            <label className="field-label">Name</label>
             <input value={name} onChange={(e) => { setName(e.target.value); setSavedProfile(false); }}
-              className="border rounded px-3 py-2 w-full" />
+              className="input" />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Phone (E.164, e.g. +353…) — optional, used for SMS escalation</label>
+            <label className="field-label">Phone (E.164, e.g. +353…) — optional, used for SMS escalation</label>
             <input value={phone} onChange={(e) => { setPhone(e.target.value); setSavedProfile(false); }}
-              placeholder="+353851234567" className="border rounded px-3 py-2 w-full" />
+              placeholder="+353851234567" className="input" />
             {!phoneValid && <div className="text-xs text-red-600 mt-1">Must be in E.164 format (starts with +, digits only).</div>}
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => updateProfile.mutate()}
               disabled={!name.trim() || !phoneValid || updateProfile.isPending}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
+              className="btn-primary"
             >
               {updateProfile.isPending ? "Saving…" : "Save"}
             </button>
@@ -244,25 +244,25 @@ export function Profile() {
 
       <TwoFactorSection />
 
-      <div className="bg-white border rounded-lg p-6">
-        <div className="font-medium mb-1">Change password</div>
+      <div className="card p-6">
+        <div className="font-semibold text-slate-900 mb-1">Change password</div>
         <p className="text-sm text-slate-500 mb-4">
           Minimum 10 characters; must include at least three of: lowercase, uppercase, digit, symbol.
         </p>
         <div className="space-y-3">
           <input type="password" placeholder="Current password" value={oldPwd}
-            onChange={(e) => setOldPwd(e.target.value)} className="border rounded px-3 py-2 w-full" />
+            onChange={(e) => setOldPwd(e.target.value)} className="input" />
           <input type="password" placeholder="New password (min 8 chars)" value={newPwd}
-            onChange={(e) => setNewPwd(e.target.value)} className="border rounded px-3 py-2 w-full" />
+            onChange={(e) => setNewPwd(e.target.value)} className="input" />
           <input type="password" placeholder="Confirm new password" value={confirmPwd}
-            onChange={(e) => setConfirmPwd(e.target.value)} className="border rounded px-3 py-2 w-full" />
+            onChange={(e) => setConfirmPwd(e.target.value)} className="input" />
           {confirmPwd !== "" && newPwd !== confirmPwd && (
             <div className="text-xs text-red-600">New passwords don't match.</div>
           )}
           <button
             onClick={() => { setPwdMsg(null); changePassword.mutate(); }}
             disabled={!oldPwd || !newPwdValid || changePassword.isPending}
-            className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-2 disabled:opacity-50 text-sm"
+            className="btn-primary"
           >
             {changePassword.isPending ? "Updating…" : "Change password"}
           </button>

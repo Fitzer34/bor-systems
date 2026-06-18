@@ -195,17 +195,20 @@ export function Devices() {
         {isStaff && (
           <button
             onClick={() => setRegistering(true)}
-            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded text-white font-medium whitespace-nowrap"
+            className="btn-primary whitespace-nowrap"
           >
-            + Register hanger
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Register hanger
           </button>
         )}
       </div>
 
       {totalDevices === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <p className="text-slate-800">No devices yet.</p>
-          <p className="text-sm text-slate-500 mt-2">
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <div className="text-slate-900 font-medium">No devices yet</div>
+          <p className="text-sm text-slate-500 mt-1">
             Plug in a HazardLink gateway and hangers, then add them via the iOS
             app (<em>More → Add a gateway / Add a hanger</em>), or register a
             hanger by DevEUI above.
@@ -235,11 +238,13 @@ export function Devices() {
                   <div className="flex items-center gap-3 min-w-0">
                     <span
                       className={
-                        "text-slate-500 text-xs transition-transform shrink-0 " +
+                        "text-slate-500 transition-transform shrink-0 " +
                         (isCollapsed ? "" : "rotate-90")
                       }
                     >
-                      ▶
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
                     </span>
                     <h2 className="font-semibold text-slate-900 truncate">{grp.name}</h2>
                     <span className="text-xs text-slate-500 whitespace-nowrap hidden sm:inline">
@@ -248,16 +253,16 @@ export function Devices() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {lowBatt > 0 && (
-                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
+                      <span className="pill-alert">
                         {lowBatt} low battery
                       </span>
                     )}
                     {offline > 0 ? (
-                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
+                      <span className="pill-offline">
                         {offline} offline
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">
+                      <span className="pill-online">
                         All online
                       </span>
                     )}
@@ -275,7 +280,9 @@ export function Devices() {
                     {grp.key !== UNASSIGNED && grp.hangers.length > 0 && grp.gateways.length > 0 && (
                       <div className="ml-2 sm:ml-4 pl-4 border-l-2 border-slate-300/70 space-y-3 pt-1">
                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <span className="text-slate-500">↳</span>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+                            <polyline points="9 10 4 15 9 20" /><path d="M20 4v7a4 4 0 0 1-4 4H4" />
+                          </svg>
                           <span>
                             {grp.hangers.length} hanger{grp.hangers.length === 1 ? "" : "s"} relayed through{" "}
                             {grp.gateways.length === 1 ? "this gateway" : "this building's gateways"}
@@ -289,7 +296,9 @@ export function Devices() {
                     {grp.key !== UNASSIGNED && grp.hangers.length > 0 && grp.gateways.length === 0 && (
                       <>
                         <div className="flex items-center gap-1.5 text-xs text-amber-700">
-                          <span>⚠</span>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+                            <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                          </svg>
                           <span>No gateway in this building — these hangers can't relay until one is added.</span>
                         </div>
                         {grp.hangers.map(renderHanger)}
