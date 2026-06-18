@@ -2,81 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Global light theme foundation ─────────────────────────────────────────
+/* ─── HazardLink design system ──────────────────────────────────────────────
  *
- * The content area is light — white cards on a very light grey page, dark text
- * — for maximum readability. The sidebar stays dark (it sets its own
- * bg-slate-900 / text on its element in Layout.tsx, so it's unaffected by this
- * base). Reusable .card / .btn / .pill classes below match the light content.
+ * Tokens + component layer. Light content (white cards on a soft-grey page,
+ * dark text) for maximum readability; the sidebar stays dark (set in Layout).
+ * Palette = "SaaS (General)" trust-blue from the ui-ux-pro-max skill; see
+ * design-system/MASTER.md. Colour values live here as CSS variables and are
+ * surfaced to Tailwind (primary / accent / surface / ink) in tailwind.config.js.
  */
 
 @layer base {
   :root {
     color-scheme: light;
+    /* Semantic tokens as space-separated RGB channels (for rgb(var() / a)). */
+    --hl-primary: 37 99 235;        /* #2563EB trust blue   */
+    --hl-primary-hover: 29 78 216;  /* #1D4ED8              */
+    --hl-primary-fg: 255 255 255;   /* #FFFFFF              */
+    --hl-accent: 234 88 12;         /* #EA580C urgent CTA   */
+    --hl-accent-fg: 255 255 255;
+    --hl-surface: 248 250 252;      /* #F8FAFC page         */
+    --hl-ink: 15 23 42;             /* #0F172A foreground   */
   }
 
   html, body {
-    @apply bg-white text-slate-900;
+    @apply bg-surface text-slate-900;
     font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
-  /* Sensible light defaults so any element that forgot to theme itself still
-     looks right. */
+  /* Type hierarchy via size + weight (single family). */
   h1, h2, h3, h4 { @apply text-slate-900 tracking-tight; }
   h1 { @apply font-semibold; }
   a { @apply text-blue-700; }
 
-  /* Native form controls: white field, dark text, light border. */
+  /* Native form controls: white field, dark text, light border + focus ring. */
   input, select, textarea {
-    @apply bg-white border border-slate-300 text-slate-900 rounded;
+    @apply bg-white border border-slate-300 text-slate-900 rounded-lg;
   }
   input::placeholder, textarea::placeholder { @apply text-slate-400; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible {
+    @apply outline-none ring-2 ring-blue-600/40 border-blue-500;
+  }
 
   /* Tables — used by Users, AuditLog, Reports, etc. */
   th { @apply text-slate-500; }
   td { @apply text-slate-700; }
 
+  /* Keyboard focus visible everywhere by default (accessibility CRITICAL). */
+  :focus-visible { @apply outline-none ring-2 ring-blue-600/50 ring-offset-2 ring-offset-white; }
+
   /* Stop long unbreakable strings (emails, DevEUIs, JSON) from forcing the
      whole page wider than the phone viewport. */
   body { overflow-x: hidden; }
+
+  /* Respect reduced-motion preference. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
 }
 
 @layer components {
-  /* Standard surface — white card on the light page. */
+  /* Standard surface — white card on the soft-grey page. */
   .card {
     @apply rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm;
   }
   .card-hover {
-    @apply transition hover:shadow-md hover:border-slate-300;
+    @apply transition-shadow hover:shadow-md hover:border-slate-300;
   }
 
   /* Buttons. Min 40px tall touch target on phones (py-2.5), tightening to the
-     denser desktop size at sm+. */
+     denser desktop size at sm+. Visible focus ring + subtle press feedback. */
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg
-           px-3 py-2.5 sm:py-2 text-sm font-medium transition disabled:opacity-50
-           disabled:cursor-not-allowed;
+           px-3 py-2.5 sm:py-2 text-sm font-medium transition
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50
+           focus-visible:ring-offset-2 active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
   }
-  .btn-primary  { @apply btn bg-blue-600 text-white hover:bg-blue-500; }
-  .btn-ghost    { @apply btn text-slate-600 hover:text-slate-900 hover:bg-slate-100; }
-  .btn-danger   { @apply btn text-red-600 hover:text-red-700 hover:bg-red-50; }
+  .btn-primary   { @apply btn bg-blue-600 text-white hover:bg-blue-700 shadow-sm; }
+  .btn-accent    { @apply btn bg-orange-600 text-white hover:bg-orange-700 shadow-sm; }
+  .btn-secondary { @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400; }
+  .btn-ghost     { @apply btn text-slate-600 hover:text-slate-900 hover:bg-slate-100; }
+  .btn-danger    { @apply btn text-red-600 hover:text-red-700 hover:bg-red-50; }
 
   /* Form field wrapper label + control spacing */
   .field-label { @apply block text-xs font-medium text-slate-500 mb-1; }
+  .input       { @apply w-full bg-white border border-slate-300 text-slate-900 rounded-lg px-3 py-2 text-sm
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40 focus-visible:border-blue-500; }
 
   /* Status pills — light tint + dark text for the light content. */
-  .pill         { @apply px-2 py-0.5 text-xs font-medium rounded-full; }
+  .pill         { @apply inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full; }
   .pill-online  { @apply pill bg-emerald-100 text-emerald-700; }
   .pill-offline { @apply pill bg-amber-100 text-amber-700; }
   .pill-alert   { @apply pill bg-red-100 text-red-700; }
+  .pill-info    { @apply pill bg-blue-100 text-blue-700; }
   .pill-muted   { @apply pill bg-slate-200 text-slate-600; }
 
   /* Section heading used above card groups */
   .section-title {
-    @apply text-xs uppercase tracking-wider text-slate-500 mb-2;
+    @apply text-xs uppercase tracking-wider text-slate-500 font-medium mb-2;
   }
+
+  /* KPI / stat numbers — tabular figures so columns don't jitter. */
+  .stat-value { @apply text-2xl font-semibold text-slate-900 tabular-nums tracking-tight; }
+  .stat-label { @apply text-xs uppercase tracking-wider text-slate-500; }
 
   /* Wrap any wide <table> in this so it scrolls horizontally inside its card
      on a phone instead of stretching the whole page. */

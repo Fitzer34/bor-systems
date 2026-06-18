@@ -1,7 +1,54 @@
 import { useState } from "react";
 import { Outlet, NavLink, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
-import { useSection } from "../lib/section";
+import { useSection, type Section } from "../lib/section";
+
+/** Small brand lockup — rounded blue badge + wordmark. */
+function Brand({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shrink-0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
+          <path d="M9 12l2 2 4-4" />
+        </svg>
+      </span>
+      {!compact && <span className="font-semibold tracking-wide">HazardLink</span>}
+    </div>
+  );
+}
+
+// Per-discipline identity: label + accent (light shade for the dark sidebar) +
+// a small inline icon. Replaces the old emoji glyphs (no emoji as UI icons).
+const DISCIPLINES: Record<Exclude<Section, never>, { label: string; dot: string; icon: JSX.Element }> = {
+  cleaning: {
+    label: "Cleaning",
+    dot: "text-cyan-400",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 2s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z" />
+      </svg>
+    ),
+  },
+  maintenance: {
+    label: "Maintenance",
+    dot: "text-amber-400",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 17l3 3 5.5-5.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-.5-.5-2.1 2.7-2.5z" />
+      </svg>
+    ),
+  },
+  security: {
+    label: "Security",
+    dot: "text-indigo-400",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
+      </svg>
+    ),
+  },
+};
 
 export function Layout() {
   const { user, logout, setOnDuty } = useAuth();
@@ -15,9 +62,11 @@ export function Layout() {
   if (!user) return null;
   const isStaff = user.role === "admin" || user.role === "supervisor";
   // Cleaners only ever use the cleaning side, so they skip the chooser.
-  const activeSection = isStaff ? section : "cleaning";
+  const activeSection: Section = isStaff ? (section ?? "cleaning") : "cleaning";
   // Staff who haven't picked a side yet go to the chooser first.
   if (isStaff && !section) return <Navigate to="/choose" replace />;
+
+  const disc = DISCIPLINES[activeSection];
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
@@ -26,7 +75,7 @@ export function Layout() {
         <button
           aria-label="Open menu"
           onClick={() => setMobileOpen(true)}
-          className="p-2 -ml-2 rounded hover:bg-slate-800"
+          className="p-2 -ml-2 rounded-lg hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           {/* 3-line hamburger — no icon library dep */}
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -35,8 +84,8 @@ export function Layout() {
             <line x1="3"  y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <div className="font-semibold text-sm">HazardLink</div>
-        {/* Spacer so the title stays centered between the hamburger and a
+        <Brand />
+        {/* Spacer so the brand stays centered between the hamburger and a
             zero-width invisible right column. */}
         <div className="w-10" />
       </div>
@@ -46,7 +95,7 @@ export function Layout() {
         <button
           aria-label="Close menu"
           onClick={() => setMobileOpen(false)}
-          className="md:hidden fixed inset-0 z-30 bg-black/50"
+          className="md:hidden fixed inset-0 z-30 bg-slate-950/50 backdrop-blur-sm"
         />
       )}
 
@@ -63,24 +112,33 @@ export function Layout() {
         }
       >
         <div className="px-4 py-5 border-b border-slate-800">
-          <div className="font-semibold tracking-wide">HazardLink</div>
+          <Brand />
           {user.organisationName && (
-            <div className="text-xs text-slate-300 mt-1 truncate">{user.organisationName}</div>
+            <div className="text-xs text-slate-300 mt-2 truncate">{user.organisationName}</div>
           )}
-          <div className="text-xs text-slate-400 mt-1">{user.name} · {user.role}</div>
+          <div className="text-xs text-slate-400 mt-0.5">{user.name} · {user.role}</div>
         </div>
         <nav
-          className="flex-1 p-2 space-y-1 text-sm overflow-y-auto"
+          className="flex-1 p-2 space-y-0.5 text-sm overflow-y-auto"
           onClick={() => setMobileOpen(false)}
         >
-          {/* Section switcher (staff only) — flip between Cleaning & Maintenance. */}
+          {/* Section switcher (staff only) — flip between Cleaning / Maintenance / Security. */}
           {isStaff && (
             <button
               onClick={() => navigate("/choose")}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-100"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              <span className="font-medium">{activeSection === "maintenance" ? "🔧 Maintenance" : activeSection === "security" ? "🛡️ Security" : "🧹 Cleaning"}</span>
-              <span className="text-xs text-slate-400">Switch ⇄</span>
+              <span className="flex items-center gap-2 font-medium">
+                <span className={disc.dot}>{disc.icon}</span>
+                {disc.label}
+              </span>
+              <span className="flex items-center gap-1 text-xs text-slate-400">
+                Switch
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M7 10l-3-3 3-3" /><path d="M4 7h12a4 4 0 0 1 4 4" />
+                  <path d="M17 14l3 3-3 3" /><path d="M20 17H8a4 4 0 0 1-4-4" />
+                </svg>
+              </span>
             </button>
           )}
 
@@ -126,8 +184,8 @@ export function Layout() {
           )}
 
           {/* ─── Company-wide (both sides) ─── */}
-          <div className="pt-3 mt-3 border-t border-slate-800">
-            {isStaff && <NavItem to="/assistant">✨ Assistant</NavItem>}
+          <div className="pt-3 mt-3 border-t border-slate-800 space-y-0.5">
+            {isStaff && <NavItem to="/assistant">Assistant</NavItem>}
             {isStaff && <NavItem to="/users">Users</NavItem>}
             {isStaff && <NavItem to="/settings">Settings</NavItem>}
             {isStaff && <NavItem to="/notifications-log">Notifications</NavItem>}
@@ -138,15 +196,26 @@ export function Layout() {
           </div>
         </nav>
         <div className="p-3 border-t border-slate-800 text-sm">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={user.onDuty}
-              onChange={(e) => setOnDuty(e.target.checked)}
-            />
-            <span>{user.onDuty ? "On duty" : "Off duty"}</span>
-          </label>
-          <button onClick={logout} className="mt-3 w-full text-left text-slate-400 hover:text-slate-200">Log out</button>
+          <button
+            onClick={() => setOnDuty(!user.onDuty)}
+            className="w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 hover:bg-slate-800 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            aria-pressed={user.onDuty}
+          >
+            <span className="flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${user.onDuty ? "bg-emerald-400" : "bg-slate-500"}`} />
+              {user.onDuty ? "On duty" : "Off duty"}
+            </span>
+            {/* Track + knob toggle */}
+            <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${user.onDuty ? "bg-emerald-500" : "bg-slate-600"}`}>
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${user.onDuty ? "translate-x-4" : "translate-x-0.5"}`} />
+            </span>
+          </button>
+          <button
+            onClick={logout}
+            className="mt-1 w-full text-left rounded-lg px-3 py-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            Log out
+          </button>
         </div>
       </aside>
 
@@ -167,7 +236,10 @@ function NavItem({ to, end, children }: { to: string; end?: boolean; children: R
       to={to}
       end={end}
       className={({ isActive }) =>
-        `block rounded px-3 py-2 ${isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/60"}`
+        "flex items-center rounded-lg border-l-2 px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 " +
+        (isActive
+          ? "bg-slate-800 text-white border-blue-500 font-medium"
+          : "text-slate-300 border-transparent hover:bg-slate-800/60 hover:text-white")
       }
     >
       {children}
