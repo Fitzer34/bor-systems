@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, NavLink, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useSection, type Section } from "../lib/section";
+import { CommandPalette, type CommandPaletteItem } from "./CommandPalette";
 
 /** Small brand lockup — rounded blue badge + wordmark. */
 function Brand({ compact = false }: { compact?: boolean }) {
@@ -58,6 +59,19 @@ export function Layout() {
   // Default closed on every navigation so the drawer doesn't linger over the
   // page the user just tapped to.
   const [mobileOpen, setMobileOpen] = useState(false);
+  // ⌘K / Ctrl+K quick-navigation palette (component adapted from a 21st.dev /
+  // Magic design — see components/CommandPalette.tsx).
+  const [cmdOpen, setCmdOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setCmdOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (!user) return null;
   const isStaff = user.role === "admin" || user.role === "supervisor";
@@ -67,6 +81,44 @@ export function Layout() {
   if (isStaff && !section) return <Navigate to="/choose" replace />;
 
   const disc = DISCIPLINES[activeSection];
+  const isAdmin = user.role === "admin";
+
+  // Cross-section quick-nav targets for the command palette, gated by role to
+  // match the sidebar. Lets staff jump anywhere (e.g. to Maintenance while in
+  // the Cleaning section) without switching sides first.
+  const cmdItems: CommandPaletteItem[] = [
+    { group: "Cleaning", label: "Active alerts", to: "/" },
+    ...(isStaff ? [
+      { group: "Cleaning", label: "Sites overview", to: "/sites" },
+      { group: "Cleaning", label: "Analytics", to: "/analytics" },
+    ] : []),
+    { group: "Cleaning", label: "Dispatch", to: "/dispatch" },
+    { group: "Cleaning", label: "Schedule", to: "/schedule" },
+    { group: "Cleaning", label: "Inspections", to: "/inspections" },
+    ...(isStaff ? [{ group: "Cleaning", label: "Devices", to: "/devices" }] : []),
+    ...(isAdmin ? [{ group: "Cleaning", label: "Floor plans", to: "/floor-plans" }] : []),
+    ...(isStaff ? [{ group: "Cleaning", label: "Reports", to: "/reports" }] : []),
+    ...(isStaff ? [
+      { group: "Maintenance", label: "Maintenance dashboard", to: "/maintenance-dashboard" },
+      { group: "Maintenance", label: "Maintenance KPIs", to: "/maintenance-kpis" },
+      { group: "Maintenance", label: "Jobs", to: "/maintenance" },
+      { group: "Maintenance", label: "Assets", to: "/assets" },
+      { group: "Maintenance", label: "Meters", to: "/meters" },
+      { group: "Maintenance", label: "Parts", to: "/parts" },
+      { group: "Maintenance", label: "PPMs", to: "/ppms" },
+      { group: "Maintenance", label: "Competency", to: "/competency" },
+      { group: "Security", label: "Incidents", to: "/incidents" },
+      { group: "Security", label: "Checkpoints", to: "/checkpoints" },
+      { group: "Company", label: "Assistant", to: "/assistant" },
+      { group: "Company", label: "Users", to: "/users" },
+      { group: "Company", label: "Settings", to: "/settings" },
+      { group: "Company", label: "Notifications", to: "/notifications-log" },
+    ] : []),
+    ...(isAdmin ? [{ group: "Company", label: "Audit log", to: "/audit-log" }] : []),
+    { group: "Company", label: "Lone worker", to: "/lone-worker" },
+    { group: "Company", label: "My profile", to: "/profile" },
+    { group: "Company", label: "System status", to: "/status" },
+  ];
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
@@ -122,6 +174,18 @@ export function Layout() {
           className="flex-1 p-2 space-y-0.5 text-sm overflow-y-auto"
           onClick={() => setMobileOpen(false)}
         >
+          {/* Quick find — opens the ⌘K command palette. */}
+          <button
+            onClick={() => setCmdOpen(true)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-1 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <span className="flex items-center gap-2">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              Quick find
+            </span>
+            <kbd className="text-[10px] font-medium text-slate-400 border border-slate-700 rounded px-1.5 py-0.5">⌘K</kbd>
+          </button>
+
           {/* Section switcher (staff only) — flip between Cleaning / Maintenance / Security. */}
           {isStaff && (
             <button
@@ -226,6 +290,13 @@ export function Layout() {
       <main className="flex-1 min-w-0 p-4 md:p-8 md:max-w-6xl">
         <Outlet />
       </main>
+
+      <CommandPalette
+        open={cmdOpen}
+        onClose={() => setCmdOpen(false)}
+        items={cmdItems}
+        onNavigate={(to) => navigate(to)}
+      />
     </div>
   );
 }
