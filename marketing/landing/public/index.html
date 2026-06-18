@@ -3,677 +3,718 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HazardLink — One platform for cleaning, maintenance &amp; security</title>
-<meta name="description" content="HazardLink runs cleaning, maintenance and security from one app. Jobs, inspections, patrols, assets and live alerts for every on-site team — on iOS, Android and web.">
-<meta property="og:title" content="HazardLink — Cleaning, maintenance &amp; security in one platform">
-<meta property="og:description" content="Run every on-site team from a single app. Cleaning rounds, a full CMMS, guard patrols and lone-worker safety — with AI built into every task.">
+<title>HazardLink — Cleaning, maintenance &amp; security on one platform</title>
+<meta name="description" content="HazardLink runs cleaning, maintenance and security from a single app. Cleaning rounds, a full maintenance system and guard patrols on shared sites, assets and people — web for the office, mobile for everyone on site.">
+<meta name="theme-color" content="#0b1220">
+<meta property="og:title" content="HazardLink — Facilities operations on one platform">
+<meta property="og:description" content="One app for cleaners, technicians and guards. Cleaning rounds, a full CMMS and guard patrols on shared data.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://hazardlink.ie">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563EB'/%3E%3Cpath d='M16 5l8 3v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V8z' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M12 16l3 3 5-5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
-  /* Single-file landing — no external deps. Deploys to Cloudflare static
-     assets by uploading just this file. */
-  :root {
-    --brand: #2563eb;
-    --brand-d: #1d4ed8;
-    --ink: #0f172a;
-    --grey: #64748b;
-    --paper: #ffffff;
-    --soft: #f8fafc;
-    --line: #e2e8f0;
-    /* One accent per discipline — matches the app's discipline accents. */
-    --clean: #0891b2;   /* cyan */
-    --maint: #d97706;   /* amber */
-    --sec:   #4f46e5;   /* indigo */
+  :root{
+    --ink:#0b1220; --ink-soft:#111b30;
+    --brand:#2563eb; --brand-d:#1d4ed8; --brand-soft:#eef3ff;
+    --paper:#ffffff; --paper-2:#f6f8fb;
+    --body:#42506a; --muted:#647089; --faint:#93a0b6;
+    --line:#e6e9ef; --line-2:#eef1f5;
+    --clean:#0891b2; --maint:#d97706; --sec:#4f46e5;
+    --display:"Space Grotesk", "Inter", system-ui, sans-serif;
+    --sans:"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --r:14px;
+    --maxw:1180px;
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: var(--ink);
-    line-height: 1.5;
-    background: var(--paper);
-    -webkit-font-smoothing: antialiased;
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:var(--sans); color:var(--ink); background:var(--paper);
+    line-height:1.6; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    overflow-x:hidden;
   }
-  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
-  a { color: inherit; }
+  a{color:inherit; text-decoration:none}
+  h1,h2,h3{font-family:var(--display); font-weight:600; letter-spacing:-.02em; line-height:1.05; margin:0}
+  p{margin:0}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  .kicker{font-size:12px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--brand)}
+  .lede{font-size:clamp(17px,2vw,19px); color:var(--body); line-height:1.65}
+  .muted{color:var(--muted)}
+  svg{display:block}
+
+  /* Buttons */
+  .btn{display:inline-flex; align-items:center; gap:8px; font-family:var(--sans); font-weight:600; font-size:15px;
+    padding:12px 20px; border-radius:10px; border:1px solid transparent; cursor:pointer; transition:background .15s, border-color .15s, color .15s, transform .05s;}
+  .btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.35)}
+  .btn-primary{background:var(--brand); color:#fff}
+  .btn-primary:hover{background:var(--brand-d)}
+  .btn-line{background:#fff; color:var(--ink); border-color:#d4dae4}
+  .btn-line:hover{border-color:#aeb8c8; background:#fbfcfe}
+  .btn-onink{background:#fff; color:var(--ink)}
+  .btn-onink:hover{background:#e9eef7}
+  .btn-onink-line{background:transparent; color:#fff; border-color:rgba(255,255,255,.28)}
+  .btn-onink-line:hover{border-color:rgba(255,255,255,.55)}
+  .btn svg{width:16px;height:16px}
 
   /* Header */
-  header {
-    padding: 18px 0;
-    border-bottom: 1px solid var(--line);
-    position: sticky; top: 0; background: rgba(255,255,255,0.85);
-    backdrop-filter: blur(8px);
-    z-index: 10;
-  }
-  header .container { display: flex; justify-content: space-between; align-items: center; }
-  .logo { font-weight: 800; font-size: 20px; letter-spacing: -0.5px; display: inline-flex; align-items: center; gap: 8px; }
-  .logo .mk { width: 24px; height: 24px; border-radius: 6px; background: var(--brand); display: inline-flex; align-items: center; justify-content: center; color: #fff; }
-  .logo .mk svg { width: 15px; height: 15px; }
-  nav a { color: var(--ink); text-decoration: none; margin-left: 24px; font-size: 15px; }
-  nav a:hover { color: var(--brand); }
-
-  /* Mobile hamburger + slide-in side menu */
-  .nav-toggle {
-    display: none;
-    flex-direction: column; justify-content: center; gap: 5px;
-    width: 44px; height: 44px; padding: 10px;
-    background: none; border: 0; cursor: pointer;
-  }
-  .nav-toggle span { display: block; height: 2px; width: 100%; background: var(--ink); border-radius: 2px; transition: transform .2s, opacity .2s; }
-  .nav-toggle.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
-  .nav-toggle.open span:nth-child(2) { opacity: 0; }
-  .nav-toggle.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
-  .nav-backdrop { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 14; }
-  .nav-backdrop.show { display: block; }
-  @media (max-width: 760px) {
-    .nav-toggle { display: flex; }
-    nav {
-      position: fixed; top: 0; right: 0; height: 100vh; width: 80%; max-width: 300px;
-      background: #fff; box-shadow: -8px 0 24px rgba(15,23,42,0.15);
-      flex-direction: column; align-items: flex-start;
-      padding: 80px 24px 24px; gap: 4px;
-      transform: translateX(100%); transition: transform .22s ease;
-      z-index: 15; display: flex;
-    }
-    nav.open { transform: translateX(0); }
-    nav a { margin-left: 0; padding: 12px 0; font-size: 17px; width: 100%; }
-    nav .btn { margin-top: 8px; width: 100%; text-align: center; }
-  }
-
-  .btn {
-    display: inline-block;
-    background: var(--brand); color: #fff;
-    padding: 12px 24px; border-radius: 8px;
-    text-decoration: none; font-weight: 600; font-size: 15px;
-    border: 0; cursor: pointer; position: relative; overflow: hidden;
-  }
-  .btn:hover { background: var(--brand-d); }
-  .btn-ghost { background: transparent; color: var(--ink); border: 1px solid #cbd5e1; }
-  .btn-ghost:hover { background: var(--soft); }
-  .btn:not(.btn-ghost)::after { content: ""; position: absolute; top: 0; left: -120%; width: 60%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent); transform: skewX(-18deg); transition: left .6s ease; }
-  .btn:not(.btn-ghost):hover::after { left: 140%; }
-  .pulse-cta { animation: ctapulse 2.8s ease-in-out infinite; }
-  @keyframes ctapulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,.45); } 50% { box-shadow: 0 0 0 12px rgba(37,99,235,0); } }
+  header{position:sticky; top:0; z-index:40; background:rgba(255,255,255,.82); backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid var(--line)}
+  .nav{display:flex; align-items:center; justify-content:space-between; height:64px}
+  .brand{display:inline-flex; align-items:center; gap:10px; font-family:var(--display); font-weight:700; font-size:19px; letter-spacing:-.02em}
+  .brand .mk{width:28px;height:28px;border-radius:8px;background:var(--brand);display:inline-flex;align-items:center;justify-content:center;color:#fff}
+  .brand .mk svg{width:17px;height:17px}
+  .nav-links{display:flex; align-items:center; gap:30px}
+  .nav-links a.lnk{font-size:14.5px; font-weight:500; color:var(--body)}
+  .nav-links a.lnk:hover{color:var(--ink)}
+  .nav-actions{display:flex; align-items:center; gap:10px}
+  .nav-actions .signin{font-size:14.5px; font-weight:600; padding:9px 14px; border-radius:9px}
+  .nav-actions .signin:hover{background:var(--paper-2)}
+  .burger{display:none; width:44px;height:44px;border:1px solid var(--line); background:#fff; border-radius:10px; cursor:pointer; align-items:center; justify-content:center}
+  .burger svg{width:20px;height:20px}
 
   /* Hero */
-  .hero { padding: 78px 0 56px; text-align: center; }
-  .eyebrow { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--brand); background: #eff4ff; border: 1px solid #cfe0ff; padding: 6px 14px; border-radius: 999px; margin-bottom: 22px; }
-  .hero h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.08; margin: 0 0 20px; letter-spacing: -1.4px; }
-  .hero h1 .accent { color: var(--brand); }
-  .hero p.lede { font-size: 20px; color: var(--grey); max-width: 660px; margin: 0 auto 32px; }
-  .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .trust { margin-top: 22px; font-size: 13px; color: var(--grey); }
+  .hero{padding:clamp(48px,7vw,92px) 0 clamp(40px,5vw,64px)}
+  .hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center}
+  .hero h1{font-size:clamp(38px,5.4vw,62px); margin:18px 0 0}
+  .hero .lede{margin-top:22px; max-width:540px}
+  .hero .cta{display:flex; gap:12px; margin-top:30px; flex-wrap:wrap}
+  .hero .fineprint{margin-top:20px; font-size:13.5px; color:var(--faint); display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .hero .fineprint .dot{width:4px;height:4px;border-radius:50%;background:var(--faint)}
 
-  /* Hero phone */
-  .hero-demo { margin: 50px auto 0; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-  .phone { width: 320px; max-width: 86vw; height: 230px; background: linear-gradient(160deg, #1e293b, #0f172a); border-radius: 30px; padding: 12px; box-shadow: 0 30px 60px rgba(15,23,42,.28); position: relative; }
-  .phone-notch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 92px; height: 18px; background: #0f172a; border-radius: 0 0 13px 13px; z-index: 3; }
-  .phone-screen { background: linear-gradient(180deg, #e7edf5, #f1f5f9); border-radius: 20px; height: 100%; padding: 14px 12px; overflow: hidden; position: relative; }
-  .phone-time { text-align: center; font-size: 26px; font-weight: 700; color: #0f172a; margin-top: 4px; line-height: 1; }
-  .phone-hint { text-align: center; font-size: 11px; color: var(--grey); margin-top: 2px; }
-  .push-stack { position: absolute; left: 10px; right: 10px; top: 64px; display: flex; flex-direction: column; gap: 8px; }
-  .push { background: rgba(255,255,255,.95); border-radius: 14px; padding: 9px 11px; box-shadow: 0 8px 20px rgba(15,23,42,.16); display: flex; gap: 9px; align-items: flex-start; transform: translateY(-140%); opacity: 0; transition: transform .45s cubic-bezier(.2,.85,.25,1), opacity .45s; }
-  .push.in { transform: none; opacity: 1; }
-  .push .pic { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
-  .push .pic svg { width: 16px; height: 16px; }
-  .push .tx b { display: block; font-size: 12px; color: #0f172a; line-height: 1.3; }
-  .push .tx span { font-size: 11px; color: var(--grey); }
-  .hero-demo-cap { font-size: 13px; color: var(--grey); max-width: 340px; text-align: center; }
+  /* App window mock */
+  .window{border-radius:var(--r); border:1px solid var(--line); background:#fff; overflow:hidden;
+    box-shadow:0 30px 64px -28px rgba(11,18,32,.32), 0 10px 24px -16px rgba(11,18,32,.14)}
+  .window .topbar{height:40px; background:#f3f5f8; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:7px; padding:0 14px}
+  .window .topbar .tl{width:11px;height:11px;border-radius:50%;background:#d7dde6}
+  .window .topbar .url{margin-left:10px; font-size:12px; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:6px; padding:3px 12px}
+  .window .app{display:flex; min-height:316px}
+  .window .side{width:140px; background:var(--ink); padding:14px 10px; display:flex; flex-direction:column; gap:3px; flex-shrink:0}
+  .window .side .s-brand{display:flex; align-items:center; gap:7px; color:#fff; font-family:var(--display); font-weight:700; font-size:13px; padding:2px 6px 12px}
+  .window .side .s-brand span.m{width:18px;height:18px;border-radius:5px;background:var(--brand);display:inline-flex;align-items:center;justify-content:center}
+  .window .side .s-brand span.m svg{width:11px;height:11px}
+  .window .side .nav-i{font-size:11.5px; color:#9aa6bd; padding:6px 8px; border-radius:6px; display:flex; align-items:center; gap:7px}
+  .window .side .nav-i.on{background:#1b2740; color:#fff}
+  .window .side .nav-i .d{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
+  .window .content{flex:1; padding:16px 16px; transition:opacity .25s ease}
+  .window .content.fade{opacity:0}
+  .win-h{display:flex; align-items:center; justify-content:space-between; margin-bottom:13px}
+  .win-h .t{font-family:var(--display); font-weight:600; font-size:15px}
+  .win-tag{font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; border-radius:999px}
+  .win-stats{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px}
+  .win-stat{background:var(--paper-2); border:1px solid var(--line-2); border-radius:9px; padding:9px 10px}
+  .win-stat .l{font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted)}
+  .win-stat .v{font-size:19px; font-weight:700; margin-top:2px; font-variant-numeric:tabular-nums}
+  .win-row{display:flex; align-items:center; justify-content:space-between; padding:8px 11px; border:1px solid var(--line); border-radius:9px; margin-bottom:7px; font-size:12px}
+  .win-row .lft{display:flex; align-items:center; gap:8px; min-width:0}
+  .win-row .ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .win-row .ic svg{width:12px;height:12px}
+  .chip{font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .chip.red{background:#fee2e2;color:#b91c1c}.chip.amber{background:#fef3c7;color:#b45309}
+  .chip.green{background:#d1fae5;color:#047857}.chip.blue{background:#dbeafe;color:#1d4ed8}.chip.grey{background:#eef1f5;color:#64748b}
 
-  /* Stats band */
-  .stats-band { background: var(--ink); color: #fff; padding: 30px 0; }
-  .stats-band .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; text-align: center; }
-  .stats-band .num { font-size: clamp(28px, 5vw, 40px); font-weight: 800; letter-spacing: -1px; color: var(--brand); line-height: 1; }
-  .stats-band .lbl { font-size: 13px; color: #cbd5e1; margin-top: 8px; }
-  @media (max-width: 600px) { .stats-band .grid4 { grid-template-columns: repeat(2, 1fr); gap: 24px; } }
+  /* Sections */
+  section{position:relative}
+  .band{padding:clamp(60px,8vw,108px) 0}
+  .band.alt{background:var(--paper-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+  .sec-head{max-width:660px}
+  .sec-head h2{font-size:clamp(28px,3.6vw,42px); margin:12px 0 0}
+  .sec-head .lede{margin-top:16px}
 
-  /* Generic section heading */
-  .sec { padding: 64px 0; }
-  .sec.soft { background: var(--soft); }
-  .sec h2 { font-size: clamp(26px, 4vw, 34px); text-align: center; margin: 0 0 10px; letter-spacing: -.6px; }
-  .sec .sublede { text-align: center; color: var(--grey); max-width: 620px; margin: 0 auto 40px; font-size: 17px; }
-  .inline-ic { width: 16px; height: 16px; vertical-align: -3px; }
+  /* Replaces strip */
+  .replace{display:grid; grid-template-columns:1fr auto 1fr; gap:28px; align-items:center; margin-top:44px}
+  .replace .stack{display:flex; flex-direction:column; gap:10px}
+  .rep-tile{display:flex; align-items:center; gap:11px; padding:14px 16px; border:1px dashed #cfd6e2; border-radius:11px; background:#fff; color:var(--muted)}
+  .rep-tile .rt-ic{width:30px;height:30px;border-radius:8px;background:var(--paper-2);display:flex;align-items:center;justify-content:center;color:var(--faint)}
+  .rep-tile .rt-ic svg{width:16px;height:16px}
+  .rep-tile b{color:var(--ink); font-weight:600; font-size:14.5px; display:block}
+  .rep-tile span{font-size:12.5px}
+  .rep-arrow{display:flex;align-items:center;justify-content:center;color:var(--faint)}
+  .rep-arrow svg{width:30px;height:30px}
+  .rep-one{display:flex; flex-direction:column; align-items:flex-start; gap:12px; padding:26px; border:1px solid var(--line); border-radius:14px; background:linear-gradient(180deg,#fff, #fbfcff); box-shadow:0 18px 40px -26px rgba(37,99,235,.4)}
+  .rep-one .lockup{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:20px}
+  .rep-one .lockup .m{width:30px;height:30px;border-radius:8px;background:var(--brand);display:flex;align-items:center;justify-content:center;color:#fff}
+  .rep-one .lockup .m svg{width:18px;height:18px}
+  .rep-one p{font-size:13.5px;color:var(--muted)}
+  @media(max-width:780px){.replace{grid-template-columns:1fr; gap:18px}.rep-arrow{transform:rotate(90deg)}}
 
   /* Disciplines */
-  .discs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px; }
-  .disc { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 0 24px 24px; border-top: 4px solid var(--accent); overflow: hidden; }
-  .disc .tag { display: inline-flex; align-items: center; gap: 8px; margin: 22px 0 4px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--accent); }
-  .disc .tag .ic { display: inline-flex; line-height: 0; }
-  .disc .tag .ic svg { width: 18px; height: 18px; }
-  .disc h3 { font-size: 20px; margin: 6px 0 10px; }
-  .disc p { color: var(--grey); font-size: 14px; margin: 0 0 14px; }
-  .disc ul { list-style: none; margin: 0; padding: 0; }
-  .disc li { font-size: 14px; padding: 7px 0 7px 26px; position: relative; border-top: 1px solid #f1f5f9; }
-  .disc li::before { content: "✓"; position: absolute; left: 0; top: 7px; color: var(--accent); font-weight: 700; }
+  .discs{display:grid; grid-template-columns:repeat(3,1fr); gap:0; margin-top:48px; border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#fff}
+  .disc{padding:30px 28px; border-left:1px solid var(--line)}
+  .disc:first-child{border-left:0}
+  .disc .top{height:3px;width:38px;border-radius:2px;background:var(--ac);margin-bottom:18px}
+  .disc .d-lab{display:flex;align-items:center;gap:9px;color:var(--ac);font-weight:600;font-size:13px;letter-spacing:.04em;text-transform:uppercase}
+  .disc .d-lab svg{width:17px;height:17px}
+  .disc h3{font-size:21px;margin:14px 0 8px}
+  .disc>p{font-size:14px;color:var(--muted);min-height:42px}
+  .disc ul{list-style:none;margin:16px 0 0;padding:0}
+  .disc li{font-size:13.5px;color:var(--body);padding:9px 0 9px 24px;position:relative;border-top:1px solid var(--line-2)}
+  .disc li svg{position:absolute;left:0;top:11px;width:15px;height:15px;color:var(--ac)}
+  @media(max-width:820px){.discs{grid-template-columns:1fr}.disc{border-left:0;border-top:1px solid var(--line)}.disc:first-child{border-top:0}.disc>p{min-height:0}}
 
-  /* Moat / flowstrip */
-  .flowstrip { display: flex; align-items: flex-start; justify-content: center; flex-wrap: nowrap; max-width: 820px; margin: 0 auto 8px; }
-  .flowstrip .node { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12.5px; color: var(--grey); min-width: 84px; transition: color .3s; }
-  .flowstrip .node .ic { width: 54px; height: 54px; display: flex; align-items: center; justify-content: center; background: #fff; border: 2px solid var(--line); border-radius: 50%; transition: border-color .3s, box-shadow .3s, transform .3s; }
-  .flowstrip .node .ic svg { width: 24px; height: 24px; }
-  .flowstrip .node.lit { color: var(--ink); font-weight: 600; }
-  .flowstrip .node.lit .ic { border-color: var(--brand); box-shadow: 0 0 0 5px rgba(37,99,235,.15); transform: translateY(-3px); }
-  .flowstrip .wire { position: relative; flex: 1; min-width: 22px; height: 3px; background: var(--line); margin: 26px 2px 0; border-radius: 2px; transition: background .3s; }
-  .flowstrip .wire.hot { background: var(--brand); }
-  .flowstrip .wire i { position: absolute; top: 50%; left: 0; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--brand); opacity: 0; box-shadow: 0 0 8px var(--brand); }
-  .flowstrip .wire.hot i { animation: flowdot .72s linear; }
-  @keyframes flowdot { 0% { left: 0; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
-  .moat-cap { text-align: center; color: var(--grey); font-size: 14px; max-width: 640px; margin: 18px auto 0; }
-  @media (max-width: 600px) { .flowstrip .node { min-width: 56px; font-size: 11px; } .flowstrip .node .ic { width: 44px; height: 44px; } .flowstrip .node .ic svg { width: 20px; height: 20px; } .flowstrip .wire { margin-top: 21px; min-width: 10px; } }
+  /* Moat (dark) */
+  .moat{background:var(--ink); color:#e8edf6}
+  .moat .kicker{color:#7aa2ff}
+  .moat h2{color:#fff; font-size:clamp(28px,3.8vw,44px); margin:12px 0 0; max-width:760px}
+  .moat .lede{color:#a9b4c9; margin-top:18px; max-width:680px}
+  .flow{display:grid; grid-template-columns:repeat(5,1fr); gap:0; margin-top:52px}
+  .fnode{position:relative; padding:0 14px; text-align:center}
+  .fnode .ic{width:54px;height:54px;border-radius:13px;margin:0 auto 14px;background:var(--ink-soft);border:1px solid #23304d;display:flex;align-items:center;justify-content:center;color:#cdd8ec}
+  .fnode .ic svg{width:23px;height:23px}
+  .fnode .step{font-size:11px;color:#6f7d98;font-weight:600;letter-spacing:.08em}
+  .fnode .lab{font-size:13.5px;color:#e8edf6;margin-top:5px;font-weight:500}
+  .fnode::after{content:"";position:absolute;top:27px;right:-50%;width:100%;height:1px;background:#27344f}
+  .fnode:last-child::after{display:none}
+  .fnode.key .ic{background:#15294f;border-color:var(--brand);color:#fff}
+  .moat .cap{margin-top:46px;font-size:14px;color:#8c99b3;max-width:640px;border-left:2px solid var(--brand);padding-left:16px}
+  @media(max-width:820px){.flow{grid-template-columns:1fr;gap:26px;max-width:340px}.fnode{display:flex;align-items:center;gap:16px;text-align:left;padding:0}.fnode .ic{margin:0}.fnode::after{top:auto;bottom:-26px;right:auto;left:27px;width:1px;height:26px}}
 
-  /* Feature / AI grid */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 22px; }
-  .feat { background: #fff; padding: 22px; border-radius: 12px; border: 1px solid var(--line); }
-  .feat .icon { color: var(--brand); line-height: 0; margin-bottom: 10px; }
-  .feat .icon svg { width: 28px; height: 28px; }
-  .feat h3 { font-size: 17px; margin: 0 0 6px; }
-  .feat p { font-size: 14px; color: var(--grey); margin: 0; }
-  .ai-note { text-align: center; color: var(--grey); font-size: 14px; margin: 28px auto 0; max-width: 600px; }
+  /* Bento */
+  .bento{display:grid; grid-template-columns:repeat(6,1fr); grid-auto-rows:minmax(150px,auto); gap:16px; margin-top:48px}
+  .cell{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;transition:box-shadow .2s, transform .2s; display:flex; flex-direction:column}
+  .cell:hover{box-shadow:0 18px 40px -24px rgba(11,18,32,.22); transform:translateY(-2px)}
+  .cell .c-lab{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+  .cell .c-lab svg{width:16px;height:16px;color:var(--brand)}
+  .cell h3{font-size:18px;margin:10px 0 6px}
+  .cell p{font-size:13.5px;color:var(--muted)}
+  .cell.lg{grid-column:span 3}.cell.md{grid-column:span 3}.cell.sm{grid-column:span 2}
+  .demo-surface{margin-top:14px;flex:1;display:flex;flex-direction:column;gap:7px;justify-content:flex-end}
+  .ds-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .ds-stat{background:var(--paper-2);border:1px solid var(--line-2);border-radius:9px;padding:8px 10px}
+  .ds-stat .l{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .ds-stat .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+  .ds-row{display:flex;align-items:center;justify-content:space-between;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+  .ds-row .l{display:flex;align-items:center;gap:7px;color:var(--body)}
+  .ds-row .l .dot{width:7px;height:7px;border-radius:50%}
+  @media(max-width:900px){.bento{grid-template-columns:1fr}.cell.lg,.cell.md,.cell.sm{grid-column:auto}}
 
-  /* Interactive demo */
-  .demo-tabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 0 auto 18px; }
-  .demo-tab { border: 1px solid #cbd5e1; background: #fff; color: var(--ink); border-radius: 999px; padding: 8px 18px; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
-  .demo-tab svg { width: 18px; height: 18px; }
-  .demo-tab:hover { background: var(--soft); }
-  .demo-tab.active { color: #fff; border-color: transparent; background: var(--accent); }
-  .mockup { background: #fff; border-radius: 16px; border: 1px solid var(--line); box-shadow: 0 20px 40px rgba(15,23,42,.08); overflow: hidden; margin: 0 auto; max-width: 900px; }
-  .mockup .chrome { background: #f1f5f9; padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
-  .mockup .chrome .dot { width: 12px; height: 12px; border-radius: 50%; background: #cbd5e1; }
-  .mockup .chrome .dot.r { background: #ef4444; } .mockup .chrome .dot.y { background: #f59e0b; } .mockup .chrome .dot.g { background: #10b981; }
-  .mockup .chrome .url { margin-left: 12px; font-size: 13px; color: var(--grey); background: #fff; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line); }
-  .mockup .main { padding: 20px 22px; min-height: 340px; transition: opacity .18s ease; }
-  .mockup .main.swapping { opacity: 0; }
-  .mockup .main h4 { margin: 0 0 4px; font-size: 18px; }
-  .mockup .main .sub { color: var(--grey); font-size: 13px; margin-bottom: 16px; }
-  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0 16px; }
-  .stat-card { background: var(--soft); border-radius: 8px; padding: 12px; }
-  .stat-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--grey); }
-  .stat-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
-  .stat-card .value.red { color: var(--red, #e53935); }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .data-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--grey); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
-  .data-table td { padding: 10px; border-bottom: 1px solid #f1f5f9; }
-  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-  .pill.green { background: #dcfce7; color: #2e7d32; }
-  .pill.amber { background: #fef3c7; color: #92400e; }
-  .pill.red { background: #fee2e2; color: #e53935; }
-  .pill.grey { background: #e2e8f0; color: var(--grey); }
-  .alert-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
-  .alert-row.red { border-left: 4px solid #e53935; }
-  .alert-row.green { border-left: 4px solid #2e7d32; }
-  .alert-row .row-ic { display: inline-flex; align-items: center; gap: 8px; }
-  .alert-row .row-ic svg { width: 17px; height: 17px; flex-shrink: 0; }
-  .alert-row.red .row-ic svg { color: #e53935; }
-  .alert-row.green .row-ic svg { color: #2e7d32; }
-  .alert-row .tag2 { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
-  .tag2.live { background: #fee2e2; color: #e53935; } .tag2.done { background: #dcfce7; color: #2e7d32; }
+  /* AI */
+  .ai-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:40px;align-items:start}
+  .ai-list{display:flex;flex-direction:column;gap:2px}
+  .ai-item{display:flex;gap:16px;padding:20px 0;border-top:1px solid var(--line)}
+  .ai-item:first-child{border-top:0}
+  .ai-item .ic{width:40px;height:40px;border-radius:10px;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .ai-item .ic svg{width:20px;height:20px}
+  .ai-item h3{font-size:16.5px;margin:2px 0 4px;font-family:var(--sans);font-weight:600;letter-spacing:0}
+  .ai-item p{font-size:14px;color:var(--muted)}
+  .ai-note{margin-top:26px;font-size:13px;color:var(--faint)}
+  @media(max-width:820px){.ai-grid{grid-template-columns:1fr;gap:24px}}
 
-  /* Apps */
-  .apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px; }
-  .appcard { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 24px; text-align: center; }
-  .appcard .icon { color: var(--brand); line-height: 0; margin-bottom: 10px; display: flex; justify-content: center; }
-  .appcard .icon svg { width: 28px; height: 28px; }
-  .appcard h3 { margin: 0 0 6px; font-size: 17px; }
-  .appcard p { color: var(--grey); font-size: 14px; margin: 0; }
+  /* Platform */
+  .plat{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
+  .pcard{border:1px solid var(--line);border-radius:14px;padding:24px;background:#fff}
+  .pcard .ic{width:42px;height:42px;border-radius:11px;background:var(--paper-2);display:flex;align-items:center;justify-content:center;color:var(--ink);margin-bottom:14px}
+  .pcard .ic svg{width:22px;height:22px}
+  .pcard h3{font-size:17px;font-family:var(--sans);font-weight:600;letter-spacing:0;margin-bottom:6px}
+  .pcard p{font-size:13.5px;color:var(--muted)}
+  @media(max-width:820px){.plat{grid-template-columns:1fr}}
 
-  /* How it works */
-  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 22px; }
-  .step { text-align: center; }
-  .step .num { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; background: var(--brand); color: #fff; font-weight: 700; border-radius: 50%; margin: 0 auto 12px; }
-  .step h3 { font-size: 17px; margin: 0 0 6px; }
-  .step p { font-size: 14px; color: var(--grey); margin: 0; }
+  /* Steps */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:36px;margin-top:48px}
+  .step .n{font-family:var(--display);font-weight:700;font-size:15px;color:var(--brand);width:38px;height:38px;border-radius:50%;border:1px solid #c9d6f5;background:var(--brand-soft);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+  .step h3{font-size:18px;margin-bottom:7px}
+  .step p{font-size:14px;color:var(--muted)}
+  @media(max-width:820px){.steps{grid-template-columns:1fr;gap:26px}}
 
   /* Pricing */
-  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
-  .plan { background: #fff; padding: 28px; border-radius: 12px; border: 1px solid var(--line); }
-  .plan.featured { border: 2px solid var(--brand); position: relative; }
-  .plan.featured::before { content: "Most popular"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--brand); color: #fff; font-size: 12px; padding: 4px 12px; border-radius: 12px; font-weight: 600; }
-  .plan h3 { margin: 0 0 4px; font-size: 22px; }
-  .plan .price { font-size: 36px; font-weight: 700; margin: 8px 0; }
-  .plan .price span { font-size: 14px; color: var(--grey); font-weight: 400; }
-  .plan ul { padding-left: 16px; color: var(--grey); font-size: 14px; }
-  .plan li { margin: 6px 0; }
+  .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:48px}
+  .plan{border:1px solid var(--line);border-radius:16px;padding:28px;background:#fff;display:flex;flex-direction:column}
+  .plan.feat{border:1.5px solid var(--brand);box-shadow:0 24px 50px -30px rgba(37,99,235,.5);position:relative}
+  .plan .badge{position:absolute;top:-11px;left:28px;background:var(--brand);color:#fff;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:4px 11px;border-radius:999px}
+  .plan h3{font-size:20px;font-family:var(--sans);font-weight:700;letter-spacing:0}
+  .plan .scope{font-size:13px;color:var(--muted);margin-top:3px}
+  .plan .price{font-family:var(--display);font-weight:700;font-size:38px;margin:18px 0 4px;letter-spacing:-.03em}
+  .plan .price span{font-size:14px;color:var(--muted);font-weight:500;font-family:var(--sans)}
+  .plan ul{list-style:none;margin:18px 0 22px;padding:0;flex:1}
+  .plan li{font-size:13.5px;color:var(--body);padding:7px 0 7px 24px;position:relative}
+  .plan li svg{position:absolute;left:0;top:9px;width:15px;height:15px;color:var(--brand)}
+  .plan .btn{width:100%;justify-content:center}
+  .price-foot{text-align:center;margin-top:24px;font-size:13px;color:var(--faint)}
+  @media(max-width:880px){.plans{grid-template-columns:1fr;max-width:420px;margin-left:auto;margin-right:auto}.plan .badge{left:50%;transform:translateX(-50%)}}
 
-  /* Contact + footer */
-  .contact { text-align: center; }
-  .contact p { color: var(--grey); margin: 8px 0; }
-  .contact a.mail { color: var(--brand); text-decoration: none; font-weight: 600; }
-  footer { padding: 40px 0; border-top: 1px solid var(--line); }
-  footer .container { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
-  footer p { margin: 0; font-size: 14px; color: var(--grey); }
-  footer .links a { color: var(--grey); margin-left: 16px; text-decoration: none; font-size: 14px; }
-  footer .links a:hover { color: var(--ink); }
+  /* CTA */
+  .cta-band{background:var(--ink);color:#fff;text-align:center;padding:clamp(64px,8vw,104px) 0}
+  .cta-band h2{font-size:clamp(30px,4vw,46px);max-width:680px;margin:0 auto}
+  .cta-band p{color:#a9b4c9;max-width:520px;margin:18px auto 0;font-size:17px}
+  .cta-band .cta{display:flex;gap:12px;justify-content:center;margin-top:32px;flex-wrap:wrap}
 
-  /* Motion utilities */
-  .reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .6s ease; }
-  .reveal.in { opacity: 1; transform: none; }
-  .scroll-progress { position: fixed; top: 0; left: 0; height: 3px; width: 0; background: linear-gradient(90deg, var(--brand), #3b82f6); z-index: 30; transition: width .12s linear; }
-  .rotate-word { display: inline-block; transition: opacity .3s ease, transform .3s ease; }
-  .rotate-word.swap { opacity: 0; transform: translateY(-10px); }
-  .to-top { position: fixed; right: 20px; bottom: 20px; width: 46px; height: 46px; border-radius: 50%; background: var(--brand); color: #fff; border: 0; cursor: pointer; font-size: 20px; line-height: 1; box-shadow: 0 10px 24px rgba(15,23,42,.22); opacity: 0; transform: translateY(16px) scale(.9); pointer-events: none; transition: opacity .3s, transform .3s; z-index: 25; }
-  .to-top.show { opacity: 1; transform: none; pointer-events: auto; }
-  .to-top:hover { background: var(--brand-d); }
+  /* Footer */
+  footer{background:var(--paper-2);border-top:1px solid var(--line);padding:60px 0 32px}
+  .foot-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:32px}
+  .foot-brand .brand{margin-bottom:14px}
+  .foot-brand p{font-size:13.5px;color:var(--muted);max-width:280px}
+  .foot-col h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin:0 0 14px;font-family:var(--sans);font-weight:600}
+  .foot-col a{display:block;font-size:14px;color:var(--body);padding:5px 0}
+  .foot-col a:hover{color:var(--ink)}
+  .foot-bottom{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-top:48px;padding-top:24px;border-top:1px solid var(--line);font-size:13px;color:var(--faint)}
+  @media(max-width:780px){.foot-grid{grid-template-columns:1fr 1fr;gap:28px}}
 
-  @media (prefers-reduced-motion: reduce) {
-    .reveal { opacity: 1 !important; transform: none !important; transition: none; }
-    .flowstrip .wire.hot i { animation: none; }
-    .push { transition: none; }
-    .pulse-cta { animation: none; }
-    .btn:not(.btn-ghost)::after { display: none; }
-    .rotate-word { transition: none; }
-    .to-top { transition: none; }
+  /* Motion + responsive nav */
+  .reveal{opacity:0;transform:translateY(20px);transition:opacity .6s ease, transform .6s ease}
+  .reveal.in{opacity:1;transform:none}
+  @media(max-width:880px){
+    .hero-grid{grid-template-columns:1fr;gap:40px}
+    .nav-links{position:fixed;inset:64px 0 auto 0;background:#fff;border-bottom:1px solid var(--line);flex-direction:column;align-items:stretch;gap:0;padding:8px 24px 20px;transform:translateY(-12px);opacity:0;pointer-events:none;transition:opacity .2s, transform .2s}
+    .nav-links.open{opacity:1;transform:none;pointer-events:auto}
+    .nav-links a.lnk{padding:13px 0;border-bottom:1px solid var(--line-2);font-size:16px}
+    .nav-links .nav-actions{flex-direction:column;align-items:stretch;margin-top:10px}
+    .nav-links .nav-actions .btn,.nav-links .nav-actions .signin{justify-content:center;text-align:center}
+    .burger{display:flex}
+    .desk-actions{display:none}
   }
+  @media(min-width:881px){ .nav-links .nav-actions{display:none} }
+  @media(prefers-reduced-motion:reduce){ .reveal{opacity:1;transform:none;transition:none} .window .content{transition:none} *{scroll-behavior:auto} }
 </style>
 </head>
 <body>
 
-<div class="scroll-progress" id="scrollProgress"></div>
-
 <header>
-  <div class="container">
-    <div class="logo"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>HazardLink</div>
-    <button id="navToggle" class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
-      <span></span><span></span><span></span>
-    </button>
-    <nav id="siteNav">
-      <a href="#platform">Platform</a>
-      <a href="#ai">AI</a>
-      <a href="#demo">Demo</a>
-      <a href="#pricing">Pricing</a>
-      <a href="https://app.hazardlink.ie" class="btn btn-ghost">Sign in</a>
-      <a href="#contact" class="btn">Book a demo</a>
+  <div class="wrap nav">
+    <a class="brand" href="#top" aria-label="HazardLink home">
+      <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      HazardLink
+    </a>
+    <nav class="nav-links" id="navLinks">
+      <a class="lnk" href="#platform">Platform</a>
+      <a class="lnk" href="#disciplines">Disciplines</a>
+      <a class="lnk" href="#how">How it works</a>
+      <a class="lnk" href="#pricing">Pricing</a>
+      <div class="nav-actions">
+        <a class="signin" href="https://app.hazardlink.ie">Sign in</a>
+        <a class="btn btn-primary" href="#contact">Book a demo</a>
+      </div>
     </nav>
+    <div class="nav-actions desk-actions">
+      <a class="signin" href="https://app.hazardlink.ie">Sign in</a>
+      <a class="btn btn-primary" href="#contact">Book a demo</a>
+    </div>
+    <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
   </div>
-  <div id="navBackdrop" class="nav-backdrop"></div>
 </header>
 
-<section class="hero">
-  <div class="container">
-    <span class="eyebrow">Cleaning · Maintenance · Security</span>
-    <h1>One platform for<br><span class="accent rotate-word" id="rotateWord">Cleaning.</span></h1>
-    <p class="lede">HazardLink runs every on-site team from a single app — cleaners, technicians and guards. Jobs, inspections, patrols, assets and live alerts, all in one place.</p>
-    <div class="cta">
-      <a class="btn pulse-cta" href="#contact">Book a 15-minute demo</a>
-      <a class="btn btn-ghost" href="#platform">See the platform</a>
-    </div>
-    <p class="trust">Unlimited users · iOS, Android &amp; web · data hosted in the EU</p>
+<main id="top">
 
-    <div class="hero-demo reveal" aria-hidden="true">
-      <div class="phone">
-        <div class="phone-notch"></div>
-        <div class="phone-screen">
-          <div class="phone-time" id="phoneTime">9:41</div>
-          <div class="phone-hint" id="phoneDate">HazardLink · live</div>
-          <div class="push-stack" id="pushStack"></div>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="kicker">Facilities operations platform</span>
+        <h1>Run cleaning, maintenance &amp; security from one place.</h1>
+        <p class="lede">HazardLink gives every on-site team — cleaners, technicians and guards — a single app for the work they actually do. Shared sites, assets and people. One dashboard for the office, one app in every pocket.</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="#contact">Book a 15-minute demo
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="btn btn-line" href="#platform">Explore the platform</a>
+        </div>
+        <div class="fineprint">
+          <span>Unlimited users</span><span class="dot"></span>
+          <span>iOS, Android &amp; web</span><span class="dot"></span>
+          <span>Data hosted in the EU</span>
         </div>
       </div>
-      <div class="hero-demo-cap">↑ One app, every alert — spills, work orders, patrols and lone-worker safety.</div>
-    </div>
-  </div>
-</section>
 
-<section class="stats-band">
-  <div class="container">
-    <div class="grid4">
-      <div><div class="num" data-to="3">0</div><div class="lbl">disciplines · one platform</div></div>
-      <div><div class="num" data-to="1">0</div><div class="lbl">app for every on-site role</div></div>
-      <div><div class="num" data-to="3">0</div><div class="lbl">iOS · Android · Web</div></div>
-      <div><div class="num">EU</div><div class="lbl">your data stays in the EU</div></div>
-    </div>
-  </div>
-</section>
-
-<section id="platform" class="sec">
-  <div class="container">
-    <h2 class="reveal">One platform, three disciplines</h2>
-    <p class="sublede reveal">Most teams stitch together a cleaning tool, a maintenance system and a guarding app. HazardLink does all three — sharing the same sites, assets and people.</p>
-    <div class="discs">
-      <div class="disc reveal" style="--accent: var(--clean)">
-        <div class="tag"><span class="ic"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2.5c3.5 4.2 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 2.5-6.8 6-11z"/></svg></span> Cleaning</div>
-        <h3>Spotless sites, proven.</h3>
-        <p>Run cleaning rounds and spill safety with photo proof your clients can see.</p>
-        <ul>
-          <li>Real-time wet-floor spill alerts (IoT sensors)</li>
-          <li>Cleaner dispatch &amp; shift scheduling</li>
-          <li>Mobile inspections with photo proof &amp; scoring</li>
-          <li>QR cleaning rounds — scan, confirm, photograph</li>
-          <li>Floor plans &amp; live sensor health</li>
-        </ul>
-      </div>
-      <div class="disc reveal" style="--accent: var(--maint)">
-        <div class="tag"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.6 2.6-2.1-2.1z"/></svg></span> Maintenance</div>
-        <h3>A full CMMS.</h3>
-        <p>From a logged fault to a finished, costed job — with contractors built in.</p>
-        <ul>
-          <li>Asset register &amp; full service history</li>
-          <li>Work orders from log to done</li>
-          <li>Planned preventive maintenance (PPMs)</li>
-          <li>Parts &amp; inventory</li>
-          <li>Contractor tendering with white-label email</li>
-        </ul>
-      </div>
-      <div class="disc reveal" style="--accent: var(--sec)">
-        <div class="tag"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span> Security</div>
-        <h3>Patrols &amp; safety.</h3>
-        <p>Guard tours, incident reports and lone-worker protection in one log.</p>
-        <ul>
-          <li>Guard tours &amp; QR checkpoints</li>
-          <li>Incident reporting with severity &amp; photos</li>
-          <li>Lone-worker check-ins &amp; panic alarm</li>
-          <li>Daily activity logs</li>
-          <li>Shared site, asset &amp; contact data</li>
-        </ul>
+      <div class="reveal" aria-hidden="true">
+        <div class="window">
+          <div class="topbar"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="url" id="winUrl">app.hazardlink.ie</span></div>
+          <div class="app">
+            <div class="side">
+              <div class="s-brand"><span class="m"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg></span>HazardLink</div>
+              <div class="nav-i" data-side="cleaning"><span class="d"></span>Cleaning</div>
+              <div class="nav-i" data-side="maintenance"><span class="d"></span>Maintenance</div>
+              <div class="nav-i" data-side="security"><span class="d"></span>Security</div>
+              <div class="nav-i"><span class="d"></span>Assets</div>
+              <div class="nav-i"><span class="d"></span>Reports</div>
+            </div>
+            <div class="content" id="winContent"></div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<section id="moat" class="sec soft">
-  <div class="container">
-    <h2 class="reveal">One app for everyone on site</h2>
-    <p class="sublede reveal">This is what no single-purpose tool can do: the person who spots a problem fixes the process. A cleaner or guard reports a fault from the same app — and it becomes a maintenance work order automatically.</p>
-    <div class="flowstrip reveal" aria-hidden="true">
-      <div class="node"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span><span>Guard spots a fault</span></div>
-      <div class="wire"><i></i></div>
-      <div class="node"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><line x1="11" y1="18" x2="13" y2="18"/></svg></span><span>Reports in the app</span></div>
-      <div class="wire"><i></i></div>
-      <div class="node"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.6 2.6-2.1-2.1z"/></svg></span><span>Work order created</span></div>
-      <div class="wire"><i></i></div>
-      <div class="node"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span><span>Contractor quoted</span></div>
-      <div class="wire"><i></i></div>
-      <div class="node"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Fixed &amp; logged</span></div>
-    </div>
-    <p class="moat-cap">Shared sites, assets and contacts mean nothing is entered twice — and managers see cleaning, maintenance and security on one dashboard.</p>
-  </div>
-</section>
-
-<section id="ai" class="sec">
-  <div class="container">
-    <h2 class="reveal">AI built into every task</h2>
-    <p class="sublede reveal">Not a chatbot bolted on — practical AI that helps your team finish work faster, on every side of the platform.</p>
-    <div class="grid">
-      <div class="feat reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4L3 21l1.1-3.9A8.4 8.4 0 1 1 21 11.5z"/></svg></div><h3>Ask your data</h3><p>Ask the Assistant anything about your jobs, assets and incidents — answered from your live data, not guesses.</p></div>
-      <div class="feat reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></div><h3>Voice → work order</h3><p>Speak a fault on site and AI turns it into a structured job — title, priority and asset — ready to confirm.</p></div>
-      <div class="feat reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9l-8 13.9A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.2l-8-13.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg></div><h3>Incident triage</h3><p>When an incident is logged, AI suggests a severity and the right immediate actions for the responder.</p></div>
-      <div class="feat reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4a3 3 0 0 1 6 0"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/></svg></div><h3>Asset summaries</h3><p>One tap gives a plain-English history and health read for any asset — recurring issues, last service, what's open.</p></div>
-      <div class="feat reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></div><h3>Scope &amp; quotes</h3><p>AI drafts a clear contractor scope of works and ranks the quotes that come back on value, not just price.</p></div>
-      <div class="feat reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="21" x2="21" y2="21"/><rect x="5" y="11" width="3.5" height="7"/><rect x="10.25" y="7" width="3.5" height="11"/><rect x="15.5" y="13" width="3.5" height="5"/></svg></div><h3>Reports &amp; trends</h3><p>Charts and weekly summaries surface response times, spill hot-spots and overdue work automatically.</p></div>
-    </div>
-    <p class="ai-note">AI runs on the latest Claude models — and it's included in every plan, not a paid add-on.</p>
-  </div>
-</section>
-
-<section id="demo" class="sec soft">
-  <div class="container">
-    <h2 class="reveal">See it in action</h2>
-    <p class="sublede reveal">Every customer gets a private dashboard at <strong>app.hazardlink.ie</strong>. Switch between the three sides <svg class="inline-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></p>
-    <div class="demo-tabs reveal" id="demoTabs">
-      <button class="demo-tab active" data-disc="cleaning" style="--accent: var(--clean)"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2.5c3.5 4.2 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 2.5-6.8 6-11z"/></svg> Cleaning</button>
-      <button class="demo-tab" data-disc="maintenance" style="--accent: var(--maint)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.6 2.6-2.1-2.1z"/></svg> Maintenance</button>
-      <button class="demo-tab" data-disc="security" style="--accent: var(--sec)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg> Security</button>
-    </div>
-    <div class="mockup reveal">
-      <div class="chrome">
-        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-        <span class="url" id="demoUrl">app.hazardlink.ie/cleaning</span>
+  <!-- Replaces -->
+  <section class="band alt">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">Why teams switch</span>
+        <h2>One platform instead of three subscriptions.</h2>
+        <p class="lede">Most sites run a cleaning app, a maintenance system and a guard-tour tool that never speak to each other — three logins, three bills, three sets of data. HazardLink is all three, on the same record.</p>
       </div>
-      <div class="main" id="demoMain"></div>
-    </div>
-  </div>
-</section>
-
-<section id="apps" class="sec">
-  <div class="container">
-    <h2 class="reveal">Office and field, same platform</h2>
-    <p class="sublede reveal">Managers run the show from the web. Everyone on site carries it in their pocket.</p>
-    <div class="apps">
-      <div class="appcard reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><h3>Web dashboard</h3><p>Live alerts, jobs, assets, patrols, reports and analytics — multi-site, in one control centre.</p></div>
-      <div class="appcard reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><line x1="11" y1="18" x2="13" y2="18"/></svg></div><h3>iOS app</h3><p>Log jobs, run inspections, scan checkpoints and get push alerts. Free for every user.</p></div>
-      <div class="appcard reveal"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="11" y1="18" x2="13" y2="18"/></svg></div><h3>Android app</h3><p>The same field tools on Android — built for cleaners, technicians and guards.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="how" class="sec soft">
-  <div class="container">
-    <h2 class="reveal">Live in a day</h2>
-    <div class="steps">
-      <div class="step reveal"><div class="num">1</div><h3>Add your sites</h3><p>Create your buildings, assets and contacts. Import what you have — it's shared across all three disciplines.</p></div>
-      <div class="step reveal"><div class="num">2</div><h3>Invite your team</h3><p>Unlimited users on every plan. Cleaners, technicians and guards download the app and they're in.</p></div>
-      <div class="step reveal"><div class="num">3</div><h3>Start running</h3><p>Log jobs, run rounds and patrols from day one. Add spill sensors any time for automatic wet-floor alerts.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="pricing" class="sec">
-  <div class="container">
-    <h2 class="reveal">Simple, per-site pricing</h2>
-    <p class="sublede reveal">One platform for cleaning, maintenance and security. Unlimited users on every plan — get your whole on-site team in for one price. You pay for the sites you manage, not per head.</p>
-    <div class="plans">
-      <div class="plan reveal">
-        <h3>Starter</h3>
-        <p style="color:var(--grey)">Up to 3 sites</p>
-        <div class="price">€99<span> / month</span></div>
-        <ul>
-          <li>Cleaning, maintenance &amp; security — all included</li>
-          <li>Unlimited users · iOS, Android &amp; web</li>
-          <li>Jobs, assets, inspections, patrols &amp; checkpoints</li>
-          <li>Built-in AI on everyday tasks</li>
-          <li>Email support</li>
-        </ul>
-        <p style="color:var(--grey);font-size:13px;margin-top:16px;">Optional spill-detection sensors at cost</p>
-      </div>
-      <div class="plan featured reveal">
-        <h3>Growth</h3>
-        <p style="color:var(--grey)">Up to 15 sites</p>
-        <div class="price">€299<span> / month</span></div>
-        <ul>
-          <li>Everything in Starter</li>
-          <li>Automated reports &amp; PPM scheduling</li>
-          <li>Contractor tendering &amp; white-label email</li>
-          <li>Higher AI Assistant allowance</li>
-          <li>Priority support</li>
-        </ul>
-        <p style="color:var(--grey);font-size:13px;margin-top:16px;">Optional spill-detection sensors at cost</p>
-      </div>
-      <div class="plan reveal">
-        <h3>Enterprise</h3>
-        <p style="color:var(--grey)">Unlimited sites</p>
-        <div class="price">Custom</div>
-        <ul>
-          <li>Everything in Growth</li>
-          <li>SSO / SAML &amp; white-label branding</li>
-          <li>Unlimited AI Assistant (fair use)</li>
-          <li>Dedicated manager · 99.9% SLA</li>
-          <li>On-site setup &amp; training</li>
-        </ul>
-        <p style="color:var(--grey);font-size:13px;margin-top:16px;">Volume hardware pricing available</p>
+      <div class="replace">
+        <div class="stack">
+          <div class="rep-tile"><span class="rt-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/></svg></span><span><b>Cleaning &amp; janitorial apps</b><span>rounds, inspections, dispatch</span></span></div>
+          <div class="rep-tile"><span class="rt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 17l3 3 5.5-5.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-.5-.5-2.1 2.7-2.5z"/></svg></span><span><b>CMMS / maintenance</b><span>assets, work orders, PPMs</span></span></div>
+          <div class="rep-tile"><span class="rt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg></span><span><b>Guard-tour &amp; patrol tools</b><span>checkpoints, incidents</span></span></div>
+        </div>
+        <div class="rep-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
+        <div class="rep-one">
+          <div class="lockup"><span class="m"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>HazardLink</div>
+          <p>One login, one bill, one source of truth. Cleaning, maintenance and security on shared sites, assets and contacts — unlimited users included.</p>
+        </div>
       </div>
     </div>
-    <p class="reveal" style="text-align:center;color:var(--grey);font-size:13px;margin-top:24px;">
-      All plans include unlimited users and all three disciplines. Prices exclude VAT.
-    </p>
-  </div>
-</section>
+  </section>
 
-<section id="contact" class="sec soft contact">
-  <div class="container">
-    <h2 class="reveal">Book a 15-minute demo</h2>
-    <p>We'll walk through cleaning, maintenance and security on a real device and map it to your sites.</p>
-    <p>Email <a class="mail" href="mailto:hello@hazardlink.ie">hello@hazardlink.ie</a></p>
-    <p style="margin-top:28px;color:var(--grey);font-size:14px;">No-pressure call. We'll reply within 1 working day.</p>
-    <div class="cta" style="display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap;">
-      <a class="btn" href="mailto:hello@hazardlink.ie">Book a demo</a>
-      <a class="btn btn-ghost" href="https://app.hazardlink.ie">Sign in</a>
+  <!-- Disciplines -->
+  <section class="band" id="disciplines">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">One platform, three disciplines</span>
+        <h2>Built for everyone on site.</h2>
+        <p class="lede">Each side is a serious tool in its own right — not a checkbox. Together they share the same buildings, assets and people.</p>
+      </div>
+      <div class="discs">
+        <div class="disc" style="--ac:var(--clean)">
+          <div class="top"></div>
+          <div class="d-lab"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/></svg> Cleaning</div>
+          <h3>Spotless sites, proven.</h3>
+          <p>Rounds and spill safety with photo proof your clients can actually see.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Real-time wet-floor spill alerts (IoT)</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Cleaner dispatch &amp; shift scheduling</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Mobile inspections with photo scoring</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>QR rounds — scan, confirm, photograph</li>
+          </ul>
+        </div>
+        <div class="disc" style="--ac:var(--maint)">
+          <div class="top"></div>
+          <div class="d-lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 17l3 3 5.5-5.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-.5-.5-2.1 2.7-2.5z"/></svg> Maintenance</div>
+          <h3>A full CMMS.</h3>
+          <p>From a logged fault to a finished, costed job — contractors built in.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Asset register &amp; full service history</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Work orders from log to done</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Planned preventive maintenance</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Contractor tendering, white-labelled</li>
+          </ul>
+        </div>
+        <div class="disc" style="--ac:var(--sec)">
+          <div class="top"></div>
+          <div class="d-lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg> Security</div>
+          <h3>Patrols &amp; safety.</h3>
+          <p>Guard tours, incident reports and lone-worker cover in one log.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Guard tours &amp; QR checkpoints</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Incident reports with severity &amp; photos</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Lone-worker check-ins &amp; panic alarm</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Daily activity reports</li>
+          </ul>
+        </div>
+      </div>
     </div>
-  </div>
-</section>
+  </section>
+
+  <!-- Moat -->
+  <section class="band moat">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">The difference</span>
+        <h2>The person who spots a problem starts the fix.</h2>
+        <p class="lede">Because cleaners, technicians and guards share one app, a fault noticed on a patrol becomes a costed work order — no phone call, no email, no second system.</p>
+      </div>
+      <div class="flow" aria-hidden="true">
+        <div class="fnode">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <div class="step">01</div><div class="lab">Guard spots a fault</div>
+        </div>
+        <div class="fnode">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></div>
+          <div class="step">02</div><div class="lab">Reports in the app</div>
+        </div>
+        <div class="fnode key">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 17l3 3 5.5-5.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-.5-.5-2.1 2.7-2.5z"/></svg></div>
+          <div class="step">03</div><div class="lab">Work order created</div>
+        </div>
+        <div class="fnode">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
+          <div class="step">04</div><div class="lab">Contractor quoted</div>
+        </div>
+        <div class="fnode">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+          <div class="step">05</div><div class="lab">Fixed &amp; logged</div>
+        </div>
+      </div>
+      <p class="cap">Shared sites, assets and contacts mean nothing is entered twice — and managers see all three disciplines on one dashboard.</p>
+    </div>
+  </section>
+
+  <!-- Product / bento -->
+  <section class="band" id="platform">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">Inside the platform</span>
+        <h2>Depth where it matters.</h2>
+        <p class="lede">Not a thin app stretched across three jobs — real registers, real lifecycles, real reporting on each side.</p>
+      </div>
+      <div class="bento">
+        <div class="cell lg reveal">
+          <div class="c-lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/></svg> Live operations</div>
+          <h3>Everything happening, right now.</h3>
+          <p>Spills, work orders, patrols and lone-worker alerts in one real-time feed — colour-coded by urgency, one tap to act.</p>
+          <div class="demo-surface">
+            <div class="ds-row"><span class="l"><span class="dot" style="background:#dc2626"></span>Wet-floor sign moved — Aisle 4</span><span class="chip red">Live</span></div>
+            <div class="ds-row"><span class="l"><span class="dot" style="background:#d97706"></span>Leak reported — Unit 4 store room</span><span class="chip amber">In progress</span></div>
+            <div class="ds-row"><span class="l"><span class="dot" style="background:#16a34a"></span>Inspection passed — Reception</span><span class="chip green">Done</span></div>
+          </div>
+        </div>
+        <div class="cell md reveal">
+          <div class="c-lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="6" y="11" width="3" height="6"/><rect x="11" y="6" width="3" height="11"/><rect x="16" y="13" width="3" height="4"/></svg> Maintenance KPIs</div>
+          <h3>Reliability you can prove.</h3>
+          <p>PM compliance, MTTR and backlog — computed from your live jobs, not a spreadsheet.</p>
+          <div class="demo-surface">
+            <div class="ds-stats">
+              <div class="ds-stat"><div class="l">PM compliance</div><div class="v">94%</div></div>
+              <div class="ds-stat"><div class="l">Avg. MTTR</div><div class="v">1.8d</div></div>
+              <div class="ds-stat"><div class="l">Open backlog</div><div class="v">7</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="cell sm reveal">
+          <div class="c-lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg> Patrols</div>
+          <h3>Guard tours, verified.</h3>
+          <p>NFC/QR checkpoints with time-stamped proof and flagged misses.</p>
+        </div>
+        <div class="cell sm reveal">
+          <div class="c-lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 20h8"/></svg> Asset register</div>
+          <h3>Every asset, its history.</h3>
+          <p>Service records, meters and warranties — one tap from any job.</p>
+        </div>
+        <div class="cell sm reveal">
+          <div class="c-lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Tendering</div>
+          <h3>Quotes, ranked.</h3>
+          <p>White-label contractor email, quotes back in, ranked on value.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AI -->
+  <section class="band alt" id="ai">
+    <div class="wrap ai-grid">
+      <div class="sec-head" style="max-width:none">
+        <span class="kicker">AI, used well</span>
+        <h2>Practical AI on every task — not a chatbot bolted on.</h2>
+        <p class="lede">It does the boring parts: turning a spoken fault into a structured job, reading an asset's history, drafting a contractor scope. Quiet, useful, everywhere.</p>
+        <p class="ai-note">Runs on the latest Claude models. Included in every plan — not a paid add-on.</p>
+      </div>
+      <div class="ai-list">
+        <div class="ai-item">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <div><h3>Ask your data</h3><p>Plain-English answers about your jobs, assets and incidents — from your live records, not guesses.</p></div>
+        </div>
+        <div class="ai-item">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></span>
+          <div><h3>Voice to work order</h3><p>Speak a fault on site; it comes back as a structured job — title, priority and asset — ready to confirm.</p></div>
+        </div>
+        <div class="ai-item">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+          <div><h3>Scope &amp; rank quotes</h3><p>Drafts a clear scope of works, then ranks the quotes that come back on value — not just lowest price.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Platform web+mobile -->
+  <section class="band">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">Web + mobile</span>
+        <h2>Office on the web. Everyone else in their pocket.</h2>
+        <p class="lede">Managers run the show from a multi-site control centre. Cleaners, technicians and guards carry the same platform on any phone.</p>
+      </div>
+      <div class="plat">
+        <div class="pcard reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg></div>
+          <h3>Web dashboard</h3>
+          <p>Live alerts, jobs, assets, patrols, reports and analytics — multi-site, in one control centre.</p>
+        </div>
+        <div class="pcard reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></div>
+          <h3>iOS app</h3>
+          <p>Log jobs, run inspections, scan checkpoints and get push alerts. Free for every user.</p>
+        </div>
+        <div class="pcard reveal">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="10" y1="6" x2="14" y2="6"/></svg></div>
+          <h3>Android app</h3>
+          <p>The same field tools on Android — built for cleaners, technicians and guards alike.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="band alt" id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">Getting started</span>
+        <h2>Live in a day, not a quarter.</h2>
+      </div>
+      <div class="steps">
+        <div class="step reveal"><div class="n">1</div><h3>Add your sites</h3><p>Create your buildings, assets and contacts — or import what you have. It's shared across all three disciplines from the start.</p></div>
+        <div class="step reveal"><div class="n">2</div><h3>Invite your team</h3><p>Unlimited users on every plan. Cleaners, technicians and guards download the app and they're in within minutes.</p></div>
+        <div class="step reveal"><div class="n">3</div><h3>Start running</h3><p>Log jobs, run rounds and patrols from day one. Add spill sensors whenever you want automatic wet-floor alerts.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="band" id="pricing">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">Pricing</span>
+        <h2>Per site. Unlimited users.</h2>
+        <p class="lede">Get your whole on-site team in for one price — you pay for the sites you manage, not per head. All three disciplines included on every plan.</p>
+      </div>
+      <div class="plans">
+        <div class="plan reveal">
+          <h3>Starter</h3>
+          <div class="scope">Up to 3 sites</div>
+          <div class="price">€99<span> / month</span></div>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Cleaning, maintenance &amp; security</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Unlimited users · iOS, Android &amp; web</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Jobs, assets, inspections &amp; patrols</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Built-in AI on everyday tasks</li>
+          </ul>
+          <a class="btn btn-line" href="#contact">Get started</a>
+        </div>
+        <div class="plan feat reveal">
+          <span class="badge">Most popular</span>
+          <h3>Growth</h3>
+          <div class="scope">Up to 15 sites</div>
+          <div class="price">€299<span> / month</span></div>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Everything in Starter</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Automated reports &amp; PPM scheduling</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Contractor tendering &amp; white-label email</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Higher AI allowance · priority support</li>
+          </ul>
+          <a class="btn btn-primary" href="#contact">Book a demo</a>
+        </div>
+        <div class="plan reveal">
+          <h3>Enterprise</h3>
+          <div class="scope">Unlimited sites</div>
+          <div class="price">Custom</div>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Everything in Growth</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>SSO / SAML &amp; white-label branding</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Unlimited AI (fair use) · 99.9% SLA</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Dedicated manager · on-site setup</li>
+          </ul>
+          <a class="btn btn-line" href="#contact">Talk to sales</a>
+        </div>
+      </div>
+      <p class="price-foot">All plans include unlimited users and all three disciplines. Prices exclude VAT. Optional spill-detection sensors at cost.</p>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-band" id="contact">
+    <div class="wrap">
+      <h2>See HazardLink on your sites.</h2>
+      <p>A 15-minute call. We'll map cleaning, maintenance and security to your buildings on a real device — no slides.</p>
+      <div class="cta">
+        <a class="btn btn-onink" href="mailto:hello@hazardlink.ie?subject=HazardLink%20demo">Book a demo</a>
+        <a class="btn btn-onink-line" href="https://app.hazardlink.ie">Sign in</a>
+      </div>
+    </div>
+  </section>
+</main>
 
 <footer>
-  <div class="container">
-    <p>© 2026 HazardLink Ltd · Made in Ireland</p>
-    <div class="links">
-      <a href="/privacy">Privacy</a>
-      <a href="/terms">Terms</a>
-      <a href="/status">Status</a>
-      <a href="mailto:support@hazardlink.ie">Support</a>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#top"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>HazardLink</a>
+        <p>Cleaning, maintenance and security operations on one platform. Built for facilities teams.</p>
+      </div>
+      <div class="foot-col">
+        <h4>Platform</h4>
+        <a href="#disciplines">Disciplines</a>
+        <a href="#platform">Inside the platform</a>
+        <a href="#pricing">Pricing</a>
+        <a href="https://app.hazardlink.ie">Sign in</a>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <a href="#contact">Book a demo</a>
+        <a href="mailto:hello@hazardlink.ie">Contact</a>
+        <a href="mailto:support@hazardlink.ie">Support</a>
+        <a href="/status">System status</a>
+      </div>
+      <div class="foot-col">
+        <h4>Legal</h4>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span id="yr">2026</span> HazardLink Ltd · Made in Ireland</span>
+      <span>Data hosted in the EU</span>
     </div>
   </div>
 </footer>
 
-<button class="to-top" id="toTop" aria-label="Back to top">↑</button>
-
 <script>
-  // Self-contained — no backend, no fetches. Every effect degrades gracefully
-  // and is muted under prefers-reduced-motion.
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // ── Mobile nav drawer ──────────────────────────────────────────────────
-  (function () {
-    var t = document.getElementById('navToggle'), n = document.getElementById('siteNav'), b = document.getElementById('navBackdrop');
-    if (!t) return;
-    function close() { n.classList.remove('open'); t.classList.remove('open'); b.classList.remove('show'); t.setAttribute('aria-expanded', 'false'); }
-    t.addEventListener('click', function () {
-      var open = n.classList.toggle('open'); t.classList.toggle('open', open); b.classList.toggle('show', open); t.setAttribute('aria-expanded', String(open));
+  // Footer year
+  (function(){ try{ document.getElementById('yr').textContent = new Date().getFullYear(); }catch(e){} })();
+
+  // Mobile nav
+  (function(){
+    var b=document.getElementById('burger'), n=document.getElementById('navLinks');
+    if(!b) return;
+    b.addEventListener('click', function(){
+      var open=n.classList.toggle('open'); b.setAttribute('aria-expanded', String(open));
     });
-    b.addEventListener('click', close);
-    n.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', close); });
+    n.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', function(){ n.classList.remove('open'); b.setAttribute('aria-expanded','false'); }); });
   })();
 
-  // ── Scroll reveal ──────────────────────────────────────────────────────
-  (function () {
-    var els = document.querySelectorAll('.reveal');
-    if (reduce || !('IntersectionObserver' in window)) { els.forEach(function (e) { e.classList.add('in'); }); return; }
-    var io = new IntersectionObserver(function (ents) {
-      ents.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
-    }, { threshold: 0.12 });
-    els.forEach(function (e) { io.observe(e); });
+  // Scroll reveal
+  (function(){
+    var els=document.querySelectorAll('.reveal');
+    if(reduce || !('IntersectionObserver' in window)){ els.forEach(function(e){e.classList.add('in')}); return; }
+    var io=new IntersectionObserver(function(en){ en.forEach(function(x){ if(x.isIntersecting){ x.target.classList.add('in'); io.unobserve(x.target);} }); }, {threshold:.14});
+    els.forEach(function(e){ io.observe(e); });
   })();
 
-  // ── Count-up stats ─────────────────────────────────────────────────────
-  (function () {
-    var nums = document.querySelectorAll('.num[data-to]');
-    function run(el) {
-      var to = parseInt(el.getAttribute('data-to'), 10), suf = el.getAttribute('data-suffix') || '';
-      if (reduce) { el.textContent = to + suf; return; }
-      var start = null, dur = 900;
-      function step(ts) { if (!start) start = ts; var p = Math.min((ts - start) / dur, 1); el.textContent = Math.round(p * to) + suf; if (p < 1) requestAnimationFrame(step); }
-      requestAnimationFrame(step);
-    }
-    if (!('IntersectionObserver' in window)) { nums.forEach(run); return; }
-    var io = new IntersectionObserver(function (ents) { ents.forEach(function (en) { if (en.isIntersecting) { run(en.target); io.unobserve(en.target); } }); }, { threshold: 0.5 });
-    nums.forEach(function (e) { io.observe(e); });
-  })();
-
-  // ── Scroll progress + back-to-top ──────────────────────────────────────
-  (function () {
-    var bar = document.getElementById('scrollProgress'), top = document.getElementById('toTop');
-    function onScroll() {
-      var h = document.documentElement, max = h.scrollHeight - h.clientHeight;
-      var p = max > 0 ? (h.scrollTop || document.body.scrollTop) / max : 0;
-      if (bar) bar.style.width = (p * 100) + '%';
-      if (top) top.classList.toggle('show', (h.scrollTop || document.body.scrollTop) > 600);
-    }
-    document.addEventListener('scroll', onScroll, { passive: true }); onScroll();
-    if (top) top.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' }); });
-  })();
-
-  // ── Rotating hero word ─────────────────────────────────────────────────
-  (function () {
-    var el = document.getElementById('rotateWord'); if (!el || reduce) return;
-    var words = ['Cleaning.', 'Maintenance.', 'Security.'], i = 0;
-    setInterval(function () {
-      el.classList.add('swap');
-      setTimeout(function () { i = (i + 1) % words.length; el.textContent = words[i]; el.classList.remove('swap'); }, 300);
-    }, 2600);
-  })();
-
-  // ── Live clock + date on the hero phone ────────────────────────────────
-  (function () {
-    var t = document.getElementById('phoneTime'), d = document.getElementById('phoneDate');
-    if (!t) return;
-    function tick() {
-      var now = new Date();
-      t.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      if (d) d.textContent = now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
-    }
-    tick();
-    setInterval(tick, 30000);
-  })();
-
-  // ── Hero push notifications ────────────────────────────────────────────
-  (function () {
-    var stack = document.getElementById('pushStack'); if (!stack) return;
-    var feed = [
-      { c: '#0891b2', i: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2.5c3.5 4.2 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 2.5-6.8 6-11z"/></svg>', b: 'Spill detected — Aisle 4', s: 'Wet-floor sign moved · just now' },
-      { c: '#d97706', i: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.6 2.6-2.1-2.1z"/></svg>', b: 'New work order', s: 'Leak reported · North Mall' },
-      { c: '#4f46e5', i: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>', b: 'Checkpoint missed', s: 'Loading bay · overdue' },
-      { c: '#e53935', i: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9l-8 13.9A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.2l-8-13.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>', b: 'Lone-worker alarm', s: 'Check-in overdue · Site B' }
-    ];
-    var idx = 0;
-    function show() {
-      var f = feed[idx % feed.length]; idx++;
-      var d = document.createElement('div'); d.className = 'push';
-      d.innerHTML = '<div class="pic" style="background:' + f.c + '">' + f.i + '</div><div class="tx"><b>' + f.b + '</b><span>' + f.s + '</span></div>';
-      stack.appendChild(d);
-      requestAnimationFrame(function () { requestAnimationFrame(function () { d.classList.add('in'); }); });
-      while (stack.children.length > 3) stack.removeChild(stack.firstChild);
-    }
-    if (reduce) { show(); return; }
-    show(); setInterval(show, 2200);
-  })();
-
-  // ── Interactive three-discipline demo ──────────────────────────────────
-  (function () {
-    var main = document.getElementById('demoMain'), url = document.getElementById('demoUrl'), tabs = document.getElementById('demoTabs');
-    if (!main) return;
-    var views = {
-      cleaning: '<h4>Cleaning · live</h4><div class="sub">Spill alerts, rounds and inspections across your sites</div>'
-        + '<div class="stat-grid"><div class="stat-card"><div class="label">Active spills</div><div class="value red">1</div></div><div class="stat-card"><div class="label">Rounds done today</div><div class="value">14</div></div><div class="stat-card"><div class="label">Inspection score</div><div class="value">96%</div></div></div>'
-        + '<div class="alert-row red"><span class="row-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9l-8 13.9A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.2l-8-13.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>Wet-floor sign moved — Aisle 4</span><span class="tag2 live">LIVE</span></div>'
-        + '<div class="alert-row green"><span class="row-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Cleaning round complete — Ground-floor WC</span><span class="tag2 done">DONE</span></div>'
-        + '<div class="alert-row green"><span class="row-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Inspection passed — Reception (photo attached)</span><span class="tag2 done">DONE</span></div>',
-      maintenance: '<h4>Maintenance · work orders</h4><div class="sub">Assets, PPMs and contractor jobs</div>'
-        + '<div class="stat-grid"><div class="stat-card"><div class="label">Open jobs</div><div class="value">7</div></div><div class="stat-card"><div class="label">PPMs due</div><div class="value">3</div></div><div class="stat-card"><div class="label">Awaiting quotes</div><div class="value">2</div></div></div>'
-        + '<table class="data-table"><thead><tr><th>Job</th><th>Site</th><th>Status</th></tr></thead><tbody>'
-        + '<tr><td>Boiler annual service</td><td>North Mall</td><td><span class="pill amber">Scheduled</span></td></tr>'
-        + '<tr><td>Leak — store room</td><td>Unit 4</td><td><span class="pill amber">In progress</span></td></tr>'
-        + '<tr><td>Replace AC filters</td><td>HQ</td><td><span class="pill grey">Tendering</span></td></tr>'
-        + '<tr><td>Car-park lighting</td><td>Retail Park</td><td><span class="pill green">Completed</span></td></tr></tbody></table>',
-      security: '<h4>Security · patrols &amp; incidents</h4><div class="sub">Guard tours, incidents and lone-worker safety</div>'
-        + '<div class="stat-grid"><div class="stat-card"><div class="label">On patrol</div><div class="value">4</div></div><div class="stat-card"><div class="label">Open incidents</div><div class="value">2</div></div><div class="stat-card"><div class="label">Checkpoints today</div><div class="value">38</div></div></div>'
-        + '<table class="data-table"><thead><tr><th>Event</th><th>Where</th><th>Status</th></tr></thead><tbody>'
-        + '<tr><td>Checkpoint scanned</td><td>Loading bay</td><td><span class="pill green">On time</span></td></tr>'
-        + '<tr><td>Incident — trespasser</td><td>Perimeter gate</td><td><span class="pill red">High</span></td></tr>'
-        + '<tr><td>Lone-worker check-in</td><td>Site B</td><td><span class="pill green">OK</span></td></tr>'
-        + '<tr><td>Daily activity report</td><td>HQ</td><td><span class="pill grey">Submitted</span></td></tr></tbody></table>'
+  // Hero product window — cycles through the three disciplines
+  (function(){
+    var content=document.getElementById('winContent'), url=document.getElementById('winUrl');
+    if(!content) return;
+    var navis=document.querySelectorAll('.window .side .nav-i');
+    var views={
+      cleaning:{tag:['Cleaning','blue'], stats:[['Active spills','1'],['Rounds today','14'],['Inspection','96%']],
+        rows:[['#dc2626','Wet-floor sign moved — Aisle 4','red','Live'],['#16a34a','Round complete — Ground WC','green','Done'],['#16a34a','Inspection passed — Reception','green','Done']]},
+      maintenance:{tag:['Maintenance','amber'], stats:[['Open jobs','7'],['PPMs due','3'],['Awaiting quotes','2']],
+        rows:[['#d97706','Boiler annual service — North Mall','amber','Scheduled'],['#d97706','Leak — Unit 4 store room','amber','In progress'],['#16a34a','Car-park lighting — Retail Park','green','Completed']]},
+      security:{tag:['Security','blue'], stats:[['On patrol','4'],['Open incidents','2'],['Checkpoints','38']],
+        rows:[['#16a34a','Checkpoint scanned — Loading bay','green','On time'],['#dc2626','Incident — perimeter gate','red','High'],['#16a34a','Lone-worker check-in — Site B','green','OK']]}
     };
-    var order = ['cleaning', 'maintenance', 'security'], cur = 'cleaning', timer = null;
-
-    function render(disc) {
-      cur = disc;
-      if (url) url.textContent = 'app.hazardlink.ie/' + disc;
-      tabs.querySelectorAll('.demo-tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-disc') === disc); });
-      if (reduce) { main.innerHTML = views[disc]; return; }
-      main.classList.add('swapping');
-      setTimeout(function () { main.innerHTML = views[disc]; main.classList.remove('swapping'); }, 180);
+    var order=['cleaning','maintenance','security'], i=0, timer=null;
+    function chip(t){ return '<span class="chip '+t[1]+'">'+t[0]+'</span>'; }
+    function render(k){
+      var v=views[k];
+      if(url) url.textContent='app.hazardlink.ie/'+k;
+      navis.forEach(function(n){ n.classList.toggle('on', n.getAttribute('data-side')===k); });
+      var html='<div class="win-h"><span class="t">'+cap(k)+'</span>'+chip(v.tag)+'</div>';
+      html+='<div class="win-stats">'+v.stats.map(function(s){return '<div class="win-stat"><div class="l">'+s[0]+'</div><div class="v">'+s[1]+'</div></div>';}).join('')+'</div>';
+      html+=v.rows.map(function(r){return '<div class="win-row"><span class="lft"><span class="ic" style="background:'+r[0]+'22"><span style="width:7px;height:7px;border-radius:50%;background:'+r[0]+'"></span></span>'+r[1]+'</span>'+chip([r[3],r[2]])+'</div>';}).join('');
+      content.innerHTML=html;
     }
-    function autoplay() { if (reduce) return; timer = setInterval(function () { var n = order[(order.indexOf(cur) + 1) % order.length]; render(n); }, 4200); }
-    function stop() { if (timer) { clearInterval(timer); timer = null; } }
-
-    tabs.addEventListener('click', function (e) {
-      var btn = e.target.closest('.demo-tab'); if (!btn) return;
-      stop(); render(btn.getAttribute('data-disc'));
-    });
+    function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+    function go(k){ if(reduce){ render(k); return;} content.classList.add('fade'); setTimeout(function(){ render(k); content.classList.remove('fade'); }, 220); }
     render('cleaning');
-    // Start auto-rotating once the demo scrolls into view.
-    if ('IntersectionObserver' in window && !reduce) {
-      var io = new IntersectionObserver(function (ents) { ents.forEach(function (en) { if (en.isIntersecting) { autoplay(); io.disconnect(); } }); }, { threshold: 0.4 });
-      io.observe(main);
+    function play(){ if(reduce) return; timer=setInterval(function(){ i=(i+1)%order.length; go(order[i]); }, 3400); }
+    function stop(){ if(timer){ clearInterval(timer); timer=null; } }
+    navis.forEach(function(n){ var k=n.getAttribute('data-side'); if(!k) return; n.style.cursor='pointer'; n.addEventListener('click', function(){ stop(); i=order.indexOf(k); go(k); }); });
+    if('IntersectionObserver' in window && !reduce){
+      var io=new IntersectionObserver(function(en){ en.forEach(function(x){ x.isIntersecting?play():stop(); }); }, {threshold:.3});
+      io.observe(content);
     }
   })();
 </script>
