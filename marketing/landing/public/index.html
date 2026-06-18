@@ -279,6 +279,40 @@
   .plan:hover{transform:translateY(-3px);box-shadow:0 22px 46px -28px rgba(11,18,32,.22)}
   .plan.feat:hover{box-shadow:0 26px 52px -30px rgba(11,18,32,.28)}
 
+  /* Premium dark hero */
+  .hero{position:relative;background:#070c16;color:#e8edf6;padding:clamp(64px,9vw,120px) 0 clamp(60px,7vw,96px);border-bottom:1px solid #161f34}
+  .hero-bg{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .hero-bg .glow{position:absolute;inset:-30% -15% 18% -15%;
+    background:radial-gradient(55% 60% at 22% 12%, rgba(37,99,235,.30), transparent 70%),
+               radial-gradient(45% 55% at 82% 0%, rgba(79,70,229,.24), transparent 72%);
+    filter:blur(10px)}
+  .hero-bg .grid{position:absolute;inset:0;
+    background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);
+    background-size:58px 58px;
+    -webkit-mask-image:radial-gradient(115% 78% at 50% -5%, #000 38%, transparent 82%);
+    mask-image:radial-gradient(115% 78% at 50% -5%, #000 38%, transparent 82%)}
+  .hero .wrap{position:relative;z-index:1}
+  .hero .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;letter-spacing:.03em;
+    color:#c3d4ff;background:rgba(122,162,255,.10);border:1px solid rgba(122,162,255,.22);padding:6px 13px 6px 11px;border-radius:999px}
+  .hero .eyebrow .pulse{width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 0 0 rgba(52,211,153,.55);animation:pulse 2.2s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 7px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+  .hero h1{color:#fff;font-size:clamp(40px,5.8vw,68px);margin:20px 0 0;letter-spacing:-.03em}
+  .hero .lede{color:#a9b6cd;margin-top:22px;max-width:548px}
+  .hero .fineprint{color:#7c89a3}
+  .hero .fineprint .dot{background:#3a445e}
+  .hero-visual{position:relative}
+  .hero-visual .window{box-shadow:0 44px 90px -34px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.07), 0 0 90px -24px rgba(37,99,235,.5)}
+  .float-card{position:absolute;left:-20px;bottom:-24px;z-index:3;width:236px;display:flex;gap:11px;align-items:flex-start;
+    background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 26px 52px -20px rgba(0,0,0,.55)}
+  .float-card .fc-ic{width:30px;height:30px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#fee2e2;color:#dc2626}
+  .float-card .fc-ic svg{width:16px;height:16px}
+  .float-card .fc-body{flex:1;min-width:0}
+  .float-card .fc-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .float-card .fc-title{font-size:13px;font-weight:700;color:var(--ink)}
+  .float-card .fc-time{font-size:11px;color:var(--faint)}
+  .float-card .fc-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  @media(max-width:880px){ .float-card{display:none} }
+
   /* Motion + responsive nav */
   .reveal{opacity:0;transform:translateY(20px);transition:opacity .6s ease, transform .6s ease}
   .reveal.in{opacity:1;transform:none}
@@ -293,7 +327,7 @@
     .desk-actions{display:none}
   }
   @media(min-width:881px){ .nav-links .nav-actions{display:none} }
-  @media(prefers-reduced-motion:reduce){ .reveal{opacity:1;transform:none;transition:none} .anim{opacity:1!important;animation:none!important} .fnode::after{animation:none!important} .window .content{transition:none} *{scroll-behavior:auto} }
+  @media(prefers-reduced-motion:reduce){ .reveal{opacity:1;transform:none;transition:none} .anim{opacity:1!important;animation:none!important} .fnode::after{animation:none!important} .hero .eyebrow .pulse{animation:none!important} .window .content{transition:none} *{scroll-behavior:auto} }
 </style>
 </head>
 <body>
@@ -328,16 +362,17 @@
 
   <!-- Hero -->
   <section class="hero">
+    <div class="hero-bg" aria-hidden="true"><div class="glow"></div><div class="grid"></div></div>
     <div class="wrap hero-grid">
-      <div>
-        <span class="kicker anim">Facilities operations platform</span>
+      <div class="hero-copy">
+        <span class="eyebrow anim"><span class="pulse" aria-hidden="true"></span>Facilities operations platform</span>
         <h1 class="anim d1">Run cleaning, maintenance &amp; security from one place.</h1>
         <p class="lede anim d2">Your cleaners, technicians and guards stop juggling separate apps and share one. They work from the same buildings and the same asset list, off a single set of contacts. Managers run things from the web; everyone on the ground works off their phone.</p>
         <div class="cta anim d3">
           <a class="btn btn-primary" href="#contact">Book a 15-minute demo
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
           </a>
-          <a class="btn btn-line" href="#platform">Explore the platform</a>
+          <a class="btn btn-onink-line" href="#platform">Explore the platform</a>
         </div>
         <div class="fineprint anim d4">
           <span>Unlimited users</span><span class="dot"></span>
@@ -346,7 +381,14 @@
         </div>
       </div>
 
-      <div class="anim d2" aria-hidden="true">
+      <div class="hero-visual anim d2" aria-hidden="true">
+        <div class="float-card">
+          <span class="fc-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s6 7 6 11a6 6 0 1 1-12 0c0-4 6-11 6-11z"/></svg></span>
+          <div class="fc-body">
+            <div class="fc-top"><span class="fc-title">Spill detected</span><span class="fc-time">now</span></div>
+            <div class="fc-sub">Aisle 4 · cleaner auto-dispatched</div>
+          </div>
+        </div>
         <div class="window">
           <div class="topbar"><span class="tl"></span><span class="tl"></span><span class="tl"></span><span class="url" id="winUrl">app.hazardlink.ie</span></div>
           <div class="app">
