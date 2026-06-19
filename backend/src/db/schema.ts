@@ -460,6 +460,52 @@ export const inspectionItems = pgTable(
   (t) => ({ inspectionIdx: index("inspection_items_inspection_idx").on(t.inspectionId) }),
 );
 
+/// Safety Data Sheets: an org's library of chemical/product safety sheets, filed
+/// by discipline and found by scanning a product barcode. Hazards + listed
+/// components are extracted from the uploaded sheet itself (source =
+/// 'ai_extraction') and confirmed by a person (verified) — never invented.
+export const sdsDiscipline = pgEnum("sds_discipline", ["cleaning", "maintenance", "security", "general"]);
+export const sdsSource = pgEnum("sds_source", ["ai_extraction", "manual", "provider"]);
+
+export const sdsSheets = pgTable(
+  "sds_sheets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    discipline: sdsDiscipline("discipline").notNull().default("general"),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    barcode: text("barcode"),
+    productName: text("product_name").notNull(),
+    manufacturer: text("manufacturer"),
+    productCode: text("product_code"),
+    signalWord: text("signal_word"), // "Danger" | "Warning" | null
+    pictograms: jsonb("pictograms").$type<string[]>().notNull().default([]), // GHS codes/labels
+    hazardStatements: jsonb("hazard_statements").$type<{ code: string; text: string }[]>().notNull().default([]),
+    precautionaryStatements: jsonb("precautionary_statements").$type<{ code: string; text: string }[]>().notNull().default([]),
+    ingredients: jsonb("ingredients").$type<{ name: string; cas: string; percent: string }[]>().notNull().default([]),
+    firstAid: text("first_aid"),
+    storageHandling: text("storage_handling"),
+    ppe: text("ppe"),
+    sdsPdfUrl: text("sds_pdf_url"), // the source document this record was read from
+    issueDate: date("issue_date"),
+    revisionDate: date("revision_date"),
+    reviewDate: date("review_date"),
+    source: sdsSource("source").notNull().default("manual"),
+    extractionWarnings: jsonb("extraction_warnings").$type<string[]>().notNull().default([]), // fields the AI could not find
+    verified: boolean("verified").notNull().default(false),
+    verifiedByUserId: uuid("verified_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("sds_sheets_org_idx").on(t.organisationId),
+    orgBarcodeIdx: index("sds_sheets_org_barcode_idx").on(t.organisationId, t.barcode),
+    orgDiscIdx: index("sds_sheets_org_disc_idx").on(t.organisationId, t.discipline),
+  }),
+);
+
 export const hangers = pgTable(
   "hangers",
   {

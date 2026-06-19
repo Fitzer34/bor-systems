@@ -422,3 +422,116 @@ export async function runDataAssistant(input: {
   }
   return "I couldn't finish that lookup — try a more specific question.";
 }
+
+// ─── 8. Safety Data Sheet extraction (strictly grounded) ─────────────────────
+// Reads a Safety Data Sheet document (the uploaded PDF or a photo of the printed
+// sheet) and returns its structured fields. Critically: it extracts ONLY what is
+// written in that document — it never infers ingredients, hazards, or any value
+// from outside knowledge of the product. Missing fields come back empty with a
+// note in `warnings`, and a person verifies the record before it is trusted.
+
+export interface SdsExtraction {
+  isLikelySds: boolean;
+  productName: string;
+  manufacturer: string;
+  productCode: string;
+  signalWord: string; // "Danger" | "Warning" | ""
+  pictograms: string[];
+  hazardStatements: { code: string; text: string }[];
+  precautionaryStatements: { code: string; text: string }[];
+  ingredients: { name: string; cas: string; percent: string }[];
+  firstAid: string;
+  storageHandling: string;
+  ppe: string;
+  issueDate: string; // YYYY-MM-DD or ""
+  revisionDate: string; // YYYY-MM-DD or ""
+  warnings: string[];
+}
+
+export async function extractSdsFromDocument(input: {
+  media: { kind: "pdf" | "image"; base64: string; mimeType: string };
+}): Promise<SdsExtraction> {
+  const c = getClient();
+  const system =
+    "You extract structured data from a Safety Data Sheet (SDS) — the standardised 16-section chemical-safety document (GHS / EU CLP). " +
+    "Extract ONLY information that is explicitly written in the supplied document. " +
+    "You MUST NOT infer, guess, complete, normalise, translate, or use any outside knowledge about the product or its ingredients. " +
+    "If a value is not clearly present in the document, return an empty string (or empty array) for it and add a short note to `warnings` naming what is missing or unreadable. " +
+    "Copy values exactly as written — CAS numbers, H- and P-statement codes, percentage ranges, dates. " +
+    "Map dates to YYYY-MM-DD only when the document states them unambiguously; otherwise leave empty. " +
+    "If the document is NOT a Safety Data Sheet, set isLikelySds to false and leave the fields empty. " +
+    "Respond only with JSON matching the schema.";
+
+  const schema = {
+    type: "object",
+    properties: {
+      isLikelySds: { type: "boolean" },
+      productName: { type: "string" },
+      manufacturer: { type: "string" },
+      productCode: { type: "string" },
+      signalWord: { type: "string", enum: ["Danger", "Warning", ""] },
+      pictograms: { type: "array", items: { type: "string" } },
+      hazardStatements: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { code: { type: "string" }, text: { type: "string" } },
+          required: ["code", "text"],
+          additionalProperties: false,
+        },
+      },
+      precautionaryStatements: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { code: { type: "string" }, text: { type: "string" } },
+          required: ["code", "text"],
+          additionalProperties: false,
+        },
+      },
+      ingredients: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { name: { type: "string" }, cas: { type: "string" }, percent: { type: "string" } },
+          required: ["name", "cas", "percent"],
+          additionalProperties: false,
+        },
+      },
+      firstAid: { type: "string" },
+      storageHandling: { type: "string" },
+      ppe: { type: "string" },
+      issueDate: { type: "string" },
+      revisionDate: { type: "string" },
+      warnings: { type: "array", items: { type: "string" } },
+    },
+    required: [
+      "isLikelySds", "productName", "manufacturer", "productCode", "signalWord", "pictograms",
+      "hazardStatements", "precautionaryStatements", "ingredients", "firstAid", "storageHandling",
+      "ppe", "issueDate", "revisionDate", "warnings",
+    ],
+    additionalProperties: false,
+  } as const;
+
+  const docBlock =
+    input.media.kind === "pdf"
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: input.media.base64 } }
+      : { type: "image", source: { type: "base64", media_type: input.media.mimeType, data: input.media.base64 } };
+
+  const msg = await c.messages.create({
+    model: MODEL, // safety-critical: use the strongest tier for accurate, faithful extraction
+    max_tokens: 2500,
+    system,
+    output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
+    messages: [
+      {
+        role: "user",
+        content: [
+          docBlock as any,
+          { type: "text", text: "Extract the Safety Data Sheet fields from the attached document, following the rules exactly. Do not add anything that is not written on the sheet." },
+        ] as any,
+      },
+    ],
+  });
+  return JSON.parse(textOf(msg)) as SdsExtraction;
+}

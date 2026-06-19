@@ -33,6 +33,7 @@ import securityRoutes from "./routes/security.js";
 import loneWorkerRoutes from "./routes/lone-worker.js";
 import inspectionRoutes from "./routes/inspections.js";
 import uploadRoutes from "./routes/uploads.js";
+import sdsRoutes from "./routes/sds.js";
 import aiRoutes from "./routes/ai.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
@@ -182,6 +183,7 @@ async function main(): Promise<void> {
   await app.register(loneWorkerRoutes);
   await app.register(inspectionRoutes);
   await app.register(uploadRoutes);
+  await app.register(sdsRoutes);
   await app.register(aiRoutes);
 
   startEscalationTimer();

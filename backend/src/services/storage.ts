@@ -70,8 +70,25 @@ export async function uploadPhoto(input: UploadInput): Promise<UploadResult> {
   return uploadInternal(input, "photos");
 }
 
+/**
+ * Safety Data Sheet documents — the original PDF, or a photo of the printed
+ * sheet. Stored under the "sds" prefix; the saved URL is the source document the
+ * SDS record was read from.
+ */
+export async function uploadSds(input: UploadInput): Promise<UploadResult> {
+  return uploadInternal(input, "sds");
+}
+
 async function uploadInternal(input: UploadInput, prefix: string): Promise<UploadResult> {
-  const ext = extname(input.filename) || (input.mimetype === "image/png" ? ".png" : ".jpg");
+  const ext =
+    extname(input.filename) ||
+    (input.mimetype === "application/pdf"
+      ? ".pdf"
+      : input.mimetype === "image/png"
+        ? ".png"
+        : input.mimetype === "image/webp"
+          ? ".webp"
+          : ".jpg");
   const key = `${prefix}/${randomUUID()}${ext}`;
 
   if (usingR2) {
