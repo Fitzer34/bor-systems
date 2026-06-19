@@ -35,6 +35,7 @@ import { MaintenanceKpis } from "./pages/MaintenanceKpis";
 import { Meters } from "./pages/Meters";
 import { Competency } from "./pages/Competency";
 import { Inspections } from "./pages/Inspections";
+import { Sds } from "./pages/Sds";
 import { Incidents } from "./pages/Incidents";
 import { Checkpoints } from "./pages/Checkpoints";
 import { Assistant } from "./pages/Assistant";
@@ -142,6 +143,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   for cleaners, full-create for admin/supervisor). */}
               <Route path="schedule" element={<Schedule />} />
               <Route path="inspections" element={<Inspections />} />
+              <Route path="sds" element={<Sds />} />
               <Route path="dispatch" element={<Dispatch />} />
               {/* System status — visible to every authed user. Backed by the
                   public /status endpoint (also consumed by external uptime

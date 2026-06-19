@@ -95,6 +95,7 @@ export function Layout() {
     { group: "Cleaning", label: "Dispatch", to: "/dispatch" },
     { group: "Cleaning", label: "Schedule", to: "/schedule" },
     { group: "Cleaning", label: "Inspections", to: "/inspections" },
+    { group: "Cleaning", label: "Safety data sheets", to: "/sds" },
     ...(isStaff ? [{ group: "Cleaning", label: "Devices", to: "/devices" }] : []),
     ...(isAdmin ? [{ group: "Cleaning", label: "Floor plans", to: "/floor-plans" }] : []),
     ...(isStaff ? [{ group: "Cleaning", label: "Reports", to: "/reports" }] : []),
@@ -218,6 +219,7 @@ export function Layout() {
               <NavItem to="/dispatch">Dispatch</NavItem>
               <NavItem to="/schedule">Schedule</NavItem>
               <NavItem to="/inspections">Inspections</NavItem>
+              <NavItem to="/sds">Safety data sheets</NavItem>
               {isStaff && <NavItem to="/checkpoints">Checkpoints</NavItem>}
               {isStaff && <NavItem to="/devices">Devices</NavItem>}
               {user.role === "admin" && <NavItem to="/floor-plans">Floor plans</NavItem>}
@@ -236,6 +238,7 @@ export function Layout() {
               <NavItem to="/parts">Parts</NavItem>
               <NavItem to="/ppms">PPMs</NavItem>
               <NavItem to="/competency">Competency</NavItem>
+              <NavItem to="/sds">Safety data sheets</NavItem>
             </>
           )}
 
@@ -244,6 +247,7 @@ export function Layout() {
             <>
               <NavItem to="/incidents">Incidents</NavItem>
               <NavItem to="/checkpoints">Checkpoints</NavItem>
+              <NavItem to="/sds">Safety data sheets</NavItem>
             </>
           )}
 
