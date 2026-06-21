@@ -16,12 +16,16 @@
     color-scheme: light;
     /* Semantic tokens as space-separated RGB channels (for rgb(var() / a)). */
     --hl-primary: 37 99 235;        /* #2563EB trust blue   */
-    --hl-primary-hover: 29 78 216;  /* #1D4ED8              */
+    --hl-primary-hover: 29 79 215;  /* #1D4FD7              */
     --hl-primary-fg: 255 255 255;   /* #FFFFFF              */
     --hl-accent: 234 88 12;         /* #EA580C urgent CTA   */
     --hl-accent-fg: 255 255 255;
-    --hl-surface: 248 250 252;      /* #F8FAFC page         */
+    --hl-surface: 245 247 250;      /* #F5F7FA page         */
     --hl-ink: 15 23 42;             /* #0F172A foreground   */
+    --hl-border: 230 234 240;       /* #E6EAF0 hairline     */
+    /* Dark navy sidebar (stays dark in the light app). */
+    --hl-sidebar: 14 23 38;         /* #0E1726 navy         */
+    --hl-sidebar-active: 27 40 64;  /* #1B2840 active pill  */
   }
 
   html, body {
@@ -63,9 +67,10 @@
 }
 
 @layer components {
-  /* Standard surface — white card on the soft-grey page. */
+  /* Standard surface — white card on the soft-grey page. Hairline border uses
+     the #E6EAF0 token; rests at the soft slate-tinted shadow-sm. */
   .card {
-    @apply rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm;
+    @apply rounded-xl border border-[rgb(var(--hl-border))] bg-white p-4 shadow-sm;
   }
   .card-hover {
     @apply transition-shadow hover:shadow-md hover:border-slate-300;

@@ -61,7 +61,7 @@ export function ChooseSection() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-surface text-slate-800 flex flex-col items-center justify-center p-6">
       <div className="mb-8 text-center">
         <div className="text-2xl font-semibold tracking-tight text-slate-900">HazardLink</div>
         {user?.organisationName && <div className="text-slate-500 mt-1">{user.organisationName}</div>}

@@ -187,7 +187,7 @@ export function TeamDashboard() {
                 onClick={() => pickTeam(t.key)}
                 className={
                   "px-3 py-1 rounded-md font-medium transition " +
-                  (team === t.key ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100")
+                  (team === t.key ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100")
                 }
               >
                 {t.label}

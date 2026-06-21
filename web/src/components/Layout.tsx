@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Outlet, NavLink, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useSection, type Section } from "../lib/section";
 import { usePermissions } from "../lib/permissions";
@@ -8,17 +10,27 @@ import { CommandPalette, type CommandPaletteItem } from "./CommandPalette";
 import { AccountMenu } from "./AccountMenu";
 import { NotificationBell } from "./NotificationBell";
 
-/** Small brand lockup — rounded blue badge + wordmark. */
-function Brand({ compact = false }: { compact?: boolean }) {
+/** Small brand lockup — rounded blue badge + wordmark.
+ *  On the dark sidebar it also carries the "SITE COMMAND CENTRE" eyebrow. */
+function Brand({ compact = false, withSubtitle = false }: { compact?: boolean; withSubtitle?: boolean }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shrink-0">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <div className="flex items-center gap-2.5">
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shrink-0 shadow-sm">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
           <path d="M9 12l2 2 4-4" />
         </svg>
       </span>
-      {!compact && <span className="font-semibold tracking-wide">HazardLink</span>}
+      {!compact && (
+        <span className="flex flex-col leading-tight">
+          <span className="font-semibold tracking-tight text-white">HazardLink</span>
+          {withSubtitle && (
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7C8AA5]">
+              Site command centre
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }
@@ -75,6 +87,16 @@ function loadOpenGroups(): Record<string, boolean> {
   }
 }
 
+/** Initials from a display name (max 2 letters) — mirrors AccountMenu. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0];
+  if (!first) return "?";
+  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
+  const last = parts[parts.length - 1] ?? first;
+  return ((first[0] ?? "") + (last[0] ?? "")).toUpperCase();
+}
+
 export function Layout() {
   const { user, logout, setOnDuty } = useAuth();
   const { section } = useSection();
@@ -98,20 +120,24 @@ export function Layout() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Which accordion group contains the currently-active route?
-  const activeGroup: NavGroup | null = useMemo(() => {
+  // Which accordion group contains the currently-active route? Also surface the
+  // matching entry so the desktop top bar can show its label as a breadcrumb.
+  const { activeGroup, activeEntry } = useMemo(() => {
     const path = location.pathname;
-    let best: { group: NavGroup; len: number } | null = null;
-    for (const bucket of nav.groups) {
-      for (const item of bucket.items) {
-        const match = item.end ? path === item.to : path === item.to || path.startsWith(item.to + "/");
-        if (match && (!best || item.to.length > best.len)) {
-          best = { group: bucket.group, len: item.to.length };
-        }
-      }
+    // Flatten pinned + grouped entries with their group label, then pick the
+    // longest matching `to` (most specific route wins).
+    const candidates: { group: NavGroup; entry: NavEntry }[] = [
+      ...nav.pinned.map((entry) => ({ group: entry.group, entry })),
+      ...nav.groups.flatMap((bucket) => bucket.items.map((entry) => ({ group: bucket.group, entry }))),
+    ];
+    let best: { group: NavGroup; entry: NavEntry } | null = null;
+    for (const c of candidates) {
+      const { entry } = c;
+      const match = entry.end ? path === entry.to : path === entry.to || path.startsWith(entry.to + "/");
+      if (match && (!best || entry.to.length > best.entry.to.length)) best = c;
     }
-    return best?.group ?? null;
-  }, [location.pathname, nav.groups]);
+    return { activeGroup: best?.group ?? null, activeEntry: best?.entry ?? null };
+  }, [location.pathname, nav.groups, nav.pinned]);
 
   // Persisted open/closed state per group. Default: only the active group open.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(loadOpenGroups);
@@ -146,13 +172,13 @@ export function Layout() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
+    <div className="min-h-screen flex flex-col md:flex-row bg-surface">
       {/* ─── Mobile top bar (visible < md only) ─────────────────────────── */}
-      <div className="flex md:hidden items-center justify-between bg-slate-900 text-slate-100 px-3 py-3 sticky top-0 z-30">
+      <div className="flex md:hidden items-center justify-between bg-sidebar text-slate-100 px-3 py-3 sticky top-0 z-30">
         <button
           aria-label="Open menu"
           onClick={() => setMobileOpen(true)}
-          className="p-2 -ml-2 rounded-lg hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="p-2 -ml-2 rounded-lg hover:bg-sidebar-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="3"  y1="6"  x2="21" y2="6" />
@@ -173,21 +199,21 @@ export function Layout() {
         />
       )}
 
-      {/* ─── Sidebar ─────────────────────────────────────────────────────── */}
+      {/* ─── Sidebar (stays DARK navy in the light app) ──────────────────── */}
       <aside
         className={
-          "w-60 bg-slate-900 text-slate-100 flex flex-col " +
+          "w-[248px] bg-sidebar text-slate-100 flex flex-col shrink-0 " +
           "md:static md:translate-x-0 " +
           "fixed inset-y-0 left-0 z-40 transition-transform duration-200 " +
           (mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0")
         }
       >
-        <div className="px-4 py-5 border-b border-slate-800">
-          <Brand />
+        <div className="px-4 py-5 border-b border-white/5">
+          <Brand withSubtitle />
           {user.organisationName && (
-            <div className="text-xs text-slate-300 mt-2 truncate">{user.organisationName}</div>
+            <div className="text-xs text-slate-300 mt-3 truncate">{user.organisationName}</div>
           )}
-          <div className="text-xs text-slate-400 mt-0.5">
+          <div className="text-xs text-[#7C8AA5] mt-0.5">
             {user.name} · {ROLE_LABEL[user.role] ?? user.role}
           </div>
         </div>
@@ -199,26 +225,26 @@ export function Layout() {
           {/* Quick find — opens the ⌘K command palette. */}
           <button
             onClick={(e) => { e.stopPropagation(); setCmdOpen(true); }}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-1 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <span className="flex items-center gap-2">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               Quick find
             </span>
-            <kbd className="text-[10px] font-medium text-slate-400 border border-slate-700 rounded px-1.5 py-0.5">⌘K</kbd>
+            <kbd className="text-[10px] font-medium text-[#7C8AA5] border border-white/10 rounded px-1.5 py-0.5">⌘K</kbd>
           </button>
 
           {/* Section switcher (staff only). */}
           {isStaff && (
             <button
               onClick={(e) => { e.stopPropagation(); navigate("/choose"); }}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 mb-2 rounded-lg bg-sidebar-active hover:bg-[#23355a] text-slate-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <span className="flex items-center gap-2 font-medium">
                 <span className={disc.dot}>{disc.icon}</span>
                 {disc.label}
               </span>
-              <span className="flex items-center gap-1 text-xs text-slate-400">
+              <span className="flex items-center gap-1 text-xs text-[#7C8AA5]">
                 Switch
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M7 10l-3-3 3-3" /><path d="M4 7h12a4 4 0 0 1 4 4" />
@@ -247,10 +273,12 @@ export function Layout() {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-slate-800 text-sm">
+        {/* Footer: duty toggle, live-status line, log out. */}
+        <div className="p-3 border-t border-white/5 text-sm">
+          <SidebarStatus />
           <button
             onClick={() => setOnDuty(!user.onDuty)}
-            className="w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 hover:bg-slate-800 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="mt-2 w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 hover:bg-white/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             aria-pressed={user.onDuty}
           >
             <span className="flex items-center gap-2">
@@ -263,7 +291,7 @@ export function Layout() {
           </button>
           <button
             onClick={logout}
-            className="mt-1 w-full text-left rounded-lg px-3 py-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="mt-1 w-full text-left rounded-lg px-3 py-2 text-[#7C8AA5] hover:text-slate-100 hover:bg-white/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             Log out
           </button>
@@ -272,12 +300,83 @@ export function Layout() {
 
       {/* ─── Main column (header + page content) ─────────────────────────── */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Desktop header — right-aligned cluster: a slot for a future
-            notifications bell, then the account menu. Hidden on mobile (the
-            mobile top bar carries the brand + hamburger). */}
-        <header className="hidden md:flex items-center justify-end gap-1 border-b border-slate-200 bg-white px-6 h-14 shrink-0">
-          <NotificationBell />
-          <AccountMenu />
+        {/* Desktop header — light bar over the white content. Left: breadcrumb.
+            Centre-left: lightweight scope pills. Right: search, scan, the
+            Ask-HazardLink CTA, notifications and the account avatar. Hidden on
+            mobile (the mobile top bar carries the brand + hamburger). */}
+        <header className="hidden md:flex items-center gap-3 border-b border-hairline bg-white px-6 h-16 shrink-0">
+          {/* Breadcrumb — current section/page. */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[15px] font-semibold text-slate-900 truncate">
+              {activeEntry?.label ?? "Dashboard"}
+            </span>
+          </div>
+
+          {/* Scope pills — navigate to the existing chooser / roles pages. */}
+          <div className="hidden lg:flex items-center gap-2 ml-1">
+            <ScopePill
+              label={isStaff ? disc.label : "All teams"}
+              onClick={() => isStaff && navigate("/choose")}
+              icon={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></svg>
+              }
+            />
+            <ScopePill
+              label="All sites"
+              icon={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 15h.01M15 15h.01" /></svg>
+              }
+            />
+            {user.role === "admin" && (
+              <ScopePill
+                label={isPreviewing && previewRole ? `Previewing: ${ROLE_LABEL[previewRole] ?? previewRole}` : "Preview as role"}
+                active={isPreviewing}
+                onClick={() => navigate("/roles")}
+                icon={
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                }
+              />
+            )}
+          </div>
+
+          {/* Right cluster. */}
+          <div className="flex items-center gap-2 ml-auto">
+            {/* Search opens the ⌘K palette (same destination as Quick find). */}
+            <button
+              type="button"
+              onClick={() => setCmdOpen(true)}
+              className="hidden xl:flex items-center gap-2 h-9 w-64 rounded-lg border border-hairline bg-white pl-3 pr-2 text-sm text-slate-400 hover:border-slate-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              <span className="truncate">Search jobs, assets, sites…</span>
+              <kbd className="ml-auto shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">⌘K</kbd>
+            </button>
+
+            {/* Scan — quick QR scan entry (checkpoint scanning). */}
+            <button
+              type="button"
+              onClick={() => navigate("/checkpoints")}
+              className="btn-secondary h-9"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M21 14v7h-7" /></svg>
+              Scan
+            </button>
+
+            {/* Ask HazardLink — primary CTA (staff only, mirrors the pinned nav). */}
+            {isStaff && (
+              <button
+                type="button"
+                onClick={() => navigate("/assistant")}
+                className="btn-primary h-9"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /><circle cx="12" cy="12" r="3" /></svg>
+                Ask HazardLink
+              </button>
+            )}
+
+            <NotificationBell />
+            <AccountMenu />
+          </div>
         </header>
 
         {/* Preview-mode banner (admin previewing another role from /roles). */}
@@ -308,6 +407,80 @@ export function Layout() {
   );
 }
 
+/** Live-status line in the sidebar footer — "N sites live · All systems
+ *  operational" with a colour-coded dot. Both reads are decorative and degrade
+ *  silently (the public /status endpoint drives the health text/dot; the cached
+ *  sites summary supplies the count when available). */
+function SidebarStatus() {
+  const { data: status } = useQuery<{ service: "up" | "degraded" | "down" }>({
+    queryKey: ["status"],
+    queryFn: () => api<{ service: "up" | "degraded" | "down" }>("/status"),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    retry: false,
+  });
+  // Reuse the Sites page's cache key so we share data when it's already loaded;
+  // gated to staff so we don't fire it for field-staff sessions that lack access.
+  const { user } = useAuth();
+  const isStaff = user?.role === "admin" || user?.role === "supervisor";
+  const { data: sites } = useQuery<{ sites: unknown[] }>({
+    queryKey: ["sites-summary"],
+    queryFn: () => api<{ sites: unknown[] }>("/sites/summary"),
+    enabled: isStaff,
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  const service = status?.service ?? "up";
+  const dot = service === "down" ? "bg-red-400" : service === "degraded" ? "bg-amber-400" : "bg-emerald-400";
+  const health =
+    service === "down" ? "Outage in progress"
+    : service === "degraded" ? "Performance degraded"
+    : "All systems operational";
+  const count = sites?.sites?.length;
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-[#7C8AA5]">
+      <span className={`h-2 w-2 rounded-full shrink-0 ${dot}`} />
+      <span className="truncate">
+        {typeof count === "number" ? `${count} site${count === 1 ? "" : "s"} live · ` : ""}{health}
+      </span>
+    </div>
+  );
+}
+
+/** A light pill "dropdown" affordance in the desktop top bar. */
+function ScopePill({
+  label,
+  icon,
+  onClick,
+  active = false,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "inline-flex items-center gap-1.5 h-9 rounded-lg border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40 " +
+        (active
+          ? "border-blue-200 bg-blue-50 text-blue-700"
+          : "border-hairline bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900")
+      }
+    >
+      <span className={active ? "text-blue-600" : "text-slate-400"}>{icon}</span>
+      <span className="truncate max-w-[12rem]">{label}</span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-slate-400">
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </button>
+  );
+}
+
 /** A single collapsible nav group with a chevron header. */
 function NavGroupAccordion({
   group,
@@ -328,13 +501,13 @@ function NavGroupAccordion({
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
         aria-expanded={open}
         aria-controls={panelId}
-        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[11px] font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[11px] font-semibold uppercase tracking-wider text-[#7C8AA5] hover:text-slate-200 hover:bg-white/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       >
         <span>{group}</span>
         <span className="flex items-center gap-1.5">
           {/* When collapsed, roll the item count onto the parent as a badge. */}
           {!open && (
-            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-slate-700 text-[10px] font-medium text-slate-200">
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white/10 text-[10px] font-medium text-slate-200">
               {items.length}
             </span>
           )}
@@ -378,8 +551,8 @@ function NavItem({
       className={({ isActive }) =>
         "flex items-center gap-2.5 rounded-lg border-l-2 px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 " +
         (isActive
-          ? "bg-slate-800 text-white border-blue-500 font-medium"
-          : "text-slate-300 border-transparent hover:bg-slate-800/60 hover:text-white")
+          ? "bg-sidebar-active text-white border-blue-500 font-medium"
+          : "text-slate-300 border-transparent hover:bg-white/5 hover:text-white")
       }
     >
       {icon && <span className="shrink-0 opacity-70">{icon}</span>}

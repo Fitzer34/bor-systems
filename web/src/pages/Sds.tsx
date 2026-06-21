@@ -100,9 +100,9 @@ export function Sds() {
       </div>
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <button onClick={() => setDiscipline("all")} className={"px-3 py-1.5 text-sm rounded-lg border " + (discipline === "all" ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-300")}>All</button>
+        <button onClick={() => setDiscipline("all")} className={"px-3 py-1.5 text-sm rounded-lg border " + (discipline === "all" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-300")}>All</button>
         {DISCIPLINES.map((d) => (
-          <button key={d.v} onClick={() => setDiscipline(d.v)} className={"px-3 py-1.5 text-sm rounded-lg border " + (discipline === d.v ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-300")}>{d.label}</button>
+          <button key={d.v} onClick={() => setDiscipline(d.v)} className={"px-3 py-1.5 text-sm rounded-lg border " + (discipline === d.v ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-300")}>{d.label}</button>
         ))}
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, brand or barcode…" className={inp + " ml-auto max-w-xs"} />
       </div>

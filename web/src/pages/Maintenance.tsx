@@ -85,7 +85,7 @@ export function Maintenance() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={"px-3 py-1.5 rounded-lg font-medium transition " + (tab === t ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100")}
+            className={"px-3 py-1.5 rounded-lg font-medium transition " + (tab === t ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-100")}
           >
             {t === "jobs" ? "Jobs" : "Contractors"}
           </button>

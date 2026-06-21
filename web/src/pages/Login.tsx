@@ -54,7 +54,7 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 sm:p-6">
+    <div className="min-h-screen flex items-center justify-center bg-surface p-4 sm:p-6">
       <div className="w-full max-w-sm">
         {challengeToken ? (
           <form onSubmit={onSubmitCode} className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm space-y-4">

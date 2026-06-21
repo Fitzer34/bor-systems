@@ -79,7 +79,7 @@ export function Notifications() {
               onClick={() => setReadFilter(f)}
               className={
                 "px-3 py-1 rounded-md font-medium capitalize transition " +
-                (readFilter === f ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100")
+                (readFilter === f ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100")
               }
             >
               {f}
