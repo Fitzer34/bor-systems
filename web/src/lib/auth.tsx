@@ -11,6 +11,17 @@ export interface CurrentUser {
   locale?: string;
   organisationId?: string;
   organisationName?: string;
+  /** Profile + activity fields surfaced by GET /users/me. */
+  avatarUrl?: string | null;
+  lastActiveAt?: string | null;
+  createdAt?: string | null;
+  /**
+   * Effective module-visibility + sensitive-action permissions for this user's
+   * role (defaults merged with any org override; admin = every key true). Keys:
+   * `module.*` and `action.*`. May be absent on an older session — consumers
+   * fall back to a role-derived default (see lib/permissions.tsx).
+   */
+  permissions?: Record<string, boolean>;
 }
 
 export type LoginResult =

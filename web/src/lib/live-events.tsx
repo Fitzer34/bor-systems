@@ -117,6 +117,13 @@ export function LiveEventsBridge(): null {
       qc.invalidateQueries({ queryKey: ["hangers"] });
     });
 
+    // Notifications centre — a new in-app notification was created for someone
+    // in this org. Refresh the bell badge + feed so they appear without a poll.
+    // (Backend only publishes per-org; the feed query is already user-scoped.)
+    es.addEventListener("notification.created", () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    });
+
     es.onerror = () => {
       // EventSource auto-reconnects; React Query 30s polling is the safety net.
     };

@@ -1,7 +1,31 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+
+/** "cleaner" → "Field staff" in the UI only. */
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Admin",
+  supervisor: "Supervisor",
+  cleaner: "Field staff",
+};
+
+/** Friendly absolute date, e.g. "21 Jun 2026". Returns "—" when missing. */
+function fmtDate(value?: string | null): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** Relative-ish last-active label. */
+function fmtLastActive(value?: string | null): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 
 interface TwoFactorStatus {
   enrolled: boolean;
@@ -67,7 +91,7 @@ function TwoFactorSection() {
   const s = status.data;
 
   return (
-    <div className="card p-6">
+    <div id="mfa" className="card p-6 scroll-mt-20">
       <div className="font-semibold text-slate-900 mb-1">Two-factor authentication</div>
       <p className="text-sm text-slate-500 mb-4">
         Use an authenticator app (Google Authenticator, 1Password, Authy, etc.)
@@ -212,10 +236,41 @@ export function Profile() {
     <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-semibold">Profile</h1>
 
+      {/* ── Access & security overview ── */}
+      <div className="card p-6">
+        <div className="font-semibold text-slate-900 mb-1">Access &amp; security</div>
+        <p className="text-sm text-slate-500 mb-4">
+          Your role, organisation and account activity. Manage sign-in security below.
+        </p>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+          <div>
+            <dt className="field-label">Role</dt>
+            <dd className="text-sm font-medium text-slate-800">{ROLE_LABEL[user.role] ?? user.role}</dd>
+          </div>
+          <div>
+            <dt className="field-label">Sites</dt>
+            <dd className="text-sm font-medium text-slate-800 truncate">{user.organisationName || "—"}</dd>
+          </div>
+          <div>
+            <dt className="field-label">Member since</dt>
+            <dd className="text-sm font-medium text-slate-800">{fmtDate(user.createdAt)}</dd>
+          </div>
+          <div>
+            <dt className="field-label">Last active</dt>
+            <dd className="text-sm font-medium text-slate-800">{fmtLastActive(user.lastActiveAt)}</dd>
+          </div>
+        </dl>
+        <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+          <a href="#mfa" className="btn-secondary">Two-factor authentication</a>
+          <a href="#change-password" className="btn-secondary">Change password</a>
+          <Link to="/notifications/preferences" className="btn-secondary">Notification preferences</Link>
+        </div>
+      </div>
+
       <div className="card p-6">
         <div className="font-semibold text-slate-900 mb-1">Account details</div>
         <div className="text-sm text-slate-500 mb-4">
-          {user.email} · {user.role}
+          {user.email} · {ROLE_LABEL[user.role] ?? user.role}
         </div>
         <div className="space-y-3">
           <div>
@@ -244,7 +299,7 @@ export function Profile() {
 
       <TwoFactorSection />
 
-      <div className="card p-6">
+      <div id="change-password" className="card p-6 scroll-mt-20">
         <div className="font-semibold text-slate-900 mb-1">Change password</div>
         <p className="text-sm text-slate-500 mb-4">
           Minimum 10 characters; must include at least three of: lowercase, uppercase, digit, symbol.
