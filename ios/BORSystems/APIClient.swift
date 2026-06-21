@@ -655,3 +655,77 @@ extension APIClient {
                                 buildingId: buildingId, assetId: assetId))
     }
 }
+
+// MARK: - Notifications centre (per-user feed + delivery prefs)
+
+extension APIClient {
+    /// The signed-in user's notifications feed, newest first. `unread` filters to
+    /// only-unread; `before` pages older than a created-at cursor.
+    func notifications(unread: Bool = false, limit: Int = 30, before: Date? = nil) async throws -> [UserNotification] {
+        var qs = "?limit=\(limit)"
+        if unread { qs += "&unread=true" }
+        if let before = before {
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            qs += "&before=\(iso.string(from: before))"
+        }
+        let res: UserNotificationsResponse = try await request("/notifications\(qs)")
+        return res.notifications
+    }
+    func unreadNotificationCount() async throws -> Int {
+        let res: UnreadCountResponse = try await request("/notifications/unread-count")
+        return res.count
+    }
+    func markNotificationRead(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/notifications/\(id)/read", method: "POST")
+    }
+    func markAllNotificationsRead() async throws {
+        let _: EmptyResponse = try await request("/notifications/read-all", method: "POST")
+    }
+    func notificationPreferences() async throws -> [String: ChannelPrefs] {
+        let res: NotificationPrefsResponse = try await request("/notifications/preferences")
+        return res.preferences
+    }
+    struct UpdatePrefBody: Encodable {
+        let eventType: String
+        let inApp: Bool?
+        let email: Bool?
+        let sms: Bool?
+    }
+    @discardableResult
+    func updateNotificationPreference(eventType: String, inApp: Bool? = nil, email: Bool? = nil, sms: Bool? = nil) async throws -> ChannelPrefs {
+        let res: UpdatePrefResponse = try await request(
+            "/notifications/preferences", method: "PUT",
+            body: UpdatePrefBody(eventType: eventType, inApp: inApp, email: email, sms: sms))
+        return res.prefs
+    }
+}
+
+// MARK: - Two-factor authentication (TOTP)
+
+extension APIClient {
+    func twoFactorStatus() async throws -> TwoFactorStatus {
+        try await request("/auth/2fa/status")
+    }
+    func twoFactorEnrol() async throws -> TwoFactorEnrolResponse {
+        try await request("/auth/2fa/enrol", method: "POST")
+    }
+    struct TwoFactorCodeBody: Encodable { let code: String }
+    func twoFactorConfirm(code: String) async throws -> TwoFactorConfirmResponse {
+        try await request("/auth/2fa/enrol/confirm", method: "POST", body: TwoFactorCodeBody(code: code))
+    }
+    func twoFactorDisable(code: String) async throws {
+        let _: EmptyResponse = try await request("/auth/2fa/disable", method: "POST", body: TwoFactorCodeBody(code: code))
+    }
+}
+
+// MARK: - Profile (extended)
+
+extension APIClient {
+    /// Self-service email change. Separate from the name/phone PATCH so callers
+    /// can update just the email field. Backend re-checks org-email uniqueness.
+    struct UpdateEmailBody: Encodable { let email: String }
+    func updateEmail(_ email: String) async throws {
+        let _: EmptyResponse = try await request("/users/me", method: "PATCH", body: UpdateEmailBody(email: email))
+    }
+}

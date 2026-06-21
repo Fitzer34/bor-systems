@@ -5,12 +5,16 @@ import UserNotifications
 @main
 struct BORSystemsApp: App {
     @StateObject private var auth = AuthStore()
+    @StateObject private var discipline = DisciplineStore()
+    @StateObject private var notifications = NotificationsStore()
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(auth)
+                .environmentObject(discipline)
+                .environmentObject(notifications)
                 .task { await auth.bootstrap() }
         }
     }
