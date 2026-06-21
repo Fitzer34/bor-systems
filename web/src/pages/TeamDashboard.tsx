@@ -76,7 +76,10 @@ export function TeamDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isDefault = loadDefaultTeam() === team;
+  // Track the saved default in React state so the button label flips the instant
+  // it's set. (Reading localStorage during render wouldn't re-render on its own.)
+  const [defaultTeam, setDefaultTeam] = useState<Team | null>(loadDefaultTeam);
+  const isDefault = defaultTeam === team;
 
   const pickTeam = (t: Team) => {
     setTeam(t);
@@ -84,8 +87,7 @@ export function TeamDashboard() {
   };
   const makeDefault = () => {
     saveDefaultTeam(team);
-    // Force a re-render so the "default" state reflects immediately.
-    setTeam(team);
+    setDefaultTeam(team);
   };
 
   const wants = (t: Section) => team === "all" || team === t;

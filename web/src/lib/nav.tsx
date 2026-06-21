@@ -194,10 +194,14 @@ export const NAV_ENTRIES: NavEntry[] = [
   { key: "reports", label: "Reports", to: "/reports", icon: ic.report, group: "Insights", requires: { role: STAFF, permission: "module.insights", sections: ["cleaning"] } },
 
   // ── Admin (org governance) ──────────────────────────────────────────────
-  { key: "users", label: "Users", to: "/users", icon: ic.users, group: "Admin", requires: { role: STAFF, permission: "module.admin" } },
+  // Users, Settings, and the org-wide Notifications log are open to all staff
+  // (admin + supervisor) — matching the routes in main.tsx and the backend GETs
+  // that allow ["admin","supervisor"]. They're gated by staff role only, NOT by
+  // module.admin (supervisors lack that permission), so supervisors keep access.
+  { key: "users", label: "Users", to: "/users", icon: ic.users, group: "Admin", requires: { role: STAFF } },
   { key: "roles", label: "Roles & permissions", to: "/roles", icon: ic.lock, group: "Admin", requires: { role: ["admin"], permission: "module.admin" } },
-  { key: "settings", label: "Settings", to: "/settings", icon: ic.cog, group: "Admin", requires: { role: STAFF, permission: "module.admin" } },
-  { key: "notifications-log", label: "Notifications", to: "/notifications-log", icon: ic.bell, group: "Admin", requires: { role: STAFF, permission: "module.admin" } },
+  { key: "settings", label: "Settings", to: "/settings", icon: ic.cog, group: "Admin", requires: { role: STAFF } },
+  { key: "notifications-log", label: "Notifications", to: "/notifications-log", icon: ic.bell, group: "Admin", requires: { role: STAFF } },
   { key: "audit-log", label: "Audit log", to: "/audit-log", icon: ic.list, group: "Admin", requires: { role: ["admin"], permission: "module.admin" } },
   { key: "status", label: "System status", to: "/status", icon: ic.pulse, group: "Admin" },
   { key: "profile", label: "My profile", to: "/profile", icon: ic.person, group: "Admin" },

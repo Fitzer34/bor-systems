@@ -118,9 +118,16 @@ export function LiveEventsBridge(): null {
     });
 
     // Notifications centre — a new in-app notification was created for someone
-    // in this org. Refresh the bell badge + feed so they appear without a poll.
-    // (Backend only publishes per-org; the feed query is already user-scoped.)
-    es.addEventListener("notification.created", () => {
+    // in this org. The backend broadcasts per-org, so this fires for every
+    // member's notification; only refetch when it's addressed to *this* user
+    // (payload carries the recipient `userId`) to avoid needless refetches.
+    es.addEventListener("notification.created", (ev) => {
+      try {
+        const data = JSON.parse((ev as MessageEvent).data);
+        if (data.userId && data.userId !== user.id) return;
+      } catch {
+        // Unparseable payload — fall through and refetch to be safe.
+      }
       qc.invalidateQueries({ queryKey: ["notifications"] });
     });
 
