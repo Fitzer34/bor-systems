@@ -2,6 +2,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { notifyEmail, notifyPush, notifySms } from "./notifications.js";
 import { eventBus } from "./event-bus.js";
+import { notifyOrgRole } from "./notification-centre.js";
+import { dedupKeyFired } from "./notification-dedup.js";
 
 // Any open alert older than this is considered stale at the moment of the
 // next lift event — we force-close it and open a fresh alert. Stops "the
@@ -49,6 +51,24 @@ export async function openAlertForHanger(hangerId: string): Promise<string | nul
     alertId: alert!.id,
     zoneId: hanger.zoneId ?? null,
   });
+
+  // Notifications-centre feed entry for the ops hub (admins + supervisors).
+  // Deduped on the alert id so a stale-close→reopen can't double-post.
+  void (async () => {
+    try {
+      if (await dedupKeyFired(hanger.organisationId, "spill.open", alert!.id)) {
+        await notifyOrgRole(hanger.organisationId, ["admin", "supervisor"], {
+          type: "spill.open",
+          title: "Spill alert",
+          body: `A wet floor sign was lifted${hanger.name ? ` (${hanger.name})` : ""}.`,
+          entityType: "alert",
+          entityId: alert!.id,
+        });
+      }
+    } catch (e) {
+      console.error("spill.open notification failed:", (e as Error).message);
+    }
+  })();
 
   // Fire-and-forget chat-platform webhooks (Slack + MS Teams). Customers
   // with the webhook URL configured under settings get a channel post.
@@ -256,4 +276,20 @@ export async function escalateAlert(alertId: string): Promise<void> {
   }
   await broadcastToOnDutyCleaners(alert.organisationId, alertId, "rebroadcast");
   eventBus.publish(alert.organisationId, { type: "alert.escalated", alertId });
+
+  // Notifications-centre feed entry — escalation goes to supervisors (and admins
+  // who oversee them). Deduped on the alert id (escalation happens once).
+  try {
+    if (await dedupKeyFired(alert.organisationId, "spill.escalated", alertId)) {
+      await notifyOrgRole(alert.organisationId, ["admin", "supervisor"], {
+        type: "spill.escalated",
+        title: "Spill alert escalated",
+        body: "A spill alert was not resolved within the timer and has escalated.",
+        entityType: "alert",
+        entityId: alertId,
+      });
+    }
+  } catch (e) {
+    console.error("spill.escalated notification failed:", (e as Error).message);
+  }
 }

@@ -26,6 +26,7 @@ import { sendEmail } from "../services/notifications.js";
 import { uploadPhoto } from "../services/storage.js";
 import { validatePassword } from "../services/password-policy.js";
 import { hashInviteToken } from "../services/invites.js";
+import { notifyOrgRole } from "../services/notification-centre.js";
 
 const feedbackSchema = z.object({
   isDry: z.boolean(),
@@ -500,6 +501,17 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       actorUserId: null,
       detail: `${con?.name ?? "Contractor"} submitted €${(parsed.data.amountCents / 100).toFixed(0)}`,
     });
+
+    // Notifications-centre feed entry: a quote is now awaiting approval/award.
+    // Best-effort; never blocks the contractor's submission.
+    void notifyOrgRole(q.organisationId, ["admin", "supervisor"], {
+      type: "quote.awaiting_approval",
+      title: `Quote received: ${job.title}`,
+      body: `${con?.name ?? "A contractor"} submitted €${(parsed.data.amountCents / 100).toFixed(0)} for "${job.title}" — awaiting your approval.`,
+      entityType: "job",
+      entityId: q.jobId,
+    }).catch((e) => console.error("quote.awaiting_approval notification failed:", (e as Error).message));
+
     return { ok: true, status: "submitted" };
   });
 

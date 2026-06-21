@@ -3,6 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { requirePermission } from "../services/permissions.js";
 import {
   SETTING_KEYS,
   getAcknowledgementTimerMinutes,
@@ -57,7 +58,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/resolution-timer",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
     async (req, reply) => {
       const body = z.object({ minutes: z.number().int().positive().max(720) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -70,7 +71,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/ack-timer",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
     async (req, reply) => {
       const body = z.object({ minutes: z.number().int().positive().max(120) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -83,7 +84,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/low-battery-threshold",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
     async (req, reply) => {
       const body = z.object({ pct: z.number().int().min(1).max(99) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -96,7 +97,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/default-audible-alarm",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
     async (req, reply) => {
       const body = z.object({ enabled: z.boolean() }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -109,7 +110,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/expected-cleaning-time",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
     async (req, reply) => {
       const body = z.object({ minutes: z.number().int().positive().max(240) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -139,7 +140,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
   // Subscription plan. Gates the monthly AI Assistant allowance; admin-only.
   app.put(
     "/settings/plan",
-    { preHandler: [app.authenticate, requireRole(["admin"])] },
+    { preHandler: [app.authenticate, requireRole(["admin"]), requirePermission("action.manage_billing")] },
     async (req, reply) => {
       const body = z.object({ plan: z.enum(schema.orgPlan.enumValues) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });

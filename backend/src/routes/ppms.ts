@@ -6,6 +6,7 @@ import { ctx } from "../services/auth-context.js";
 import { sendEmail } from "../services/notifications.js";
 import { requestPpmSchedule, scheduleUrl } from "../services/ppm-schedule.js";
 import { toCsv, csvFilename } from "../services/csv.js";
+import { requirePermission } from "../services/permissions.js";
 
 /**
  * PPM (Planned Preventive Maintenance) routes — admin + supervisor only.
@@ -125,7 +126,7 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
 
   // PPM schedule as CSV (soonest-due first) — the "PPM compliance" export on
   // the maintenance dashboard. `days_until_due` is negative when overdue.
-  app.get("/ppms.csv", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+  app.get("/ppms.csv", { preHandler: [app.authenticate, staff, requirePermission("action.export_reports")] }, async (req, reply) => {
     const c = ctx(req);
     const rows = await db
       .select()
@@ -250,7 +251,7 @@ export default async function ppmRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Delete a task.
-  app.delete("/ppms/:id", { preHandler: [app.authenticate, staff] }, async (req) => {
+  app.delete("/ppms/:id", { preHandler: [app.authenticate, staff, requirePermission("action.delete_records")] }, async (req) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);
     await db

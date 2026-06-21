@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { isEmailConfigured, sendEmailToUser } from "./notifications.js";
 import { hasOpenScheduleRequest, requestPpmSchedule } from "./ppm-schedule.js";
+import { notifyOrgRole } from "./notification-centre.js";
 
 /**
  * PPM reminder job.
@@ -146,6 +147,23 @@ async function tick(): Promise<void> {
 
       for (const r of recipients) {
         if (r.email) await sendEmailToUser(r.email, subject, body);
+      }
+
+      // Notifications-centre feed entry for overdue PPMs (in-app bell). The
+      // lastRemindedOn guard below already limits this loop to once/task/day, so
+      // no extra dedup is needed. Due-soon stays email/banner only to avoid noise.
+      if (overdue) {
+        try {
+          await notifyOrgRole(p.organisationId, ["admin", "supervisor"], {
+            type: "ppm.overdue",
+            title: `PPM overdue: ${p.title}`,
+            body: `Planned maintenance "${p.title}" was due ${p.nextDueDate} and is overdue.`,
+            entityType: "ppm",
+            entityId: p.id,
+          });
+        } catch (e) {
+          console.error("ppm.overdue notification failed:", (e as Error).message);
+        }
       }
 
       // Record that we processed this task today (dedup) regardless of email

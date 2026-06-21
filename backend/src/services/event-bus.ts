@@ -15,7 +15,8 @@ export type LiveEvent =
   | { type: "dispatch.created"; dispatchId: string; recipientUserId: string }
   | { type: "dispatch.acknowledged"; dispatchId: string }
   | { type: "dispatch.completed"; dispatchId: string }
-  | { type: "hanger.updated"; hangerId: string };
+  | { type: "hanger.updated"; hangerId: string }
+  | { type: "notification.created"; notificationId: string; userId: string };
 
 type Subscriber = (e: LiveEvent) => void;
 

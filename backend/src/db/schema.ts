@@ -530,6 +530,9 @@ export const hangers = pgTable(
     batteryPct: smallint("battery_pct"),
     firmwareVersion: text("firmware_version"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    // When this hanger's sign was last lifted — surfaced on the floor-plan /
+    // device list so staff can see recency without scanning the events table.
+    lastLiftedAt: timestamp("last_lifted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
@@ -573,6 +576,11 @@ export const users = pgTable(
     pushToken: text("push_token"),
     phoneE164: text("phone_e164"),
     locale: text("locale").notNull().default("en-GB"),
+    // Profile picture URL (uploaded via /uploads). Null until set.
+    avatarUrl: text("avatar_url"),
+    // Last time this user made an authenticated request — stamped (throttled) in
+    // the authenticate preHandler so the team list can show recent activity.
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by"),
@@ -652,6 +660,74 @@ export const notifications = pgTable(
   (t) => ({ alertIdx: index("notifications_alert_idx").on(t.alertId) }),
 );
 
+/// Notifications centre — the per-user in-app feed behind the bell icon. Distinct
+/// from `notifications` above (which is a delivery LOG of push/sms/email sends
+/// tied to an alert). A generated notification always lands here; it also fans
+/// out to email / sms per the user's notificationPreferences.
+export const userNotifications = pgTable(
+  "user_notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    type: text("type").notNull(), // event type, e.g. "spill.open", "wo.overdue"
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    entityType: text("entity_type"), // "alert" | "job" | "ppm" | "part" | ...
+    entityId: uuid("entity_id"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    userReadIdx: index("user_notifications_user_read_idx").on(t.userId, t.readAt),
+    orgCreatedIdx: index("user_notifications_org_created_idx").on(t.organisationId, t.createdAt),
+  }),
+);
+
+/// Per-user, per-event-type delivery preferences for the notifications centre.
+/// in_app is on by default; email / sms are opt-in. Missing row → DEFAULT_PREFS
+/// (see services/notification-centre.ts).
+export const notificationPreferences = pgTable(
+  "notification_preferences",
+  {
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    eventType: text("event_type").notNull(),
+    inApp: boolean("in_app").notNull().default(true),
+    email: boolean("email").notNull().default(false),
+    sms: boolean("sms").notNull().default(false),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.eventType] }),
+  }),
+);
+
+/// Dedup guard for generated notifications: at most one per (org, type, entity,
+/// calendar-day). A row is claimed via insert+onConflictDoNothing — the first
+/// caller wins; repeat ticks for the same overdue thing the same day are
+/// suppressed. dedupKey encodes "type|entityId|YYYY-MM-DD".
+export const notificationDedup = pgTable(
+  "notification_dedup",
+  {
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    dedupKey: text("dedup_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.organisationId, t.dedupKey] }),
+  }),
+);
+
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").defaultRandom().primaryKey(),
   organisationId: uuid("organisation_id")
@@ -679,6 +755,26 @@ export const settings = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.organisationId, t.key] }),
+  }),
+);
+
+/// Per-role permission overrides. The app ships with per-role defaults
+/// (services/permissions.ts → DEFAULT_PERMISSIONS); a stored row here is a
+/// partial JSON map of permission-key → boolean merged on top of those defaults
+/// at read time. Admin is always treated as fully allowed regardless of any row.
+/// One row per (organisation, role).
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    organisationId: uuid("organisation_id")
+      .references(() => organisations.id, { onDelete: "cascade" })
+      .notNull(),
+    role: userRole("role").notNull(),
+    permissions: jsonb("permissions").$type<Record<string, boolean>>().notNull().default({}),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.organisationId, t.role] }),
   }),
 );
 

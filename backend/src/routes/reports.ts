@@ -3,6 +3,7 @@ import { z } from "zod";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { requirePermission } from "../services/permissions.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -53,7 +54,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
     return { from, to, count: rows.length, spills: rows };
   });
 
-  app.get("/reports/spills.csv", { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] }, async (req, reply) => {
+  app.get("/reports/spills.csv", { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.export_reports")] }, async (req, reply) => {
     const q = querySchema.safeParse(req.query);
     if (!q.success) return reply.code(400).send({ error: "invalid_input" });
     const c = ctx(req);
@@ -109,7 +110,7 @@ export default async function reportRoutes(app: FastifyInstance): Promise<void> 
   // cryptographic audit hash in the footer for tamper detection.
   app.get(
     "/reports/compliance.pdf",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.export_reports")] },
     async (req, reply) => {
       const q = querySchema.safeParse(req.query);
       if (!q.success) return reply.code(400).send({ error: "invalid_input" });

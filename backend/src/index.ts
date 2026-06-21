@@ -35,6 +35,8 @@ import inspectionRoutes from "./routes/inspections.js";
 import uploadRoutes from "./routes/uploads.js";
 import sdsRoutes from "./routes/sds.js";
 import aiRoutes from "./routes/ai.js";
+import permissionsRoutes from "./routes/permissions.js";
+import notificationsRoutes from "./routes/notifications.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
@@ -43,6 +45,14 @@ import { startMaintenanceReminderJob } from "./services/maintenance-reminder.js"
 import { startLoneWorkerWatcher } from "./services/lone-worker-watcher.js";
 import { initSentry, Sentry, captureException } from "./services/observability.js";
 import { seedDemoOrgOnBoot } from "./services/demo-seed.js";
+import { db, schema } from "./db/client.js";
+import { eq } from "drizzle-orm";
+
+// In-process throttle for users.last_active_at — only write once per user per
+// LAST_ACTIVE_THROTTLE_MS so we don't issue an UPDATE on every single request.
+// Best-effort + memory-only; a restart just means the next request re-stamps.
+const lastActiveStamp = new Map<string, number>();
+const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000;
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -138,6 +148,28 @@ async function main(): Promise<void> {
     } catch {
       // Never let refresh logic break an otherwise-valid request.
     }
+
+    // ── Activity stamp ──────────────────────────────────────────────
+    // Record last_active_at (throttled in-process to once per few minutes per
+    // user) so the team list can show "active 2m ago". Fire-and-forget; a
+    // failed stamp must never break the request.
+    try {
+      const u = req.user as { sub?: string };
+      if (u?.sub) {
+        const now = Date.now();
+        const last = lastActiveStamp.get(u.sub) ?? 0;
+        if (now - last > LAST_ACTIVE_THROTTLE_MS) {
+          lastActiveStamp.set(u.sub, now);
+          void db
+            .update(schema.users)
+            .set({ lastActiveAt: new Date() })
+            .where(eq(schema.users.id, u.sub))
+            .catch(() => { /* best-effort */ });
+        }
+      }
+    } catch {
+      // Never let activity stamping break an otherwise-valid request.
+    }
   });
 
   // ---- Error handler — funnels uncaught route errors to Sentry ----
@@ -185,6 +217,8 @@ async function main(): Promise<void> {
   await app.register(uploadRoutes);
   await app.register(sdsRoutes);
   await app.register(aiRoutes);
+  await app.register(permissionsRoutes);
+  await app.register(notificationsRoutes);
 
   startEscalationTimer();
   startAntiTheftWatcher();
