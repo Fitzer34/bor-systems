@@ -167,7 +167,7 @@ struct MapView: View {
                     planURL: url,
                     zones: zones,
                     hangers: hangersOnFloor,
-                    alertStatusByZoneId: alertStatusByZoneId,
+                    liftedSpillZoneIds: liftedSpillZoneIds,
                     offlineHangerIds: offlineHangerIds,
                     lowBatteryThreshold: lowBatteryThreshold,
                     onSelect: { selectedHanger = $0 })
@@ -247,6 +247,18 @@ struct MapView: View {
             map[a.zoneId!] = a.status
         }
         return map
+    }
+
+    /// Zones with an active *spill* (the sign was lifted). Kind-aware so a
+    /// planned-cleaning alert doesn't drive the lifted pin, and open *or*
+    /// acknowledged both count — an acknowledged spill is still being cleaned,
+    /// so its sign is still lifted. Matches `openAlert(for:)`'s deep-link filter.
+    private var liftedSpillZoneIds: Set<String> {
+        var ids = Set<String>()
+        for a in alerts where a.kind == .spill && (a.status == .open || a.status == .acknowledged) {
+            if let zid = a.zoneId { ids.insert(zid) }
+        }
+        return ids
     }
 
     // MARK: data

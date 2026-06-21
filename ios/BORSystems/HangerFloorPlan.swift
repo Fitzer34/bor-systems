@@ -4,7 +4,7 @@ import SwiftUI
 /// this drops a pin for every hanger, positioned at its zone's pin coordinate,
 /// with four states:
 ///   • on-rack  → green (sign in place, healthy)
-///   • lifted   → red, pulsing (an open spill alert on this hanger's zone)
+///   • lifted   → red, pulsing (an active spill alert on this hanger's zone)
 ///   • offline  → orange "?" (no recent heartbeat)
 ///   • low batt → a small battery badge on top of whatever the base state is
 /// Tapping a pin calls `onSelect` so the caller can present the SensorDetailSheet.
@@ -15,7 +15,10 @@ struct HangerFloorPlan: View {
     let planURL: URL
     let zones: [Zone]
     let hangers: [Hanger]
-    let alertStatusByZoneId: [String: AlertStatus]
+    /// Zones with an active *spill* alert (open or acknowledged). A lifted sign
+    /// stays lifted while it's being cleaned, so acknowledged spills count too;
+    /// non-spill alerts (e.g. planned cleaning) deliberately don't appear here.
+    let liftedSpillZoneIds: Set<String>
     let offlineHangerIds: Set<String>
     let lowBatteryThreshold: Int
     let onSelect: (Hanger) -> Void
@@ -118,8 +121,10 @@ struct HangerFloorPlan: View {
     private enum PinState { case onRack, lifted, offline }
 
     private func stateFor(_ hanger: Hanger) -> PinState {
-        // A lifted sign wins over everything — it's the urgent state.
-        if let zid = hanger.zoneId, alertStatusByZoneId[zid] == .open {
+        // A lifted sign wins over everything — it's the urgent state. Mirrors
+        // the SensorDetailSheet deep-link: an active spill (open *or*
+        // acknowledged) keeps the sign lifted; other alert kinds don't.
+        if let zid = hanger.zoneId, liftedSpillZoneIds.contains(zid) {
             return .lifted
         }
         if offlineHangerIds.contains(hanger.id) {

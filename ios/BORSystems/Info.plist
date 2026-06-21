@@ -28,7 +28,13 @@
 		<true/>
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>HazardLink uses Bluetooth to connect to new hangers during first-time Wi-Fi setup.</string>
+	<string>HazardLink uses Bluetooth to connect to new hangers and gateways during first-time Wi-Fi setup.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>HazardLink uses the camera to scan Wi-Fi QR codes so you don't have to type the password when onboarding a new hanger or gateway.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>HazardLink reads the name of your current Wi-Fi network so we can auto-fill it during hanger and gateway setup. We never read your location.</string>
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>HazardLink uses Ultra-Wideband to guide you straight to a lifted sign, showing live distance and direction to its tracker.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
