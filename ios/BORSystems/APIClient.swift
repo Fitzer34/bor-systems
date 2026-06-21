@@ -612,6 +612,38 @@ extension APIClient {
     }
 }
 
+// MARK: - Security (incidents, patrols, lone-worker)
+
+extension APIClient {
+    /// Logged security incidents, newest first (staff only — admin/supervisor).
+    /// The Needs-attention queue surfaces the ones still awaiting close-out.
+    func securityIncidents() async throws -> [SecurityIncident] {
+        let res: SecurityIncidentsResponse = try await request("/incidents")
+        return res.incidents
+    }
+
+    /// Guard-tour checkpoints (security discipline). Pair with `checkpointScans`
+    /// to compute which tour points have missed their patrol window.
+    func securityCheckpoints() async throws -> [SecurityCheckpoint] {
+        let res: SecurityCheckpointsResponse = try await request("/checkpoints?discipline=security")
+        return res.checkpoints
+    }
+
+    /// Recent patrol-log scans (security discipline), newest first. Used to find
+    /// the last-scan time per checkpoint for the "missed patrol" check.
+    func securityCheckpointScans() async throws -> [CheckpointScan] {
+        let res: CheckpointScansResponse = try await request("/checkpoint-scans?discipline=security")
+        return res.scans
+    }
+
+    /// All live lone-worker sessions for the org (staff monitoring hub). Drives
+    /// the overdue check-in / panic-alarm attention items.
+    func loneWorkerSessions() async throws -> [LoneWorkerSession] {
+        let res: LoneWorkerSessionsResponse = try await request("/lone-worker/sessions")
+        return res.sessions
+    }
+}
+
 // MARK: - AI (Claude)
 
 extension APIClient {

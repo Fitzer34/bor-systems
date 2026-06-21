@@ -401,3 +401,88 @@ struct JobDetailResponse: Codable {
     let job: MaintenanceJob
     let events: [JobEvent]
 }
+
+// MARK: - Security (incidents, checkpoints / patrols, lone-worker)
+
+/// The building a security item is attached to (nested object the backend
+/// joins in — `null` when the row has no building set).
+struct SecurityBuildingRef: Codable, Hashable {
+    let id: String
+    let name: String
+}
+
+/// A logged security incident (GET /incidents). Mirrors the `security_incidents`
+/// table; the building is joined in by the route. Optional/defaulted fields so a
+/// leaner payload still decodes. Keys are camelCase to match the backend (no key
+/// conversion in the shared decoder).
+struct SecurityIncident: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    /// open | investigating | resolved. Defaulted so an omitted field decodes.
+    var status: String = "open"
+    /// low | medium | high | critical.
+    var severity: String = "medium"
+    var kind: String? = nil
+    var description: String? = nil
+    var photoUrl: String? = nil
+    var occurredAt: Date? = nil
+    var resolvedAt: Date? = nil
+    var resolutionNote: String? = nil
+    /// The maintenance job this incident was turned into, if any.
+    var raisedJobId: String? = nil
+    var createdAt: Date? = nil
+    var building: SecurityBuildingRef? = nil
+
+    /// Still needs a close-out: anything not resolved.
+    var isOpen: Bool { status != "resolved" }
+    /// Highest-urgency incidents lead the queue.
+    var isCritical: Bool { severity == "critical" || severity == "high" }
+}
+struct SecurityIncidentsResponse: Codable { let incidents: [SecurityIncident] }
+
+/// A guard-tour checkpoint (GET /checkpoints?discipline=security). The "missed
+/// patrol" logic compares the most-recent scan's age against an expected window.
+struct SecurityCheckpoint: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    var locationNote: String? = nil
+    var instructions: String? = nil
+    var discipline: String? = nil   // "security" | "cleaning"
+    var active: Bool = true
+    var scanUrl: String? = nil
+    var building: SecurityBuildingRef? = nil
+}
+struct SecurityCheckpointsResponse: Codable { let checkpoints: [SecurityCheckpoint] }
+
+/// One patrol-log row (GET /checkpoint-scans?discipline=security). `scannedAt`
+/// drives recency; the checkpoint + building names are joined in for display.
+struct CheckpointScan: Codable, Identifiable, Hashable {
+    let id: String
+    let checkpointId: String
+    var guardName: String? = nil
+    var note: String? = nil
+    var photoUrl: String? = nil
+    var flagged: Bool = false
+    let scannedAt: Date
+    var checkpointName: String? = nil
+    var buildingName: String? = nil
+}
+struct CheckpointScansResponse: Codable { let scans: [CheckpointScan] }
+
+/// A live lone-worker welfare session (GET /lone-worker/sessions — staff only).
+/// `status` is active | ended | alarm; `nextCheckInDueAt` powers the
+/// overdue / due-soon split, `alarmReason` is "panic" | "missed_check_in".
+struct LoneWorkerSession: Codable, Identifiable, Hashable {
+    let id: String
+    var userId: String? = nil
+    var status: String = "active"
+    var intervalMinutes: Int? = nil
+    var note: String? = nil
+    var startedAt: Date? = nil
+    var lastCheckInAt: Date? = nil
+    var nextCheckInDueAt: Date? = nil
+    var alarmReason: String? = nil
+    var alarmAt: Date? = nil
+    var userName: String? = nil
+}
+struct LoneWorkerSessionsResponse: Codable { let sessions: [LoneWorkerSession] }
