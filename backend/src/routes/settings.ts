@@ -58,7 +58,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/resolution-timer",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async (req, reply) => {
       const body = z.object({ minutes: z.number().int().positive().max(720) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -71,7 +71,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/ack-timer",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async (req, reply) => {
       const body = z.object({ minutes: z.number().int().positive().max(120) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -84,7 +84,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/low-battery-threshold",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async (req, reply) => {
       const body = z.object({ pct: z.number().int().min(1).max(99) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -97,7 +97,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/default-audible-alarm",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async (req, reply) => {
       const body = z.object({ enabled: z.boolean() }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
@@ -110,7 +110,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
   app.put(
     "/settings/expected-cleaning-time",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_automations")] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async (req, reply) => {
       const body = z.object({ minutes: z.number().int().positive().max(240) }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });

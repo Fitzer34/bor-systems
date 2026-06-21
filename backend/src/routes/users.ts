@@ -272,7 +272,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.post("/users/:id/deactivate",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_users")] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.delete_records")] },
     async (req) => {
       const { id } = req.params as { id: string };
       const c = ctx(req);
