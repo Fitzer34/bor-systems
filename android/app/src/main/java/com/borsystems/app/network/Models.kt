@@ -467,3 +467,98 @@ data class TwoFactorConfirm(
     val ok: Boolean = true,
     val recoveryCodes: List<String> = emptyList(),
 )
+
+// ─── Security: incidents ─────────────────────────────────────────────────
+// Mirror backend routes/security.ts GET /incidents. `severity`/`status` are
+// plain Strings so a new backend value never crashes decoding; `building` is
+// the joined { id, name } summary the route attaches (null when unassigned).
+
+@Serializable
+data class IncidentBuilding(
+    val id: String,
+    val name: String,
+)
+
+@Serializable
+data class SecurityIncident(
+    val id: String,
+    val title: String,
+    val kind: String? = null,
+    val severity: String = "medium",   // low | medium | high | critical
+    val status: String = "open",       // open | investigating | resolved
+    val description: String? = null,
+    val photoUrl: String? = null,
+    val occurredAt: String? = null,
+    val resolvedAt: String? = null,
+    val resolutionNote: String? = null,
+    val buildingId: String? = null,
+    val building: IncidentBuilding? = null,
+    val createdAt: String? = null,
+)
+
+@Serializable
+data class IncidentsResponse(val incidents: List<SecurityIncident>)
+
+// ─── Security: checkpoints (guard tours) ─────────────────────────────────
+// Mirror GET /checkpoints?discipline=security. `building` is the joined
+// summary; `scanUrl` is the no-login QR target the route adds.
+
+@Serializable
+data class Checkpoint(
+    val id: String,
+    val name: String,
+    val locationNote: String? = null,
+    val instructions: String? = null,
+    val discipline: String = "security",
+    val active: Boolean = true,
+    val buildingId: String? = null,
+    val building: IncidentBuilding? = null,
+    val scanUrl: String? = null,
+    val createdAt: String? = null,
+)
+
+@Serializable
+data class CheckpointsResponse(val checkpoints: List<Checkpoint>)
+
+// ─── Security: checkpoint scans (patrol log) ─────────────────────────────
+// Mirror GET /checkpoint-scans?discipline=security. Used to derive patrol
+// recency per checkpoint (a "missed patrol" is a checkpoint whose newest scan
+// is older than the expected window — see HomeScreen.buildAttention).
+
+@Serializable
+data class CheckpointScan(
+    val id: String,
+    val checkpointId: String,
+    val guardName: String? = null,
+    val note: String? = null,
+    val photoUrl: String? = null,
+    val flagged: Boolean = false,
+    val scannedAt: String,
+    val checkpointName: String? = null,
+    val buildingName: String? = null,
+)
+
+@Serializable
+data class CheckpointScansResponse(val scans: List<CheckpointScan>)
+
+// ─── Security: lone-worker monitoring sessions ───────────────────────────
+// Mirror GET /lone-worker/sessions (live sessions only — active | alarm).
+// `status` is a plain String for forward-compatibility; timestamps are ISO.
+
+@Serializable
+data class LoneWorkerSession(
+    val id: String,
+    val userId: String? = null,
+    val status: String,                 // active | alarm (live only)
+    val intervalMinutes: Int = 30,
+    val note: String? = null,
+    val startedAt: String? = null,
+    val lastCheckInAt: String? = null,
+    val nextCheckInDueAt: String? = null,
+    val alarmReason: String? = null,    // missed_check_in | panic
+    val alarmAt: String? = null,
+    val userName: String? = null,
+)
+
+@Serializable
+data class LoneWorkerSessionsResponse(val sessions: List<LoneWorkerSession>)

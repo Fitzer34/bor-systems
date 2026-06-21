@@ -486,4 +486,27 @@ object ApiClient {
     suspend fun twoFactorDisable(code: String) {
         post<Unit, CodeBody>("/auth/2fa/disable", CodeBody(code))
     }
+
+    // ─── Security section ────────────────────────────────────────────────────
+    // Mirror backend routes/security.ts + lone-worker.ts. All staff-gated on the
+    // server (admin/supervisor); the Security discipline is staff-only anyway.
+
+    /** All security incidents, newest first (GET /incidents). */
+    suspend fun securityIncidents(): List<SecurityIncident> =
+        request<IncidentsResponse>("/incidents").incidents
+
+    /** Security-discipline checkpoints / guard-tour points
+     *  (GET /checkpoints?discipline=security). */
+    suspend fun securityCheckpoints(): List<Checkpoint> =
+        request<CheckpointsResponse>("/checkpoints?discipline=security").checkpoints
+
+    /** Recent security patrol scans, newest first
+     *  (GET /checkpoint-scans?discipline=security) — used for patrol recency. */
+    suspend fun securityCheckpointScans(): List<CheckpointScan> =
+        request<CheckpointScansResponse>("/checkpoint-scans?discipline=security").scans
+
+    /** Live lone-worker monitoring sessions — active or in alarm
+     *  (GET /lone-worker/sessions). */
+    suspend fun loneWorkerSessions(): List<LoneWorkerSession> =
+        request<LoneWorkerSessionsResponse>("/lone-worker/sessions").sessions
 }

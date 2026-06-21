@@ -271,24 +271,41 @@ private fun SecurityHome(onOpenRoute: (String) -> Unit) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
-            KpiHeader(listOf(Kpi("Security", "Patrols & incidents")))
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Security tools", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Patrols, incidents and checkpoints are managed in the web admin for now. Spill-safety and maintenance work fully here.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
+        item { SecurityKpiHeader() }
         item { NeedsAttentionSection(discipline = Discipline.Security, onOpenRoute = onOpenRoute) }
     }
+}
+
+@Composable
+private fun SecurityKpiHeader() {
+    var onDuty by remember { mutableStateOf<Int?>(null) }
+    var openIncidents by remember { mutableStateOf<Int?>(null) }
+    var checkInsDue by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(Unit) {
+        // Guards on duty (mirror the web SecurityColumn "Guards on duty").
+        runCatching { ApiClient.listUsers() }.getOrNull()?.let { users ->
+            onDuty = users.count { it.deactivatedAt == null && it.onDuty }
+        }
+        runCatching { ApiClient.securityIncidents() }.getOrNull()?.let { incidents ->
+            openIncidents = incidents.count { it.status == "open" || it.status == "investigating" }
+        }
+        runCatching { ApiClient.loneWorkerSessions() }.getOrNull()?.let { sessions ->
+            val now = java.time.Instant.now()
+            checkInsDue = sessions.count { s ->
+                if (s.status == "alarm") return@count true
+                if (s.status != "active") return@count false
+                val due = parseInstant(s.nextCheckInDueAt) ?: return@count false
+                java.time.Duration.between(now, due).toMinutes() <= 5
+            }
+        }
+    }
+    KpiHeader(
+        listOf(
+            Kpi("On duty", onDuty?.toString() ?: "—"),
+            Kpi("Open incidents", openIncidents?.toString() ?: "—", if ((openIncidents ?: 0) > 0) Color(0xFFE53935) else null),
+            Kpi("Check-ins due", checkInsDue?.toString() ?: "—", if ((checkInsDue ?: 0) > 0) Color(0xFFF59E0B) else null),
+        ),
+    )
 }
 
 // ─── Needs attention ──────────────────────────────────────────────────────
@@ -297,7 +314,13 @@ private data class AttentionItem(
     val title: String,
     val subtitle: String,
     val severity: Severity,
-    val route: String,
+    /**
+     * Destination route for a tap, or null for an informational row (no nav
+     * target exists yet — e.g. security, which has no in-app screen). A null
+     * route renders a non-clickable card rather than a dead-end that crashes
+     * `nav.navigate` on an unregistered route.
+     */
+    val route: String? = null,
 )
 
 private enum class Severity { High, Medium, Low }
@@ -330,7 +353,7 @@ private fun NeedsAttentionSection(discipline: Discipline, onOpenRoute: (String) 
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            else -> items.forEach { it -> AttentionCard(it) { onOpenRoute(it.route) } }
+            else -> items.forEach { it -> AttentionCard(it, onClick = it.route?.let { r -> { onOpenRoute(r) } }) }
         }
     }
 }
@@ -370,16 +393,118 @@ private suspend fun buildAttention(discipline: Discipline): List<AttentionItem> 
                 if (overdue > 0) out += AttentionItem("$overdue PPM${if (overdue == 1) "" else "s"} overdue", "Planned maintenance slipped", Severity.High, "ppms")
             }
         }
-        Discipline.Security -> {
-            // No native security endpoints yet — surface nothing rather than guess.
-        }
+        Discipline.Security -> buildSecurityAttention(out)
     }
     return out.sortedBy { it.severity.ordinal }
 }
 
+/**
+ * Expected gap between patrol scans at a checkpoint. The backend has no
+ * per-checkpoint interval yet, so we use one sensible default: a security
+ * checkpoint with no scan inside this window counts as a missed patrol.
+ */
+private const val PATROL_WINDOW_MINUTES = 4L * 60L          // 4 hours
+/** Don't flag a brand-new checkpoint as "missed" before its first window. */
+private const val PATROL_GRACE_MINUTES = PATROL_WINDOW_MINUTES
+
+/** Parse an ISO-8601 instant the backend emits, or null if absent/unparseable. */
+private fun parseInstant(iso: String?): java.time.Instant? =
+    iso?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+
+private fun minutesSince(iso: String?): Long? =
+    parseInstant(iso)?.let { java.time.Duration.between(it, java.time.Instant.now()).toMinutes() }
+
+private fun fmtSince(mins: Long): String = when {
+    mins < 1 -> "just now"
+    mins < 60 -> "${mins}m ago"
+    mins < 1440 -> "${mins / 60}h ago"
+    else -> "${mins / 1440}d ago"
+}
+
+/**
+ * Security "Needs attention", mirroring the web (AttentionQueue + SecurityColumn)
+ * and adding patrol recency:
+ *   • lone-worker panic / overdue check-in   → /lone-worker/sessions
+ *   • open incidents awaiting close-out      → /incidents
+ *   • missed patrols (no recent scan)        → /checkpoints + /checkpoint-scans
+ *
+ * Each call is independent and best-effort (runCatching). No in-app security
+ * screen exists yet, so rows are informational (route = null) — never a tap
+ * that dead-ends on an unregistered nav route.
+ */
+private suspend fun buildSecurityAttention(out: MutableList<AttentionItem>) {
+    // ── Lone-worker: panic / overdue / due-soon (mirrors web 5-min window) ──
+    runCatching { ApiClient.loneWorkerSessions() }.getOrNull()?.let { sessions ->
+        for (s in sessions) {
+            val who = s.userName ?: "Lone worker"
+            when {
+                s.status == "alarm" -> out += AttentionItem(
+                    who,
+                    if (s.alarmReason == "panic") "Panic alarm raised"
+                    else s.alarmReason?.let { "Alarm: $it" } ?: "Missed check-in escalated",
+                    Severity.High,
+                )
+                s.status == "active" && s.nextCheckInDueAt != null -> {
+                    val due = parseInstant(s.nextCheckInDueAt)
+                    if (due != null) {
+                        val mins = java.time.Duration.between(java.time.Instant.now(), due).toMinutes()
+                        if (mins <= 0) out += AttentionItem(who, "Welfare check-in overdue", Severity.High)
+                        else if (mins <= 5) out += AttentionItem(who, "Welfare check-in due shortly", Severity.Low)
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Open incidents awaiting close-out (not yet resolved) ──
+    runCatching { ApiClient.securityIncidents() }.getOrNull()?.let { incidents ->
+        for (i in incidents.filter { it.status == "open" || it.status == "investigating" }) {
+            val critical = i.severity == "critical" || i.severity == "high"
+            val where = i.building?.name?.let { " · $it" } ?: ""
+            val state = if (i.status == "investigating") "Investigating" else "Awaiting close-out"
+            out += AttentionItem(
+                i.title,
+                "$state$where",
+                if (critical) Severity.High else Severity.Medium,
+            )
+        }
+    }
+
+    // ── Missed patrols: active security checkpoints with no recent scan ──
+    runCatching {
+        val checkpoints = ApiClient.securityCheckpoints().filter { it.active }
+        val scans = ApiClient.securityCheckpointScans()
+        checkpoints to scans
+    }.getOrNull()?.let { (checkpoints, scans) ->
+        // Newest scan time per checkpoint.
+        val lastScanMins = HashMap<String, Long>()
+        for (s in scans) {
+            val m = minutesSince(s.scannedAt) ?: continue
+            val prev = lastScanMins[s.checkpointId]
+            if (prev == null || m < prev) lastScanMins[s.checkpointId] = m
+        }
+        for (cp in checkpoints) {
+            val sinceLast = lastScanMins[cp.id]
+            val where = cp.building?.name?.let { " · $it" } ?: ""
+            when {
+                sinceLast == null -> {
+                    // Never scanned — only flag once past the first expected window.
+                    val age = minutesSince(cp.createdAt)
+                    if (age == null || age >= PATROL_GRACE_MINUTES) {
+                        out += AttentionItem("${cp.name}$where", "Patrol not yet logged", Severity.Medium)
+                    }
+                }
+                sinceLast >= PATROL_WINDOW_MINUTES ->
+                    out += AttentionItem("${cp.name}$where", "Missed patrol · last scan ${fmtSince(sinceLast)}", Severity.Medium)
+            }
+        }
+    }
+}
+
 @Composable
-private fun AttentionCard(item: AttentionItem, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+private fun AttentionCard(item: AttentionItem, onClick: (() -> Unit)?) {
+    val base = Modifier.fillMaxWidth()
+    Card(if (onClick != null) base.clickable(onClick = onClick) else base) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(36.dp).background(sevColor(item.severity).copy(alpha = 0.15f), CircleShape),
