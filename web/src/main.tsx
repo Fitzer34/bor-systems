@@ -39,6 +39,7 @@ import { Competency } from "./pages/Competency";
 import { Inspections } from "./pages/Inspections";
 import { Sds } from "./pages/Sds";
 import { Incidents } from "./pages/Incidents";
+import { Invoices } from "./pages/Invoices";
 import { Checkpoints } from "./pages/Checkpoints";
 import { Assistant } from "./pages/Assistant";
 import { CheckpointScan } from "./pages/CheckpointScan";
@@ -155,6 +156,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="meters" element={<RequireAuth role={["admin", "supervisor"]}><Meters /></RequireAuth>} />
               <Route path="competency" element={<RequireAuth role={["admin", "supervisor"]}><Competency /></RequireAuth>} />
               <Route path="incidents" element={<RequireAuth role={["admin", "supervisor"]}><Incidents /></RequireAuth>} />
+              {/* Billing — invoices register. Staff with billing access only;
+                  the nav entry is gated by the same permission. */}
+              <Route path="invoices" element={<RequireAuth role={["admin", "supervisor"]} permission="action.manage_billing"><Invoices /></RequireAuth>} />
               <Route path="checkpoints" element={<RequireAuth role={["admin", "supervisor"]}><Checkpoints /></RequireAuth>} />
               <Route path="lone-worker" element={<LoneWorker />} />
               <Route path="assistant" element={<RequireAuth role={["admin", "supervisor"]}><Assistant /></RequireAuth>} />

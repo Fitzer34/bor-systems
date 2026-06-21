@@ -1146,3 +1146,34 @@ export const jobEvents = pgTable(
   },
   (t) => ({ jobIdx: index("job_events_job_idx").on(t.jobId) }),
 );
+
+/// Invoices — a per-org billing record raised against a customer, optionally
+/// linked to a building and/or a maintenance job. Money is in minor units
+/// (amountCents). Status moves draft → sent → paid, with overdue / void as side
+/// states. The daily reminder tick (services/maintenance-reminder.ts) flips a
+/// 'sent' invoice past its due date (and unpaid) to 'overdue' and emits the
+/// invoice.overdue notification to admins/supervisors. `number` is auto-assigned
+/// per org as INV-#### (next sequence, starting 2050).
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    number: text("number").notNull(), // e.g. "INV-2050"
+    customerName: text("customer_name"),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    jobId: uuid("job_id").references(() => maintenanceJobs.id, { onDelete: "set null" }),
+    amountCents: integer("amount_cents").notNull().default(0), // minor units
+    currency: text("currency").notNull().default("EUR"),
+    status: text("status").notNull().default("draft"), // draft|sent|paid|overdue|void
+    issuedAt: timestamp("issued_at", { withTimezone: true }),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgStatusIdx: index("invoices_org_status_idx").on(t.organisationId, t.status),
+    orgDueIdx: index("invoices_org_due_idx").on(t.organisationId, t.dueAt),
+  }),
+);

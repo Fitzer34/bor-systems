@@ -31,6 +31,12 @@ function todayISO(): string {
 function daysUntil(dateISO: string, todayISOStr: string): number {
   return Math.round((Date.parse(dateISO + "T00:00:00Z") - Date.parse(todayISOStr + "T00:00:00Z")) / 86_400_000);
 }
+/** Minor units → a human "€123.45" style string for notification copy. */
+function formatMoney(cents: number, currency: string): string {
+  const major = (cents / 100).toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sym = currency === "EUR" ? "€" : currency === "GBP" ? "£" : currency === "USD" ? "$" : "";
+  return sym ? `${sym}${major}` : `${major} ${currency}`;
+}
 
 /**
  * Generate notifications-centre feed entries for an org's maintenance state:
@@ -78,6 +84,44 @@ async function generateMaintenanceNotifications(orgId: string, today: string): P
           body: `${p.name} is at ${p.stockQty} (reorder level ${p.reorderLevel}).`,
           entityType: "part",
           entityId: p.id,
+        });
+      }
+    }
+
+    // Overdue invoices: a 'sent' invoice whose due date has passed and which
+    // hasn't been paid. Flip it to 'overdue' (idempotent — only touches still-
+    // 'sent' rows) and notify admins/supervisors. Deduped per (invoice, day) so
+    // a frequent tick doesn't re-notify.
+    const overdueInvoices = await db
+      .select({
+        id: schema.invoices.id,
+        number: schema.invoices.number,
+        amountCents: schema.invoices.amountCents,
+        currency: schema.invoices.currency,
+        customerName: schema.invoices.customerName,
+      })
+      .from(schema.invoices)
+      .where(and(
+        eq(schema.invoices.organisationId, orgId),
+        eq(schema.invoices.status, "sent"),
+        lt(schema.invoices.dueAt, new Date()),
+        isNull(schema.invoices.paidAt),
+      ));
+    for (const inv of overdueInvoices) {
+      // Idempotent: scope the update to still-'sent' rows so a re-run is a no-op.
+      await db
+        .update(schema.invoices)
+        .set({ status: "overdue" })
+        .where(and(eq(schema.invoices.id, inv.id), eq(schema.invoices.status, "sent")));
+      if (await dedupKeyFired(orgId, "invoice.overdue", inv.id, today)) {
+        const amount = formatMoney(inv.amountCents, inv.currency);
+        const who = inv.customerName ? ` for ${inv.customerName}` : "";
+        await notifyOrgRole(orgId, ["admin", "supervisor"], {
+          type: "invoice.overdue",
+          title: `Invoice overdue: ${inv.number}`,
+          body: `Invoice ${inv.number}${who} (${amount}) is past its due date and unpaid.`,
+          entityType: "invoice",
+          entityId: inv.id,
         });
       }
     }

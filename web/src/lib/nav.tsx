@@ -124,6 +124,9 @@ const ic = {
   report: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><path d="M8 16v-3M12 16v-5M16 16v-2" /></svg>
   ),
+  invoice: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="9" y1="13" x2="13" y2="13" /><line x1="9" y1="17" x2="15" y2="17" /><path d="M12 7v.5M12 11.5V12" /></svg>
+  ),
   users: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></svg>
   ),
@@ -184,6 +187,9 @@ export const NAV_ENTRIES: NavEntry[] = [
   { key: "incidents", label: "Incidents", to: "/incidents", icon: ic.alert, group: "Compliance & safety", requires: { role: STAFF, permission: "module.compliance", sections: ["security"] } },
   { key: "checkpoints", label: "Checkpoints", to: "/checkpoints", icon: ic.qr, group: "Compliance & safety", requires: { role: STAFF, permission: "module.compliance", sections: ["cleaning", "security"] } },
   { key: "lone-worker", label: "Lone worker", to: "/lone-worker", icon: ic.solo, group: "Compliance & safety" },
+
+  // ── Business (billing / commercial) ─────────────────────────────────────
+  { key: "invoices", label: "Invoices", to: "/invoices", icon: ic.invoice, group: "Business", requires: { role: STAFF, permission: "action.manage_billing" } },
 
   // ── Insights ────────────────────────────────────────────────────────────
   // Personal notifications feed (per-user; every role has one). Distinct from

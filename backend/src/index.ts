@@ -37,6 +37,7 @@ import sdsRoutes from "./routes/sds.js";
 import aiRoutes from "./routes/ai.js";
 import permissionsRoutes from "./routes/permissions.js";
 import notificationsRoutes from "./routes/notifications.js";
+import invoiceRoutes from "./routes/invoices.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
@@ -219,6 +220,7 @@ async function main(): Promise<void> {
   await app.register(aiRoutes);
   await app.register(permissionsRoutes);
   await app.register(notificationsRoutes);
+  await app.register(invoiceRoutes);
 
   startEscalationTimer();
   startAntiTheftWatcher();
