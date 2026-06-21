@@ -6,36 +6,58 @@ struct MapView: View {
     @State private var zones: [Zone] = []
     @State private var alerts: [ActiveAlert] = []
     @State private var hangers: [Hanger] = []
+    @State private var gateways: [Gateway] = []
+    @State private var settings: AppSettings?
 
     @State private var selectedBuilding: Building?
     @State private var selectedFloor: Floor?
+    /// Tapped hanger pin → drives the SensorDetailSheet.
+    @State private var selectedHanger: Hanger?
 
     @State private var refreshTask: Task<Void, Never>?
     @State private var loadError: String?
     /// Bumped every second to force re-evaluation of the offline pins.
     @State private var tick = 0
 
+    private var lowBatteryThreshold: Int { settings?.lowBatteryThreshold ?? 20 }
+
+    /// Hangers that haven't phoned home within the online window. Per-hanger
+    /// (not per-zone) so the map can flag an individual offline sign even when
+    /// a sibling in the same zone is healthy.
+    private var offlineHangerIds: Set<String> {
+        let now = Date()
+        var out = Set<String>()
+        for h in hangers where h.status == .active {
+            let fresh = h.lastSeenAt.map { now.timeIntervalSince($0) <= Self.onlineWindow } ?? false
+            if !fresh { out.insert(h.id) }
+        }
+        return out
+    }
+
+    /// Hangers on the currently-selected floor (by zone membership).
+    private var hangersOnFloor: [Hanger] {
+        let floorZoneIds = Set(zones.map { $0.id })
+        return hangers.filter { $0.zoneId.map(floorZoneIds.contains) ?? false }
+    }
+
+    /// Gateways located in the selected building (drawn distinctly on the plan
+    /// card header so installers can see where the box lives).
+    private var gatewaysInBuilding: [Gateway] {
+        guard let b = selectedBuilding else { return [] }
+        return gateways.filter { $0.buildingId == b.id }
+    }
+
+    /// The open alert (if any) on a given hanger's zone — used to deep-link the
+    /// SensorDetailSheet to AlertDetailView.
+    private func openAlert(for hanger: Hanger) -> ActiveAlert? {
+        guard let zid = hanger.zoneId else { return nil }
+        return alerts.first { $0.zoneId == zid && $0.status == .open && $0.kind == .spill }
+    }
+
     /// Battery LoRa hangers deep-sleep + check in once a DAY: "online" = checked
     /// in within 26 h (one daily beat + 2 h margin). Lifting the sign wakes it
     /// instantly, so the spill pin appears immediately regardless of this.
     private static let onlineWindow: TimeInterval = 26 * 60 * 60
-
-    private var offlineZoneIds: Set<String> {
-        let now = Date()
-        var byZone: [String: [Hanger]] = [:]
-        for h in hangers where h.zoneId != nil && h.status == .active {
-            byZone[h.zoneId!, default: []].append(h)
-        }
-        var out = Set<String>()
-        for (zid, list) in byZone {
-            let fresh = list.contains { h in
-                guard let last = h.lastSeenAt else { return false }
-                return now.timeIntervalSince(last) <= Self.onlineWindow
-            }
-            if !fresh { out.insert(zid) }
-        }
-        return out
-    }
 
     var body: some View {
         NavigationStack {
@@ -65,6 +87,14 @@ struct MapView: View {
             .task { await loadInitial() }
             .onAppear { startPolling() }
             .onDisappear { refreshTask?.cancel() }
+            .sheet(item: $selectedHanger) { hanger in
+                SensorDetailSheet(
+                    hanger: hanger,
+                    zoneName: zones.first(where: { $0.id == hanger.zoneId })?.name,
+                    floorName: selectedFloor?.name,
+                    openAlert: openAlert(for: hanger),
+                    lowBatteryThreshold: lowBatteryThreshold)
+            }
         }
     }
 
@@ -117,9 +147,30 @@ struct MapView: View {
 
     private func planCard(for floor: Floor) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(floor.name).font(.headline)
+            HStack {
+                Text(floor.name).font(.headline)
+                Spacer()
+                // Gateways live per-building, not per-floor, so we surface them
+                // as a distinct marker + count on the card header rather than
+                // pinning them onto a specific floor's plan.
+                if !gatewaysInBuilding.isEmpty {
+                    Label("\(gatewaysInBuilding.count) gateway\(gatewaysInBuilding.count == 1 ? "" : "s")",
+                          systemImage: "wifi.router")
+                        .font(.caption2.weight(.medium))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.indigo.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.indigo)
+                }
+            }
             if let urlString = floor.floorPlanUrl, let url = assetURL(urlString) {
-                FloorPlanWithPins(planURL: url, zones: zones, alertedStatusByZoneId: alertStatusByZoneId, offlineZoneIds: offlineZoneIds)
+                HangerFloorPlan(
+                    planURL: url,
+                    zones: zones,
+                    hangers: hangersOnFloor,
+                    liftedSpillZoneIds: liftedSpillZoneIds,
+                    offlineHangerIds: offlineHangerIds,
+                    lowBatteryThreshold: lowBatteryThreshold,
+                    onSelect: { selectedHanger = $0 })
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 240)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
@@ -138,9 +189,9 @@ struct MapView: View {
 
     private var legend: some View {
         HStack(spacing: 14) {
-            legendItem(color: .red,   text: "Alert")
-            legendItem(color: .blue,  text: "Cleaning")
-            legendItem(color: .green, text: "Idle")
+            legendItem(color: .green,  text: "On rack")
+            legendItem(color: .red,    text: "Lifted")
+            legendItem(color: .orange, text: "Offline")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -198,6 +249,18 @@ struct MapView: View {
         return map
     }
 
+    /// Zones with an active *spill* (the sign was lifted). Kind-aware so a
+    /// planned-cleaning alert doesn't drive the lifted pin, and open *or*
+    /// acknowledged both count — an acknowledged spill is still being cleaned,
+    /// so its sign is still lifted. Matches `openAlert(for:)`'s deep-link filter.
+    private var liftedSpillZoneIds: Set<String> {
+        var ids = Set<String>()
+        for a in alerts where a.kind == .spill && (a.status == .open || a.status == .acknowledged) {
+            if let zid = a.zoneId { ids.insert(zid) }
+        }
+        return ids
+    }
+
     // MARK: data
 
     private func loadInitial() async {
@@ -209,6 +272,9 @@ struct MapView: View {
             }
             await refreshAlerts()
             await refreshHangers()
+            // Gateways + settings change rarely — load once, not on every tick.
+            gateways = (try? await APIClient.shared.gateways()) ?? []
+            settings = try? await APIClient.shared.appSettings()
         } catch {
             loadError = "Could not load buildings."
         }

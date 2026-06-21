@@ -11,6 +11,18 @@ struct CurrentUser: Codable, Equatable {
     let role: UserRole
     let onDuty: Bool
     let locale: String?
+    /// Effective module-visibility + sensitive-action permissions for this
+    /// user's role, computed server-side (defaults merged with any org
+    /// override; admin = all true). Absent on older payloads / the 2FA-login
+    /// response — `Capabilities` falls back to the role→capability map then.
+    var permissions: [String: Bool]? = nil
+    /// SMS-escalation number, profile fields and org/account metadata added by
+    /// GET /users/me. All optional so the leaner login/2FA payloads still decode.
+    var phoneE164: String? = nil
+    var avatarUrl: String? = nil
+    var organisationName: String? = nil
+    var lastActiveAt: Date? = nil
+    var createdAt: Date? = nil
 }
 
 struct LoginResponse: Codable {
@@ -152,6 +164,18 @@ struct Hanger: Codable, Identifiable, Hashable {
     let batteryPct: Int?
     let firmwareVersion: String?
     let lastSeenAt: Date?
+    /// When the sign was last physically lifted off this hanger (spill event).
+    /// Added by GET /hangers; nil if it's never been lifted.
+    var lastLiftedAt: Date? = nil
+    /// Best-available signal proxy: there's no per-hanger RSSI on a LoRa device,
+    /// so the backend surfaces the reporting gateway's RSSI here (dBm), else nil.
+    var signal: Int? = nil
+    var rssi: Int? = nil
+    /// The gateway whose packets this hanger flows through (resolved per
+    /// building by the backend). nil when the hanger isn't located in a
+    /// building that has a gateway.
+    var reportsViaGatewayId: String? = nil
+    var reportsViaGatewayName: String? = nil
     /// Paired find-sign tracker, if one is assigned.
     let tracker: HangerTracker?
 }
@@ -249,6 +273,55 @@ struct NotificationEntry: Codable, Identifiable, Hashable {
 }
 struct NotificationsResponse: Codable { let entries: [NotificationEntry] }
 
+// MARK: - Notifications centre (per-user in-app feed)
+
+/// One row in the signed-in user's notifications feed. Mirrors the
+/// `user_notifications` table (GET /notifications). `entityType` / `entityId`
+/// let the UI deep-link a tap through to the underlying alert / job / etc.
+struct UserNotification: Codable, Identifiable, Hashable {
+    let id: String
+    let type: String          // event type, e.g. "spill.open", "wo.overdue"
+    let title: String
+    let body: String
+    let entityType: String?   // "alert" | "job" | "ppm" | "part" | ...
+    let entityId: String?
+    let readAt: Date?
+    let createdAt: Date
+
+    var isUnread: Bool { readAt == nil }
+}
+struct UserNotificationsResponse: Codable { let notifications: [UserNotification] }
+struct UnreadCountResponse: Codable { let count: Int }
+
+/// Per-event-type delivery channel preferences (in-app / email / SMS).
+/// in-app is always on server-side; the toggle is shown for completeness.
+struct ChannelPrefs: Codable, Hashable {
+    var inApp: Bool
+    var email: Bool
+    var sms: Bool
+}
+struct NotificationPrefsResponse: Codable { let preferences: [String: ChannelPrefs] }
+struct UpdatePrefResponse: Codable { let eventType: String; let prefs: ChannelPrefs }
+
+/// Status of the signed-in user's authenticator-app two-factor enrolment.
+struct TwoFactorStatus: Codable {
+    let enrolled: Bool
+    let enrolledAt: Date?
+    /// Org policy hint — admins are nudged to turn 2FA on.
+    let required: Bool
+}
+struct TwoFactorEnrolResponse: Codable {
+    let secret: String
+    let otpauth: String
+    /// data: URL PNG of the otpauth QR, ready to render in an AsyncImage / Image.
+    let qrDataUrl: String
+}
+struct TwoFactorConfirmResponse: Codable {
+    let ok: Bool
+    /// One-time recovery codes — shown to the user exactly once.
+    let recoveryCodes: [String]
+}
+
 // MARK: - Maintenance jobs (CMMS)
 
 /// A maintenance work order. Mirrors the web Maintenance jobs board. Extra
@@ -328,3 +401,88 @@ struct JobDetailResponse: Codable {
     let job: MaintenanceJob
     let events: [JobEvent]
 }
+
+// MARK: - Security (incidents, checkpoints / patrols, lone-worker)
+
+/// The building a security item is attached to (nested object the backend
+/// joins in — `null` when the row has no building set).
+struct SecurityBuildingRef: Codable, Hashable {
+    let id: String
+    let name: String
+}
+
+/// A logged security incident (GET /incidents). Mirrors the `security_incidents`
+/// table; the building is joined in by the route. Optional/defaulted fields so a
+/// leaner payload still decodes. Keys are camelCase to match the backend (no key
+/// conversion in the shared decoder).
+struct SecurityIncident: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    /// open | investigating | resolved. Defaulted so an omitted field decodes.
+    var status: String = "open"
+    /// low | medium | high | critical.
+    var severity: String = "medium"
+    var kind: String? = nil
+    var description: String? = nil
+    var photoUrl: String? = nil
+    var occurredAt: Date? = nil
+    var resolvedAt: Date? = nil
+    var resolutionNote: String? = nil
+    /// The maintenance job this incident was turned into, if any.
+    var raisedJobId: String? = nil
+    var createdAt: Date? = nil
+    var building: SecurityBuildingRef? = nil
+
+    /// Still needs a close-out: anything not resolved.
+    var isOpen: Bool { status != "resolved" }
+    /// Highest-urgency incidents lead the queue.
+    var isCritical: Bool { severity == "critical" || severity == "high" }
+}
+struct SecurityIncidentsResponse: Codable { let incidents: [SecurityIncident] }
+
+/// A guard-tour checkpoint (GET /checkpoints?discipline=security). The "missed
+/// patrol" logic compares the most-recent scan's age against an expected window.
+struct SecurityCheckpoint: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    var locationNote: String? = nil
+    var instructions: String? = nil
+    var discipline: String? = nil   // "security" | "cleaning"
+    var active: Bool = true
+    var scanUrl: String? = nil
+    var building: SecurityBuildingRef? = nil
+}
+struct SecurityCheckpointsResponse: Codable { let checkpoints: [SecurityCheckpoint] }
+
+/// One patrol-log row (GET /checkpoint-scans?discipline=security). `scannedAt`
+/// drives recency; the checkpoint + building names are joined in for display.
+struct CheckpointScan: Codable, Identifiable, Hashable {
+    let id: String
+    let checkpointId: String
+    var guardName: String? = nil
+    var note: String? = nil
+    var photoUrl: String? = nil
+    var flagged: Bool = false
+    let scannedAt: Date
+    var checkpointName: String? = nil
+    var buildingName: String? = nil
+}
+struct CheckpointScansResponse: Codable { let scans: [CheckpointScan] }
+
+/// A live lone-worker welfare session (GET /lone-worker/sessions — staff only).
+/// `status` is active | ended | alarm; `nextCheckInDueAt` powers the
+/// overdue / due-soon split, `alarmReason` is "panic" | "missed_check_in".
+struct LoneWorkerSession: Codable, Identifiable, Hashable {
+    let id: String
+    var userId: String? = nil
+    var status: String = "active"
+    var intervalMinutes: Int? = nil
+    var note: String? = nil
+    var startedAt: Date? = nil
+    var lastCheckInAt: Date? = nil
+    var nextCheckInDueAt: Date? = nil
+    var alarmReason: String? = nil
+    var alarmAt: Date? = nil
+    var userName: String? = nil
+}
+struct LoneWorkerSessionsResponse: Codable { let sessions: [LoneWorkerSession] }

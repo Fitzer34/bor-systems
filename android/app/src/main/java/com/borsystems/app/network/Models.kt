@@ -25,6 +25,19 @@ data class CurrentUser(
     val onDuty: Boolean,
     val locale: String? = null,
     val organisationName: String? = null,
+    // New /users/me fields (decoder ignores any not yet sent by an older backend).
+    val phoneE164: String? = null,
+    val avatarUrl: String? = null,
+    val lastActiveAt: String? = null,
+    val createdAt: String? = null,
+    /**
+     * Effective module-visibility + sensitive-action permissions for this user's
+     * role (defaults merged with any org override; admin = every key true). Keys
+     * are `module.*` / `action.*` — see [com.borsystems.app.auth.Capabilities].
+     * Empty when an older backend hasn't sent it; the capability layer then
+     * falls back to a role baseline.
+     */
+    val permissions: Map<String, Boolean> = emptyMap(),
 )
 
 @Serializable
@@ -101,16 +114,39 @@ enum class HangerStatus { active, out_of_service, decommissioned }
 data class Hanger(
     val id: String,
     val devEui: String,
+    val name: String? = null,
     val zoneId: String? = null,
     val status: HangerStatus,
     val audibleAlarmEnabled: Boolean = false,
     val batteryPct: Int? = null,
     val firmwareVersion: Int? = null,
     val lastSeenAt: String? = null,
+    // Floor-plan / sensor-detail fields (GET /hangers now includes these).
+    val lastLiftedAt: String? = null,
+    val signal: Int? = null,
+    val rssi: Int? = null,
+    val reportsViaGatewayId: String? = null,
+    val reportsViaGatewayName: String? = null,
 )
 
 @Serializable
 data class HangersResponse(val hangers: List<Hanger>)
+
+/**
+ * A LoRa gateway (mains/Wi-Fi powered repeater). Has no floor coordinates, so on
+ * the floor plan it appears in the side list + legend count only — never a pin.
+ */
+@Serializable
+data class Gateway(
+    val id: String,
+    val name: String? = null,
+    val buildingId: String? = null,
+    val rssi: Int? = null,
+    val lastSeenAt: String? = null,
+)
+
+@Serializable
+data class GatewaysResponse(val gateways: List<Gateway>)
 
 // ─── Buildings / Floors / Zones ──────────────────────────────────────────
 
@@ -142,6 +178,9 @@ data class Zone(
     val floorId: String,
     val name: String,
     val polygon: String? = null,
+    // Pin position on the floor-plan image, 0–1000 in each axis (null = unplaced).
+    val pinX: Int? = null,
+    val pinY: Int? = null,
 )
 
 @Serializable
@@ -371,3 +410,155 @@ data class JobDetailResponse(
     val job: MaintenanceJob,
     val events: List<JobEvent> = emptyList(),
 )
+
+// ─── Notifications centre ────────────────────────────────────────────────
+// Mirror the web lib/notifications.tsx shapes. One feed row exactly as the
+// backend user_notifications table stores it; everything beyond id/type/title
+// degrades gracefully.
+
+@Serializable
+data class NotificationItem(
+    val id: String,
+    val type: String,          // event type, e.g. "spill.open", "wo.overdue"
+    val title: String,
+    val body: String,
+    val entityType: String? = null, // "alert" | "job" | "ppm" | "part" | …
+    val entityId: String? = null,
+    val readAt: String? = null,
+    val createdAt: String,
+)
+
+@Serializable
+data class NotificationsResponse(val notifications: List<NotificationItem>)
+
+@Serializable
+data class UnreadCountResponse(val count: Int)
+
+/** Per-event-type delivery channel choices (in-app is always on server-side). */
+@Serializable
+data class ChannelPrefs(
+    val inApp: Boolean = true,
+    val email: Boolean = false,
+    val sms: Boolean = false,
+)
+
+@Serializable
+data class NotificationPrefsResponse(val preferences: Map<String, ChannelPrefs>)
+
+// ─── Two-factor auth ─────────────────────────────────────────────────────
+// Mirror backend routes/two-factor.ts response shapes.
+
+@Serializable
+data class TwoFactorStatus(
+    val enrolled: Boolean,
+    val enrolledAt: String? = null,
+    val required: Boolean = false,
+)
+
+@Serializable
+data class TwoFactorEnrol(
+    val secret: String,
+    val otpauth: String,
+    val qrDataUrl: String,
+)
+
+@Serializable
+data class TwoFactorConfirm(
+    val ok: Boolean = true,
+    val recoveryCodes: List<String> = emptyList(),
+)
+
+// ─── Security: incidents ─────────────────────────────────────────────────
+// Mirror backend routes/security.ts GET /incidents. `severity`/`status` are
+// plain Strings so a new backend value never crashes decoding; `building` is
+// the joined { id, name } summary the route attaches (null when unassigned).
+
+@Serializable
+data class IncidentBuilding(
+    val id: String,
+    val name: String,
+)
+
+@Serializable
+data class SecurityIncident(
+    val id: String,
+    val title: String,
+    val kind: String? = null,
+    val severity: String = "medium",   // low | medium | high | critical
+    val status: String = "open",       // open | investigating | resolved
+    val description: String? = null,
+    val photoUrl: String? = null,
+    val occurredAt: String? = null,
+    val resolvedAt: String? = null,
+    val resolutionNote: String? = null,
+    val buildingId: String? = null,
+    val building: IncidentBuilding? = null,
+    val createdAt: String? = null,
+)
+
+@Serializable
+data class IncidentsResponse(val incidents: List<SecurityIncident>)
+
+// ─── Security: checkpoints (guard tours) ─────────────────────────────────
+// Mirror GET /checkpoints?discipline=security. `building` is the joined
+// summary; `scanUrl` is the no-login QR target the route adds.
+
+@Serializable
+data class Checkpoint(
+    val id: String,
+    val name: String,
+    val locationNote: String? = null,
+    val instructions: String? = null,
+    val discipline: String = "security",
+    val active: Boolean = true,
+    val buildingId: String? = null,
+    val building: IncidentBuilding? = null,
+    val scanUrl: String? = null,
+    val createdAt: String? = null,
+)
+
+@Serializable
+data class CheckpointsResponse(val checkpoints: List<Checkpoint>)
+
+// ─── Security: checkpoint scans (patrol log) ─────────────────────────────
+// Mirror GET /checkpoint-scans?discipline=security. Used to derive patrol
+// recency per checkpoint (a "missed patrol" is a checkpoint whose newest scan
+// is older than the expected window — see HomeScreen.buildAttention).
+
+@Serializable
+data class CheckpointScan(
+    val id: String,
+    val checkpointId: String,
+    val guardName: String? = null,
+    val note: String? = null,
+    val photoUrl: String? = null,
+    val flagged: Boolean = false,
+    val scannedAt: String,
+    val checkpointName: String? = null,
+    val buildingName: String? = null,
+)
+
+@Serializable
+data class CheckpointScansResponse(val scans: List<CheckpointScan>)
+
+// ─── Security: lone-worker monitoring sessions ───────────────────────────
+// Mirror GET /lone-worker/sessions (live sessions only — active | alarm).
+// `status` is a plain String for forward-compatibility; timestamps are ISO.
+
+@Serializable
+data class LoneWorkerSession(
+    val id: String,
+    val userId: String? = null,
+    val status: String,                 // active | alarm (live only)
+    val intervalMinutes: Int = 30,
+    val note: String? = null,
+    val startedAt: String? = null,
+    val lastCheckInAt: String? = null,
+    val nextCheckInDueAt: String? = null,
+    val alarmReason: String? = null,    // missed_check_in | panic
+    val alarmAt: String? = null,
+    val userName: String? = null,
+)
+
+@Serializable
+data class LoneWorkerSessionsResponse(val sessions: List<LoneWorkerSession>)

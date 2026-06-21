@@ -6,6 +6,7 @@ import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import { validatePassword } from "../services/password-policy.js";
 import { sendStaffInvite } from "../services/invites.js";
+import { getPermissions, requirePermission } from "../services/permissions.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -23,11 +24,18 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!u) return null;
     const [org] = await db.select().from(schema.organisations).where(eq(schema.organisations.id, c.orgId)).limit(1);
+    const permissions = await getPermissions(c.orgId, u.role);
     return {
       id: u.id, email: u.email, name: u.name, role: u.role, onDuty: u.onDuty, locale: u.locale,
       phoneE164: u.phoneE164,
+      avatarUrl: u.avatarUrl,
+      lastActiveAt: u.lastActiveAt,
+      createdAt: u.createdAt,
       organisationId: u.organisationId,
       organisationName: org?.name ?? "",
+      // Effective module-visibility + sensitive-action permissions for this
+      // user's role (defaults merged with any org override; admin = all true).
+      permissions,
     };
   });
 
@@ -48,21 +56,41 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
         name: z.string().min(1).optional(),
         phoneE164: z.string().regex(/^\+[1-9]\d{6,14}$/).nullable().optional(),
         locale: z.string().min(2).max(10).optional(),
+        // Profile avatar — URL of an image already uploaded via /uploads. Empty
+        // string clears it back to null.
+        avatarUrl: z.string().max(1000).nullable().optional(),
+        // Self-service email change. Re-checks org-email uniqueness below.
+        email: z.string().email().optional(),
       })
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
     const c = ctx(req);
-    await db
-      .update(schema.users)
-      .set(body.data)
-      .where(and(eq(schema.users.id, c.sub), eq(schema.users.organisationId, c.orgId)));
+
+    const updates: Record<string, unknown> = {};
+    if (body.data.name !== undefined) updates.name = body.data.name;
+    if (body.data.phoneE164 !== undefined) updates.phoneE164 = body.data.phoneE164;
+    if (body.data.locale !== undefined) updates.locale = body.data.locale;
+    if (body.data.avatarUrl !== undefined) updates.avatarUrl = body.data.avatarUrl?.trim() || null;
+    if (body.data.email !== undefined) updates.email = body.data.email.toLowerCase();
+    if (Object.keys(updates).length === 0) return { ok: true };
+
+    try {
+      await db
+        .update(schema.users)
+        .set(updates)
+        .where(and(eq(schema.users.id, c.sub), eq(schema.users.organisationId, c.orgId)));
+    } catch (err: any) {
+      // The (organisation_id, email) unique index rejects a clashing email.
+      if (String(err).includes("users_org_email_unique")) return reply.code(409).send({ error: "email_taken" });
+      throw err;
+    }
     await db.insert(schema.auditLog).values({
       organisationId: c.orgId,
       actorUserId: c.sub,
       action: "user.profile_updated",
       targetType: "user",
       targetId: c.sub,
-      metadata: body.data,
+      metadata: updates,
     });
     return { ok: true };
   });
@@ -115,7 +143,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     return { users: rows };
   });
 
-  app.post("/users", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req, reply) => {
+  app.post("/users", { preHandler: [app.authenticate, requireRole(["admin"]), requirePermission("action.manage_users")] }, async (req, reply) => {
     const body = z
       .object({
         email: z.string().email(),
@@ -244,7 +272,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.post("/users/:id/deactivate",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.delete_records")] },
     async (req) => {
       const { id } = req.params as { id: string };
       const c = ctx(req);
@@ -263,7 +291,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.delete("/users/:id",
-    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.delete_records")] },
     async (req) => {
       const { id } = req.params as { id: string };
       const c = ctx(req);

@@ -2,16 +2,24 @@ import { useState, useRef, useLayoutEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useTicker } from "../lib/ticker";
+import { SensorPin, sensorState, type SensorState } from "./SensorPin";
 
 interface ActiveAlert {
   id: string;
+  hangerId: string;
   status: "open" | "acknowledged" | "closed";
   zoneId: string | null;
 }
 interface Building { id: string; name: string }
 interface Floor { id: string; name: string; buildingId: string; floorPlanUrl: string | null; orderIndex: number }
 interface Zone { id: string; name: string; floorId: string; pinX: number | null; pinY: number | null }
-interface Hanger { id: string; zoneId: string | null; status: "active" | "out_of_service" | "decommissioned"; lastSeenAt: string | null }
+interface Hanger {
+  id: string;
+  zoneId: string | null;
+  status: "active" | "out_of_service" | "decommissioned";
+  lastSeenAt: string | null;
+  batteryPct: number | null;
+}
 
 interface FloorWithZones {
   building: Building;
@@ -19,9 +27,48 @@ interface FloorWithZones {
   zones: Zone[];
 }
 
-// Battery hangers deep-sleep and check in once a DAY (spill alerts instant +
-// separate): 26 h = one daily check-in + 2 h margin.
-const ONLINE_WINDOW_MS = 26 * 60 * 60 * 1000;
+// A hanger dropped on the plan at its zone's coords, with a small fan-out so
+// several hangers in one zone don't stack. Mirrors the main FloorPlans page.
+interface PlacedSensor {
+  hanger: Hanger;
+  zone: Zone;
+  x: number;
+  y: number;
+}
+
+// Place a floor's hangers on the plan via their zone's pin, fanning out
+// multiple hangers per zone. Shared shape with the main page so the read-only
+// mini-maps and the editable page agree on positions.
+function placeSensors(zones: Zone[], hangers: Hanger[]): PlacedSensor[] {
+  const zoneById = new Map(zones.map((z) => [z.id, z]));
+  const byZone = new Map<string, Hanger[]>();
+  for (const h of hangers) {
+    if (!h.zoneId) continue;
+    const z = zoneById.get(h.zoneId);
+    if (!z || z.pinX == null || z.pinY == null) continue;
+    const list = byZone.get(h.zoneId) ?? [];
+    list.push(h);
+    byZone.set(h.zoneId, list);
+  }
+  const out: PlacedSensor[] = [];
+  for (const [zoneId, hs] of byZone.entries()) {
+    const z = zoneById.get(zoneId)!;
+    const ordered = [...hs].sort((a, b) => a.id.localeCompare(b.id));
+    const n = ordered.length;
+    ordered.forEach((h, i) => {
+      let x = z.pinX!;
+      let y = z.pinY!;
+      if (n > 1) {
+        const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+        const r = 22;
+        x = Math.max(0, Math.min(1000, z.pinX! + Math.cos(angle) * r));
+        y = Math.max(0, Math.min(1000, z.pinY! + Math.sin(angle) * r));
+      }
+      out.push({ hanger: h, zone: z, x, y });
+    });
+  }
+  return out;
+}
 
 export function SiteFloorPlansOverview() {
   // Re-render every second so offline pins appear the moment a hanger
@@ -82,28 +129,13 @@ export function SiteFloorPlansOverview() {
     setBox((prev) => (Math.abs(prev.w - w) > 2 || Math.abs(prev.h - h) > 2 ? { w, h } : prev));
   });
 
-  const statusByZoneId = new Map<string, "open" | "acknowledged">();
+  // Active alert per hanger (open/acknowledged) — drives pin state directly.
+  const alertByHangerId = new Map<string, "open" | "acknowledged">();
   for (const a of alerts.data?.alerts ?? []) {
-    if (a.zoneId && a.status !== "closed") statusByZoneId.set(a.zoneId, a.status);
+    if (a.status === "open" || a.status === "acknowledged") alertByHangerId.set(a.hangerId, a.status);
   }
 
-  // A zone is "offline" when it has active hangers but none have phoned home
-  // recently. Lifecycle states (decommissioned/out-of-service) don't count.
-  const offlineZoneIds = new Set<string>();
-  {
-    const now = Date.now();
-    const byZone = new Map<string, Hanger[]>();
-    for (const h of hangers.data?.hangers ?? []) {
-      if (!h.zoneId || h.status !== "active") continue;
-      const list = byZone.get(h.zoneId) ?? [];
-      list.push(h);
-      byZone.set(h.zoneId, list);
-    }
-    for (const [zoneId, hs] of byZone.entries()) {
-      const fresh = hs.some((h) => h.lastSeenAt != null && now - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS);
-      if (!fresh) offlineZoneIds.add(zoneId);
-    }
-  }
+  const allHangers = hangers.data?.hangers ?? [];
 
   const items = allFloors.data ?? [];
 
@@ -172,8 +204,8 @@ export function SiteFloorPlansOverview() {
           <FloorPlanCard
             key={it.floor.id}
             item={it}
-            statusByZoneId={statusByZoneId}
-            offlineZoneIds={offlineZoneIds}
+            hangers={allHangers}
+            alertByHangerId={alertByHangerId}
             imageMaxHeight={imageMaxHeight}
           />
         ))}
@@ -201,13 +233,13 @@ function BuildingChip({ active, onClick, children }: { active: boolean; onClick:
 
 function FloorPlanCard({
   item,
-  statusByZoneId,
-  offlineZoneIds,
+  hangers,
+  alertByHangerId,
   imageMaxHeight,
 }: {
   item: FloorWithZones;
-  statusByZoneId: Map<string, "open" | "acknowledged">;
-  offlineZoneIds: Set<string>;
+  hangers: Hanger[];
+  alertByHangerId: Map<string, "open" | "acknowledged">;
   imageMaxHeight: string;
 }) {
   const planUrl = item.floor.floorPlanUrl!;
@@ -216,11 +248,21 @@ function FloorPlanCard({
   // the % positioned pins). Default 4:3 until the image loads.
   const [aspect, setAspect] = useState<number>(4 / 3);
 
-  const pinned = item.zones.filter((z) => z.pinX != null && z.pinY != null);
-  const alertedHere = pinned.filter((z) => statusByZoneId.has(z.id));
-  const offlineHere = pinned.filter((z) => offlineZoneIds.has(z.id) && !statusByZoneId.has(z.id));
-  const hasOpen = alertedHere.some((z) => statusByZoneId.get(z.id) === "open");
-  const hasAck = alertedHere.some((z) => statusByZoneId.get(z.id) === "acknowledged");
+  const now = Date.now();
+  const placed = placeSensors(item.zones, hangers);
+  const stateOf = (h: Hanger): SensorState => sensorState(h, alertByHangerId.get(h.id), now);
+
+  // Tile-level badge counts, derived from the same pin states.
+  let alertCount = 0;
+  let offlineCount = 0;
+  let hasOpen = false;
+  let hasAck = false;
+  for (const p of placed) {
+    const s = stateOf(p.hanger);
+    if (s === "alert") { alertCount += 1; hasOpen = true; }
+    else if (s === "cleaning") { alertCount += 1; hasAck = true; }
+    else if (s === "offline") offlineCount += 1;
+  }
 
   return (
     <div
@@ -234,17 +276,17 @@ function FloorPlanCard({
           <div className="text-xs text-slate-500 truncate">{item.building.name}</div>
         </div>
         <div className="text-xs text-slate-500 shrink-0 flex items-center gap-1.5">
-          {alertedHere.length > 0 && (
+          {alertCount > 0 && (
             <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">
-              {alertedHere.length} active
+              {alertCount} active
             </span>
           )}
-          {offlineHere.length > 0 && (
+          {offlineCount > 0 && (
             <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-medium">
-              {offlineHere.length} off
+              {offlineCount} off
             </span>
           )}
-          <span>{pinned.length}z</span>
+          <span>{placed.length}s</span>
         </div>
       </div>
 
@@ -266,50 +308,16 @@ function FloorPlanCard({
             }}
             className="block w-full h-full object-contain"
           />
-          {pinned.map((z) => {
-            const s = statusByZoneId.get(z.id);
-            const isOffline = !s && offlineZoneIds.has(z.id);
-            const left = `${(z.pinX! / 1000) * 100}%`;
-            const top = `${(z.pinY! / 1000) * 100}%`;
-
-            // Alert state always wins — a zone with an open alert showing as
-            // offline would bury the more urgent signal.
-            if (s) {
-              const color = s === "open" ? "bg-red-500" : "bg-blue-500";
-              return (
-                <div
-                  key={z.id}
-                  title={`${z.name}${s === "open" ? " — ALERT" : " — cleaning in progress"}`}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full shadow ring-2 ring-white animate-pulse w-4 h-4 ${color}`}
-                  style={{ left, top }}
-                />
-              );
-            }
-            if (isOffline) {
-              return (
-                <div
-                  key={z.id}
-                  className="absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{ left, top }}
-                >
-                  <div
-                    title={`${z.name} — hanger offline`}
-                    className="rounded-full shadow ring-1 ring-white border border-dashed border-amber-700 bg-amber-400 w-3.5 h-3.5 flex items-center justify-center text-[8px] font-bold text-amber-900 leading-none"
-                  >
-                    ?
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <div
-                key={z.id}
-                title={z.name}
-                className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full shadow ring-1 ring-white bg-green-500 w-2.5 h-2.5"
-                style={{ left, top }}
-              />
-            );
-          })}
+          {placed.map((p) => (
+            <SensorPin
+              key={p.hanger.id}
+              state={stateOf(p.hanger)}
+              label={p.zone.name}
+              // Read-only mini-map: smaller pins, no badge, not tappable.
+              size={14}
+              style={{ left: `${(p.x / 1000) * 100}%`, top: `${(p.y / 1000) * 100}%` }}
+            />
+          ))}
         </div>
       </div>
     </div>

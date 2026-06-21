@@ -19,6 +19,8 @@ import { ctx } from "../services/auth-context.js";
 import { sendEmail } from "../services/notifications.js";
 import { isAiConfigured, draftScopeOfWorks, rankQuotes, suggestImprovements } from "../services/ai.js";
 import { toCsv, csvFilename } from "../services/csv.js";
+import { requirePermission } from "../services/permissions.js";
+import { notifyOrgRole } from "../services/notification-centre.js";
 
 const QUOTE_BASE = "https://app.hazardlink.ie";
 
@@ -127,7 +129,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
 
   // Work-order register as CSV (newest first) — drives the "Export CSV" button
   // on the maintenance dashboard and the share action on iOS / Android.
-  app.get("/jobs.csv", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+  app.get("/jobs.csv", { preHandler: [app.authenticate, staff, requirePermission("action.export_reports")] }, async (req, reply) => {
     const c = ctx(req);
     const rows = await db
       .select()
@@ -235,7 +237,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
   // Invite chosen contractors — creates a "pending" quote per contractor and
   // flips the job to "tendering". (Trade-aware shortlisting + email come later.)
   const tenderBody = z.object({ contractorIds: z.array(z.string().uuid()).min(1) });
-  app.post("/jobs/:id/tender", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+  app.post("/jobs/:id/tender", { preHandler: [app.authenticate, staff, requirePermission("action.approve_quotes")] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = tenderBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
@@ -343,6 +345,21 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     if (!quote) return reply.code(404).send({ error: "not_found" });
     // Job stays "tendering" while quotes come in — the quote count tells the story.
     await logJobEvent(c.orgId, quote.jobId, "quoted", c.sub);
+
+    // Notifications-centre feed entry: a quote is now awaiting approval/award.
+    const [job] = await db
+      .select({ title: schema.maintenanceJobs.title })
+      .from(schema.maintenanceJobs)
+      .where(eq(schema.maintenanceJobs.id, quote.jobId))
+      .limit(1);
+    void notifyOrgRole(c.orgId, ["admin", "supervisor"], {
+      type: "quote.awaiting_approval",
+      title: `Quote received: ${job?.title ?? "work order"}`,
+      body: `A quote of €${((parsed.data.amountCents ?? 0) / 100).toFixed(0)} was entered for "${job?.title ?? "a work order"}" — awaiting approval.`,
+      entityType: "job",
+      entityId: quote.jobId,
+    }).catch((e) => console.error("quote.awaiting_approval notification failed:", (e as Error).message));
+
     return quote;
   });
 
@@ -350,7 +367,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
   // Pick a quote. If it isn't the cheapest, a reason is required — that reason
   // is the recorded justification (feeds the budget/audit trail).
   const awardBody = z.object({ quoteId: z.string().uuid(), reason: z.string().max(500).optional() });
-  app.post("/jobs/:id/award", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+  app.post("/jobs/:id/award", { preHandler: [app.authenticate, staff, requirePermission("action.approve_quotes")] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = awardBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
@@ -521,7 +538,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
 
   // Asset register as CSV — includes warranty expiry so it doubles as the
   // "warranties expiring" export from the dashboard.
-  app.get("/assets.csv", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+  app.get("/assets.csv", { preHandler: [app.authenticate, staff, requirePermission("action.export_reports")] }, async (req, reply) => {
     const c = ctx(req);
     const rows = await db
       .select()
@@ -1070,7 +1087,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
 
   // Parts / inventory register as CSV. `low_stock` flags rows at/below reorder
   // level so the spreadsheet can be filtered to a reorder list.
-  app.get("/parts.csv", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+  app.get("/parts.csv", { preHandler: [app.authenticate, staff, requirePermission("action.export_reports")] }, async (req, reply) => {
     const c = ctx(req);
     const rows = await db
       .select()

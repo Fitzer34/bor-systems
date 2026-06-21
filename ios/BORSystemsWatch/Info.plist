@@ -35,6 +35,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.borsystems.app</string>
+	<string>com.hazardlink.app</string>
 </dict>
 </plist>

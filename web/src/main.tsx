@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { PermissionsProvider, usePermissions } from "./lib/permissions";
 import { ActiveAlertsWatcher } from "./lib/alerts-watcher";
 import { LiveEventsBridge } from "./lib/live-events";
 import { Login } from "./pages/Login";
@@ -17,6 +18,7 @@ import { FloorPlans } from "./pages/FloorPlans";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
 import { Profile } from "./pages/Profile";
+import { RolesPermissions } from "./pages/RolesPermissions";
 import { AuditLog } from "./pages/AuditLog";
 import { NotificationsLog } from "./pages/NotificationsLog";
 import { Schedule } from "./pages/Schedule";
@@ -37,6 +39,7 @@ import { Competency } from "./pages/Competency";
 import { Inspections } from "./pages/Inspections";
 import { Sds } from "./pages/Sds";
 import { Incidents } from "./pages/Incidents";
+import { Invoices } from "./pages/Invoices";
 import { Checkpoints } from "./pages/Checkpoints";
 import { Assistant } from "./pages/Assistant";
 import { CheckpointScan } from "./pages/CheckpointScan";
@@ -45,7 +48,10 @@ import { ReportFault } from "./pages/ReportFault";
 import { QuoteSubmit } from "./pages/QuoteSubmit";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { ChooseSection } from "./pages/ChooseSection";
-import { SectionProvider, useSection } from "./lib/section";
+import { Notifications } from "./pages/Notifications";
+import { NotificationPreferences } from "./pages/NotificationPreferences";
+import { TeamDashboard } from "./pages/TeamDashboard";
+import { SectionProvider } from "./lib/section";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
 
@@ -53,22 +59,38 @@ initWebSentry();
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000 } } });
 
-function RequireAuth({ children, role }: { children: JSX.Element; role?: Array<"admin" | "supervisor" | "cleaner"> }) {
+function RequireAuth({
+  children,
+  role,
+  permission,
+}: {
+  children: JSX.Element;
+  role?: Array<"admin" | "supervisor" | "cleaner">;
+  /** Optional finer gate. Admin always passes; a missing key never blocks. */
+  permission?: string;
+}) {
   const { user, loading } = useAuth();
+  const { can } = usePermissions();
   if (loading) return <div className="p-8 text-slate-500">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
+  // Role gate (unchanged) — the primary, always-correct safety net.
   if (role && !role.includes(user.role)) return <Navigate to="/" replace />;
+  // Permission gate is additive and SAFE: admins are never blocked, and we only
+  // redirect when the user genuinely lacks an explicitly-required capability.
+  if (permission && user.role !== "admin" && !can(permission)) {
+    return <Navigate to="/" replace />;
+  }
   return children;
 }
 
-// The "/" landing depends on the chosen section: maintenance staff jump to the
-// jobs board, everyone else gets the cleaning dashboard (Active alerts).
+// The "/" landing: staff (admin/supervisor) get the unified per-team dashboard,
+// which switches between All / Cleaning / Maintenance / Security and applies the
+// user's saved default team on load. Field staff (cleaner) keep the cleaning
+// Active-alerts dashboard, which is their whole job.
 function SectionHome() {
   const { user } = useAuth();
-  const { section } = useSection();
   const isStaff = user?.role === "admin" || user?.role === "supervisor";
-  if (isStaff && section === "maintenance") return <Navigate to="/maintenance-dashboard" replace />;
-  if (isStaff && section === "security") return <Navigate to="/incidents" replace />;
+  if (isStaff) return <TeamDashboard />;
   return <Dashboard />;
 }
 
@@ -76,6 +98,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <PermissionsProvider>
         <SectionProvider>
         <BrowserRouter>
           <ActiveAlertsWatcher />
@@ -110,6 +133,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route index element={<SectionHome />} />
               <Route path="alerts/:id" element={<AlertDetail />} />
               <Route path="profile" element={<Profile />} />
+              {/* Notifications centre — personal feed + delivery preferences.
+                  Available to every authenticated user (no role gate). */}
+              <Route path="notifications" element={<Notifications />} />
+              <Route path="notifications/preferences" element={<NotificationPreferences />} />
               {/* Unified devices view (gateways + hangers, grouped by building). */}
               <Route path="devices" element={<RequireAuth role={["admin", "supervisor"]}><Devices /></RequireAuth>} />
               {/* Old per-type routes redirect into the unified page so existing
@@ -129,10 +156,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="meters" element={<RequireAuth role={["admin", "supervisor"]}><Meters /></RequireAuth>} />
               <Route path="competency" element={<RequireAuth role={["admin", "supervisor"]}><Competency /></RequireAuth>} />
               <Route path="incidents" element={<RequireAuth role={["admin", "supervisor"]}><Incidents /></RequireAuth>} />
+              {/* Billing — invoices register. Staff with billing access only;
+                  the nav entry is gated by the same permission. */}
+              <Route path="invoices" element={<RequireAuth role={["admin", "supervisor"]} permission="action.manage_billing"><Invoices /></RequireAuth>} />
               <Route path="checkpoints" element={<RequireAuth role={["admin", "supervisor"]}><Checkpoints /></RequireAuth>} />
               <Route path="lone-worker" element={<LoneWorker />} />
               <Route path="assistant" element={<RequireAuth role={["admin", "supervisor"]}><Assistant /></RequireAuth>} />
               <Route path="users" element={<RequireAuth role={["admin", "supervisor"]}><Users /></RequireAuth>} />
+              {/* Staff permissions matrix — admin only. */}
+              <Route path="roles" element={<RequireAuth role={["admin"]}><RolesPermissions /></RequireAuth>} />
               <Route path="floor-plans" element={<RequireAuth role={["admin"]}><FloorPlans /></RequireAuth>} />
               <Route path="reports" element={<RequireAuth role={["admin", "supervisor"]}><Reports /></RequireAuth>} />
               <Route path="settings" element={<RequireAuth role={["admin", "supervisor"]}><Settings /></RequireAuth>} />
@@ -162,6 +194,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           </Routes>
         </BrowserRouter>
         </SectionProvider>
+        </PermissionsProvider>
       </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>,

@@ -49,6 +49,12 @@ class BorMessagingService : FirebaseMessagingService() {
         val body  = message.notification?.body  ?: data["body"]  ?: ""
         val alertId = data["alertId"]
 
+        // Keep the in-app bell badge live: optimistically bump the unread count
+        // the instant a push lands, then reconcile against the backend (the web
+        // does the same off its SSE `notification.created` event).
+        NotificationCenter.bump()
+        NotificationCenter.refresh()
+
         showNotification(category, title, body, alertId)
     }
 

@@ -1,6 +1,8 @@
 import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { sendEmail } from "./notifications.js";
+import { notifyOrgRole } from "./notification-centre.js";
+import { dedupKeyFired } from "./notification-dedup.js";
 
 /**
  * Lone-worker safety watcher. Every minute it finds active sessions whose
@@ -43,6 +45,18 @@ export async function notifyLoneWorkerHub(
     ].join("\n");
     for (const r of recipients) {
       if (r.email) await sendEmail({ to: r.email, subject, text: body });
+    }
+
+    // Notifications-centre feed entry. Deduped on the session id so a panic
+    // alarm + a later watcher pass for the same session don't double-post.
+    if (await dedupKeyFired(session.organisationId, "lone_worker.overdue", session.id)) {
+      await notifyOrgRole(session.organisationId, ["admin", "supervisor"], {
+        type: "lone_worker.overdue",
+        title: `Lone-worker alarm: ${workerName}`,
+        body: `${workerName} raised a lone-worker alarm (${reason}).`,
+        entityType: "lone_worker_session",
+        entityId: session.id,
+      });
     }
   } catch (err) {
     console.error("notifyLoneWorkerHub failed:", err);

@@ -2,12 +2,17 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var auth: AuthStore
+    @EnvironmentObject var discipline: DisciplineStore
     @State private var alerts: [ActiveAlert] = []
     @State private var dispatches: [DispatchItem] = []
     @State private var hangers: [Hanger] = []
+    @State private var meters: [Meter] = []
+    @State private var kpis: MaintKpis?
     @State private var error: String?
     @State private var refreshTask: Task<Void, Never>?
     @State private var showProfile = false
+    /// Set when an APNs "Open" deep-link arrives — pushes AlertDetailView.
+    @State private var deepLinkedAlert: ActiveAlert?
     /// Bumped every second to force re-evaluation of the offline computation
     /// even when the polled data is identical.
     @State private var tick = 0
@@ -16,6 +21,11 @@ struct HomeView: View {
     /// checked in within 26 h (one daily beat + 2 h margin). A lifted sign wakes
     /// the hanger instantly, so spill alerts never wait on this idle window.
     private static let onlineWindow: TimeInterval = 26 * 60 * 60
+
+    /// The discipline whose dashboard to render — cleaners are locked to cleaning.
+    private var activeDiscipline: Discipline {
+        discipline.effective(for: auth.user?.role ?? .cleaner)
+    }
 
     private var offlineHangerIds: Set<String> {
         let now = Date()
@@ -36,44 +46,17 @@ struct HomeView: View {
                         Text(error).foregroundStyle(.red).font(.footnote)
                     }
 
-                    // Only show genuine spills in the list. Planned cleaning
-                    // sessions (cleaner pressed the button first) still drive
-                    // a blue pin on the floor-plan feed below, but they don't
-                    // belong in the urgent-action list at the top.
-                    let spillAlerts = alerts.filter { $0.kind == .spill }
-                    sectionHeader("Active alerts")
-                    if spillAlerts.isEmpty {
-                        emptyCard("No active spill alerts.")
-                    } else {
-                        let offlineSet = offlineHangerIds
-                        ForEach(spillAlerts) { alert in
-                            NavigationLink(value: alert) {
-                                AlertRow(alert: alert, hangerOffline: offlineSet.contains(alert.hangerId))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                    disciplineHeader
+                    kpiStrip
 
-                    // Only your own action items on Home. Admins and supervisors
-                    // can still see the full org-wide list on the Dispatch tab.
-                    let myId = auth.user?.id ?? ""
-                    let active = dispatches.filter {
-                        $0.status != .completed && $0.recipientUserId == myId
-                    }
-                    if !active.isEmpty {
-                        sectionHeader("Your dispatches")
-                        ForEach(active) { d in
-                            DispatchRow(item: d) { kind in
-                                Task { await act(on: d, kind: kind) }
-                            }
-                        }
-                    }
+                    // Prioritised "what needs me" list, tailored to the active
+                    // discipline. Self-contained — it fetches + ranks + deep-links.
+                    NeedsAttentionView(discipline: activeDiscipline)
 
-                    // Scrollable feed of every floor plan in the org, mirroring
-                    // the All-floor-plans block on the web dashboard. Pins use
-                    // the same legend (red/blue/grey-?/green).
-                    sectionHeader("Floor plans")
-                    SiteFloorPlansFeed()
+                    // Lower content is discipline-specific: cleaning + security
+                    // lead with the live floor-plan feed; maintenance leads with
+                    // its KPI scorecard.
+                    disciplineDetail
                 }
                 .padding(16)
             }
@@ -83,6 +66,14 @@ struct HomeView: View {
             .navigationDestination(for: ActiveAlert.self) { alert in
                 AlertDetailView(alert: alert) {
                     await refresh()
+                }
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { deepLinkedAlert != nil },
+                set: { if !$0 { deepLinkedAlert = nil } }
+            )) {
+                if let alert = deepLinkedAlert {
+                    AlertDetailView(alert: alert) { await refresh() }
                 }
             }
             .toolbar {
@@ -97,7 +88,19 @@ struct HomeView: View {
                     Button {
                         showProfile = true
                     } label: {
-                        Image(systemName: "person.crop.circle")
+                        // Show the user's avatar when set, else the default glyph.
+                        if let urlString = auth.user?.avatarUrl,
+                           !urlString.isEmpty, let url = assetURL(urlString) {
+                            AsyncImage(url: url) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                Image(systemName: "person.crop.circle")
+                            }
+                            .frame(width: 28, height: 28)
+                            .clipShape(Circle())
+                        } else {
+                            Image(systemName: "person.crop.circle")
+                        }
                     }
                 }
             }
@@ -108,6 +111,103 @@ struct HomeView: View {
             }
             .task { startPolling() }
             .onDisappear { refreshTask?.cancel() }
+            // Consume the APNs "Open" deep-link posted by AppDelegate. Resolve
+            // the alert id against the live list and push its detail screen.
+            .onReceive(NotificationCenter.default.publisher(for: .borOpenAlert)) { note in
+                guard let id = note.userInfo?["alertId"] as? String else { return }
+                Task {
+                    if let list = try? await APIClient.shared.activeAlerts(),
+                       let match = list.first(where: { $0.id == id }) {
+                        deepLinkedAlert = match
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Discipline header + KPIs
+
+    private var disciplineHeader: some View {
+        HStack(spacing: 10) {
+            Image(systemName: activeDiscipline.systemImage)
+                .font(.headline)
+                .foregroundStyle(activeDiscipline.accent)
+                .frame(width: 38, height: 38)
+                .background(activeDiscipline.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(activeDiscipline.label)
+                    .font(.title3.weight(.semibold))
+                Text(greeting)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+
+    private var greeting: String {
+        let name = auth.user?.name.split(separator: " ").first.map(String.init) ?? ""
+        return name.isEmpty ? "Here's what's happening" : "Hi \(name) — here's what's happening"
+    }
+
+    /// A compact KPI strip tailored to the active discipline.
+    @ViewBuilder
+    private var kpiStrip: some View {
+        let cards = kpiCards
+        if !cards.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(cards) { card in
+                        KpiCard(card: card)
+                    }
+                }
+            }
+        }
+    }
+
+    private var kpiCards: [KpiCardData] {
+        switch activeDiscipline {
+        case .cleaning:
+            let openSpills = alerts.filter { $0.kind == .spill && $0.status == .open }.count
+            let inProgress = alerts.filter { $0.kind == .spill && $0.status == .acknowledged }.count
+            let offline = offlineHangerIds.count
+            return [
+                KpiCardData(id: "spills", label: "Open spills", value: "\(openSpills)", tint: openSpills > 0 ? .red : .green),
+                KpiCardData(id: "prog", label: "In progress", value: "\(inProgress)", tint: .orange),
+                KpiCardData(id: "offline", label: "Offline", value: "\(offline)", tint: offline > 0 ? .orange : .green),
+            ]
+        case .maintenance:
+            return [
+                KpiCardData(id: "backlog", label: "Open backlog", value: kpis.map { "\($0.openBacklog)" } ?? "—", tint: (kpis?.openBacklog ?? 0) > 0 ? .orange : .green),
+                KpiCardData(id: "due", label: "Meters due", value: "\(metersDue)", tint: metersDue > 0 ? .red : .green),
+                KpiCardData(id: "pm", label: "PM compliance", value: kpis?.pmCompliancePct.map { "\($0)%" } ?? "—", tint: .blue),
+            ]
+        case .security:
+            let openEvents = alerts.filter { $0.status == .open }.count
+            let offline = offlineHangerIds.count
+            return [
+                KpiCardData(id: "events", label: "Active events", value: "\(openEvents)", tint: openEvents > 0 ? .red : .green),
+                KpiCardData(id: "offline", label: "Devices offline", value: "\(offline)", tint: offline > 0 ? .orange : .green),
+                KpiCardData(id: "onduty", label: "On duty", value: auth.user?.onDuty == true ? "Yes" : "No", tint: auth.user?.onDuty == true ? .green : .secondary),
+            ]
+        }
+    }
+
+    private var metersDue: Int {
+        meters.filter { $0.status == "due" || $0.status == "due_soon" }.count
+    }
+
+    // MARK: Discipline detail
+
+    @ViewBuilder
+    private var disciplineDetail: some View {
+        switch activeDiscipline {
+        case .cleaning, .security:
+            sectionHeader("Floor plans")
+            SiteFloorPlansFeed()
+        case .maintenance:
+            sectionHeader("Maintenance at a glance")
+            MaintenanceGlanceCard(kpis: kpis)
         }
     }
 
@@ -120,18 +220,6 @@ struct HomeView: View {
         Text(text)
             .font(.title3.weight(.semibold))
             .padding(.top, 4)
-    }
-
-    private func emptyCard(_ text: String) -> some View {
-        Text(text)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity)
-            .padding(24)
-            .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color(.separator), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-            )
     }
 
     private func startPolling() {
@@ -156,138 +244,85 @@ struct HomeView: View {
             async let hangersTask = APIClient.shared.hangers()
             self.alerts = try await alertsTask
             self.dispatches = try await dispTask
-            // Hangers are fetched only so we can flag "hanger offline" on
-            // an alert. If the fetch fails we just don't show the indicator
-            // — not worth blocking the whole refresh on.
+            // Hangers are fetched only so we can flag "hanger offline". If the
+            // fetch fails we just don't show the indicator.
             self.hangers = (try? await hangersTask) ?? self.hangers
             self.error = nil
+            // Maintenance KPIs/meters only when that dashboard is showing.
+            if activeDiscipline == .maintenance {
+                self.kpis = (try? await APIClient.shared.maintenanceKpis()) ?? self.kpis
+                self.meters = (try? await APIClient.shared.meters()) ?? self.meters
+            }
             // Fire local notifications for any new alerts/dispatches we haven't seen
             LocalAlertNotifier.shared.observe(alerts: self.alerts, dispatches: self.dispatches)
         } catch APIError.unauthorized {
-            // Don't yank the user back to login on a single 401 from a
-            // polling refresh — a transient blip would otherwise destroy
-            // their session. The bootstrap path on next app launch handles
-            // a genuinely-expired token cleanly.
             self.error = "Couldn't refresh — tap to retry."
         } catch {
             self.error = "Could not refresh."
         }
     }
-
-    private func act(on d: DispatchItem, kind: DispatchAction) async {
-        do {
-            switch kind {
-            case .acknowledge: try await APIClient.shared.acknowledgeDispatch(d.id)
-            case .complete:    try await APIClient.shared.completeDispatch(d.id)
-            }
-            await refresh()
-        } catch let APIError.http(_, body) {
-            // Show the actual reason from the server so the user knows whether
-            // the dispatch is theirs, already actioned, or something else.
-            if body.contains("not_your_dispatch") {
-                self.error = "This dispatch is assigned to a different user."
-            } else if body.contains("already_acknowledged") {
-                self.error = "Already accepted earlier."
-            } else if body.contains("already_completed") {
-                self.error = "Already marked done."
-            } else if body.contains("dispatch_not_found") {
-                self.error = "Dispatch was deleted."
-            } else {
-                self.error = "Could not action dispatch."
-            }
-        } catch {
-            self.error = "Action failed."
-        }
-    }
 }
 
-enum DispatchAction { case acknowledge, complete }
+// MARK: - KPI card
 
-private struct AlertRow: View {
-    let alert: ActiveAlert
-    var hangerOffline: Bool = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("\(alert.floorName ?? "Unknown floor") — \(alert.zoneName ?? "Unassigned")")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
-                Text("Lifted \(alert.openedAt, style: .relative) ago · Status: \(alert.status.rawValue)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 6) {
-                    statusBadge
-                    if hangerOffline {
-                        // The hanger that opened this alert hasn't phoned home
-                        // recently — the spill might still be there but no
-                        // automatic "returned" event will arrive to close it.
-                        Text("HANGER OFFLINE")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color.orange.opacity(0.18), in: Capsule())
-                            .overlay(Capsule().strokeBorder(Color.orange, style: StrokeStyle(lineWidth: 1, dash: [3])))
-                            .foregroundStyle(Color.orange)
-                    }
-                }
-            }
-            Spacer(minLength: 8)
-            AlertFloorPlanThumb(floorId: alert.floorId, alertedZoneId: alert.zoneId, status: alert.status)
-        }
-        .padding(14)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(borderColor, lineWidth: 1)
-        )
-    }
-
-    private var borderColor: Color {
-        alert.status == .open ? Color.red.opacity(0.45) : Color.orange.opacity(0.45)
-    }
-
-    @ViewBuilder
-    private var statusBadge: some View {
-        let label = alert.status == .open ? "UNACK" : "IN PROGRESS"
-        let color: Color = alert.status == .open ? .red : .orange
-        Text(label)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(color.opacity(0.12), in: Capsule())
-            .foregroundStyle(color)
-    }
+struct KpiCardData: Identifiable {
+    let id: String
+    let label: String
+    let value: String
+    let tint: Color
 }
 
-private struct DispatchRow: View {
-    let item: DispatchItem
-    let onAction: (DispatchAction) -> Void
-
+private struct KpiCard: View {
+    let card: KpiCardData
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(item.zoneName.map { "Go to: \($0)" } ?? "Dispatch")
-                .font(.body.weight(.medium))
-            Text(item.message)
-                .foregroundStyle(.primary)
-            Text("Sent \(item.sentAt, style: .relative) ago · Status: \(item.status.rawValue)")
+        VStack(alignment: .leading, spacing: 4) {
+            Text(card.value)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(card.tint)
+            Text(card.label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            HStack {
-                if item.status == .sent {
-                    Button("On my way") { onAction(.acknowledge) }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                }
-                if item.status != .completed {
-                    Button("Mark done") { onAction(.complete) }
-                        .buttonStyle(.bordered)
-                }
-            }
         }
-        .padding(14)
+        .frame(minWidth: 96, alignment: .leading)
+        .padding(12)
         .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.blue.opacity(0.45), lineWidth: 1)
-        )
+                .strokeBorder(Color(.separator), lineWidth: 1))
+    }
+}
+
+// MARK: - Maintenance glance card
+
+private struct MaintenanceGlanceCard: View {
+    let kpis: MaintKpis?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let k = kpis {
+                row("Completed this month", "\(k.completedThisMonth)")
+                Divider()
+                row("Planned share", k.plannedSharePct.map { "\($0)%" } ?? "—")
+                Divider()
+                row("Spend (90d)", "€" + (k.spend90Cents / 100).formatted())
+                Divider()
+                row("Past expected life", "\(k.assetsPastLife)")
+            } else {
+                Text("Loading KPIs…")
+                    .foregroundStyle(.secondary)
+                    .padding(14)
+            }
+        }
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator), lineWidth: 1))
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).font(.body.weight(.semibold))
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
     }
 }

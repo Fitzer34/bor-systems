@@ -284,6 +284,12 @@ object ApiClient {
         return res.zones
     }
 
+    // ─── Gateways ────────────────────────────────────────────────────
+    suspend fun listGateways(): List<Gateway> {
+        val res = request<GatewaysResponse>("/gateways")
+        return res.gateways
+    }
+
     // ─── Schedule ───────────────────────────────────────────────────
 
     suspend fun listShifts(): List<Shift> {
@@ -413,4 +419,94 @@ object ApiClient {
 
     // ─── Maintenance KPIs ──────────────────────────────────────────────────
     suspend fun maintenanceKpis(): MaintKpis = request("/maintenance/kpis")
+
+    // ─── Notifications centre ───────────────────────────────────────────────
+    // The signed-in user's in-app feed + delivery prefs. No role gating —
+    // everyone has their own feed (matches backend routes/notifications.ts).
+
+    suspend fun notifications(unreadOnly: Boolean = false, limit: Int = 30): List<NotificationItem> {
+        val q = buildString {
+            append("/notifications?limit=$limit")
+            if (unreadOnly) append("&unread=true")
+        }
+        return request<NotificationsResponse>(q).notifications
+    }
+
+    suspend fun unreadNotificationCount(): Int =
+        request<UnreadCountResponse>("/notifications/unread-count").count
+
+    suspend fun markNotificationRead(id: String) {
+        request<Unit>("/notifications/$id/read", "POST")
+    }
+
+    suspend fun markAllNotificationsRead() {
+        request<Unit>("/notifications/read-all", "POST")
+    }
+
+    suspend fun notificationPreferences(): Map<String, ChannelPrefs> =
+        request<NotificationPrefsResponse>("/notifications/preferences").preferences
+
+    @kotlinx.serialization.Serializable
+    private data class PrefBody(
+        val eventType: String,
+        val inApp: Boolean? = null,
+        val email: Boolean? = null,
+        val sms: Boolean? = null,
+    )
+
+    /** Upsert one event type's channel prefs (PUT). Only the changed flag need
+     *  be sent; the server merges over the current values. */
+    suspend fun setNotificationPreference(
+        eventType: String,
+        inApp: Boolean? = null,
+        email: Boolean? = null,
+        sms: Boolean? = null,
+    ) {
+        requestImpl<Unit>(
+            "/notifications/preferences",
+            "PUT",
+            json.encodeToString(PrefBody.serializer(), PrefBody(eventType, inApp, email, sms)),
+        )
+    }
+
+    // ─── 2FA (two-factor auth) ──────────────────────────────────────────────
+    // Mirrors backend routes/two-factor.ts. The login-time second step stays in
+    // the web/native login flow; here we expose the in-app manage operations.
+
+    suspend fun twoFactorStatus(): TwoFactorStatus = request("/auth/2fa/status")
+
+    suspend fun twoFactorEnrol(): TwoFactorEnrol = request("/auth/2fa/enrol", "POST")
+
+    @kotlinx.serialization.Serializable
+    private data class CodeBody(val code: String)
+
+    suspend fun twoFactorConfirm(code: String): TwoFactorConfirm =
+        post<TwoFactorConfirm, CodeBody>("/auth/2fa/enrol/confirm", CodeBody(code))
+
+    suspend fun twoFactorDisable(code: String) {
+        post<Unit, CodeBody>("/auth/2fa/disable", CodeBody(code))
+    }
+
+    // ─── Security section ────────────────────────────────────────────────────
+    // Mirror backend routes/security.ts + lone-worker.ts. All staff-gated on the
+    // server (admin/supervisor); the Security discipline is staff-only anyway.
+
+    /** All security incidents, newest first (GET /incidents). */
+    suspend fun securityIncidents(): List<SecurityIncident> =
+        request<IncidentsResponse>("/incidents").incidents
+
+    /** Security-discipline checkpoints / guard-tour points
+     *  (GET /checkpoints?discipline=security). */
+    suspend fun securityCheckpoints(): List<Checkpoint> =
+        request<CheckpointsResponse>("/checkpoints?discipline=security").checkpoints
+
+    /** Recent security patrol scans, newest first
+     *  (GET /checkpoint-scans?discipline=security) — used for patrol recency. */
+    suspend fun securityCheckpointScans(): List<CheckpointScan> =
+        request<CheckpointScansResponse>("/checkpoint-scans?discipline=security").scans
+
+    /** Live lone-worker monitoring sessions — active or in alarm
+     *  (GET /lone-worker/sessions). */
+    suspend fun loneWorkerSessions(): List<LoneWorkerSession> =
+        request<LoneWorkerSessionsResponse>("/lone-worker/sessions").sessions
 }

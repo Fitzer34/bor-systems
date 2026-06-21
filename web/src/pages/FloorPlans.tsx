@@ -3,16 +3,52 @@ import { useRef, useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, getToken, apiUrl, API_BASE } from "../lib/api";
 import { useTicker } from "../lib/ticker";
+import {
+  SensorPin,
+  sensorState,
+  sensorStateLabel,
+  isLowBattery,
+  type SensorState,
+} from "../components/SensorPin";
+import { SensorDetailPopover } from "../components/SensorDetailPopover";
 
 interface Building { id: string; name: string }
 interface Floor { id: string; name: string; buildingId: string; floorPlanUrl: string | null; orderIndex: number }
 interface Zone { id: string; name: string; floorId: string; pinX: number | null; pinY: number | null }
-interface ActiveAlert { id: string; zoneId: string | null; status: "open" | "acknowledged" | "closed" }
-interface Hanger { id: string; zoneId: string | null; status: "active" | "out_of_service" | "decommissioned"; lastSeenAt: string | null }
+interface ActiveAlert { id: string; hangerId: string; zoneId: string | null; status: "open" | "acknowledged" | "closed" }
+interface Hanger {
+  id: string;
+  devEui: string;
+  name: string | null;
+  zoneId: string | null;
+  status: "active" | "out_of_service" | "decommissioned";
+  batteryPct: number | null;
+  lastSeenAt: string | null;
+  lastLiftedAt: string | null;
+  signal: number | null;
+  rssi: number | null;
+  reportsViaGatewayId: string | null;
+  reportsViaGatewayName: string | null;
+}
+interface Gateway {
+  id: string;
+  name: string | null;
+  buildingId: string | null;
+  rssi: number | null;
+  lastSeenAt: string | null;
+}
 
-// Battery hangers deep-sleep and check in once a DAY (spill alerts instant +
-// separate): 26 h = one daily check-in + 2 h margin.
-const ONLINE_WINDOW_MS = 26 * 60 * 60 * 1000;
+// A hanger placed on the plan: its zone's pin coords plus a small fan-out
+// offset so several hangers sharing one zone don't stack on the same point.
+interface PlacedSensor {
+  hanger: Hanger;
+  zone: Zone;
+  x: number; // 0–1000 plan coords (already fanned out)
+  y: number;
+}
+
+// Gateways are "online" on a tighter window (they're mains/Wi-Fi, not battery).
+const GATEWAY_ONLINE_WINDOW_MS = 90 * 1000;
 
 export function FloorPlans() {
   useTicker(1000);
@@ -36,6 +72,11 @@ export function FloorPlans() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // The one piece of state that links the plan and the side list: which sensor
+  // is selected. Clicking a pin or a row sets it; it highlights the pin, the
+  // row, and opens the detail popover.
+  const [selectedHangerId, setSelectedHangerId] = useState<string | null>(null);
+
   const buildings = useQuery({ queryKey: ["buildings"], queryFn: () => api<{ buildings: Building[] }>("/buildings") });
   const floors = useQuery({
     queryKey: ["floors", activeBuildingId],
@@ -57,6 +98,16 @@ export function FloorPlans() {
     queryFn: () => api<{ hangers: Hanger[] }>("/hangers"),
     refetchInterval: 5_000,
   });
+  const gateways = useQuery({
+    queryKey: ["gateways"],
+    queryFn: () => api<{ gateways: Gateway[] }>("/gateways"),
+    refetchInterval: 10_000,
+  });
+  const settings = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api<{ lowBatteryThreshold: number }>("/settings"),
+  });
+  const lowBatteryThreshold = settings.data?.lowBatteryThreshold ?? 20;
 
   // If the ?building=<id> param changes after mount — e.g. navigating here a
   // second time from Sites overview without a remount — switch to it and reset
@@ -92,26 +143,89 @@ export function FloorPlans() {
     setActiveFloorId(firstFloor.id);
   }
 
-  const zoneStatusById = new Map<string, "open" | "acknowledged">();
+  // ── Alert lookup by hanger ──
+  // /alerts/active carries hangerId, so we can attach the live alert (and its
+  // /alerts/:id link) to each sensor pin directly.
+  const alertByHangerId = new Map<string, { id: string; status: "open" | "acknowledged" }>();
   for (const a of activeAlerts.data?.alerts ?? []) {
-    if (a.zoneId && a.status !== "closed") zoneStatusById.set(a.zoneId, a.status);
+    if (a.status === "open" || a.status === "acknowledged") {
+      alertByHangerId.set(a.hangerId, { id: a.id, status: a.status });
+    }
   }
 
-  const offlineZoneIds = new Set<string>();
-  {
-    const now = Date.now();
-    const zoneHangers = new Map<string, Hanger[]>();
-    for (const h of hangers.data?.hangers ?? []) {
-      if (!h.zoneId || h.status !== "active") continue;
-      const list = zoneHangers.get(h.zoneId) ?? [];
-      list.push(h);
-      zoneHangers.set(h.zoneId, list);
-    }
-    for (const [zoneId, hs] of zoneHangers.entries()) {
-      const anyOnline = hs.some((h) => h.lastSeenAt != null && now - new Date(h.lastSeenAt).getTime() <= ONLINE_WINDOW_MS);
-      if (!anyOnline) offlineZoneIds.add(zoneId);
+  // ── Derive per-hanger sensor pins for the active floor ──
+  // Join hangers → zones (only zones on this floor), drop each at its zone's
+  // pin coords, and fan out multiple hangers in one zone around that point so
+  // they don't overlap. Zone position is an interim stand-in until hangers get
+  // their own coordinates.
+  const now = Date.now();
+  const zonesOnFloor = zones.data?.zones ?? [];
+  const zoneById = new Map(zonesOnFloor.map((z) => [z.id, z]));
+  const allHangers = hangers.data?.hangers ?? [];
+
+  // Group this floor's pinned-zone hangers by zone so we can fan them out.
+  const hangersByZone = new Map<string, Hanger[]>();
+  for (const h of allHangers) {
+    if (!h.zoneId) continue;
+    const z = zoneById.get(h.zoneId);
+    if (!z || z.pinX == null || z.pinY == null) continue;
+    const list = hangersByZone.get(h.zoneId) ?? [];
+    list.push(h);
+    hangersByZone.set(h.zoneId, list);
+  }
+
+  const placedSensors: PlacedSensor[] = [];
+  for (const [zoneId, hs] of hangersByZone.entries()) {
+    const z = zoneById.get(zoneId)!;
+    // Stable order so the fan-out doesn't jiggle between renders.
+    const ordered = [...hs].sort((a, b) => a.id.localeCompare(b.id));
+    const n = ordered.length;
+    ordered.forEach((h, i) => {
+      let x = z.pinX!;
+      let y = z.pinY!;
+      if (n > 1) {
+        // Spread around the zone point on a small circle (radius in plan units,
+        // ~2.2% of the plan). Keeps them readable without drifting off-zone.
+        const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+        const r = 22;
+        x = Math.max(0, Math.min(1000, z.pinX! + Math.cos(angle) * r));
+        y = Math.max(0, Math.min(1000, z.pinY! + Math.sin(angle) * r));
+      }
+      placedSensors.push({ hanger: h, zone: z, x, y });
+    });
+  }
+  placedSensors.sort((a, b) =>
+    (a.zone.name + a.hanger.id).localeCompare(b.zone.name + b.hanger.id),
+  );
+
+  const stateOf = (h: Hanger): SensorState =>
+    sensorState(h, alertByHangerId.get(h.id)?.status, now);
+
+  // Counts for the legend.
+  const counts = { alert: 0, cleaning: 0, offline: 0, ok: 0 } as Record<SensorState, number>;
+  for (const p of placedSensors) counts[stateOf(p.hanger)] += 1;
+
+  // ── Gateways for this building ──
+  // Gateways have no floor coordinates, so they appear in the side list + the
+  // legend count only — we don't guess positions on the plan.
+  const buildingGateways = (gateways.data?.gateways ?? []).filter(
+    (g) => g.buildingId === activeBuildingId,
+  );
+  // "hears N hangers": hangers in this building that report via this gateway.
+  const hangerCountByGateway = new Map<string, number>();
+  for (const h of allHangers) {
+    if (h.reportsViaGatewayId) {
+      hangerCountByGateway.set(
+        h.reportsViaGatewayId,
+        (hangerCountByGateway.get(h.reportsViaGatewayId) ?? 0) + 1,
+      );
     }
   }
+  const gatewayOnline = (g: Gateway): boolean =>
+    g.lastSeenAt != null && now - new Date(g.lastSeenAt).getTime() <= GATEWAY_ONLINE_WINDOW_MS;
+
+  // The selected sensor (if it's on this floor) for the popover.
+  const selectedPlaced = placedSensors.find((p) => p.hanger.id === selectedHangerId) ?? null;
 
   // ── Mutations ──
   const createBuilding = useMutation({
@@ -194,11 +308,14 @@ export function FloorPlans() {
     setPinningZoneId(null);
   };
 
-  const pinnedZones = (zones.data?.zones ?? []).filter((z) => z.pinX != null && z.pinY != null);
-  const unpinnedZones = (zones.data?.zones ?? []).filter((z) => z.pinX == null || z.pinY == null);
+  const pinnedZones = zonesOnFloor.filter((z) => z.pinX != null && z.pinY != null);
+  const unpinnedZones = zonesOnFloor.filter((z) => z.pinX == null || z.pinY == null);
+
+  // When switching floor, drop a selection that's no longer on the plan.
+  useEffect(() => { setSelectedHangerId(null); }, [activeFloorId]);
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-6xl">
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-2xl font-semibold">Floor plans</h1>
@@ -375,94 +492,251 @@ export function FloorPlans() {
             : "Select a floor above."}
         </div>
       ) : (
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-medium">{activeFloor?.name}</div>
-            {editMode && (
-              <button onClick={() => fileInput.current?.click()} disabled={uploadPlan.isPending} className="btn-primary">
-                {uploadPlan.isPending ? "Uploading…" : (activeFloor?.floorPlanUrl ? "Replace plan" : "Upload plan")}
-              </button>
+        // Plan (centrepiece) on the left, linked sensor list on the right.
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-medium">{activeFloor?.name}</div>
+              {editMode && (
+                <button onClick={() => fileInput.current?.click()} disabled={uploadPlan.isPending} className="btn-primary">
+                  {uploadPlan.isPending ? "Uploading…" : (activeFloor?.floorPlanUrl ? "Replace plan" : "Upload plan")}
+                </button>
+              )}
+            </div>
+
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files?.[0])}
+            />
+
+            {uploadError && (
+              <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {uploadError}
+              </div>
+            )}
+
+            {activeFloor?.floorPlanUrl ? (
+              <>
+                {pinningZoneId && (
+                  <div className="mb-2 text-sm text-amber-700">
+                    Click where the zone sits on the plan to drop its pin.
+                  </div>
+                )}
+                <div
+                  onClick={handlePlanClick}
+                  className={"relative inline-block rounded overflow-hidden " + (pinningZoneId ? "cursor-crosshair ring-2 ring-amber-400" : "")}
+                >
+                  <img src={planSrc(activeFloor.floorPlanUrl)} alt="" className="block max-w-full max-h-[640px]" />
+
+                  {/* Sensor pins (one per hanger) */}
+                  {placedSensors.map((p) => (
+                    <SensorPin
+                      key={p.hanger.id}
+                      state={stateOf(p.hanger)}
+                      label={p.hanger.name || p.hanger.id}
+                      lowBattery={isLowBattery(p.hanger.batteryPct, lowBatteryThreshold)}
+                      selected={selectedHangerId === p.hanger.id}
+                      onClick={(e) => {
+                        // Don't trigger the plan's pin-placement click.
+                        e.stopPropagation();
+                        if (pinningZoneId) return;
+                        setSelectedHangerId((cur) => (cur === p.hanger.id ? null : p.hanger.id));
+                      }}
+                      style={{ left: `${(p.x / 1000) * 100}%`, top: `${(p.y / 1000) * 100}%` }}
+                    />
+                  ))}
+
+                  {/* Anchored detail popover for the selected sensor */}
+                  {selectedPlaced && (
+                    <SensorDetailPopover
+                      hanger={selectedPlaced.hanger}
+                      zoneName={selectedPlaced.zone.name}
+                      activeAlertId={alertByHangerId.get(selectedPlaced.hanger.id)?.id ?? null}
+                      alertStatus={alertByHangerId.get(selectedPlaced.hanger.id)?.status}
+                      lowBatteryThreshold={lowBatteryThreshold}
+                      onClose={() => setSelectedHangerId(null)}
+                      // Anchor near the pin; translate up-left so it doesn't
+                      // cover the marker, and clamp within the plan via max-w.
+                      style={{
+                        position: "absolute",
+                        left: `${(selectedPlaced.x / 1000) * 100}%`,
+                        top: `${(selectedPlaced.y / 1000) * 100}%`,
+                        transform: "translate(-50%, 14px)",
+                      }}
+                    />
+                  )}
+                </div>
+
+                {editMode && unpinnedZones.length > 0 && (
+                  <div className="mt-3 text-sm text-amber-700">
+                    {unpinnedZones.length} zone{unpinnedZones.length === 1 ? "" : "s"} still need a pin: use "place pin" above.
+                  </div>
+                )}
+
+                {/* Legend */}
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500">
+                  <LegendDot className="bg-green-500" label={`On rack ${counts.ok}`} />
+                  <LegendDot className="bg-red-500" label={`Lifted ${counts.alert}`} />
+                  <LegendDot className="bg-blue-500" label={`Cleaning ${counts.cleaning}`} />
+                  <LegendDot className="bg-amber-400" label={`Offline ${counts.offline}`} />
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-[3px] bg-slate-700 inline-block" /> Gateways {buildingGateways.length}
+                  </span>
+                </div>
+              </>
+            ) : editMode ? (
+              // Drag-and-drop upload target (edit mode, no plan yet)
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
+                onClick={() => fileInput.current?.click()}
+                className={"cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition " +
+                  (dragOver ? "border-blue-400 bg-blue-50" : "border-slate-300 hover:border-slate-400")}
+              >
+                <div className="text-slate-600 font-medium">Drop a floor-plan image here</div>
+                <div className="text-sm text-slate-500 mt-1">or click to choose a file · PNG or JPEG · up to 8 MB</div>
+              </div>
+            ) : (
+              <div className="text-sm text-slate-500">
+                No plan uploaded for this floor yet. Tap <span className="text-slate-800 font-medium">Edit</span> to upload one.
+              </div>
             )}
           </div>
 
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/png,image/jpeg"
-            className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0])}
+          {/* ── Linked side list ── */}
+          <SensorSideList
+            placedSensors={placedSensors}
+            stateOf={stateOf}
+            lowBatteryThreshold={lowBatteryThreshold}
+            alertByHangerId={alertByHangerId}
+            selectedHangerId={selectedHangerId}
+            onSelect={(id) => setSelectedHangerId((cur) => (cur === id ? null : id))}
+            gateways={buildingGateways}
+            gatewayOnline={gatewayOnline}
+            hangerCountByGateway={hangerCountByGateway}
           />
-
-          {uploadError && (
-            <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {uploadError}
-            </div>
-          )}
-
-          {activeFloor?.floorPlanUrl ? (
-            <>
-              {pinningZoneId && (
-                <div className="mb-2 text-sm text-amber-700">
-                  Click where the zone sits on the plan to drop its pin.
-                </div>
-              )}
-              <div
-                onClick={handlePlanClick}
-                className={"relative inline-block rounded overflow-hidden " + (pinningZoneId ? "cursor-crosshair ring-2 ring-amber-400" : "")}
-              >
-                <img src={planSrc(activeFloor.floorPlanUrl)} alt="" className="block max-w-full max-h-[600px]" />
-                {pinnedZones.map((z) => {
-                  const status = zoneStatusById.get(z.id);
-                  const isOffline = offlineZoneIds.has(z.id);
-                  let pinClass: string; let label: string; let inner: JSX.Element | null = null;
-                  if (status === "open") { pinClass = "bg-red-500 animate-pulse"; label = " — ALERT"; }
-                  else if (status === "acknowledged") { pinClass = "bg-blue-500 animate-pulse"; label = " — cleaning in progress"; }
-                  else if (isOffline) {
-                    pinClass = "bg-amber-400 border-dashed border-amber-700"; label = " — hanger offline";
-                    inner = <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-amber-900 leading-none">?</span>;
-                  } else { pinClass = "bg-green-500"; label = ""; }
-                  return (
-                    <div
-                      key={z.id}
-                      title={`${z.name}${label}`}
-                      className={`absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white shadow ${pinClass}`}
-                      style={{ left: `${(z.pinX! / 1000) * 100}%`, top: `${(z.pinY! / 1000) * 100}%` }}
-                    >{inner}</div>
-                  );
-                })}
-              </div>
-              {editMode && unpinnedZones.length > 0 && (
-                <div className="mt-3 text-sm text-amber-700">
-                  {unpinnedZones.length} zone{unpinnedZones.length === 1 ? "" : "s"} still need a pin: use “place pin” above.
-                </div>
-              )}
-              {/* Legend */}
-              <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> OK</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Alert</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Cleaning</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Offline</span>
-              </div>
-            </>
-          ) : editMode ? (
-            // Drag-and-drop upload target (edit mode, no plan yet)
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
-              onClick={() => fileInput.current?.click()}
-              className={"cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition " +
-                (dragOver ? "border-blue-400 bg-blue-50" : "border-slate-300 hover:border-slate-400")}
-            >
-              <div className="text-slate-600 font-medium">Drop a floor-plan image here</div>
-              <div className="text-sm text-slate-500 mt-1">or click to choose a file · PNG or JPEG · up to 8 MB</div>
-            </div>
-          ) : (
-            <div className="text-sm text-slate-500">
-              No plan uploaded for this floor yet. Tap <span className="text-slate-800 font-medium">Edit</span> to upload one.
-            </div>
-          )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function LegendDot({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={"w-3 h-3 rounded-full inline-block " + className} /> {label}
+    </span>
+  );
+}
+
+function signalLabel(rssi: number): string {
+  if (rssi >= -45) return "excellent";
+  if (rssi >= -55) return "strong";
+  if (rssi >= -65) return "good";
+  if (rssi >= -75) return "weak";
+  return "very weak";
+}
+
+function SensorSideList({
+  placedSensors,
+  stateOf,
+  lowBatteryThreshold,
+  alertByHangerId,
+  selectedHangerId,
+  onSelect,
+  gateways,
+  gatewayOnline,
+  hangerCountByGateway,
+}: {
+  placedSensors: PlacedSensor[];
+  stateOf: (h: Hanger) => SensorState;
+  lowBatteryThreshold: number;
+  alertByHangerId: Map<string, { id: string; status: "open" | "acknowledged" }>;
+  selectedHangerId: string | null;
+  onSelect: (id: string) => void;
+  gateways: Gateway[];
+  gatewayOnline: (g: Gateway) => boolean;
+  hangerCountByGateway: Map<string, number>;
+}) {
+  return (
+    <div className="card lg:sticky lg:top-4">
+      <div className="section-title">Sensors on this floor</div>
+      {placedSensors.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          No placed sensors. Assign hangers to pinned zones to see them here.
+        </p>
+      ) : (
+        <ul className="space-y-1 -mx-1">
+          {placedSensors.map((p) => {
+            const st = stateOf(p.hanger);
+            const low = isLowBattery(p.hanger.batteryPct, lowBatteryThreshold);
+            const selected = selectedHangerId === p.hanger.id;
+            const dotClass =
+              st === "alert" ? "bg-red-500" :
+              st === "cleaning" ? "bg-blue-500" :
+              st === "offline" ? "bg-amber-400" : "bg-green-500";
+            return (
+              <li key={p.hanger.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(p.hanger.id)}
+                  className={"w-full text-left rounded-lg px-2 py-1.5 flex items-center gap-2 transition " +
+                    (selected ? "bg-blue-50 ring-1 ring-blue-300" : "hover:bg-slate-50")}
+                >
+                  <span className={"h-2.5 w-2.5 rounded-full shrink-0 " + dotClass + (st === "alert" || st === "cleaning" ? " animate-pulse" : "")} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm truncate">{p.hanger.name || "Wet-floor sign"}</span>
+                    <span className="block text-xs text-slate-500 truncate">{p.zone.name} · {sensorStateLabel(st)}</span>
+                  </span>
+                  {low && (
+                    <span title="Low battery" aria-label="Low battery" className="shrink-0 text-amber-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="2" y="8" width="14" height="8" rx="1.5" /><path d="M19 11 L19 13" />
+                      </svg>
+                    </span>
+                  )}
+                  {alertByHangerId.has(p.hanger.id) && (
+                    <span className={"shrink-0 " + (alertByHangerId.get(p.hanger.id)!.status === "open" ? "text-red-600" : "text-blue-600")}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Gateways group — side-list + legend only (no floor coordinates). */}
+      <div className="section-title mt-5">Gateways</div>
+      {gateways.length === 0 ? (
+        <p className="text-sm text-slate-500">No gateways in this building.</p>
+      ) : (
+        <ul className="space-y-1 -mx-1">
+          {gateways.map((g) => {
+            const online = gatewayOnline(g);
+            const hears = hangerCountByGateway.get(g.id) ?? 0;
+            return (
+              <li key={g.id} className="rounded-lg px-2 py-1.5 flex items-center gap-2">
+                <span className={"h-2.5 w-2.5 rounded-[3px] shrink-0 " + (online ? "bg-slate-700" : "bg-amber-400")} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm truncate">{g.name || "Gateway"}</span>
+                  <span className="block text-xs text-slate-500 truncate">
+                    {online ? "Online" : "Offline"}
+                    {hears > 0 ? ` · hears ${hears} hanger${hears === 1 ? "" : "s"}` : ""}
+                    {g.rssi != null ? ` · ${g.rssi} dBm (${signalLabel(g.rssi)})` : ""}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

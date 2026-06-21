@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { requirePermission } from "../services/permissions.js";
 
 /**
  * The sign_tags table needs a unique uwbAddress, but when a tracker is assigned
@@ -26,7 +27,9 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
   app.get("/hangers", { preHandler: [app.authenticate] }, async (req) => {
     const c = ctx(req);
     // Left-join the paired find-sign tracker (1 per hanger) so the apps can show
-    // "tracker assigned" + battery without a second round-trip.
+    // "tracker assigned" + battery without a second round-trip. Also resolve the
+    // hanger's building (hanger→zone→floor→building) so we can attach the
+    // gateway it reports via.
     const rows = await db
       .select({
         hanger: schema.hangers,
@@ -34,23 +37,60 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
         tagBle: schema.signTags.bleUuid,
         tagBattery: schema.signTags.batteryPct,
         tagSeen: schema.signTags.lastSeenAt,
+        buildingId: schema.buildings.id,
       })
       .from(schema.hangers)
       .leftJoin(schema.signTags, eq(schema.signTags.pairedHangerId, schema.hangers.id))
+      .leftJoin(schema.zones, eq(schema.zones.id, schema.hangers.zoneId))
+      .leftJoin(schema.floors, eq(schema.floors.id, schema.zones.floorId))
+      .leftJoin(schema.buildings, eq(schema.buildings.id, schema.floors.buildingId))
       .where(eq(schema.hangers.organisationId, c.orgId));
+
+    // Resolve a gateway per building (the box the hanger's packets flow through).
+    // A building may have several gateways; prefer the most-recently-seen one.
+    // One small query for the org's gateways, then map in memory.
+    const gateways = await db
+      .select({
+        id: schema.gateways.id,
+        name: schema.gateways.name,
+        buildingId: schema.gateways.buildingId,
+        rssi: schema.gateways.rssi,
+        lastSeenAt: schema.gateways.lastSeenAt,
+      })
+      .from(schema.gateways)
+      .where(eq(schema.gateways.organisationId, c.orgId));
+    const gatewayByBuilding = new Map<string, typeof gateways[number]>();
+    for (const g of gateways) {
+      if (!g.buildingId) continue;
+      const cur = gatewayByBuilding.get(g.buildingId);
+      const gSeen = g.lastSeenAt?.getTime() ?? 0;
+      const curSeen = cur?.lastSeenAt?.getTime() ?? 0;
+      if (!cur || gSeen > curSeen) gatewayByBuilding.set(g.buildingId, g);
+    }
+
     return {
-      hangers: rows.map((r) => ({
-        ...r.hanger,
-        tracker: r.tagId
-          ? { id: r.tagId, bleUuid: r.tagBle, batteryPct: r.tagBattery, lastSeenAt: r.tagSeen }
-          : null,
-      })),
+      hangers: rows.map((r) => {
+        const gw = r.buildingId ? gatewayByBuilding.get(r.buildingId) ?? null : null;
+        return {
+          ...r.hanger,
+          // lastLiftedAt is on the hanger row (stamped on lift events).
+          // No per-hanger RSSI exists on the device; surface the resolved
+          // gateway's RSSI as the best-available signal proxy, else null.
+          signal: gw?.rssi ?? null,
+          rssi: gw?.rssi ?? null,
+          reportsViaGatewayId: gw?.id ?? null,
+          reportsViaGatewayName: gw?.name ?? null,
+          tracker: r.tagId
+            ? { id: r.tagId, bleUuid: r.tagBle, batteryPct: r.tagBattery, lastSeenAt: r.tagSeen }
+            : null,
+        };
+      }),
     };
   });
 
   app.post(
     "/hangers/register",
-    { preHandler: [app.authenticate, requireRole(["admin"])] },
+    { preHandler: [app.authenticate, requireRole(["admin"]), requirePermission("action.manage_devices")] },
     async (req, reply) => {
       const body = z
         .object({
@@ -145,7 +185,7 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
   // any alert-attached events.
   app.delete(
     "/hangers/:id",
-    { preHandler: [app.authenticate, requireRole(["admin"])] },
+    { preHandler: [app.authenticate, requireRole(["admin"]), requirePermission("action.delete_records")] },
     async (req, reply) => {
       const { id } = req.params as { id: string };
       const c = ctx(req);

@@ -70,6 +70,12 @@ final class AuthStore: ObservableObject {
                 role: current.role,
                 onDuty: onDuty,
                 locale: current.locale,
+                permissions: current.permissions,
+                phoneE164: current.phoneE164,
+                avatarUrl: current.avatarUrl,
+                organisationName: current.organisationName,
+                lastActiveAt: current.lastActiveAt,
+                createdAt: current.createdAt,
             )
         } catch {
             lastError = "Could not change duty status."

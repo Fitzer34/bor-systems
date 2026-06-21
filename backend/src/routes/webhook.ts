@@ -203,6 +203,12 @@ export default async function webhookRoutes(app: FastifyInstance): Promise<void>
     }
 
     if (decoded.eventType === "lifted") {
+      // Stamp recency so the floor-plan / device list can show "last lifted"
+      // without scanning the events table.
+      await db
+        .update(schema.hangers)
+        .set({ lastLiftedAt: new Date() })
+        .where(eq(schema.hangers.id, hanger.id));
       await openAlertForHanger(hanger.id);
     } else if (decoded.eventType === "returned") {
       await closeAlertForHanger(hanger.id, "sign_returned", null);

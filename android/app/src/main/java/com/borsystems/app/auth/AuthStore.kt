@@ -94,6 +94,15 @@ object AuthStore {
         PhoneWatchSync.push(ctx, ApiClient.token, BuildConfig.API_BASE_URL)
     }
 
+    /**
+     * Run a one-off suspend block on the auth store's main scope. Handy for
+     * fire-and-forget UI side effects (e.g. persisting the chosen discipline to
+     * DataStore) without each screen owning its own CoroutineScope.
+     */
+    fun scopeLaunch(block: suspend () -> Unit) {
+        scope.launch { block() }
+    }
+
     fun setOnDuty(onDuty: Boolean) {
         val current = _user.value ?: return
         scope.launch {
