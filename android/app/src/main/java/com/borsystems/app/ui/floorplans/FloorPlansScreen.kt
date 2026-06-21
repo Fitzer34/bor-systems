@@ -384,7 +384,14 @@ private fun PlanWithPins(
     Box(
         Modifier
             .fillMaxWidth()
+            // Give the area a stable min-height before the bitmap loads so layout
+            // is non-zero on first paint; otherwise boxH stays 0 and the pin guard
+            // below never passes, leaving plan + pins invisible until load. Once
+            // the image lays out, the box grows to its FillWidth height, so pins
+            // stay aligned to the image edges exactly as before.
+            .defaultMinSize(minHeight = 240.dp)
             .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .onSizeChanged { boxW = it.width; boxH = it.height },
     ) {
         AsyncImage(

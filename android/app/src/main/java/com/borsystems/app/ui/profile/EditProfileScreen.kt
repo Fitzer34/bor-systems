@@ -29,7 +29,7 @@ fun EditProfileScreen(onBack: () -> Unit) {
     val user by AuthStore.user.collectAsState()
 
     var name by remember(user?.id) { mutableStateOf(user?.name ?: "") }
-    var phone by remember(user?.id) { mutableStateOf("") }
+    var phone by remember(user?.id) { mutableStateOf(user?.phoneE164 ?: "") }
     var profileSaved by remember { mutableStateOf(false) }
     var profileError by remember { mutableStateOf<String?>(null) }
 

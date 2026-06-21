@@ -123,7 +123,8 @@ private fun TwoFactorSection() {
                 onValueChange = { disableCode = it },
                 label = { Text("Code") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                // Recovery codes are hex-with-dash (e.g. a1b2c-d3e4f), so allow text.
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(

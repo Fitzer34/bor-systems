@@ -56,7 +56,10 @@ fun HomeScreen(
 
     // Cleaners are always pinned to cleaning; staff persist their choice.
     val isStaff = user?.role == UserRole.admin || user?.role == UserRole.supervisor
-    val persisted by DisciplineStore.flow(ctx).collectAsState(initial = null)
+    // Remember the Flow so it isn't recreated every recomposition (which would
+    // re-subscribe and momentarily reset to null, flashing ChooseDisciplineScreen).
+    val disciplineFlow = remember(ctx) { DisciplineStore.flow(ctx) }
+    val persisted by disciplineFlow.collectAsState(initial = null)
     var loadedOnce by remember { mutableStateOf(false) }
     LaunchedEffect(persisted) { loadedOnce = true }
 
