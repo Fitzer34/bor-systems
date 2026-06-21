@@ -11,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.borsystems.app.auth.AuthStore
 import com.borsystems.app.network.ApiClient
@@ -20,9 +19,8 @@ import kotlinx.coroutines.launch
 /**
  * Edit profile — mirrors iOS EditProfileView.swift.
  *
- * Two independent forms: account/name update, and password change. Each
- * has its own submit button and feedback state so a failed password
- * change doesn't clobber a successful name save.
+ * Edits personal details only (name, phone). Password changes and 2FA live
+ * on SecurityScreen, reachable from ProfileScreen's "Sign-in security" row.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,11 +32,6 @@ fun EditProfileScreen(onBack: () -> Unit) {
     var phone by remember(user?.id) { mutableStateOf("") }
     var profileSaved by remember { mutableStateOf(false) }
     var profileError by remember { mutableStateOf<String?>(null) }
-
-    var oldPwd by remember { mutableStateOf("") }
-    var newPwd by remember { mutableStateOf("") }
-    var confirmPwd by remember { mutableStateOf("") }
-    var pwdResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
 
     Scaffold(
         topBar = {
@@ -122,56 +115,6 @@ fun EditProfileScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            HorizontalDivider()
-
-            SectionHeader("Change password")
-            OutlinedTextField(
-                value = oldPwd,
-                onValueChange = { oldPwd = it },
-                label = { Text("Current password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = newPwd,
-                onValueChange = { newPwd = it },
-                label = { Text("New password (min 8 chars)") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = confirmPwd,
-                onValueChange = { confirmPwd = it },
-                label = { Text("Confirm new password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Button(
-                onClick = {
-                    pwdResult = null
-                    scope.launch {
-                        try {
-                            ApiClient.changePassword(oldPwd, newPwd)
-                            pwdResult = true to "Password changed."
-                            oldPwd = ""; newPwd = ""; confirmPwd = ""
-                        } catch (e: Exception) {
-                            pwdResult = false to "Could not change password — check current password."
-                        }
-                    }
-                },
-                enabled = oldPwd.isNotEmpty() && newPwd.length >= 8 && newPwd == confirmPwd,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Change password") }
-            pwdResult?.let { (ok, msg) ->
-                Text(
-                    msg,
-                    color = if (ok) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
-                )
-            }
         }
     }
 }
