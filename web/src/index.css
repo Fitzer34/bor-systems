@@ -104,6 +104,26 @@
   .pill-info    { @apply pill bg-blue-100 text-blue-700; }
   .pill-muted   { @apply pill bg-slate-200 text-slate-600; }
 
+  /* "LIVE" tag — a tiny red dot + uppercase label, used on cards that reflect
+     real-time data (active spills, the operations feed). Not a pill: it sits
+     inline next to a heading. */
+  .live-tag {
+    @apply inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-red-600;
+  }
+  .live-tag::before {
+    content: "";
+    @apply h-1.5 w-1.5 rounded-full bg-red-500;
+  }
+
+  /* Small tinted square that prefixes a stat/feed/summary item (icon chip). */
+  .icon-chip {
+    @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-lg;
+  }
+
+  /* Thin progress track + fill used on the spill cards. */
+  .track { @apply h-1 w-full overflow-hidden rounded-full bg-slate-200; }
+  .track-fill { @apply h-full rounded-full; }
+
   /* Section heading used above card groups */
   .section-title {
     @apply text-xs uppercase tracking-wider text-slate-500 font-medium mb-2;
