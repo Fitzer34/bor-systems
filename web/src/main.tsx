@@ -54,6 +54,12 @@ import { TeamDashboard } from "./pages/TeamDashboard";
 import { SectionProvider } from "./lib/section";
 import { initWebSentry } from "./lib/sentry";
 import "./index.css";
+// Exact design system lifted verbatim from the claude.ai/design prototype
+// (the full <style> block from the standalone HTML export).
+import "./prototype/prototype.css";
+// The entire claude.ai/design prototype, assembled verbatim into one module
+// (see prototype/assemble.mjs). Mounted as the authed app below.
+import { App as PrototypeApp } from "./prototype/bundle";
 
 initWebSentry();
 
@@ -108,6 +114,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/signup" element={<Signup />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
+            {/* Public, no-login design preview of the full prototype (sample
+                data) — lets the design be viewed/shared without an account. */}
+            <Route path="/preview" element={<PrototypeApp />} />
             {/* Public, no-login page a contractor opens from the PPM scheduling
                 magic link we email them. */}
             <Route path="/schedule/:token" element={<SchedulePage />} />
@@ -122,8 +131,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/accept-invite/:token" element={<AcceptInvite />} />
             {/* Section chooser — pick Cleaning or Maintenance on entry. */}
             <Route path="/choose" element={<RequireAuth><ChooseSection /></RequireAuth>} />
+            {/* Authed app — the entire claude.ai/design prototype mounted once.
+                Its own sidebar + go() routing drives every authed screen, so a
+                single catch-all replaces the per-page routes. Public routes
+                above (login + contractor/guard magic links) stay as real flows.
+                The legacy per-page routes are preserved under /_legacy so we can
+                re-wire screens to live data one at a time. */}
+            <Route path="/*" element={<RequireAuth><PrototypeApp /></RequireAuth>} />
             <Route
-              path="/"
+              path="/_legacy"
               element={
                 <RequireAuth>
                   <Layout />
@@ -190,7 +206,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 <RequireAuth role={["admin", "supervisor"]}><Analytics /></RequireAuth>
               } />
             </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
         </SectionProvider>

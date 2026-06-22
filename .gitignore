@@ -36,3 +36,6 @@ GoogleService-Info.plist
 *.heic
 android/local.properties
 android/.kotlin/
+
+# extracted prototype reference source (not shipped)
+web/src/prototype/_source/
