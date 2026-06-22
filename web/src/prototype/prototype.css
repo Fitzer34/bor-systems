@@ -9257,3 +9257,13 @@ textarea.dv-input { resize: vertical; line-height: 1.5; }
 .theme-dark .ntype-chip.on { border-color: var(--accent); color: var(--accent); }
 .theme-dark .ntype-chip.on .ntype-count { background: var(--accent); color: var(--accent-ink); }
 .theme-dark .feed-row.unread::before { background: var(--accent); }
+
+/* ── Embedding fix (host app) ───────────────────────────────────────────────
+   In the standalone export the prototype owned the whole document. Mounted
+   inside the host React app, the single grid row must be pinned to the viewport
+   height so .content becomes the scroll area; otherwise the grid row grows to
+   its content height and .app's overflow:hidden clips the bottom (page won't
+   scroll). min-height:0 lets the grid/flex children shrink below content size. */
+.app { grid-template-rows: minmax(0, 1fr); }
+.main { min-height: 0; }
+.content { min-height: 0; }
