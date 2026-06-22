@@ -203,7 +203,11 @@ export function FloorPlans() {
 
   // Counts for the legend.
   const counts = { alert: 0, cleaning: 0, offline: 0, ok: 0 } as Record<SensorState, number>;
-  for (const p of placedSensors) counts[stateOf(p.hanger)] += 1;
+  let lowBatteryCount = 0;
+  for (const p of placedSensors) {
+    counts[stateOf(p.hanger)] += 1;
+    if (isLowBattery(p.hanger.batteryPct, lowBatteryThreshold)) lowBatteryCount += 1;
+  }
 
   // ── Gateways for this building ──
   // Gateways have no floor coordinates, so they appear in the side list + the
@@ -296,6 +300,7 @@ export function FloorPlans() {
   const handleFile = (f: File | undefined | null) => { if (f) uploadPlan.mutate(f); };
 
   const activeFloor = floors.data?.floors.find((f) => f.id === activeFloorId);
+  const activeBuilding = buildingList.find((b) => b.id === activeBuildingId);
 
   const planSrc = (url: string): string => (url.startsWith("http") ? url : `${API_BASE}${url}`);
 
@@ -315,13 +320,19 @@ export function FloorPlans() {
   useEffect(() => { setSelectedHangerId(null); }, [activeFloorId]);
 
   return (
-    <div className="max-w-6xl">
+    <div>
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-semibold">Floor plans</h1>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold">Floor plans</h1>
+          <p className="mt-1 text-sm text-slate-500 max-w-2xl">
+            Every smart wet-floor sign on the building map. Green is on the rack and ready;
+            red is lifted out signing a live hazard; orange means the hanger sensor has gone offline.
+          </p>
+        </div>
         <button
           onClick={() => { setEditMode((v) => !v); setPinningZoneId(null); }}
-          className={editMode ? "btn-primary" : "btn-secondary"}
+          className={(editMode ? "btn-secondary" : "btn-primary") + " shrink-0"}
         >
           {editMode ? (
             <>
@@ -330,14 +341,76 @@ export function FloorPlans() {
             </>
           ) : (
             <>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
-              Edit
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>
+              Open plan editor
             </>
           )}
         </button>
       </div>
 
-      {/* ── Building + floor selectors (always visible) ── */}
+      {/* ── Site tabs + legend (monitoring view) ── */}
+      {!editMode && (
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 mb-4">
+          {/* Site (building) tabs */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">Site</span>
+            <div className="flex flex-wrap items-center gap-1">
+              {buildingList.map((b) => {
+                const active = activeBuildingId === b.id;
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => { setActiveBuildingId(b.id); setActiveFloorId(null); }}
+                    className={"px-3 py-1.5 text-sm rounded-lg font-medium transition " +
+                      (active
+                        ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200"
+                        : "text-slate-500 hover:text-slate-800 hover:bg-white/60")}
+                  >
+                    {b.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
+            <LegendDot className="bg-emerald-500" label="On rack" count={counts.ok} />
+            <LegendDot className="bg-red-500" label="Lifted" count={counts.alert + counts.cleaning} />
+            <LegendDot className="bg-amber-400" label="Offline" count={counts.offline} />
+            <LegendDot className="bg-yellow-400" label="Low battery" count={lowBatteryCount} />
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-[3px] bg-slate-800 inline-block" />
+              <span>Gateways</span>
+              <span className="font-semibold text-slate-700 tabular-nums">{buildingGateways.length}</span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Floor pills (monitoring view, when a building has more than one floor) */}
+      {!editMode && activeBuildingId && sortedFloors.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          {sortedFloors.map((f) => {
+            const active = activeFloorId === f.id;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setActiveFloorId(f.id)}
+                className={"px-2.5 py-1 text-xs rounded-full font-medium transition border " +
+                  (active
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : "bg-white text-slate-500 border-slate-200 hover:border-slate-300")}
+              >
+                {f.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Building + floor selectors (edit mode) ── */}
+      {editMode && (
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="flex-1 min-w-[180px]">
           <label className="field-label">Building</label>
@@ -363,6 +436,7 @@ export function FloorPlans() {
           </select>
         </div>
       </div>
+      )}
 
       {/* ── EDIT PANEL ── */}
       {editMode && (
@@ -493,16 +567,16 @@ export function FloorPlans() {
         </div>
       ) : (
         // Plan (centrepiece) on the left, linked sensor list on the right.
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
-          <div className="card">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-medium">{activeFloor?.name}</div>
-              {editMode && (
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">
+          <div className={"card " + (activeFloor?.floorPlanUrl ? "p-3" : "")}>
+            {editMode && (
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-medium">{activeFloor?.name}</div>
                 <button onClick={() => fileInput.current?.click()} disabled={uploadPlan.isPending} className="btn-primary">
                   {uploadPlan.isPending ? "Uploading…" : (activeFloor?.floorPlanUrl ? "Replace plan" : "Upload plan")}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             <input
               ref={fileInput}
@@ -527,9 +601,9 @@ export function FloorPlans() {
                 )}
                 <div
                   onClick={handlePlanClick}
-                  className={"relative inline-block rounded overflow-hidden " + (pinningZoneId ? "cursor-crosshair ring-2 ring-amber-400" : "")}
+                  className={"relative block w-full rounded-lg overflow-hidden bg-slate-50 " + (pinningZoneId ? "cursor-crosshair ring-2 ring-amber-400" : "")}
                 >
-                  <img src={planSrc(activeFloor.floorPlanUrl)} alt="" className="block max-w-full max-h-[640px]" />
+                  <img src={planSrc(activeFloor.floorPlanUrl)} alt="" className="block w-full max-h-[640px] object-contain" />
 
                   {/* Sensor pins (one per hanger) */}
                   {placedSensors.map((p) => (
@@ -549,6 +623,26 @@ export function FloorPlans() {
                     />
                   ))}
 
+                  {/* Bottom-left caption chip: site · floor */}
+                  <div className="absolute left-2.5 bottom-2.5 inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-slate-400">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+                    </svg>
+                    {activeBuilding?.name}
+                    <span className="text-slate-300">·</span>
+                    {activeFloor?.name}
+                  </div>
+
+                  {/* Compass (bottom-right) */}
+                  <div className="absolute right-2.5 bottom-2.5 grid h-9 w-9 place-items-center rounded-full bg-white/95 shadow-sm ring-1 ring-slate-200">
+                    <div className="flex flex-col items-center leading-none">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="text-slate-700" aria-hidden="true">
+                        <path d="M12 2 L7 13 L12 10 L17 13 Z" />
+                      </svg>
+                      <span className="text-[9px] font-semibold text-slate-500 -mt-0.5">N</span>
+                    </div>
+                  </div>
+
                   {/* Anchored detail popover for the selected sensor */}
                   {selectedPlaced && (
                     <SensorDetailPopover
@@ -556,6 +650,7 @@ export function FloorPlans() {
                       zoneName={selectedPlaced.zone.name}
                       activeAlertId={alertByHangerId.get(selectedPlaced.hanger.id)?.id ?? null}
                       alertStatus={alertByHangerId.get(selectedPlaced.hanger.id)?.status}
+                      alertRef={spillRef(alertByHangerId.get(selectedPlaced.hanger.id)?.id ?? null)}
                       lowBatteryThreshold={lowBatteryThreshold}
                       onClose={() => setSelectedHangerId(null)}
                       // Anchor near the pin; translate up-left so it doesn't
@@ -575,17 +670,6 @@ export function FloorPlans() {
                     {unpinnedZones.length} zone{unpinnedZones.length === 1 ? "" : "s"} still need a pin: use "place pin" above.
                   </div>
                 )}
-
-                {/* Legend */}
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500">
-                  <LegendDot className="bg-green-500" label={`On rack ${counts.ok}`} />
-                  <LegendDot className="bg-red-500" label={`Lifted ${counts.alert}`} />
-                  <LegendDot className="bg-blue-500" label={`Cleaning ${counts.cleaning}`} />
-                  <LegendDot className="bg-amber-400" label={`Offline ${counts.offline}`} />
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-[3px] bg-slate-700 inline-block" /> Gateways {buildingGateways.length}
-                  </span>
-                </div>
               </>
             ) : editMode ? (
               // Drag-and-drop upload target (edit mode, no plan yet)
@@ -625,12 +709,25 @@ export function FloorPlans() {
   );
 }
 
-function LegendDot({ className, label }: { className: string; label: string }) {
+function LegendDot({ className, label, count }: { className: string; label: string; count?: number }) {
   return (
     <span className="flex items-center gap-1.5">
-      <span className={"w-3 h-3 rounded-full inline-block " + className} /> {label}
+      <span className={"w-2.5 h-2.5 rounded-full inline-block " + className} />
+      <span>{label}</span>
+      {count != null && <span className="font-semibold text-slate-700 tabular-nums">{count}</span>}
     </span>
   );
+}
+
+// Short, stable display reference for a spill alert, mirroring the prototype's
+// "SP-####" chip. Derived deterministically from the alert id (a display
+// shortening, not a separate stored field) so the same alert always reads the
+// same. Falls back to null when there's no active alert.
+function spillRef(alertId: string | null): string | null {
+  if (!alertId) return null;
+  const hex = alertId.replace(/[^0-9a-f]/gi, "");
+  const tail = hex.slice(-4).toUpperCase();
+  return tail ? `SP-${tail}` : null;
 }
 
 function signalLabel(rssi: number): string {
