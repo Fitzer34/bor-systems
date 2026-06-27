@@ -657,10 +657,16 @@ export const HL = (function () {
    setCurrentUser() records the signed-in user for the greeting + account menu.
    Driven by prototype/live.tsx. The public /preview route never calls these, so
    it keeps showing the full sample as a design showcase. */
-function _emptyArraysDeep(o: any) {
-  if (Array.isArray(o)) { o.length = 0; return; }
-  if (o && typeof o === "object") { for (const k of Object.keys(o)) _emptyArraysDeep(o[k]); }
+function _resetDeep(o: any) {
+  if (!o || typeof o !== "object") return;
+  for (const k of Object.keys(o)) {
+    const v = o[k];
+    if (Array.isArray(v)) { v.length = 0; }            // empty every list
+    else if (typeof v === "number") { o[k] = 0; }       // zero demo metrics (94%, MTTR…)
+    else if (typeof v === "string") { if (k === "trend") o[k] = ""; } // drop demo deltas "-12%"
+    else if (v && typeof v === "object") { _resetDeep(v); }
+  }
 }
-export function resetHLEmpty() { _emptyArraysDeep(HL); }
+export function resetHLEmpty() { _resetDeep(HL); }
 export function hydrateHL(partial: any) { Object.assign(HL, partial || {}); }
 export function setCurrentUser(u: any) { (HL as any).currentUser = u; }

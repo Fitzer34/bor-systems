@@ -62,7 +62,7 @@ import "./prototype/prototype.css";
 import { App as PrototypeApp } from "./prototype/bundle";
 // Wrapper that empties the demo data, injects the real signed-in user and loads
 // the org's live data into HL before rendering the prototype app.
-import { PrototypeAppLive } from "./prototype/live";
+import { PrototypeAppLive, PreviewEmpty } from "./prototype/live";
 
 initWebSentry();
 
@@ -120,6 +120,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             {/* Public, no-login design preview of the full prototype (sample
                 data) — lets the design be viewed/shared without an account. */}
             <Route path="/preview" element={<PrototypeApp />} />
+            {/* Empty new-org state preview (no login) — for verifying blank states. */}
+            <Route path="/preview-empty" element={<PreviewEmpty />} />
             {/* Public, no-login page a contractor opens from the PPM scheduling
                 magic link we email them. */}
             <Route path="/schedule/:token" element={<SchedulePage />} />

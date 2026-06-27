@@ -17,6 +17,13 @@ import { useAuth } from "../lib/auth";
 import { App as PrototypeApp } from "./bundle";
 import { resetHLEmpty, hydrateHL, setCurrentUser } from "./data";
 
+/** Public, no-login preview of the EMPTY new-org state — empties HL, no user,
+ *  no fetch. Lets the blank states be checked without signing up. */
+export function PreviewEmpty() {
+  resetHLEmpty();
+  return <PrototypeApp />;
+}
+
 function initialsOf(name: string): string {
   return (name || "")
     .split(/\s+/).filter(Boolean).slice(0, 2)

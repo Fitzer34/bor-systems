@@ -885,7 +885,7 @@ const ROLE_LIST = [
     desc:"On-the-floor mobile users. Minimal access." },
 ];
 
-const ROLE_COUNTS = { "admin": 2, "supervisor": 2, "field staff": 10 };
+const ROLE_COUNTS = { "admin": 0, "supervisor": 0, "field staff": 0 };
 
 const MODULE_GROUPS = [
   { id:"ops",      label:"Operations",  icon:"layers", items:[
@@ -1423,78 +1423,7 @@ const NOTIF_TYPES = {
      title, context, time (relative string), bucket (today|earlier),
      view  — the page the row links to,
      action — optional { label, icon, tone } used on the full page */
-const NOTIF_ITEMS = [
-  {
-    id:"n01", type:"spills", severity:"crit",
-    title:"Live spill alert — SP-2041",
-    context:"Aviva Office Tower · Aisle 4 · Cleaner en route",
-    time:"now", bucket:"today", view:"spills",
-    action:{ label:"Acknowledge", icon:"check", tone:"crit" },
-  },
-  {
-    id:"n02", type:"spills", severity:"crit",
-    title:"Spill SP-2041 auto-escalated to manager",
-    context:"No acknowledgement in 5 min · Aoife Kelly paged",
-    time:"2m", bucket:"today", view:"spills",
-    action:{ label:"View alert", icon:"arrowRight", tone:"muted" },
-  },
-  {
-    id:"n03", type:"security", severity:"crit",
-    title:"Lone-worker check-in overdue",
-    context:"Aviva night guard · 8 min past scheduled check-in",
-    time:"8m", bucket:"today", view:"security",
-    action:{ label:"Call guard", icon:"phone", tone:"secure" },
-  },
-  {
-    id:"n04", type:"maintenance", severity:"warn",
-    title:"WO-2017 past SLA",
-    context:"Lift fault · Citywide Centre · 1h 42m over response SLA",
-    time:"1h", bucket:"today", view:"slas",
-    action:{ label:"Open work order", icon:"arrowRight", tone:"warn" },
-  },
-  {
-    id:"n05", type:"maintenance", severity:"warn",
-    title:"PPM-105 overdue",
-    context:"Booster pump service · Northgate · AquaFix Plumbing",
-    time:"3h", bucket:"today", view:"ppm",
-    action:{ label:"Reassign", icon:"rotateCw", tone:"muted" },
-  },
-  {
-    id:"n06", type:"billing", severity:"accent",
-    title:"Quote Q-3014 awaiting your approval",
-    context:"Roof access replacement · €4,820 · Mercury Roofing",
-    time:"5h", bucket:"today", view:"billing",
-    action:{ label:"Approve quote", icon:"check", tone:"accent" },
-  },
-  {
-    id:"n07", type:"maintenance", severity:"muted",
-    title:"Low stock — Pleated air filter",
-    context:"Min level breached · PO-447 auto-raised to AHU Direct",
-    time:"6h", bucket:"today", view:"parts",
-    action:{ label:"View PO", icon:"package", tone:"muted" },
-  },
-  {
-    id:"n08", type:"security", severity:"warn",
-    title:"Missed patrol checkpoint",
-    context:"Northgate main gate · 22:14 · No scan recorded",
-    time:"yesterday", bucket:"earlier", view:"security",
-    action:{ label:"Acknowledge", icon:"check", tone:"secure" },
-  },
-  {
-    id:"n09", type:"compliance", severity:"warn",
-    title:"RAMS certificate expiring in 12 days",
-    context:"Citywide Cleaning · Public Liability cover ends 03 Jul",
-    time:"yesterday", bucket:"earlier", view:"compliance",
-    action:{ label:"Chase renewal", icon:"send", tone:"warn" },
-  },
-  {
-    id:"n10", type:"billing", severity:"warn",
-    title:"Invoice INV-2072 overdue",
-    context:"Northgate Holdings · €1,240 · 14 days past due",
-    time:"2d", bucket:"earlier", view:"billing",
-    action:{ label:"Chase payment", icon:"send", tone:"warn" },
-  },
-];
+const NOTIF_ITEMS = [];
 
 const NOTIF_TYPE_ORDER = ["spills","maintenance","compliance","security","billing","system"];
 
@@ -1834,7 +1763,7 @@ function Sidebar({ view, go, counts }) {
         <div className="site-mini">
           <span className="dot" />
           <div className="txt">
-            <b>6 sites live</b>
+            <b>0 sites live</b>
             All systems operational
           </div>
         </div>
@@ -2819,9 +2748,9 @@ function Dashboard({ go, feed }) {
     primaryAction = { label: "New work order", icon: "plus", to: "maintenance" };
     heroNode      = <MaintenanceHero workOrders={D.workOrders} ppmTasks={D.ppmTasks || []} go={go} />;
     topKpis = [
-      { id:"m1", label:"Open work orders", value: String(openCount), icon:"wrench", tone:"maint", trend:"-12%", up:true, foot:"vs last week" },
-      { id:"m2", label:"PM compliance",     value:"94", unit:"%", icon:"checkCircle", tone:"ok",    trend:"+3%",  up:true, foot:"planned jobs on time" },
-      { id:"m3", label:"Avg. MTTR",          value:"1.8", unit:"d", icon:"clock",     tone:"accent", trend:"-0.4d", up:true, foot:"mean time to repair" },
+      { id:"m1", label:"Open work orders", value: String(openCount), icon:"wrench", tone:"maint", foot:"vs last week" },
+      { id:"m2", label:"PM compliance",     value:"0", unit:"%", icon:"checkCircle", tone:"ok",    foot:"planned jobs on time" },
+      { id:"m3", label:"Avg. MTTR",          value:"0", unit:"d", icon:"clock",     tone:"accent", foot:"mean time to repair" },
       { id:"m4", label:"Parts low",          value: String(partsLow), icon:"package", tone: partsLow > 0 ? "warn" : "ok",
         valColor: partsLow > 0 ? "var(--warn)" : "var(--ok)", foot:"at or below min level" },
     ];
@@ -2833,7 +2762,7 @@ function Dashboard({ go, feed }) {
     topKpis = [
       { id:"s1", label:"Open incidents",       value: String(openInc), icon:"alertTri", tone: openInc > 0 ? "warn" : "ok",
         valColor: openInc > 0 ? "var(--warn)" : "var(--ok)", foot:"awaiting close-out" },
-      { id:"s2", label:"Patrols on time",       value:"98", unit:"%", icon:"shield", tone:"secure", trend:"+1%", up:true, foot:"all sites" },
+      { id:"s2", label:"Patrols on time",       value:"0", unit:"%", icon:"shield", tone:"secure", foot:"all sites" },
       { id:"s3", label:"Checkpoints due",       value: String(checkpointsDue), icon:"scan", tone: checkpointsDue > 0 ? "warn" : "ok",
         foot:"on live patrols" },
       { id:"s4", label:"Lone-workers active",   value: String(loneActive), icon:"user", tone:"accent", live:true, foot:"checked in within 15 min" },
@@ -3146,12 +3075,7 @@ function CleaningRightCol({ D, go }) {
 
   /* Consumables — short curated list of stock items the cleaning lead actually
      reorders. Counts are seeded so they match the "Consumables low" KPI tone. */
-  const consumables = [
-    { id:"CN-1", name:"Industrial floor degreaser",  site:"Riverside",   onHand:3,  min:6,  status:"low" },
-    { id:"CN-2", name:"Disposable mop heads",         site:"Northgate",   onHand:0,  min:20, status:"out" },
-    { id:"CN-3", name:"Hand sanitiser refill, 1L",    site:"Aviva",       onHand:4,  min:8,  status:"low" },
-    { id:"CN-4", name:"Toilet roll, 2-ply jumbo",     site:"Lee Valley",  onHand:11, min:24, status:"low" },
-  ];
+  const consumables = [];
 
   return (
     <React.Fragment>
@@ -3231,18 +3155,10 @@ function MaintRightCol({ D, go }) {
      low-stock parts so the value here reflects the parts shortfalls. */
   const approvals = [
     ...tenders.map((w) => ({ id: w.id, kind: "Quote",          title: w.title, amount: "3 quotes ranked", dest: "wo" })),
-    { id: "PO-2031", kind: "Purchase order", title: "Condensate drain kit · 4 units",        amount: "€194.00", dest: "parts" },
-    { id: "PO-2030", kind: "Purchase order", title: "Fire alarm battery 12V 7Ah · 6 units",  amount: "€126.00", dest: "parts" },
   ];
 
   /* Countdown text per WO — woDetail.sla is the source of truth for WO-2041. */
-  const slaTimer = {
-    "WO-2041": { left: "4h 12m", tone: "crit"  },
-    "WO-2038": { left: "1d 8h",  tone: "muted" },
-    "WO-2036": { left: "6h 40m", tone: "warn"  },
-    "WO-2029": { left: "2d",     tone: "muted" },
-    "WO-2043": { left: "1d 2h",  tone: "muted" },
-  };
+  const slaTimer = {};
 
   return (
     <React.Fragment>
@@ -3386,26 +3302,7 @@ Object.assign(window, {
 /* HazardLink — Sites: Portfolio overview + per-site page */
 
 /* ---------- Site enrichment metadata ---------- */
-const SITE_INFO = {
-  s1: { address:"Mahon, Cork T12 W2KH",                       type:"Retail park",         area:"8,200 m²",  manager:"Aoife Kelly",     openedOn:"2018",
-        pm:96, compliance:94, staffNominal:6,
-        photoTint:"linear-gradient(135deg, oklch(0.74 0.11 80), oklch(0.62 0.13 55))" },
-  s2: { address:"Northgate Drive, Finglas, Dublin 11 D11 X9P0", type:"Logistics hub",      area:"14,800 m²", manager:"Owen Farrell",    openedOn:"2020",
-        pm:88, compliance:88, staffNominal:9,
-        photoTint:"linear-gradient(135deg, oklch(0.56 0.11 250), oklch(0.42 0.13 270))" },
-  s3: { address:"Lansdowne Road, Dublin 4 D04 P822",            type:"Commercial office",  area:"11,400 m²", manager:"Maeve O'Connor",  openedOn:"2019",
-        pm:94, compliance:92, staffNominal:8,
-        photoTint:"linear-gradient(135deg, oklch(0.60 0.11 230), oklch(0.45 0.11 245))" },
-  s4: { address:"Lee Valley Park, Limerick V94 K8FN",           type:"Healthcare",         area:"4,600 m²",  manager:"Aoife Kelly",     openedOn:"2017",
-        pm:100, compliance:98, staffNominal:3,
-        photoTint:"linear-gradient(135deg, oklch(0.66 0.10 165), oklch(0.54 0.13 150))" },
-  s5: { address:"Tramore Promenade, Waterford X91 K6TP",       type:"Leisure centre",      area:"3,900 m²",  manager:"Aoife Kelly",     openedOn:"2015",
-        pm:82, compliance:87, staffNominal:4,
-        photoTint:"linear-gradient(135deg, oklch(0.64 0.12 200), oklch(0.50 0.13 215))" },
-  s6: { address:"Saint Augustine Street, Galway H91 K5PE",     type:"Public sector",       area:"2,100 m²",  manager:"Aoife Kelly",     openedOn:"2016",
-        pm:90, compliance:90, staffNominal:2,
-        photoTint:"linear-gradient(135deg, oklch(0.60 0.13 290), oklch(0.46 0.13 305))" },
-};
+const SITE_INFO = {};
 
 const _STATUS_LABEL = { ok: "Operational", warn: "Attention needed", crit: "Issues" };
 const _STATUS_TONE  = { ok: "ok", warn: "warn", crit: "crit" };
@@ -3981,34 +3878,10 @@ Object.assign(window, { SiteView, PortfolioView, SITE_INFO });
 /* ============================================================
    Resources (people + contractors) and seed jobs
    ============================================================ */
-const SCHED_SITES = [
-  "Riverside Retail Park",
-  "Northgate Logistics Hub",
-  "Aviva Office Tower",
-  "Lee Valley Medical Centre",
-  "Tramore Leisure Centre",
-  "Galway City Library",
-];
-const SITE_SHORT = {
-  "Riverside Retail Park":    "Riverside",
-  "Northgate Logistics Hub":  "Northgate",
-  "Aviva Office Tower":       "Aviva",
-  "Lee Valley Medical Centre":"Lee Valley",
-  "Tramore Leisure Centre":   "Tramore",
-  "Galway City Library":      "Galway Lib",
-};
+const SCHED_SITES = [];
+const SITE_SHORT = {};
 
-const SCHED_RESOURCES = [
-  { id:"r1", name:"Patricia Ryan",   initials:"PR", role:"Cleaner",                disc:"clean",  base:"Riverside Retail Park",     kind:"staff"      },
-  { id:"r2", name:"Owen Farrell",    initials:"OF", role:"Site Lead",              disc:"clean",  base:"Northgate Logistics Hub",   kind:"staff"      },
-  { id:"r3", name:"Siobhan Walsh",   initials:"SW", role:"Cleaner",                disc:"clean",  base:"Aviva Office Tower",        kind:"staff"      },
-  { id:"r4", name:"Niamh Delaney",   initials:"ND", role:"Cleaner",                disc:"clean",  base:"Tramore Leisure Centre",    kind:"staff"      },
-  { id:"r5", name:"Declan Moore",    initials:"DM", role:"Maintenance Tech",       disc:"maint",  base:"Lee Valley Medical Centre", kind:"staff"      },
-  { id:"r6", name:"Cathal O'Brien",  initials:"CO", role:"Maintenance Tech",       disc:"maint",  base:"Aviva Office Tower",        kind:"staff"      },
-  { id:"r7", name:"Liam Doyle",      initials:"LD", role:"Security guard",         disc:"secure", base:"Northgate Logistics Hub",   kind:"staff"      },
-  { id:"c1", name:"AquaFix Plumbing",     initials:"AF", role:"Plumbing contractor",  disc:"maint", base:"Mobile",                   kind:"contractor" },
-  { id:"c2", name:"Citywide Facilities",  initials:"CF", role:"Facilities contractor",disc:"maint", base:"Mobile",                   kind:"contractor" },
-];
+const SCHED_RESOURCES = [];
 
 /* Seed jobs — d is the weekday index (0=Mon … 6=Sun), week is 0=this/1=next. */
 let JOB_ID = 3000;
@@ -4021,91 +3894,7 @@ const U = (week, d, start, dur, disc, title, site) => ({
   status:"Unassigned", driveMin:null,
 });
 
-const SEED_JOBS = [
-  /* ===== This week — Mon ===== */
-  J(0,"r1",0,"07:00",60,  "clean","Daily clean — front of house",   "Riverside Retail Park"),
-  J(0,"r2",0,"08:00",90,  "clean","Daily clean — yard rounds",      "Northgate Logistics Hub"),
-  J(0,"r3",0,"06:00",180, "clean","Deep clean — atrium",            "Aviva Office Tower"),
-  J(0,"r4",0,"09:00",90,  "clean","Daily clean — gym + pool deck",  "Tramore Leisure Centre"),
-  J(0,"r5",0,"09:00",120, "maint","PPM — Boiler room weekly",       "Lee Valley Medical Centre"),
-  J(0,"r6",0,"10:00",60,  "maint","V-belt swap — AHU 2",            "Aviva Office Tower"),
-  J(0,"r7",0,"14:00",240, "secure","Day patrol — perimeter",        "Northgate Logistics Hub"),
-  /* ===== This week — Tue ===== */
-  J(0,"r1",1,"07:00",60,  "clean","Daily clean — front of house",   "Riverside Retail Park"),
-  J(0,"r2",1,"08:00",90,  "clean","Daily clean — yard rounds",      "Northgate Logistics Hub"),
-  J(0,"r3",1,"06:00",90,  "clean","Daily clean — atrium",           "Aviva Office Tower"),
-  J(0,"r4",1,"09:00",90,  "clean","Daily clean — gym + pool deck",  "Tramore Leisure Centre"),
-  J(0,"r5",1,"10:00",60,  "maint","Reactive — tap fix",             "Lee Valley Medical Centre"),
-  J(0,"r7",1,"14:00",240, "secure","Day patrol — perimeter",        "Northgate Logistics Hub"),
-  J(0,"c1",1,"09:00",180, "maint","WO-2041 drainage leak",          "Northgate Logistics Hub"),
-  /* ===== This week — Wed ===== */
-  J(0,"r1",2,"07:00",60,  "clean","Daily clean — front of house",   "Riverside Retail Park"),
-  J(0,"r1",2,"14:30",30,  "clean","Reactive spill — aisle 4",       "Riverside Retail Park"),
-  J(0,"r2",2,"08:00",90,  "clean","Daily clean — yard rounds",      "Northgate Logistics Hub"),
-  J(0,"r3",2,"06:00",90,  "clean","Daily clean — atrium",           "Aviva Office Tower"),
-  J(0,"r4",2,"09:00",90,  "clean","Daily clean — gym + pool deck",  "Tramore Leisure Centre"),
-  J(0,"r5",2,"09:30",120, "maint","PPM — Lift inspection",          "Lee Valley Medical Centre"),
-  J(0,"r6",2,"11:00",90,  "maint","Air filter PPM — AHU 1",         "Aviva Office Tower"),
-  J(0,"r7",2,"14:00",240, "secure","Day patrol — perimeter",        "Northgate Logistics Hub"),
-  J(0,"c2",2,"08:00",240, "maint","HVAC service contract",          "Aviva Office Tower"),
-  /* ===== This week — Thu ===== */
-  J(0,"r1",3,"07:00",60,  "clean","Daily clean — front of house",   "Riverside Retail Park"),
-  J(0,"r2",3,"08:00",90,  "clean","Daily clean — yard rounds",      "Northgate Logistics Hub"),
-  J(0,"r3",3,"06:00",180, "clean","Deep clean — exec floor",        "Aviva Office Tower"),
-  J(0,"r4",3,"09:00",90,  "clean","Daily clean — gym + pool deck",  "Tramore Leisure Centre"),
-  J(0,"r5",3,"13:00",90,  "maint","Lighting repair — ward 3",       "Lee Valley Medical Centre"),
-  J(0,"r6",3,"14:00",120, "maint","Pump service",                   "Aviva Office Tower"),
-  J(0,"r7",3,"14:00",240, "secure","Day patrol — perimeter",        "Northgate Logistics Hub"),
-  J(0,"c1",3,"11:00",120, "maint","Radiator repair",                "Aviva Office Tower"),
-  /* ===== This week — Fri ===== */
-  J(0,"r1",4,"07:00",60,  "clean","Daily clean — front of house",   "Riverside Retail Park"),
-  J(0,"r2",4,"08:00",90,  "clean","Daily clean — yard rounds",      "Northgate Logistics Hub"),
-  J(0,"r2",4,"14:00",60,  "clean","Site walk-around with manager",  "Northgate Logistics Hub"),
-  J(0,"r3",4,"06:00",90,  "clean","Daily clean — atrium",           "Aviva Office Tower"),
-  J(0,"r4",4,"09:00",90,  "clean","Daily clean — gym + pool deck",  "Tramore Leisure Centre"),
-  J(0,"r5",4,"09:00",180, "maint","Quarterly fire alarm test",      "Lee Valley Medical Centre"),
-  J(0,"r6",4,"10:00",120, "maint","Lighting check — basement",      "Aviva Office Tower"),
-  J(0,"r7",4,"14:00",240, "secure","Day patrol — perimeter",        "Northgate Logistics Hub"),
-  J(0,"c2",4,"13:00",120, "maint","Pool plant chemistry",           "Tramore Leisure Centre"),
-  /* ===== This week — Sat/Sun ===== */
-  J(0,"r4",5,"09:00",120, "clean","Weekend clean — wet zones",      "Tramore Leisure Centre"),
-  J(0,"r7",5,"18:00",360, "secure","Night patrol",                  "Northgate Logistics Hub"),
-  J(0,"r7",6,"18:00",360, "secure","Night patrol",                  "Northgate Logistics Hub"),
-
-  /* ===== Unassigned (this week) — these are the draggable cards ===== */
-  U(0,1,"10:00",120, "maint","AHU filter swap — outstanding PPM",  "Aviva Office Tower"),
-  U(0,2,"19:00",180, "clean","Out-of-hours deep clean",            "Galway City Library"),
-  U(0,3,"08:30",90,  "secure","Vacant unit lock-down patrol",      "Northgate Logistics Hub"),
-  U(0,4,"15:00",120, "maint","Leak follow-up — basement plant",    "Aviva Office Tower"),
-
-  /* ===== Next week — Mon ===== */
-  J(1,"r1",0,"07:00",60,  "clean","Daily clean — front of house",   "Riverside Retail Park"),
-  J(1,"r3",0,"06:00",90,  "clean","Daily clean — atrium",           "Aviva Office Tower"),
-  J(1,"r5",0,"09:00",120, "maint","PPM — Boiler room weekly",       "Lee Valley Medical Centre"),
-  J(1,"r7",0,"14:00",240, "secure","Day patrol — perimeter",        "Northgate Logistics Hub"),
-  /* ===== Next week — Tue ===== */
-  J(1,"r2",1,"08:00",90,  "clean","Daily clean — yard rounds",      "Northgate Logistics Hub"),
-  J(1,"r4",1,"09:00",90,  "clean","Daily clean — gym + pool deck",  "Tramore Leisure Centre"),
-  J(1,"r6",1,"10:00",120, "maint","PPM — Generator test",           "Aviva Office Tower"),
-  J(1,"r7",1,"14:00",240, "secure","Day patrol — perimeter",        "Northgate Logistics Hub"),
-  /* ===== Next week — Wed ===== */
-  J(1,"r1",2,"07:00",60,  "clean","Daily clean — front of house",   "Riverside Retail Park"),
-  J(1,"r3",2,"06:00",180, "clean","Deep clean — atrium",            "Aviva Office Tower"),
-  J(1,"r5",2,"11:00",90,  "maint","PPM — Hot water plant",          "Lee Valley Medical Centre"),
-  J(1,"c1",2,"09:00",180, "maint","Quarterly backflow test",        "Lee Valley Medical Centre"),
-  /* ===== Next week — Thu ===== */
-  J(1,"r2",3,"08:00",90,  "clean","Daily clean — yard rounds",      "Northgate Logistics Hub"),
-  J(1,"r4",3,"09:00",90,  "clean","Daily clean — gym + pool deck",  "Tramore Leisure Centre"),
-  J(1,"r6",3,"13:00",120, "maint","Door closer survey",             "Aviva Office Tower"),
-  /* ===== Next week — Fri ===== */
-  J(1,"r1",4,"07:00",60,  "clean","Daily clean — front of house",   "Riverside Retail Park"),
-  J(1,"r5",4,"09:00",240, "maint","Annual lift service",            "Lee Valley Medical Centre"),
-  J(1,"r7",4,"14:00",240, "secure","Day patrol — perimeter",        "Northgate Logistics Hub"),
-  J(1,"c2",4,"13:00",120, "maint","Pool plant chemistry",           "Tramore Leisure Centre"),
-
-  U(1,0,"11:00",120, "secure","Lone-worker swing audit",            "Aviva Office Tower"),
-  U(1,2,"15:00",90,  "clean","Carpet shampoo — boardrooms",         "Aviva Office Tower"),
-];
+const SEED_JOBS = [];
 
 /* ============================================================
    Helpers
@@ -4711,59 +4500,25 @@ function RoundCard({ r, onOpen }) {
 function _roundDetails(r) {
   const areas = HL.inspectionAreas;
   if (r.status === "done") {
-    const grades = areas.map((a, i) => {
-      if (r.score >= 95) return "pass";
-      if (r.score >= 90) return i === 5 ? "minor" : "pass";
-      if (r.score >= 80) return [3, 5].includes(i) ? "minor" : "pass";
-      return [1, 3, 5].includes(i) ? "fail" : i === 7 ? "minor" : "pass";
-    });
-    const passN  = grades.filter((g) => g === "pass").length;
-    const minorN = grades.filter((g) => g === "minor").length;
-    const failN  = grades.filter((g) => g === "fail").length;
+    const grades = areas.map(() => null);
     return {
       grades,
-      photoSlots: [
-        { l:"Entrance lobby · " + r.due, taken:true },
-        { l:"Washrooms · floor",          taken:true },
-        { l:"Staff kitchen · sink",        taken:true },
-        { l:"Open-plan · desks",           taken:true },
-        { l:"Stairwell · landing",         taken:false },
-        { l:"External · car park",         taken:false },
-      ],
-      timeline: [
-        { state:"done",   title:"Round scheduled",         time:r.due,   by:"Daily routine \u00b7 site rota" },
-        { state:"done",   title:"Started",                 time:r.due,   by:r.cleaner + " on mobile" },
-        { state:"done",   title:areas.length + " areas inspected",       by:passN + " pass \u00b7 " + minorN + " minor \u00b7 " + failN + " fail" },
-        { state:"done",   title:"Score recorded",          time:r.done,  by:"PDF report generated \u00b7 shared with client" },
-      ],
+      photoSlots: [],
+      timeline: [],
     };
   }
   if (r.status === "in-progress") {
-    const grades = areas.map((_, i) => i < 4 ? "pass" : null);
+    const grades = areas.map(() => null);
     return {
       grades,
-      photoSlots: [
-        { l:"Spill area \u00b7 wide", taken:true },
-        { l:"Floor detail",            taken:true },
-        { l:"After mop",               taken:false },
-      ],
-      timeline: [
-        { state:"done",   title:"Triggered",          time:r.due, by:"IoT sensor \u00b7 Aisle 4" },
-        { state:"done",   title:"Cleaner dispatched", time:r.due, by:r.cleaner + " accepted on mobile" },
-        { state:"active", title:"Cleaning underway",  by:"4 of " + areas.length + " areas done" },
-        { state:"todo",   title:"Sign off and clear sign" },
-      ],
+      photoSlots: [],
+      timeline: [],
     };
   }
   return {
     grades: areas.map(() => null),
     photoSlots: [],
-    timeline: [
-      { state:"active", title:"Round scheduled",                       time:r.due, by:"Assigned to " + r.cleaner },
-      { state:"todo",   title:"Cleaner to accept on mobile" },
-      { state:"todo",   title:"Inspect all " + areas.length + " areas" },
-      { state:"todo",   title:"Submit and sign off" },
-    ],
+    timeline: [],
   };
 }
 
@@ -5054,7 +4809,7 @@ function CleaningView({ go }) {
             { id:"site",    label:"Site",      type:"select", options:HL.sites.map((s) => s.name) },
             { id:"area",    label:"Area",      placeholder:"e.g. Aisle 4 produce" },
             { id:"reason",  label:"What's the hazard?", type:"textarea", rows:3, placeholder:"e.g. Spilled milk after stock-out" },
-            { id:"cleaner", label:"Send",      type:"select", options:["Nearest cleaner on site","Patricia Ryan","Owen Farrell","Siobhan Walsh","Niamh Delaney","Declan Moore"] },
+            { id:"cleaner", label:"Send",      type:"select", options:["Nearest cleaner on site"] },
           ]}
           onClose={() => setReactiveOpen(false)} />
       )}
@@ -5861,19 +5616,7 @@ const SPILL_BY_HGR_LATEST = (() => {
    Gateway positions per floor — keeps gateways visible on the plan
    so coverage is obvious without polluting the data model.
    ============================================================ */
-const GATEWAY_POSITIONS = {
-  s1: { gf: [
-    { id:"GW-RV-01", x: 90, y: 90 },
-    { id:"GW-RV-02", x: 90, y: 24 },
-  ]},
-  s2: { wh: [
-    { id:"GW-NG-01", x: 73, y: 53 },
-    { id:"GW-NG-02", x: 87, y: 85 },
-  ]},
-  s3: { l2: [
-    { id:"GW-AV-01", x: 89, y: 86 },
-  ]},
-};
+const GATEWAY_POSITIONS = {};
 
 const GW_LOOKUP = (() => {
   const m = {};
@@ -5901,13 +5644,7 @@ function gatewaysForFloor(siteId, floorId) {
 
 function FALLBACK_LIFTED_init() { /* placeholder so adjacent decl block keeps name */ }
 
-const FALLBACK_LIFTED = {
-  "HGR-1004":"Yesterday 16:42", "HGR-1005":"2 days ago",
-  "HGR-1006":"Yesterday 09:11", "HGR-1010":"Last week",
-  "HGR-2001":"Yesterday 18:30", "HGR-2002":"Today 08:14",
-  "HGR-2004":"Yesterday 11:55", "HGR-3003":"3 days ago",
-  "HGR-3004":"Yesterday 13:20", "HGR-3005":"5 days ago",
-};
+const FALLBACK_LIFTED = {};
 
 function enrichPin(pin) {
   const dev = HGR_DEVICE_MAP[pin.id];
@@ -6942,17 +6679,14 @@ function AddGatewayWizard({ onClose, onComplete }) {
   const [poweredOn, setPoweredOn] = React.useState(false);
   const [scanning, setScanning] = React.useState(false);
   const [pickedBLE, setPickedBLE] = React.useState(null);
-  const [building, setBuilding] = React.useState(HL.deviceBuildings[0].name);
+  const [building, setBuilding] = React.useState(HL.deviceBuildings[0] ? HL.deviceBuildings[0].name : "");
   const [room, setRoom] = React.useState("Plant room");
   const [ssid, setSsid] = React.useState("");
   const [wifiPwd, setWifiPwd] = React.useState("");
   const [connecting, setConnecting] = React.useState(false);
 
   /* Synthesize a BLE discovery list as soon as we hit step 2 */
-  const bleCandidates = React.useMemo(() => ([
-    { id: "GW-NEW-A4F2", name: "HazardLink Gateway A4F2", mac: "AC:32:0F:A4:F2:11", rssi: -42 },
-    { id: "GW-NEW-D801", name: "HazardLink Gateway D801", mac: "AC:32:0F:D8:01:88", rssi: -68 },
-  ]), []);
+  const bleCandidates = React.useMemo(() => ([]), []);
 
   React.useEffect(() => {
     if (step === 2 && poweredOn) {
@@ -7155,15 +6889,11 @@ function AddHangerWizard({ onClose, onComplete }) {
   const [devEUI, setDevEUI] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
   const [picked, setPicked] = React.useState(null);
-  const [building, setBuilding] = React.useState(HL.deviceBuildings[0].name);
+  const [building, setBuilding] = React.useState(HL.deviceBuildings[0] ? HL.deviceBuildings[0].name : "");
   const [floor, setFloor] = React.useState("Ground floor");
   const [zone, setZone] = React.useState("");
 
-  const bleCandidates = React.useMemo(() => ([
-    { id: "HGR-B0R-7E2C-44A1-9F08", short: "HGR-B7E2C", mac: "BO:7E:2C:44:A1:9F", rssi: -52, batt: 98 },
-    { id: "HGR-B0R-3F19-08DD-22C5", short: "HGR-B3F19", mac: "BO:3F:19:08:DD:22", rssi: -41, batt: 100 },
-    { id: "HGR-B0R-9C0A-5511-7B6F", short: "HGR-B9C0A", mac: "BO:9C:0A:55:11:7B", rssi: -73, batt: 99 },
-  ]), []);
+  const bleCandidates = React.useMemo(() => ([]), []);
 
   React.useEffect(() => {
     if (step === 2 && mode === "ble") {
@@ -7809,7 +7539,14 @@ function Maintenance({ go, workOrders, openWO, flashId, onCreate }) {
 }
 
 function WorkOrder({ go }) {
-  const w = HL.woDetail;
+  const _wo = HL.woDetail || {};
+  const w = {
+    id:"", title:"", priority:"", site:"", desc:"", scope:"", sla:"",
+    scopeBullets:[], quotes:[], steps:[],
+    ...(_wo),
+    asset:    { name:"", id:"", make:"", health:0, ...(_wo.asset || {}) },
+    reporter: { initials:"", name:"", role:"", ...(_wo.reporter || {}) },
+  };
   const [assigned, setAssigned] = React.useState(false);
 
   return (
@@ -7831,10 +7568,10 @@ function WorkOrder({ go }) {
         </div>
         {!assigned && (
           <button className="btn btn-primary" onClick={() => setAssigned(true)}>
-            <Icon name="check" size={15} />Assign AquaFix
+            <Icon name="check" size={15} />Assign contractor
           </button>
         )}
-        {assigned && <Pill tone="ok" icon="checkCircle">AquaFix assigned</Pill>}
+        {assigned && <Pill tone="ok" icon="checkCircle">Contractor assigned</Pill>}
       </div>
 
       <div className="detail-grid">
@@ -7857,7 +7594,7 @@ function WorkOrder({ go }) {
             <div className="card-head">
               <h3>Contractor quotes</h3>
               <span className="sub">Ranked on value, not just price</span>
-              <span className="head-act"><Pill tone="ok" dot>3 received</Pill></span>
+              <span className="head-act"><Pill tone="ok" dot>{w.quotes.length} received</Pill></span>
             </div>
             <div className="card-pad">
               {w.quotes.map((q, i) => <Quote q={q} key={i} />)}
@@ -7901,7 +7638,7 @@ function WorkOrder({ go }) {
           <div className="card card-pad">
             <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", color:"var(--ink-3)", marginBottom:11 }}>Photo proof</div>
             <div className="proof-grid">
-              {["On patrol · 14:21", "Drain detail · 14:22"].map((p, i) => (
+              {[].map((p, i) => (
                 <div className="proof" key={i}>
                   <span className="pcam"><Icon name="camera" size={15} /></span>
                   <span className="plabel">{p}</span>
@@ -7926,7 +7663,9 @@ function _maintTone(v) {
 }
 
 function MaintenanceOverview({ go }) {
-  const m = HL.maintenanceMetrics;
+  const m = HL.maintenanceMetrics || {};
+  const hasData = (m.upcoming && m.upcoming.length) || (m.bySite && m.bySite.length) ||
+                  (m.backlogPriority && m.backlogPriority.length) || !!(m.backlog && m.backlog.v);
 
   return (
     <div className="content-inner">
@@ -7943,6 +7682,13 @@ function MaintenanceOverview({ go }) {
         </div>
       </div>
 
+      {!hasData ? (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No maintenance data yet</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)" }}>Reliability KPIs and charts appear here once work orders and PPMs start flowing.</div>
+        </div>
+      ) : (
+      <React.Fragment>
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
         <div className="kpi">
           <div className="kpi-top">
@@ -8078,6 +7824,8 @@ function MaintenanceOverview({ go }) {
           </div>
         ))}
       </div>
+      </React.Fragment>
+      )}
     </div>
   );
 }
@@ -8492,19 +8240,8 @@ function _partBin(p) {
   return "Aisle " + a + " · Shelf " + shelf + " · Bin " + String(bin).padStart(2, "0");
 }
 function _initialUsage(p) {
-  // Last 6 in/out events. Tailored slightly to the part so it reads plausibly.
-  const isFilter   = /filter/i.test(p.name);
-  const isPlumbing = p.category === "Plumbing";
-  const wo1 = isFilter   ? "WO-2025" : isPlumbing ? "WO-2041" : "WO-2038";
-  const wo2 = isPlumbing ? "WO-2041" : "WO-2036";
-  return [
-    { id:"u1", date:"3 days ago",   type:"out", qty:2, ref:wo1,        by:"Cathal O'Brien",   note:"Issued for scheduled service" },
-    { id:"u2", date:"1 week ago",   type:"out", qty:1, ref:wo2,        by:"Stephen Byrne",    note:"" },
-    { id:"u3", date:"3 weeks ago",  type:"in",  qty:10, ref:"PO 2018", by:p.supplier,         note:"Stock replenishment received" },
-    { id:"u4", date:"6 weeks ago",  type:"out", qty:1, ref:"WO-2025",  by:"Citywide Facilities", note:"" },
-    { id:"u5", date:"2 months ago", type:"out", qty:3, ref:"WO-2011",  by:"Owen Farrell",     note:"Site stockroom transfer" },
-    { id:"u6", date:"3 months ago", type:"in",  qty:15, ref:"PO 1987", by:p.supplier,         note:"Initial stocking" },
-  ];
+  // No seeded usage history for a brand-new org — events accrue as stock moves.
+  return [];
 }
 
 /* ===========================================================
@@ -8952,70 +8689,7 @@ const PART_REORDER_CFG = {
 };
 
 /* Seed POs — mix of statuses across the existing suppliers */
-const PO_SEED = [
-  {
-    id: "PO-2032",
-    supplier: "AHU Direct",
-    raised: "26 min ago",
-    raisedBy: "Auto-reorder · Pleated air filter at min",
-    eta: "2-3 days",
-    status: "Sent",
-    site: "Aviva Office Tower",
-    items: [
-      { partId: "P-0987", name: "Pleated air filter, 600×600", code: "PAF-600", qty: 18, unitPrice: 32.00 },
-    ],
-  },
-  {
-    id: "PO-2031",
-    supplier: "AquaFix Supplies",
-    raised: "yesterday 14:20",
-    raisedBy: "Auto-reorder · Condensate drain kit out of stock",
-    eta: "Tomorrow AM",
-    status: "Confirmed",
-    site: "Northgate Logistics Hub",
-    items: [
-      { partId: "P-0654", name: "Condensate drain kit", code: "CDK-32", qty: 6, unitPrice: 48.50 },
-    ],
-  },
-  {
-    id: "PO-2030",
-    supplier: "FireSafe Ltd",
-    raised: "2 days ago",
-    raisedBy: "Auto-reorder · Fire alarm battery low",
-    eta: "Friday AM",
-    status: "Confirmed",
-    site: "Lee Valley Medical Centre",
-    items: [
-      { partId: "P-1234", name: "Fire alarm battery, 12V 7Ah", code: "FAB-12V7", qty: 8,  unitPrice: 21.00 },
-      { partId: "P-1042", name: "V-belt — A85",                code: "VB-A85",  qty: 4,  unitPrice: 18.40 },
-    ],
-  },
-  {
-    id: "PO-2028",
-    supplier: "Daikin Ireland",
-    raised: "Mon 16 Jun",
-    raisedBy: "Niamh Doherty",
-    eta: "Received 18 Jun",
-    status: "Received",
-    site: "Central stores, Dublin",
-    items: [
-      { partId: "P-1119", name: "Refrigerant R-32 cylinder, 7kg", code: "R32-7KG", qty: 3, unitPrice: 132.00 },
-    ],
-  },
-  {
-    id: "PO-2027",
-    supplier: "Buckley & Co",
-    raised: "Mon 16 Jun",
-    raisedBy: "Cathal O'Brien",
-    eta: "Quoted, awaiting approval",
-    status: "Draft",
-    site: "Central stores, Dublin",
-    items: [
-      { partId: "P-1042", name: "V-belt — A85",       code: "VB-A85",  qty: 12, unitPrice: 18.40 },
-      { partId: "P-1633", name: "Drain rod set, 9 metre", code: "DRS-9M", qty: 1, unitPrice: 72.00 },
-    ],
-  },
-];
+const PO_SEED = [];
 
 const PO_STATUS_TONE = {
   "Draft": "muted",
@@ -9386,58 +9060,11 @@ Object.assign(window, { PurchaseOrdersTab, PART_REORDER_CFG, PO_SEED });
    totals, an Approve action, and a labour cost summary that ties into billing. */
 
 /* People — own staff and contractor operatives, with hourly rates */
-const TS_PEOPLE = [
-  { id: "p1", name: "Aoife Kelly",        role: "Facilities Manager",   org: "internal",  rate: 52.00, initials: "AK" },
-  { id: "p2", name: "Liam Doyle",          role: "Security & maintenance", org: "internal", rate: 38.00, initials: "LD" },
-  { id: "p3", name: "Patricia Ryan",       role: "Cleaner & FM",          org: "internal", rate: 28.00, initials: "PR" },
-  { id: "p4", name: "Owen Farrell",        role: "Cleaner",              org: "internal",  rate: 26.00, initials: "OF" },
-  { id: "p5", name: "Cathal O'Brien",      role: "Engineer",              org: "internal", rate: 46.00, initials: "CO" },
-  { id: "p6", name: "Stephen Hayes",       role: "Plumber",              org: "AquaFix Plumbing",      rate: 72.00, initials: "SH" },
-  { id: "p7", name: "James McGrath",       role: "HVAC engineer",         org: "Murphy Mechanical",   rate: 78.00, initials: "JM" },
-  { id: "p8", name: "Rory Hughes",         role: "Fire-alarm engineer",   org: "FireSafe Ltd",         rate: 85.00, initials: "RH" },
-  { id: "p9", name: "Niamh Doherty",       role: "Operations Director",   org: "internal", rate: 64.00, initials: "ND" },
-];
+const TS_PEOPLE = [];
 
 /* Entries for the week of Mon 15 Jun – Sun 21 Jun 2026.
    Mixed status — most Approved or Submitted; a couple Draft. */
-const TS_ENTRIES_SEED = [
-  /* Monday 15 Jun */
-  { id: "TS-3201", personId: "p3", date: "Mon 15 Jun", site: "Riverside Retail Park",     ref: "Daily clean",     start: "07:00", end: "11:30", hours: 4.5, billable: true,  status: "Approved" },
-  { id: "TS-3202", personId: "p4", date: "Mon 15 Jun", site: "Northgate Logistics Hub",   ref: "Daily clean",     start: "08:00", end: "12:00", hours: 4.0, billable: true,  status: "Approved" },
-  { id: "TS-3203", personId: "p1", date: "Mon 15 Jun", site: "Aviva Office Tower",         ref: "Site management",  start: "09:00", end: "17:30", hours: 8.0, billable: false, status: "Approved" },
-  { id: "TS-3204", personId: "p7", date: "Mon 15 Jun", site: "Aviva Office Tower",         ref: "WO-2038 HVAC unit 3", start: "08:30", end: "12:00", hours: 3.5, billable: true,  status: "Approved" },
-  { id: "TS-3205", personId: "p5", date: "Mon 15 Jun", site: "Lee Valley Medical Centre",  ref: "PPM-102 fire alarm test", start: "13:00", end: "16:30", hours: 3.5, billable: true,  status: "Approved" },
-
-  /* Tuesday 16 Jun */
-  { id: "TS-3210", personId: "p3", date: "Tue 16 Jun", site: "Riverside Retail Park",     ref: "Daily clean",     start: "07:00", end: "11:30", hours: 4.5, billable: true,  status: "Approved" },
-  { id: "TS-3211", personId: "p4", date: "Tue 16 Jun", site: "Northgate Logistics Hub",   ref: "Daily clean",     start: "08:00", end: "11:45", hours: 3.75, billable: true,  status: "Approved" },
-  { id: "TS-3212", personId: "p6", date: "Tue 16 Jun", site: "Northgate Logistics Hub",   ref: "WO-2041 cold-store leak", start: "10:00", end: "13:30", hours: 3.5, billable: true,  status: "Approved" },
-  { id: "TS-3213", personId: "p2", date: "Tue 16 Jun", site: "Northgate Logistics Hub",   ref: "Patrol round",      start: "14:00", end: "22:00", hours: 8.0, billable: true,  status: "Approved" },
-  { id: "TS-3214", personId: "p1", date: "Tue 16 Jun", site: "Aviva Office Tower",         ref: "Site management",  start: "09:00", end: "17:00", hours: 7.5, billable: false, status: "Approved" },
-
-  /* Wednesday 17 Jun */
-  { id: "TS-3220", personId: "p3", date: "Wed 17 Jun", site: "Riverside Retail Park",     ref: "Daily clean + spill",   start: "07:00", end: "12:30", hours: 5.5, billable: true,  status: "Approved" },
-  { id: "TS-3221", personId: "p8", date: "Wed 17 Jun", site: "Lee Valley Medical Centre",  ref: "PPM-102 quarterly test", start: "08:00", end: "10:30", hours: 2.5, billable: true,  status: "Approved" },
-  { id: "TS-3222", personId: "p5", date: "Wed 17 Jun", site: "Aviva Office Tower",         ref: "PPM-108 AHU filter swap", start: "08:30", end: "10:00", hours: 1.5, billable: true,  status: "Approved" },
-  { id: "TS-3223", personId: "p2", date: "Wed 17 Jun", site: "Northgate Logistics Hub",   ref: "Patrol round",      start: "14:00", end: "22:00", hours: 8.0, billable: true,  status: "Approved" },
-  { id: "TS-3224", personId: "p9", date: "Wed 17 Jun", site: "All sites",                  ref: "Ops review",        start: "10:00", end: "12:00", hours: 2.0, billable: false, status: "Approved" },
-
-  /* Thursday 18 Jun */
-  { id: "TS-3230", personId: "p3", date: "Thu 18 Jun", site: "Riverside Retail Park",     ref: "Daily clean",     start: "07:00", end: "11:00", hours: 4.0, billable: true,  status: "Approved" },
-  { id: "TS-3231", personId: "p4", date: "Thu 18 Jun", site: "Northgate Logistics Hub",   ref: "Daily clean",     start: "08:00", end: "12:00", hours: 4.0, billable: true,  status: "Approved" },
-  { id: "TS-3232", personId: "p7", date: "Thu 18 Jun", site: "Aviva Office Tower",         ref: "WO-2038 follow-up",  start: "09:00", end: "12:30", hours: 3.5, billable: true,  status: "Submitted" },
-  { id: "TS-3233", personId: "p6", date: "Thu 18 Jun", site: "Northgate Logistics Hub",   ref: "WO-2041 cold-store leak", start: "13:00", end: "16:00", hours: 3.0, billable: true,  status: "Submitted" },
-  { id: "TS-3234", personId: "p1", date: "Thu 18 Jun", site: "Aviva Office Tower",         ref: "Site management",  start: "09:00", end: "17:00", hours: 7.5, billable: false, status: "Approved" },
-
-  /* Friday 19 Jun — current day for the prototype */
-  { id: "TS-3240", personId: "p3", date: "Fri 19 Jun", site: "Riverside Retail Park",     ref: "Daily clean",     start: "07:00", end: "11:30", hours: 4.5, billable: true,  status: "Submitted" },
-  { id: "TS-3241", personId: "p4", date: "Fri 19 Jun", site: "Northgate Logistics Hub",   ref: "Daily clean",     start: "08:00", end: "12:00", hours: 4.0, billable: true,  status: "Submitted" },
-  { id: "TS-3242", personId: "p2", date: "Fri 19 Jun", site: "Northgate Logistics Hub",   ref: "Patrol round",      start: "14:00", end: "22:00", hours: 8.0, billable: true,  status: "Submitted" },
-  { id: "TS-3243", personId: "p7", date: "Fri 19 Jun", site: "Aviva Office Tower",         ref: "WO-2038 HVAC commissioning", start: "08:00", end: "14:30", hours: 6.5, billable: true,  status: "Submitted" },
-  { id: "TS-3244", personId: "p5", date: "Fri 19 Jun", site: "Tramore Leisure Centre",     ref: "PPM-104 pool plant",    start: "13:00", end: "15:30", hours: 2.5, billable: true,  status: "Draft" },
-  { id: "TS-3245", personId: "p8", date: "Fri 19 Jun", site: "Riverside Retail Park",     ref: "Emergency light test",    start: "16:00", end: "17:30", hours: 1.5, billable: true,  status: "Draft" },
-  { id: "TS-3246", personId: "p1", date: "Fri 19 Jun", site: "Aviva Office Tower",         ref: "Client meeting + admin", start: "09:00", end: "17:00", hours: 7.5, billable: false, status: "Submitted" },
-];
+const TS_ENTRIES_SEED = [];
 
 const TS_STATUS_TONE = {
   "Draft":     "muted",
@@ -9785,40 +9412,7 @@ Object.assign(window, { TimesheetsView });
 /* ============================================================
    Guards currently on duty across the portfolio.
    ============================================================ */
-const SEC_GUARDS = [
-  { id:"g1", name:"Liam Doyle",     initials:"LD",
-    site:"Northgate Logistics Hub", zone:"Yard perimeter",
-    role:"Senior security",  shift:"Day 06:00–14:00",
-    status:"on-patrol", statusSince:"13:40",
-    lastCp:"14:14", lastCpName:"Missed — Main gate",
-    cpMissed:true,
-    nextCp:"Loading bay 3 NFC · due 15:00" },
-  { id:"g2", name:"Aoibhe Nolan",    initials:"AN",
-    site:"Aviva Office Tower",      zone:"Reception · Level 2",
-    role:"Reception security", shift:"Day 06:00–14:00",
-    status:"at-post",   statusSince:"06:08",
-    lastCp:"14:31", lastCpName:"Reception NFC",
-    nextCp:"Lift lobby NFC · due 15:00" },
-  { id:"g3", name:"Michael Cronin",  initials:"MC",
-    site:"Tramore Leisure Centre",  zone:"Pool deck",
-    role:"Site security",   shift:"Day 06:00–14:00",
-    status:"break",     statusSince:"13:25",
-    lastCp:"13:52", lastCpName:"Plant room NFC",
-    nextCp:"Returning 14:00 — pool deck loop" },
-  { id:"g4", name:"Conor Walsh",     initials:"CW",
-    site:"Riverside Retail Park",   zone:"Front entrance",
-    role:"Site security",    shift:"Day 06:00–14:00",
-    status:"on-patrol", statusSince:"14:18",
-    lastCp:"14:22", lastCpName:"Aisle 5 NFC",
-    nextCp:"Customer exit NFC · due 14:55" },
-  { id:"g5", name:"Eoin Ryan",        initials:"ER",
-    site:"Galway City Library",     zone:"Reading rooms",
-    role:"Library security",  shift:"Day 06:00–14:00",
-    status:"panic",     statusSince:"13:48",
-    lastCp:"13:48", lastCpName:"Mezzanine NFC",
-    panicReason:"Panic button pressed — investigating noise complaint",
-    nextCp:"Awaiting response team" },
-];
+const SEC_GUARDS = [];
 
 const SEC_GUARD_STATUS = {
   "on-patrol": { label:"On patrol", tone:"accent", icon:"shield" },
@@ -9831,99 +9425,24 @@ const SEC_GUARD_STATUS = {
    Post orders — standing instructions per post.
    Acknowledged at shift start.
    ============================================================ */
-const SEC_POSTS = [
-  { id:"po1", site:"Riverside Retail Park", post:"Front entrance",
-    assigned:"g4", instructions:[
-      "Welcome visitors and check the rota at 09:00, 13:00 and 17:00",
-      "Sweep aisles 1–5 every 90 minutes — escort suspicious activity to the office",
-      "Escort cash drops to the safe at 17:30 and 22:00 (no exceptions)",
-      "Hold the doors at trolley return 20 minutes before close",
-    ], ack:false },
-  { id:"po2", site:"Northgate Logistics Hub", post:"Yard perimeter",
-    assigned:"g1", instructions:[
-      "NFC scan every gate every hour — 8 tags total around the yard",
-      "Sign every visiting HGV into the gatehouse register",
-      "Check cold-store door seals at start of shift",
-      "Lock loading bay 3 after the last collection of the day",
-    ], ack:true,  ackedAt:"06:04" },
-  { id:"po3", site:"Aviva Office Tower", post:"Reception · Level 2",
-    assigned:"g2", instructions:[
-      "Check the visitor management screen every 30 minutes",
-      "Lift-lobby NFC scan every 90 minutes",
-      "Liaise with cleaning team on out-of-hours access",
-      "Set garage barrier to permit-only after 18:30",
-    ], ack:true, ackedAt:"06:12" },
-  { id:"po4", site:"Tramore Leisure Centre", post:"Pool deck + main entrance",
-    assigned:"g3", instructions:[
-      "Walk the pool deck every 20 minutes during open hours",
-      "Plant room NFC tag at the top of each hour",
-      "Lock-up checklist at 22:00 — see the security binder behind the desk",
-      "Set alarm and tag the system on the way out — keys go in the safe",
-    ], ack:false },
-  { id:"po5", site:"Galway City Library", post:"Reading rooms",
-    assigned:"g5", instructions:[
-      "NFC scan in mezzanine, reference and children's areas every hour",
-      "Discourage congregation in stairwells",
-      "Direct visitors to the help desk before 17:00 close",
-      "Final sweep at 18:00 — radio confirm with the branch manager",
-    ], ack:true, ackedAt:"06:31" },
-];
+const SEC_POSTS = [];
 
 /* ============================================================
    Pass-down notes — shift handover log
    ============================================================ */
-const SEC_PASSDOWN_SEED = [
-  { id:"pd1", date:"Today",     shift:"Day 06:00–14:00", leader:"Liam Doyle",
-    site:"Northgate Logistics Hub",
-    note:"Cold-store door seal 2 needs replacing — work order WO-2017 raised. Patricia (forklift trainee) did an extra perimeter circuit before lunch, all clear. Visitor log handed to Owen Farrell.",
-    items:["Master keys handed to Owen","Visitor register has 4 outstanding sign-outs","Loading bay 2 still has live drainage works"] },
-  { id:"pd2", date:"Today",     shift:"Day 06:00–14:00", leader:"Aoibhe Nolan",
-    site:"Aviva Office Tower",
-    note:"Citywide HVAC contractor did not produce a current insurance certificate at gate. Sent away with apology and escalated to facilities. Aoife Kelly informed; will rebook when AU-105 lifts the block.",
-    items:["No outstanding visitors","Lift 2 NFC tag intermittent — flagged as low signal","Aisle 4 produce spill resolved before shift end"] },
-  { id:"pd3", date:"Yesterday", shift:"Night 22:00–06:00", leader:"Michael Cronin",
-    site:"Tramore Leisure Centre",
-    note:"Pool plant chemistry alarm sounded at 02:14 — turned out to be a sensor false alarm, system reset. Maintenance ticket logged (PPM trigger for Wed). Quiet otherwise.",
-    items:["All clear at handover","2 stragglers escorted out at 22:18"] },
-  { id:"pd4", date:"Yesterday", shift:"Day 06:00–14:00", leader:"Conor Walsh",
-    site:"Riverside Retail Park",
-    note:"Cash escort completed without incident. Trolley return area sticky floor cleaned during shift. No incidents to flag forward.",
-    items:["Keys returned to safe","CCTV monitor 3 froze — IT ticketed"] },
-  { id:"pd5", date:"2 days ago", shift:"Night 22:00–06:00", leader:"Liam Doyle",
-    site:"Northgate Logistics Hub",
-    note:"Suspicious vehicle parked outside the gate from 02:30–03:10. Photographed, registration noted, sent to An Garda Síochána as a courtesy. Vehicle moved on without incident.",
-    items:["Vehicle photo on file","All keys signed back in"] },
-];
+const SEC_PASSDOWN_SEED = [];
 
 /* ============================================================
    Daily Activity Report — chronological event log for today
    ============================================================ */
-const SEC_DAR_EVENTS = [
-  { t:"06:00", icon:"user",       title:"Shift start — Day shift",       detail:"Day cover assumed across 5 sites by 5 guards",                                  tone:"muted"  },
-  { t:"06:04", icon:"check",      title:"Post order acknowledged",       detail:"Liam Doyle ack'd Northgate yard post",                                          tone:"ok"     },
-  { t:"06:12", icon:"check",      title:"Post order acknowledged",       detail:"Aoibhe Nolan ack'd Aviva reception post",                                       tone:"ok"     },
-  { t:"06:31", icon:"check",      title:"Post order acknowledged",       detail:"Eoin Ryan ack'd Galway library post",                                           tone:"ok"     },
-  { t:"06:32", icon:"scan",       title:"Checkpoint scanned",            detail:"Northgate Loading bay 1 — Liam Doyle",                                          tone:"accent" },
-  { t:"06:48", icon:"user",       title:"Visitor signed in",             detail:"Northgate — HGV delivery (3 axles), Reg 24-D-12345",                            tone:"muted"  },
-  { t:"07:15", icon:"check",      title:"Lone-worker check-in OK",       detail:"Aviva — Aoibhe Nolan",                                                          tone:"ok"     },
-  { t:"07:50", icon:"scan",       title:"Checkpoint scanned",            detail:"Aviva Reception — Aoibhe Nolan",                                                tone:"accent" },
-  { t:"08:14", icon:"alertTri",   title:"Incident — Suspicious person",  detail:"Northgate Loading bay 2 · INC-0031 · resolved on shift",                        tone:"warn"   },
-  { t:"09:00", icon:"shield",     title:"Visitor refused entry",         detail:"Aviva — Citywide HVAC contractor turned away (insurance lapsed)",                tone:"crit"   },
-  { t:"10:18", icon:"scan",       title:"Checkpoint scanned",            detail:"Tramore Plant room — Michael Cronin",                                           tone:"accent" },
-  { t:"11:32", icon:"check",      title:"Patrol P-014 completed",        detail:"Northgate yard — Liam Doyle (6/6 checkpoints)",                                 tone:"ok"     },
-  { t:"12:30", icon:"user",       title:"Lunch break — rotation",        detail:"Coverage handed temporarily between guards",                                    tone:"muted"  },
-  { t:"13:42", icon:"check",      title:"Lone-worker check-in OK",       detail:"Riverside — Patricia Ryan",                                                     tone:"ok"     },
-  { t:"13:48", icon:"alertTri",   title:"Panic button activated",        detail:"Galway City Library — Eoin Ryan",                                               tone:"crit"   },
-  { t:"13:53", icon:"shield",     title:"Dispatched to panic",           detail:"Branch manager and An Garda Síochána notified; Conor Walsh en route from Riverside", tone:"crit"   },
-  { t:"14:14", icon:"alertTri",   title:"Missed checkpoint",             detail:"Northgate main gate — Liam Doyle did not scan",                                 tone:"warn"   },
-];
+const SEC_DAR_EVENTS = [];
 
 const SEC_DAR_STATS = {
-  checkpoints: 18, total: 21,
-  incidents: 2,
-  visitors: 14,
-  patrolsDone: 3, patrolsScheduled: 3,
-  panics: 1,
+  checkpoints: 0, total: 0,
+  incidents: 0,
+  visitors: 0,
+  patrolsDone: 0, patrolsScheduled: 0,
+  panics: 0,
 };
 
 /* ============================================================
@@ -10094,7 +9613,7 @@ function DARTab({ events, stats, onExport }) {
             Daily Activity Report — auto-compiled from sensors, scans and reports
           </div>
           <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:3, fontFamily:"var(--mono)" }}>
-            DAR-2026-06-20 · Day shift · 5 sites
+            No report compiled yet
           </div>
         </div>
         <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
@@ -10258,7 +9777,7 @@ function DispatchGuardModal({ guards, presetIncident, onClose, onDispatch }) {
    ============================================================ */
 function AddPassDownModal({ guards, onClose, onSubmit }) {
   const [leader, setLeader] = React.useState(guards[0] ? guards[0].name : "");
-  const [site,   setSite]   = React.useState(HL.sites[0].name);
+  const [site,   setSite]   = React.useState(HL.sites?.[0]?.name || "");
   const [shift,  setShift]  = React.useState("Day 06:00–14:00");
   const [note,   setNote]   = React.useState("");
   const [items,  setItems]  = React.useState("");
@@ -10386,7 +9905,7 @@ function IncidentPanel({ inc, onClose, onDispatch }) {
             <div style={{ marginTop:18 }}>
               <div className="panel-label">Photos attached</div>
               <div className="proof-grid">
-                {["Scene photo", "Wide view"].map((lbl, i) => (
+                {[].map((lbl, i) => (
                   <div className="proof" key={i}>
                     <span className="pcam"><Icon name="camera" size={15} /></span>
                     <span className="plabel">{lbl}</span>
@@ -10891,39 +10410,16 @@ const VISITOR_REASONS = [
 ];
 
 /* People we do NOT want on site (former staff, court orders, etc.) */
-const VISITOR_WATCHLIST = [
-  { name: "Darren Foley",   reason: "Former contractor — barred for theft (2024)", added: "12 Mar 2025" },
-  { name: "Marek Kowalski", reason: "Persistent shoplifter — civil recovery in progress", added: "08 Jan 2026" },
-  { name: "Sophie O'Reilly", reason: "Court restraining order — staff harassment", added: "22 May 2025" },
-];
+const VISITOR_WATCHLIST = [];
 
 /* Seed: people currently on-site at the start of the day */
-const SEED_ONSITE = [
-  { id: "V-4112", name: "James McGrath",   company: "Murphy Mechanical",      host: "Padraig Burke",   reason: "Contractor — works", site: "Northgate Logistics Hub",   badge: "B-218", reg: "242-D-7741", timeIn: "07:42" },
-  { id: "V-4114", name: "Aoibhinn O'Shea", company: "Deloitte",                host: "Aoife Kelly",      reason: "Meeting",            site: "Aviva Office Tower",         badge: "B-219", reg: null,        timeIn: "08:55" },
-  { id: "V-4115", name: "Rory Hughes",      company: "FireSafe Ltd",           host: "Caoimhe Lynch",    reason: "Maintenance",        site: "Lee Valley Medical Centre", badge: "B-220", reg: "201-L-4490", timeIn: "09:10" },
-  { id: "V-4116", name: "Lena Petrescu",   company: "DPD Couriers",           host: "Sinead Murphy",    reason: "Delivery",           site: "Riverside Retail Park",      badge: "B-221", reg: "232-C-8810", timeIn: "09:22" },
-  { id: "V-4117", name: "Stephen Hayes",   company: "AquaFix Plumbing",       host: "Padraig Burke",   reason: "Contractor — works", site: "Northgate Logistics Hub",   badge: "B-222", reg: "212-D-1098", timeIn: "09:35" },
-  { id: "V-4118", name: "Mei Chen",         company: "HSA Inspectorate",       host: "Aoife Kelly",      reason: "Audit / inspection", site: "Aviva Office Tower",         badge: "B-223", reg: null,        timeIn: "10:02" },
-];
+const SEED_ONSITE = [];
 
 /* Seed: pre-booked but not arrived yet */
-const SEED_EXPECTED = [
-  { id: "E-2201", name: "Patrick O'Connor", company: "Citywide Facilities",  host: "Padraig Burke",   reason: "Contractor — works", site: "Northgate Logistics Hub",  due: "11:00" },
-  { id: "E-2202", name: "Holly Whelan",     company: "EY Ireland",            host: "Aoife Kelly",      reason: "Meeting",            site: "Aviva Office Tower",        due: "11:30" },
-  { id: "E-2203", name: "Karol Nowak",      company: "Self-employed",         host: "Eoin Brady",       reason: "Interview",          site: "Tramore Leisure Centre",   due: "13:00" },
-  { id: "E-2204", name: "Aisling Ryan",     company: "Glanbia",               host: "Sinead Murphy",    reason: "Tour",               site: "Riverside Retail Park",     due: "14:00" },
-  { id: "E-2205", name: "Conor Daly",       company: "Murphy Mechanical",     host: "Padraig Burke",   reason: "Maintenance",        site: "Northgate Logistics Hub",  due: "14:30" },
-  { id: "E-2206", name: "Yara Haddad",      company: "Galway Heritage Trust", host: "Tara Fitzgerald", reason: "Meeting",            site: "Galway City Library",       due: "15:00" },
-];
+const SEED_EXPECTED = [];
 
 /* Seed: already signed in and out today */
-const SEED_HISTORY = [
-  { id: "V-4109", name: "Ciara Walsh",      company: "BWG Foods",          host: "Sinead Murphy",   reason: "Audit / inspection", site: "Riverside Retail Park",    badge: "B-214", timeIn: "07:05", timeOut: "08:48" },
-  { id: "V-4110", name: "Tomasz Kaczmarek", company: "AquaFix Plumbing",   host: "Padraig Burke",  reason: "Contractor — works", site: "Northgate Logistics Hub", badge: "B-215", timeIn: "07:20", timeOut: "09:55" },
-  { id: "V-4111", name: "Hannah Byrne",     company: "An Post",            host: "Tara Fitzgerald", reason: "Delivery",          site: "Galway City Library",       badge: "B-216", timeIn: "08:14", timeOut: "08:31" },
-  { id: "V-4113", name: "Diarmuid Quinn",   company: "ESB Networks",       host: "Eoin Brady",      reason: "Maintenance",       site: "Tramore Leisure Centre",   badge: "B-217", timeIn: "08:30", timeOut: "10:15" },
-];
+const SEED_HISTORY = [];
 
 let NEXT_VID = 4119;
 let NEXT_BADGE = 224;
@@ -11518,51 +11014,22 @@ Object.assign(window, { VisitorsView });
    Shows their sites' status, requests they raised, quotes awaiting approval,
    invoices, upcoming PPM visits, and a 'Log a request' button. */
 
-const CLIENT_SITES = [
-  { name: "Aviva Office Tower",       loc: "Dublin 2",    role: "HQ tower",                  health: "ok",   note: "All systems operational" },
-  { name: "Aviva Marsh Mills",         loc: "Cork city",   role: "Regional office",          health: "warn", note: "1 open request, HVAC quote pending approval" },
-];
+const CLIENT_SITES = [];
 
-const CP_REQUESTS = [
-  { id: "CR-1042", title: "Boardroom projector intermittent",          site: "Aviva Office Tower",  raised: "Yesterday 16:20", status: "In progress",  tone: "accent", wo: "WO-2039", note: "Murphy Mechanical attending tomorrow AM",  raisedBy: "Aoife Kelly" },
-  { id: "CR-1041", title: "Coffee machine in level-4 kitchen not heating", site: "Aviva Office Tower", raised: "Yesterday 11:05", status: "Scheduled",   tone: "warn",   wo: "WO-2036", note: "S. Byrne arriving Wednesday 09:00",         raisedBy: "Niamh Ryan"  },
-  { id: "CR-1039", title: "Light flickering in reception",             site: "Aviva Office Tower",  raised: "2 days ago",      status: "Awaiting parts", tone: "warn", wo: "WO-2033", note: "LED driver on order, ETA 2 days",            raisedBy: "Aoife Kelly" },
-  { id: "CR-1037", title: "Aircon in finance office too cold",         site: "Aviva Marsh Mills",   raised: "3 days ago",      status: "Awaiting quote", tone: "warn", wo: "WO-2028", note: "Tendering to 3 contractors",                  raisedBy: "Eoghan Lacey" },
-  { id: "CR-1031", title: "Replace cracked tile, executive washroom",   site: "Aviva Office Tower",  raised: "Last week",       status: "Completed",     tone: "ok",   wo: "WO-2014", note: "Closed by S. Byrne · approved by Aoife Kelly", raisedBy: "Aoife Kelly" },
-];
+const CP_REQUESTS = [];
 
-const CP_QUOTES = [
-  { id: "Q-4188", title: "Cold-store HVAC compressor replacement", site: "Aviva Marsh Mills",
-    contractor: "Murphy Mechanical", lead: "3 working days", rating: 4.7,
-    amount: "€4,860.00", priceLine: "Labour €1,560 · Parts €3,000 · Callout €300",
-    wo: "WO-2028", expires: "Expires Fri 26 Jun · 6 days", status: "pending" },
-  { id: "Q-4185", title: "Annual fire alarm panel service (LOLER not required)", site: "Aviva Office Tower",
-    contractor: "FireSafe Ltd", lead: "Same week", rating: 4.9,
-    amount: "€1,120.00", priceLine: "Labour €840 · Parts €0 · Callout €280",
-    wo: "WO-2031", expires: "Expires Mon 29 Jun · 9 days", status: "pending" },
-];
+const CP_QUOTES = [];
 
-const CP_INVOICES = [
-  { id: "INV-2026-0518", site: "Aviva Office Tower",  desc: "Boardroom AV repair — WO-2014",           date: "10 Jun 2026", due: "10 Jul 2026", amount: "€640.00",   status: "Unpaid",  tone: "warn" },
-  { id: "INV-2026-0515", site: "Aviva Office Tower",  desc: "Soil-stack leak repair — WO-1972",         date: "05 Jun 2026", due: "05 Jul 2026", amount: "€680.00",   status: "Unpaid",  tone: "warn" },
-  { id: "INV-2026-0501", site: "Aviva Marsh Mills",   desc: "Cold-store compressor swap — WO-1955",     date: "28 May 2026", due: "27 Jun 2026", amount: "€4,860.00", status: "Paid",     tone: "ok"   },
-  { id: "INV-2026-0488", site: "Aviva Office Tower",  desc: "Quarterly HVAC service — WO-1989",         date: "20 May 2026", due: "19 Jun 2026", amount: "€1,420.00", status: "Paid",     tone: "ok"   },
-  { id: "INV-2026-0470", site: "Aviva Marsh Mills",   desc: "Refrigerant top-up — WO-1922",             date: "12 May 2026", due: "11 Jun 2026", amount: "€760.00",   status: "Paid",     tone: "ok"   },
-];
+const CP_INVOICES = [];
 
-const CP_VISITS = [
-  { id: "PPM-101", what: "Quarterly HVAC service",              when: "Tue 23 Jun · 09:00", site: "Aviva Office Tower", who: "Murphy Mechanical", dur: "3h",  access: "Roof access required" },
-  { id: "PPM-108", what: "AHU filter swap",                      when: "Wed 24 Jun · 08:00", site: "Aviva Office Tower", who: "Murphy Mechanical", dur: "1h",  access: "Plant room — site induction needed" },
-  { id: "PPM-105", what: "Drain line condensate flush",          when: "Thu 25 Jun · 10:00", site: "Aviva Marsh Mills",   who: "AquaFix Plumbing",  dur: "1h 30m", access: "Cold-store down for 30 min" },
-  { id: "PPM-102", what: "Fire alarm panel — quarterly test",    when: "Mon 29 Jun · 14:00", site: "Aviva Office Tower", who: "FireSafe Ltd",      dur: "2h",  access: "Notify reception 15 min before" },
-];
+const CP_VISITS = [];
 
 /* ============================================================
    Log a request modal
    ============================================================ */
 function LogRequestModal({ onClose, onSubmit }) {
   const [title, setTitle]   = React.useState("");
-  const [site, setSite]     = React.useState(CLIENT_SITES[0].name);
+  const [site, setSite]     = React.useState(CLIENT_SITES[0] ? CLIENT_SITES[0].name : "");
   const [where, setWhere]   = React.useState("");
   const [pri, setPri]       = React.useState("Medium");
   const [desc, setDesc]     = React.useState("");
@@ -11745,11 +11212,11 @@ function ClientPortalView({ go }) {
       {/* Branded client header */}
       <div className="cp-brand">
         <div className="cp-brand-logo">
-          <span>AV</span>
+          <span>—</span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="cp-brand-name">Aviva Office Tower — Client portal</div>
-          <div className="cp-brand-sub">Limited view · facilities self-service for Aviva Group properties</div>
+          <div className="cp-brand-name">Client portal</div>
+          <div className="cp-brand-sub">Limited view · facilities self-service for your properties</div>
         </div>
         <button className="btn btn-primary cp-cta" onClick={() => setLogOpen(true)}>
           <Icon name="plus" size={15} />Log a request
@@ -11954,7 +11421,7 @@ function ClientPortalView({ go }) {
 
         <div className="cp-foot">
           <Icon name="shield" size={13} />
-          Powered by HazardLink · This view is provided to Aviva Group under FM contract HZL-AVV-2024-08. All requests are SLA-tracked.
+          Powered by HazardLink · This view is provided to your organisation under your FM contract. All requests are SLA-tracked.
         </div>
       </div>
 
@@ -11992,87 +11459,7 @@ const FIELD_TYPES = [
 const FIELD_LABELS = Object.fromEntries(FIELD_TYPES.map((f) => [f.id, f.label]));
 
 /* Seeded forms library */
-const SEED_FORMS = [
-  {
-    id: "f1", name: "Cleaning inspection",
-    disc: "clean", icon: "droplet",
-    description: "Daily round-end inspection — surfaces, washrooms, consumables, signage.",
-    lastUsed: "5 min ago",   usedToday: 12, owner: "Aoife Kelly",
-    fields: [
-      { id: "fd1",  type: "choice",   label: "Area inspected",      required: true,  options: ["Lobby", "Washrooms", "Office", "Kitchen", "Stairwells", "External"] },
-      { id: "fd2",  type: "rating",   label: "Overall cleanliness", required: true,  options: [] },
-      { id: "fd3",  type: "yesno",    label: "All bins emptied?",   required: true,  options: [] },
-      { id: "fd4",  type: "yesno",    label: "Consumables stocked?", required: true, options: [] },
-      { id: "fd5",  type: "longtext", label: "Issues observed",     required: false, options: [] },
-      { id: "fd6",  type: "photo",    label: "Evidence photo",      required: false, options: [] },
-      { id: "fd7",  type: "signature",label: "Inspector signature", required: true,  options: [] },
-    ],
-  },
-  {
-    id: "f2", name: "Security patrol report",
-    disc: "secure", icon: "shield",
-    description: "Per-checkpoint scan + observations during a patrol round.",
-    lastUsed: "26 min ago",  usedToday: 8, owner: "Liam Doyle",
-    fields: [
-      { id: "fd1", type: "text",      label: "Checkpoint ID (or scan)", required: true,  options: [] },
-      { id: "fd2", type: "yesno",     label: "All doors and gates secure?", required: true, options: [] },
-      { id: "fd3", type: "yesno",     label: "Anything unusual?",      required: true,  options: [] },
-      { id: "fd4", type: "longtext",  label: "Notes / observations",   required: false, options: [] },
-      { id: "fd5", type: "photo",     label: "Evidence (optional)",    required: false, options: [] },
-      { id: "fd6", type: "signature", label: "Guard signature",         required: true,  options: [] },
-    ],
-  },
-  {
-    id: "f3", name: "Maintenance job sheet",
-    disc: "maint", icon: "wrench",
-    description: "Used by engineers and contractors when closing a work order on site.",
-    lastUsed: "1 hour ago", usedToday: 19, owner: "Niamh Doherty",
-    fields: [
-      { id: "fd1", type: "text",      label: "Work order ref",         required: true,  options: [] },
-      { id: "fd2", type: "text",      label: "Asset ID (or scan)",     required: true,  options: [] },
-      { id: "fd3", type: "longtext",  label: "Work carried out",       required: true,  options: [] },
-      { id: "fd4", type: "longtext",  label: "Parts and materials used", required: false, options: [] },
-      { id: "fd5", type: "number",    label: "Labour hours",           required: true,  options: [] },
-      { id: "fd6", type: "yesno",     label: "Fault resolved?",        required: true,  options: [] },
-      { id: "fd7", type: "yesno",     label: "Follow-up required?",    required: true,  options: [] },
-      { id: "fd8", type: "photo",     label: "After photo",            required: true,  options: [] },
-      { id: "fd9", type: "signature", label: "Engineer signature",     required: true,  options: [] },
-    ],
-  },
-  {
-    id: "f4", name: "Site induction",
-    disc: "secure", icon: "user",
-    description: "First-visit induction for contractors and visitors — covers PPE, evacuation, do-not-touch.",
-    lastUsed: "Yesterday", usedToday: 0, owner: "Aoife Kelly",
-    fields: [
-      { id: "fd1", type: "text",      label: "Full name",              required: true,  options: [] },
-      { id: "fd2", type: "text",      label: "Company",                required: true,  options: [] },
-      { id: "fd3", type: "choice",    label: "Reason for visit",       required: true,  options: ["Contractor — works", "Audit", "Delivery", "Meeting", "Tour"] },
-      { id: "fd4", type: "yesno",     label: "Watched safety video?",  required: true,  options: [] },
-      { id: "fd5", type: "yesno",     label: "Aware of evacuation route?", required: true, options: [] },
-      { id: "fd6", type: "yesno",     label: "Carrying valid PPE?",     required: true,  options: [] },
-      { id: "fd7", type: "choice",    label: "Areas authorised to access", required: false, options: ["Office floors", "Plant rooms", "Roof", "Loading bay", "Server room"] },
-      { id: "fd8", type: "signature", label: "Visitor signature",       required: true,  options: [] },
-      { id: "fd9", type: "signature", label: "Host signature",          required: true,  options: [] },
-    ],
-  },
-  {
-    id: "f5", name: "RAMS sign-off",
-    disc: "maint", icon: "checkCircle",
-    description: "Pre-task RAMS read-and-understand sign-off for high-risk works.",
-    lastUsed: "2 days ago", usedToday: 0, owner: "Niamh Doherty",
-    fields: [
-      { id: "fd1", type: "text",      label: "RAMS document ref",      required: true,  options: [] },
-      { id: "fd2", type: "text",      label: "Task being undertaken",  required: true,  options: [] },
-      { id: "fd3", type: "yesno",     label: "Read RAMS in full?",     required: true,  options: [] },
-      { id: "fd4", type: "yesno",     label: "Understand the controls?", required: true, options: [] },
-      { id: "fd5", type: "yesno",     label: "PPE checked and worn?",  required: true,  options: [] },
-      { id: "fd6", type: "longtext",  label: "Hazards specific to today",required: false, options: [] },
-      { id: "fd7", type: "signature", label: "Operative signature",    required: true,  options: [] },
-      { id: "fd8", type: "signature", label: "Supervisor signature",   required: true,  options: [] },
-    ],
-  },
-];
+const SEED_FORMS = [];
 
 const DEFAULT_FIELD = (type) => {
   const base = { id: "fd" + Math.random().toString(36).slice(2, 8),
@@ -12113,8 +11500,8 @@ function FormLibrary({ forms, onOpen, onNew, onDelete }) {
         </div>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("clean"), color: solid("clean") }}><Icon name="droplet" size={16} /></div><span className="kpi-label">Most used</span></div>
-          <div className="kpi-val" style={{ fontSize: 18, lineHeight: 1.2 }}>{[...forms].sort((a, b) => (b.usedToday || 0) - (a.usedToday || 0))[0].name}</div>
-          <div className="kpi-foot">{[...forms].sort((a, b) => (b.usedToday || 0) - (a.usedToday || 0))[0].usedToday} submissions today</div>
+          <div className="kpi-val" style={{ fontSize: 18, lineHeight: 1.2 }}>{[...forms].sort((a, b) => (b.usedToday || 0) - (a.usedToday || 0))[0]?.name || "—"}</div>
+          <div className="kpi-foot">{[...forms].sort((a, b) => (b.usedToday || 0) - (a.usedToday || 0))[0]?.usedToday || 0} submissions today</div>
         </div>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="clock" size={16} /></div><span className="kpi-label">Fields available</span></div>
@@ -12538,7 +11925,7 @@ function WizardStep1({ onNext }) {
   const [mode, setMode]       = React.useState("scan");
   const [scanning, setScanning] = React.useState(false);
   const [scanned, setScanned]  = React.useState(false);
-  const [manualName, setManualName] = React.useState("Industrial floor degreaser");
+  const [manualName, setManualName] = React.useState("");
 
   const handleScan = () => {
     setScanning(true);
@@ -12562,8 +11949,8 @@ function WizardStep1({ onNext }) {
           ) : (
             <div className="barcode-field">
               <Icon name="scan" size={20} />
-              8710908030390
-              <div style={{ marginLeft:"auto" }}><Pill tone="ok" dot>Matched — Diversey</Pill></div>
+              —
+              <div style={{ marginLeft:"auto" }}><Pill tone="ok" dot>Matched</Pill></div>
             </div>
           )}
           {!scanned && (
@@ -12575,7 +11962,7 @@ function WizardStep1({ onNext }) {
         </div>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          {[["Product name", manualName, setManualName], ["Supplier", "Diversey", null], ["Barcode / product code", "8710908030390", null]].map(([lbl, val, setter], i) => (
+          {[["Product name", manualName, setManualName], ["Supplier", "", null], ["Barcode / product code", "", null]].map(([lbl, val, setter], i) => (
             <div key={i}>
               <label style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", color:"var(--ink-3)", display:"block", marginBottom:6 }}>{lbl}</label>
               <input defaultValue={val} style={{ width:"100%", border:"1px solid var(--line)", borderRadius:10, padding:"10px 13px", fontSize:14, background:"var(--surface-2)", color:"var(--ink)", outline:"none", fontFamily:"inherit" }}
@@ -12710,8 +12097,8 @@ function SDSView({ go }) {
   const [toast, setToast]     = React.useState(null);
 
   const handleSave = (status) => {
-    const newProd = { id:"SDS-044", name:"Industrial floor degreaser (new batch)",
-      supplier:"Diversey", disc:"clean", hazard:"Irritant",
+    const newProd = { id:"", name:"",
+      supplier:"", disc:"clean", hazard:"—",
       status: status === "verified" ? "Verified" : "Awaiting check",
       stone: status === "verified" ? "ok" : "warn",
       date: status === "verified" ? "verified just now" : "AI-extracted, needs a person" };
@@ -12813,13 +12200,7 @@ Object.assign(window, { SDSView });
 /* HazardLink — Asset register with QR codes, scanner support, full asset detail */
 
 function _serviceHistory(asset) {
-  return [
-    { state:"done", title:"Inspection — " + asset.last,    by:"Routine check logged on site",                  time:asset.last },
-    { state:"done", title:"Service — 6 months ago",         by:"Annual service by certified engineer. Refrigerant checked.", time:"6 months ago" },
-    { state:"done", title:"Repair — 14 months ago",         by:"Worn seal replaced. Gasket renewed.",            time:"14 months ago" },
-    { state:"done", title:"Calibration — 2 years ago",       by:"Sensor calibration verified within spec.",       time:"2 years ago" },
-    { state:"done", title:"Installation — 3 years ago",      by:"Unit installed and commissioned",                time:"3 years ago" },
-  ];
+  return [];
 }
 
 /* ===========================================================
@@ -13013,212 +12394,10 @@ const STATUS_META = {
 /* ============================================================
    Per-contractor extras: insurance, accreditations, documents,
    rate cards, historic jobs. Keyed by HL.contractors id.
-   Realistic Irish providers and rates. */
-const CONTRACTOR_EXTRA = {
-  c1: {
-    insurance: {
-      pl: { provider:"AXA Insurance dac",     amount:"€6.5m", expires:"01 Apr 2027", status:"valid" },
-      el: { provider:"AXA Insurance dac",     amount:"€13m",  expires:"01 Apr 2027", status:"valid" },
-      pi: { provider:"Allianz",                amount:"€2m",   expires:"15 Mar 2027", status:"valid" },
-    },
-    accreditations: [
-      { name:"SafeContractor",      expires:"21 Aug 2026", status:"valid" },
-      { name:"CIF Member",          expires:"31 Dec 2026", status:"valid" },
-      { name:"RAMS on file",        expires:"15 Feb 2027", status:"valid" },
-      { name:"Tax clearance",       expires:"30 Sep 2026", status:"valid" },
-    ],
-    docs: [
-      { name:"Public Liability Insurance", category:"Insurance",         issued:"01 Apr 2025", expires:"01 Apr 2027", status:"valid"  },
-      { name:"Employers Liability Insurance", category:"Insurance",      issued:"01 Apr 2025", expires:"01 Apr 2027", status:"valid"  },
-      { name:"Professional Indemnity Insurance", category:"Insurance",    issued:"15 Mar 2025", expires:"15 Mar 2027", status:"valid" },
-      { name:"SafeContractor accreditation", category:"Accreditation",  issued:"21 Aug 2024", expires:"21 Aug 2026", status:"valid" },
-      { name:"Master RAMS — drainage works", category:"RAMS",            issued:"15 Feb 2026", expires:"15 Feb 2027", status:"valid" },
-      { name:"Method statement — confined-space drainage", category:"Method statement", issued:"10 Jan 2026", expires:"10 Jan 2027", status:"valid" },
-      { name:"Tax clearance certificate", category:"Tax",                 issued:"01 Oct 2025", expires:"30 Sep 2026", status:"valid" },
-    ],
-    rateCard: {
-      currency: "EUR",
-      rows: [
-        { label:"Standard labour rate",          unit:"per hour", value:"€72.00" },
-        { label:"Apprentice rate",                unit:"per hour", value:"€42.00" },
-        { label:"Out-of-hours rate (after 18:00)", unit:"per hour", value:"€108.00" },
-        { label:"Weekend & bank holiday",          unit:"per hour", value:"€144.00" },
-        { label:"Emergency callout fee",           unit:"per visit", value:"€110.00" },
-        { label:"Travel rate",                     unit:"per km",    value:"€0.80" },
-        { label:"Standard SLA response",           unit:"",          value:"4 hours" },
-        { label:"Out-of-hours SLA response",       unit:"",          value:"2 hours" },
-      ],
-    },
-    historicJobs: [
-      { id:"WO-1998", title:"Cold-store drain unblock",            site:"Northgate Logistics Hub", closed:"22 May 2026", cost:"€420",  rating:4.8 },
-      { id:"WO-1972", title:"Soil-stack leak repair",                site:"Aviva Office Tower",      closed:"03 May 2026", cost:"€680",  rating:4.7 },
-      { id:"WO-1934", title:"Annual drainage CCTV survey",          site:"Riverside Retail Park",   closed:"14 Apr 2026", cost:"€1,250", rating:4.9 },
-      { id:"WO-1901", title:"Mains shut-off valve replacement",    site:"Aviva Office Tower",      closed:"28 Mar 2026", cost:"€540",  rating:4.6 },
-    ],
-  },
-  c2: {
-    insurance: {
-      pl: { provider:"FBD Insurance",  amount:"€6.5m", expires:"05 May 2027",   status:"valid" },
-      el: { provider:"FBD Insurance",  amount:"€13m",  expires:"05 May 2027",   status:"valid" },
-      pi: { provider:"Aviva",           amount:"€2m",   expires:"05 May 2027",   status:"valid" },
-    },
-    accreditations: [
-      { name:"SafeContractor",   expires:"30 Jun 2026", status:"expiring", inDays:11 },
-      { name:"RECI registered",   expires:"15 Mar 2027", status:"valid" },
-      { name:"RAMS on file",     expires:"04 Mar 2027", status:"valid" },
-      { name:"Tax clearance",    expires:"31 Aug 2026", status:"valid" },
-    ],
-    docs: [
-      { name:"Public Liability Insurance", category:"Insurance",          issued:"05 May 2025", expires:"05 May 2027", status:"valid" },
-      { name:"Employers Liability Insurance", category:"Insurance",       issued:"05 May 2025", expires:"05 May 2027", status:"valid" },
-      { name:"SafeContractor accreditation", category:"Accreditation",   issued:"30 Jun 2025", expires:"30 Jun 2026", status:"expiring", inDays:11 },
-      { name:"Master RAMS — HVAC and mechanical", category:"RAMS",        issued:"04 Mar 2026", expires:"04 Mar 2027", status:"valid" },
-      { name:"Method statement — refrigerant handling", category:"Method statement", issued:"20 Feb 2026", expires:"20 Feb 2027", status:"valid" },
-      { name:"Method statement — working at height", category:"Method statement", issued:"15 Mar 2026", expires:"15 Mar 2027", status:"valid" },
-      { name:"Tax clearance certificate", category:"Tax",                  issued:"01 Sep 2025", expires:"31 Aug 2026", status:"valid" },
-    ],
-    rateCard: {
-      currency:"EUR",
-      rows: [
-        { label:"Standard labour rate",          unit:"per hour", value:"€78.00" },
-        { label:"Apprentice rate",                unit:"per hour", value:"€44.00" },
-        { label:"Out-of-hours rate",              unit:"per hour", value:"€117.00" },
-        { label:"Weekend & bank holiday",          unit:"per hour", value:"€156.00" },
-        { label:"Emergency callout fee",           unit:"per visit", value:"€135.00" },
-        { label:"Refrigerant disposal surcharge",  unit:"per kg",   value:"€18.00" },
-        { label:"Standard SLA response",           unit:"",          value:"4 hours" },
-        { label:"Out-of-hours SLA response",       unit:"",          value:"3 hours" },
-      ],
-    },
-    historicJobs: [
-      { id:"WO-1989", title:"HVAC unit 2 — annual service",         site:"Aviva Office Tower",   closed:"18 May 2026", cost:"€1,420", rating:4.7 },
-      { id:"WO-1955", title:"Cold-store compressor swap",            site:"Northgate Logistics Hub", closed:"02 May 2026", cost:"€4,860", rating:4.5 },
-      { id:"WO-1922", title:"Refrigerant top-up — R-32",              site:"Riverside Retail Park",  closed:"19 Apr 2026", cost:"€760",  rating:4.6 },
-    ],
-  },
-  c3: {
-    insurance: {
-      pl: { provider:"Zurich",   amount:"€6.5m", expires:"15 Apr 2026", status:"expired" },
-      el: { provider:"Zurich",   amount:"€13m",  expires:"15 Apr 2026", status:"expired" },
-      pi: null,
-    },
-    accreditations: [
-      { name:"SafeContractor",   expires:"15 Apr 2026", status:"expired" },
-      { name:"CIF Member",        expires:"31 Dec 2026", status:"valid" },
-      { name:"RAMS on file",     expires:"10 Jan 2026", status:"expired" },
-      { name:"Tax clearance",    expires:"31 Oct 2026", status:"valid" },
-    ],
-    docs: [
-      { name:"Public Liability Insurance", category:"Insurance",          issued:"15 Apr 2024", expires:"15 Apr 2026", status:"expired" },
-      { name:"Employers Liability Insurance", category:"Insurance",       issued:"15 Apr 2024", expires:"15 Apr 2026", status:"expired" },
-      { name:"SafeContractor accreditation", category:"Accreditation",   issued:"15 Apr 2025", expires:"15 Apr 2026", status:"expired" },
-      { name:"Master RAMS — general maintenance", category:"RAMS",        issued:"10 Jan 2025", expires:"10 Jan 2026", status:"expired" },
-      { name:"Method statement — painting and decorating", category:"Method statement", issued:"10 Jan 2025", expires:"10 Jan 2026", status:"expired" },
-      { name:"Tax clearance certificate", category:"Tax",                 issued:"01 Nov 2025", expires:"31 Oct 2026", status:"valid" },
-    ],
-    rateCard: {
-      currency:"EUR",
-      rows: [
-        { label:"Standard labour rate",          unit:"per hour", value:"€65.00" },
-        { label:"Out-of-hours rate",              unit:"per hour", value:"€97.50" },
-        { label:"Weekend & bank holiday",          unit:"per hour", value:"€130.00" },
-        { label:"Emergency callout fee",           unit:"per visit", value:"€95.00" },
-        { label:"Travel rate",                     unit:"per km",    value:"€0.70" },
-        { label:"Standard SLA response",           unit:"",          value:"Same day" },
-      ],
-    },
-    historicJobs: [
-      { id:"WO-1880", title:"Replace ceiling tiles — ground floor", site:"Riverside Retail Park", closed:"22 Mar 2026", cost:"€340", rating:4.3 },
-      { id:"WO-1845", title:"Re-paint reception walls",              site:"Aviva Office Tower",     closed:"14 Mar 2026", cost:"€1,180", rating:4.2 },
-      { id:"WO-1812", title:"Reactive carpentry — Aisle 7 shelving", site:"Riverside Retail Park", closed:"01 Mar 2026", cost:"€430", rating:4.5 },
-    ],
-  },
-  c4: {
-    insurance: {
-      pl: { provider:"Allianz",  amount:"€6.5m", expires:"18 Feb 2027", status:"valid" },
-      el: { provider:"Allianz",  amount:"€13m",  expires:"18 Feb 2027", status:"valid" },
-      pi: { provider:"Allianz",  amount:"€2m",   expires:"18 Feb 2027", status:"valid" },
-    },
-    accreditations: [
-      { name:"SafeContractor",   expires:"04 Jul 2026", status:"expiring", inDays:14 },
-      { name:"NSAI registered",   expires:"31 Mar 2027", status:"valid" },
-      { name:"RAMS on file",     expires:"22 Feb 2027", status:"valid" },
-      { name:"Tax clearance",    expires:"31 Dec 2026", status:"valid" },
-    ],
-    docs: [
-      { name:"Public Liability Insurance", category:"Insurance",          issued:"18 Feb 2025", expires:"18 Feb 2027", status:"valid" },
-      { name:"Employers Liability Insurance", category:"Insurance",       issued:"18 Feb 2025", expires:"18 Feb 2027", status:"valid" },
-      { name:"Professional Indemnity Insurance", category:"Insurance",     issued:"18 Feb 2025", expires:"18 Feb 2027", status:"valid" },
-      { name:"SafeContractor accreditation", category:"Accreditation",   issued:"04 Jul 2025", expires:"04 Jul 2026", status:"expiring", inDays:14 },
-      { name:"Master RAMS — fire and life safety", category:"RAMS",       issued:"22 Feb 2026", expires:"22 Feb 2027", status:"valid" },
-      { name:"Method statement — alarm panel testing", category:"Method statement", issued:"22 Feb 2026", expires:"22 Feb 2027", status:"valid" },
-      { name:"NSAI cert — I.S. 3218 compliance", category:"Accreditation", issued:"31 Mar 2026", expires:"31 Mar 2027", status:"valid" },
-      { name:"Tax clearance certificate", category:"Tax",                  issued:"01 Jan 2026", expires:"31 Dec 2026", status:"valid" },
-    ],
-    rateCard: {
-      currency:"EUR",
-      rows: [
-        { label:"Standard labour rate",          unit:"per hour", value:"€85.00" },
-        { label:"Out-of-hours rate",              unit:"per hour", value:"€128.00" },
-        { label:"Weekend & bank holiday",          unit:"per hour", value:"€170.00" },
-        { label:"Emergency callout fee",           unit:"per visit", value:"€175.00" },
-        { label:"Quarterly fire-panel test",       unit:"per visit", value:"€280.00" },
-        { label:"Travel rate",                     unit:"per km",    value:"€0.85" },
-        { label:"Standard SLA response",           unit:"",          value:"4 hours" },
-        { label:"Critical alarm response",         unit:"",          value:"1 hour" },
-      ],
-    },
-    historicJobs: [
-      { id:"WO-1962", title:"Quarterly fire alarm test — Lee Valley", site:"Lee Valley Medical Centre", closed:"10 May 2026", cost:"€280", rating:5.0 },
-      { id:"WO-1928", title:"Fire extinguisher annual inspection",     site:"Tramore Leisure Centre",   closed:"22 Apr 2026", cost:"€420", rating:4.8 },
-      { id:"WO-1895", title:"Emergency lighting 3-hour test",          site:"Riverside Retail Park",     closed:"05 Apr 2026", cost:"€340", rating:4.9 },
-    ],
-  },
-  c5: {
-    insurance: {
-      pl: { provider:"FBD Insurance",  amount:"€6.5m", expires:"01 Jun 2027", status:"valid" },
-      el: { provider:"FBD Insurance",  amount:"€13m",  expires:"01 Jun 2027", status:"valid" },
-      pi: null,
-    },
-    accreditations: [
-      { name:"SafeContractor",   expires:"01 Jun 2027", status:"valid" },
-      { name:"CIF Member",        expires:"31 Dec 2026", status:"valid" },
-      { name:"RAMS on file",     expires:"01 Jun 2027", status:"valid" },
-      { name:"Tax clearance",    expires:"30 Sep 2026", status:"valid" },
-    ],
-    docs: [
-      { name:"Public Liability Insurance", category:"Insurance",          issued:"01 Jun 2025", expires:"01 Jun 2027", status:"valid" },
-      { name:"Employers Liability Insurance", category:"Insurance",       issued:"01 Jun 2025", expires:"01 Jun 2027", status:"valid" },
-      { name:"SafeContractor accreditation", category:"Accreditation",   issued:"01 Jun 2026", expires:"01 Jun 2027", status:"valid" },
-      { name:"Master RAMS — carpentry and remedial", category:"RAMS",     issued:"01 Jun 2026", expires:"01 Jun 2027", status:"valid" },
-      { name:"Method statement — working at height", category:"Method statement", issued:"01 Jun 2026", expires:"01 Jun 2027", status:"valid" },
-      { name:"Tax clearance certificate", category:"Tax",                  issued:"01 Oct 2025", expires:"30 Sep 2026", status:"valid" },
-    ],
-    rateCard: {
-      currency:"EUR",
-      rows: [
-        { label:"Standard labour rate",          unit:"per hour", value:"€58.00" },
-        { label:"Out-of-hours rate",              unit:"per hour", value:"€87.00" },
-        { label:"Weekend & bank holiday",          unit:"per hour", value:"€116.00" },
-        { label:"Emergency callout fee",           unit:"per visit", value:"€80.00" },
-        { label:"Materials mark-up",               unit:"",         value:"+15%" },
-        { label:"Travel rate",                     unit:"per km",    value:"€0.65" },
-        { label:"Standard SLA response",           unit:"",         value:"Next day" },
-      ],
-    },
-    historicJobs: [
-      { id:"WO-2034", title:"Replace cracked floor tile — Aisle 7",  site:"Riverside Retail Park", closed:"open", cost:"in progress", rating:null },
-      { id:"WO-2021", title:"Replace ceiling tile — entrance",        site:"Riverside Retail Park", closed:"15 May 2026", cost:"€180", rating:4.8 },
-      { id:"WO-1971", title:"Replace damaged door frame — back of house", site:"Riverside Retail Park", closed:"30 Apr 2026", cost:"€420", rating:4.7 },
-      { id:"WO-1944", title:"Bench repair — exterior seating",        site:"Tramore Leisure Centre", closed:"12 Apr 2026", cost:"€260", rating:4.9 },
-    ],
-  },
-};
+   Empty for a new org — populated as real contractors are added. */
+const CONTRACTOR_EXTRA = {};
 
-const SHORT_NAMES = {
-  "AquaFix Plumbing and Drainage": "AquaFix Plumbing",
-  "S. Byrne General Builders":      "S. Byrne",
-};
+const SHORT_NAMES = {};
 
 function countCerts(c) {
   let valid = 0, expiring = 0, expired = 0;
@@ -13794,7 +12973,7 @@ function AutoReminderCard({ reminders }) {
           <div className="sub">Emails go out 30, 14 and 3 days before each document expires, then on the day it expires.</div>
         </div>
         <div className="head-act">
-          <Pill tone="ok" dot>5 sent this week</Pill>
+          <Pill tone="ok" dot>{reminders.length} sent this week</Pill>
         </div>
       </div>
       <div className="ar-list">
@@ -13989,109 +13168,18 @@ const AS_FACTS = (() => {
   return { ppmOverdue, liveSpills, offlineHangers, lowBatHangers, lowStock, expiringCerts };
 })();
 
-const AS_USER  = { name:"Aoife Kelly", initials:"AK" };
+const AS_USER  = { name:"", initials:"" };
 
 /* ============================================================
    "Needs your attention today" — AI-curated priority list
    ============================================================ */
-const ATTENTION_ITEMS = [
-  { id:"a1", kind:"spill",      tone:"crit",
-    ico:"alertTri",
-    title:"Live spill — Aisle 4 produce drip",
-    meta:"SP-2041 · Riverside Retail Park · 24m unacknowledged · hanger HGR-1003",
-    pill:"Live",
-    go:"spills" },
-  { id:"a2", kind:"ppm",        tone:"crit",
-    ico:"clock",
-    title:"PPM overdue — Drain line flush",
-    meta:"PPM-105 · Northgate Logistics Hub · 2 days overdue · assigned AquaFix Plumbing",
-    pill:"Overdue",
-    go:"ppm" },
-  { id:"a3", kind:"workorder",  tone:"warn",
-    ico:"wrench",
-    title:"Work order overdue — Cold-store drainage",
-    meta:"WO-2017 · Northgate · 3 days past SLA · awaiting contractor confirmation",
-    pill:"At risk",
-    go:"maintenance" },
-  { id:"a4", kind:"part",       tone:"warn",
-    ico:"package",
-    title:"Low stock — Pleated air filter",
-    meta:"P-0987 · 3 on hand · min 5 · supplier AHU Direct",
-    pill:"Reorder",
-    go:"parts" },
-  { id:"a5", kind:"cert",       tone:"crit",
-    ico:"award",
-    title:"Cert expiring — RAMS · Citywide Cleaning",
-    meta:"Site-access certificate expires in 12 days · block engages on day 0",
-    pill:"Expiring",
-    go:"contractors" },
-  { id:"a6", kind:"invoice",    tone:"crit",
-    ico:"creditCard",
-    title:"Invoice overdue — Tramore Leisure",
-    meta:"INV-2072 · €1,771.20 · 2 days past due · third reminder pending",
-    pill:"Overdue",
-    go:"billing" },
-  { id:"a7", kind:"patrol",     tone:"warn",
-    ico:"shield",
-    title:"Missed patrol checkpoint",
-    meta:"Northgate main gate · scheduled 14:14 · no NFC scan recorded",
-    pill:"Missed",
-    go:"security" },
-];
+const ATTENTION_ITEMS = [];
 
 /* ============================================================
    Pre-loaded conversation — every AI claim is grounded with
    `sources` that point at real records in the seed data.
    ============================================================ */
-const SEEDED_MESSAGES = [
-  /* 1. Overdue PPMs */
-  { id:1, role:"user",
-    text:"Which sites have overdue PPMs?" },
-  { id:2, role:"ai",
-    text:"One site has an overdue PPM right now. Northgate Logistics Hub has PPM-105 — Drain line flush — running two days past its due date. It's assigned to AquaFix Plumbing, which is also our usual sub-contractor for drainage. The remaining four sites (Riverside, Aviva, Lee Valley, Tramore) have nothing overdue this week.",
-    sources:[
-      { kind:"ppm",      id:"PPM-105",                  go:"ppm",          tone:"crit"   },
-      { kind:"site",     id:"Northgate Logistics Hub",  go:"site",         tone:"muted"  },
-      { kind:"contractor", id:"AquaFix Plumbing",       go:"contractors",  tone:"maint"  },
-    ] },
-
-  /* 2. Recommend a tech */
-  { id:3, role:"user",
-    text:"Who should I send to the Aviva HVAC job (AHU 2 quarterly)?" },
-  { id:4, role:"ai",
-    text:"Best fit on the roster is Cathal O'Brien. He is based at Aviva Office Tower, holds a current SafePass and Refrigerant-handling cert, and his Thursday afternoon is free in the dispatch board. Second choice would be Declan Moore at Lee Valley — same certs — but he is committed to the quarterly fire alarm test that day, so reassigning him would push that into Friday.",
-    sources:[
-      { kind:"staff",    id:"Cathal O'Brien",            go:"team",        tone:"accent" },
-      { kind:"site",     id:"Aviva Office Tower",        go:"site",        tone:"muted"  },
-      { kind:"cert",     id:"Refrigerant handling",      go:"competency",  tone:"secure" },
-      { kind:"schedule", id:"Thu PM availability",       go:"scheduling",  tone:"clean"  },
-    ] },
-
-  /* 3. Contractor compliance */
-  { id:5, role:"user",
-    text:"Are all the contractors compliant this week?" },
-  { id:6, role:"ai",
-    text:"Two contractors need attention. Citywide Cleaning is currently blocked from site — their public-liability insurance lapsed on 18 Jun, so any access attempt will be rejected by the gatehouse. AquaFix Plumbing's RAMS expires in 12 days; the system has already emailed them a re-upload reminder and will block access on the lapse date if nothing is uploaded. The other four approved contractors are clear.",
-    sources:[
-      { kind:"contractor", id:"Citywide Cleaning",   go:"contractors", tone:"crit"  },
-      { kind:"contractor", id:"AquaFix Plumbing",    go:"contractors", tone:"warn"  },
-      { kind:"cert",       id:"RAMS",                go:"competency",  tone:"warn"  },
-      { kind:"automation", id:"AU-105 (chase + block)", go:"automations", tone:"accent" },
-    ] },
-
-  /* 4. Wrong-assumption correction */
-  { id:7, role:"user",
-    text:"Patricia Ryan is the cleaner at Aviva, right? Can you ping her about the kitchenette spill?" },
-  { id:8, role:"ai",
-    text:"That's not quite right — I should flag it rather than agree. The roster shows Patricia Ryan is the cleaner at Riverside Retail Park, not Aviva. At Aviva the on-shift cleaner is Siobhan Walsh, and the maintenance technician based there is Cathal O'Brien. The kitchenette spill is SP-2039 (slow tap drip, low severity) — do you want me to ping Siobhan, or escalate to a maintenance work order instead?",
-    correction:true,
-    sources:[
-      { kind:"staff",   id:"Patricia Ryan (Riverside)", go:"team",   tone:"clean"  },
-      { kind:"staff",   id:"Siobhan Walsh (Aviva)",     go:"team",   tone:"clean"  },
-      { kind:"staff",   id:"Cathal O'Brien (Aviva)",    go:"team",   tone:"maint"  },
-      { kind:"spill",   id:"SP-2039",                    go:"spills", tone:"warn"  },
-    ] },
-];
+const SEEDED_MESSAGES = [];
 
 /* ============================================================
    Suggested example questions — fill the box on click
@@ -14101,7 +13189,7 @@ const SUGGESTED = [
   "Any low-stock parts about to run out?",
   "Show me unpaid invoices this week",
   "Which hangers are offline or low on battery?",
-  "Recommend a technician for an HVAC job at Aviva",
+  "Recommend a technician for an HVAC job",
   "Are there any patrols missed today?",
   "Summarise this week's compliance status",
 ];
@@ -14143,12 +13231,8 @@ function respondTo(q) {
   }
 
   if (has("invoice") || has("unpaid") || has("overdue invoice") || has("billing")) {
-    return { text:"Three invoices are unpaid: INV-2073 to Northgate Logistics (€948.20, due 28 Jun, sent), INV-2070 to Riverside Retail Park (€1,820.50, due 13 Jun, sent), and INV-2072 to Tramore Leisure (€1,771.20, two days overdue). Total outstanding is €4,539.90 across the three.",
-      sources:[
-        { kind:"invoice", id:"INV-2073", go:"billing", tone:"accent" },
-        { kind:"invoice", id:"INV-2070", go:"billing", tone:"accent" },
-        { kind:"invoice", id:"INV-2072", go:"billing", tone:"crit"   },
-      ]};
+    return { text:"No unpaid invoices on record right now.",
+      sources:[{ kind:"summary", id:"invoices", go:"billing", tone:"ok" }]};
   }
 
   if (has("hanger") || has("offline") || has("low battery") || has("sensor")) {
@@ -14166,20 +13250,13 @@ function respondTo(q) {
   }
 
   if (has("hvac") || has("technician") || has("recommend") || has("assign")) {
-    return { text:"On the current roster, Cathal O'Brien at Aviva Office Tower is the strongest match for an HVAC job there — home site, current SafePass + Refrigerant handling certs, and Thursday afternoon is free in the dispatch board. Declan Moore at Lee Valley has the same certs but is booked on the Friday fire alarm test.",
-      sources:[
-        { kind:"staff",    id:"Cathal O'Brien",         go:"team",       tone:"accent" },
-        { kind:"cert",     id:"Refrigerant handling",   go:"competency", tone:"secure" },
-        { kind:"schedule", id:"Thu PM availability",    go:"scheduling", tone:"clean"  },
-      ]};
+    return { text:"There's no one on the roster yet, so I can't recommend a technician. Add staff and their certs and I'll match the best fit by site, competency and availability.",
+      sources:[{ kind:"summary", id:"no staff on roster", go:"team", tone:"muted" }]};
   }
 
   if (has("patrol") || has("missed")) {
-    return { text:"One patrol checkpoint is missed today — Northgate Logistics Hub main gate, scheduled NFC scan at 14:14 has no record. Liam Doyle is on the day patrol there; the system has paged him and started a 15-minute lone-worker check-in countdown.",
-      sources:[
-        { kind:"site",  id:"Northgate Logistics Hub", go:"security", tone:"warn"  },
-        { kind:"staff", id:"Liam Doyle",               go:"team",     tone:"secure" },
-      ]};
+    return { text:"No patrols are scheduled, so there are no missed checkpoints to report.",
+      sources:[{ kind:"summary", id:"patrols", go:"security", tone:"ok" }]};
   }
 
   if (has("attention") || has("needs my attention") || has("priorities") || has("what should i") || has("top of the list") || (has("today") && (has("attention") || has("focus") || has("priorit") || has("need") || has("important") || has("urgent") || has("my")))) {
@@ -14198,8 +13275,11 @@ function respondTo(q) {
       : ATTENTION_ITEMS;
 
     if (items.length === 0) {
-      return { text:`Nothing on the priority list at ${hint.name} right now — every live spill, PPM, work order, cert and invoice is within target for that site today.`,
-        sources:[{ kind:"site", id: hint.name, go:"site", tone:"ok" }]};
+      return hint
+        ? { text:`Nothing on the priority list at ${hint.name} right now — every live spill, PPM, work order, cert and invoice is within target for that site today.`,
+            sources:[{ kind:"site", id: hint.name, go:"site", tone:"ok" }]}
+        : { text:"Nothing needs your attention right now — every live spill, PPM, work order, cert and invoice is within target across the estate.",
+            sources:[{ kind:"summary", id:"all within target", go:null, tone:"ok" }]};
     }
 
     const lead = hint
@@ -14226,34 +13306,13 @@ function respondTo(q) {
   }
 
   if (has("log a job") || has("log a fault") || has("log a work order") || has("create a work order") || has("draft a job") || has("raise a wo") || (has("log") && (has("job") || has("fault") || has("leak") || has("radiator")))) {
-    return { text:"I've drafted a work order from what you said. Look it over and confirm — nothing is dispatched until you tap Confirm. I matched the location to AST-0061 (heating circuit, 2nd floor) and the nearest competent technician on shift today.",
-      draftWO: {
-        id:"WO-2043",
-        title:"Leaking radiator — Aviva level 2 server room",
-        site:"Aviva Office Tower",
-        priority:"High",
-        asset:"AST-0061 · Heating circuit, 2nd floor",
-        assignee:"Cathal O'Brien (Aviva on-site)",
-        slaResponse:"4 hours",
-        sourceSpoken:true,
-      },
-      sources:[
-        { kind:"asset",     id:"AST-0061 (Heating circuit L2)", go:"assets",    tone:"maint"  },
-        { kind:"staff",     id:"Cathal O'Brien",                 go:"team",      tone:"maint"  },
-        { kind:"site",      id:"Aviva Office Tower",             go:"site",      tone:"muted"  },
-        { kind:"automation", id:"AU-101 (voice → draft WO)",      go:"automations", tone:"accent" },
-      ]};
+    return { text:"I can draft work orders once you've added sites, assets and staff — right now there's nothing to match a job against. Set those up and I'll turn what you say into a confirm-before-dispatch draft.",
+      sources:[{ kind:"summary", id:"no sites or assets yet", go:"maintenance", tone:"muted" }]};
   }
 
   if (has("compliance") || has("week") || has("summarise") || has("summary")) {
-    return { text:"Compliance summary for this week — 1 PPM overdue (PPM-105, Northgate), 1 work order past SLA (WO-2017, Northgate), 1 contractor blocked (Citywide Cleaning), 1 cert expiring within 14 days (AquaFix RAMS), and 1 overdue invoice (INV-2072). Everything else is within target.",
-      sources:[
-        { kind:"ppm",         id:"PPM-105",         go:"ppm",          tone:"crit" },
-        { kind:"workorder",   id:"WO-2017",         go:"maintenance",  tone:"warn" },
-        { kind:"contractor",  id:"Citywide",        go:"contractors",  tone:"crit" },
-        { kind:"cert",        id:"AquaFix RAMS",    go:"competency",   tone:"warn" },
-        { kind:"invoice",     id:"INV-2072",        go:"billing",      tone:"crit" },
-      ]};
+    return { text:"Nothing to report this week — no overdue PPMs, work orders past SLA, blocked contractors, expiring certs or overdue invoices on record. Everything is within target.",
+      sources:[{ kind:"summary", id:"all within target", go:null, tone:"ok" }]};
   }
 
   /* I don't know — say so. Never invent. */
@@ -14396,8 +13455,8 @@ function AttentionCard({ item, onOpen }) {
    Cycles through a bank of plausible spoken questions so the
    demo always produces editable text in the box. */
 const MIC_QUESTIONS = [
-  "What needs my attention at Aviva today?",
-  "Log a job — leaking radiator on level 2 at Aviva server room",
+  "What needs my attention today?",
+  "Log a job — leaking radiator on level 2",
   "Are there any low-stock parts about to run out?",
   "Which hangers are offline right now?",
   "Summarise this week's compliance status",
@@ -14637,139 +13696,16 @@ Object.assign(window, { AssistantView });
 /* ============================================================
    Seed data — realistic Irish customers + line items
    ============================================================ */
-const BILL_CUSTOMERS = [
-  { id:"c1", name:"Riverside Retail Park Ltd.",     site:"Riverside Retail Park",     contact:"Aoife Kelly",   email:"ap@riverside-retail.ie" },
-  { id:"c2", name:"Northgate Logistics Holdings",   site:"Northgate Logistics Hub",   contact:"Owen Farrell",  email:"finance@northgatelogistics.ie" },
-  { id:"c3", name:"Aviva Office Tower Mgmt",        site:"Aviva Office Tower",        contact:"Sean Murphy",   email:"accounts@avivatower.ie" },
-  { id:"c4", name:"Lee Valley HSE Group",            site:"Lee Valley Medical Centre", contact:"Niamh Brennan", email:"accounts@leevalleyhse.ie" },
-  { id:"c5", name:"Tramore Leisure Trust",           site:"Tramore Leisure Centre",    contact:"Michael Cronin",email:"accounts@tramoreleisure.ie" },
-  { id:"c6", name:"Galway City Library (OPW)",       site:"Galway City Library",       contact:"Mairéad Joyce", email:"accounts@galwaycitylib.ie" },
-];
+const BILL_CUSTOMERS = [];
 
 const VAT_DEFAULT = 23;
 
-const SEED_QUOTES = [
-  { id:"Q-3014", customer:"c3", date:"19 Jun 2026", status:"Draft",
-    summary:"HVAC quarterly service + filter swap (Aviva L2 AHU 1+2)",
-    items:[
-      { desc:"AHU 1 quarterly inspection & service",   qty:1, unit:680 },
-      { desc:"AHU 2 quarterly inspection & service",   qty:1, unit:680 },
-      { desc:"Pleated air filters (AHU 1+2, 8 units)", qty:8, unit:38 },
-      { desc:"Site travel & PPE",                      qty:1, unit:84 },
-    ],
-    notes:"Out-of-hours work after 18:00 to avoid disruption to tenants." },
+const SEED_QUOTES = [];
 
-  { id:"Q-3013", customer:"c2", date:"18 Jun 2026", status:"Sent",
-    summary:"Cold-store drainage repair (WO-2041)",
-    items:[
-      { desc:"Drainage diagnostic + camera survey",    qty:1, unit:140 },
-      { desc:"Drain rod + chemical clean",              qty:1, unit:220 },
-      { desc:"Labour — same-day attendance",            qty:1, unit:60 },
-    ],
-    notes:"Quoted under blanket reactive maintenance terms." },
-
-  { id:"Q-3012", customer:"c4", date:"17 Jun 2026", status:"Accepted",
-    summary:"Quarterly fire alarm test + emergency lighting",
-    items:[
-      { desc:"Quarterly fire alarm test (Q2)",          qty:1, unit:520 },
-      { desc:"Emergency lighting duration test",        qty:1, unit:260 },
-      { desc:"Compliance certificate & report",         qty:1, unit:80  },
-    ],
-    notes:"" },
-
-  { id:"Q-3011", customer:"c5", date:"15 Jun 2026", status:"Declined",
-    summary:"Pool plant rebalance — extended scope",
-    items:[
-      { desc:"Pool plant chemistry rebalance",         qty:1, unit:520 },
-      { desc:"Filter media replacement",                qty:1, unit:780 },
-      { desc:"UV lamp swap (2x)",                       qty:2, unit:180 },
-    ],
-    notes:"Declined — customer postponed filter media swap to Q3." },
-
-  { id:"Q-3010", customer:"c6", date:"14 Jun 2026", status:"Sent",
-    summary:"Out-of-hours deep clean (post-renovation)",
-    items:[
-      { desc:"Deep clean — public reading areas",       qty:1, unit:480 },
-      { desc:"Carpet shampoo & extraction",             qty:1, unit:360 },
-      { desc:"Windows & glass — interior",              qty:1, unit:180 },
-      { desc:"Disposal of construction dust",           qty:1, unit:90  },
-    ],
-    notes:"Schedule for Saturday after 19:00, library closure required." },
-
-  { id:"Q-3009", customer:"c1", date:"12 Jun 2026", status:"Accepted",
-    summary:"Smart-sign expansion — 4 new hangers + gateway top-up",
-    items:[
-      { desc:"Heltec ESP32 hanger sensors (HGR-1011..14)", qty:4, unit:185 },
-      { desc:"LoRa gateway antenna upgrade",                qty:1, unit:240 },
-      { desc:"Installation + pairing",                       qty:1, unit:180 },
-      { desc:"First-year cloud subscription extension",      qty:4, unit:48  },
-    ],
-    notes:"Hangers cover the new mezzanine and back-of-house aisles." },
-];
-
-const SEED_INVOICES = [
-  { id:"INV-2074", customer:"c3", date:"15 Jun 2026", due:"29 Jun 2026", status:"Paid",
-    paidDate:"17 Jun 2026", method:"Bank transfer (AIB)",
-    summary:"HVAC service — May 2026",
-    items:[
-      { desc:"Monthly HVAC service (May)",                  qty:1, unit:1200 },
-      { desc:"Pleated air filters",                          qty:6, unit:38   },
-      { desc:"Site travel & PPE",                            qty:1, unit:84   },
-    ], notes:"" },
-
-  { id:"INV-2073", customer:"c2", date:"14 Jun 2026", due:"28 Jun 2026", status:"Sent",
-    summary:"Drainage repair (WO-2041) + same-day labour",
-    items:[
-      { desc:"Drainage diagnostic + camera survey",          qty:1, unit:140 },
-      { desc:"Drain rod + chemical clean",                    qty:1, unit:220 },
-      { desc:"Labour — same-day attendance",                  qty:1, unit:60  },
-      { desc:"Materials — drain hatch reseal kit",            qty:1, unit:120 },
-    ], notes:"" },
-
-  { id:"INV-2072", customer:"c5", date:"04 Jun 2026", due:"18 Jun 2026", status:"Overdue",
-    summary:"Pool chemistry + plant inspection",
-    items:[
-      { desc:"Pool plant chemistry rebalance",                qty:1, unit:520 },
-      { desc:"Filter back-wash + clean",                       qty:1, unit:340 },
-      { desc:"Plant compliance inspection",                    qty:1, unit:280 },
-      { desc:"Site travel & PPE",                              qty:1, unit:90  },
-    ], notes:"" },
-
-  { id:"INV-2071", customer:"c4", date:"01 Jun 2026", due:"15 Jun 2026", status:"Paid",
-    paidDate:"12 Jun 2026", method:"Bank transfer (BOI)",
-    summary:"PPM — May 2026 (boiler + lift + fire)",
-    items:[
-      { desc:"Boiler weekly service x4",                       qty:4, unit:80  },
-      { desc:"Lift monthly inspection",                         qty:1, unit:180 },
-      { desc:"Fire alarm Q1 review",                            qty:1, unit:120 },
-    ], notes:"" },
-
-  { id:"INV-2070", customer:"c1", date:"30 May 2026", due:"13 Jun 2026", status:"Sent",
-    summary:"Cleaning — May 2026 + reactive spills",
-    items:[
-      { desc:"Daily cleaning — May (22 days)",                  qty:22, unit:65  },
-      { desc:"Reactive spill response x4",                      qty:4,  unit:55  },
-      { desc:"Consumables (paper, sanitiser, dispensers)",     qty:1,  unit:120 },
-    ], notes:"" },
-
-  { id:"INV-2069", customer:"c6", date:"28 May 2026", due:"11 Jun 2026", status:"Draft",
-    summary:"Out-of-hours deep clean — May",
-    items:[
-      { desc:"Out-of-hours deep clean",                          qty:1, unit:280 },
-      { desc:"Carpet spot treatment",                            qty:1, unit:80  },
-    ], notes:"Hold until library finance code is confirmed." },
-
-  { id:"INV-2068", customer:"c3", date:"15 May 2026", due:"29 May 2026", status:"Paid",
-    paidDate:"21 May 2026", method:"Bank transfer (AIB)",
-    summary:"HVAC service — April 2026",
-    items:[
-      { desc:"Monthly HVAC service (April)",                     qty:1, unit:1200 },
-      { desc:"Belt + bearing replacement (AHU 1)",                qty:1, unit:180  },
-    ], notes:"" },
-];
+const SEED_INVOICES = [];
 
 const SEED_INTEGRATIONS = [
-  { id:"xero",   name:"Xero",        desc:"Sync customers, invoices and payments. Auto-allocate paid invoices.",      letter:"X", color:"#13B5EA", connected:true,  lastSync:"Today 14:08" },
+  { id:"xero",   name:"Xero",        desc:"Sync customers, invoices and payments. Auto-allocate paid invoices.",      letter:"X", color:"#13B5EA", connected:false, lastSync:"—" },
   { id:"sage",   name:"Sage",         desc:"Push invoices to Sage Business Cloud Accounting.",                       letter:"S", color:"#00DC06", connected:false, lastSync:"—" },
   { id:"qbooks", name:"QuickBooks",   desc:"Two-way sync of customers and invoices with QuickBooks Online.",         letter:"Q", color:"#2CA01C", connected:false, lastSync:"—" },
 ];
@@ -15520,60 +14456,10 @@ function rulePhrase(rule) {
 /* ============================================================
    Seed rules — across all three disciplines
    ============================================================ */
-const SEED_RULES = [
-  { id:"AU-101", disc:"clean",
-    title:"Spill not cleared — escalate to manager",
-    desc:"Catches the case where a sign goes down but nobody confirms the floor is dry.",
-    trigger:{ event:"spill", condition:"not cleared within 10 min" },
-    actions:[ { kind:"escalate", target:"the site manager" }, { kind:"sms", target:"the on-shift cleaner" } ],
-    on:true,  lastRun:"Today 14:31",     runCount:7 },
-  { id:"AU-102", disc:"maint",
-    title:"Overdue work order — reassign + email",
-    desc:"Stops a job from sitting overdue when the assigned contractor goes silent.",
-    trigger:{ event:"wo-overdue" },
-    actions:[ { kind:"assign", target:"a backup contractor" }, { kind:"email", target:"the contractor" } ],
-    on:true,  lastRun:"Today 11:08",     runCount:12 },
-  { id:"AU-103", disc:"maint",
-    title:"Low stock — auto-raise a PO",
-    desc:"Keeps consumable parts moving without anyone watching levels.",
-    trigger:{ event:"part-min" },
-    actions:[ { kind:"raisePO" }, { kind:"email", target:"the contractor" } ],
-    on:true,  lastRun:"Today 09:42",     runCount:34 },
-  { id:"AU-104", disc:"clean",
-    title:"Failed inspection item → work order",
-    desc:"Closes the loop between cleaning and maintenance automatically.",
-    trigger:{ event:"insp-fail" },
-    actions:[ { kind:"createWO" } ],
-    on:true,  lastRun:"Yesterday 16:22", runCount:5 },
-  { id:"AU-105", disc:"secure",
-    title:"Expiring cert — chase, then block",
-    desc:"Compliance enforcement without a person chasing it.",
-    trigger:{ event:"cert-exp", condition:"14 days" },
-    actions:[ { kind:"email", target:"the contractor" }, { kind:"block" } ],
-    on:true,  lastRun:"Today 07:00",     runCount:21 },
-  { id:"AU-106", disc:"secure",
-    title:"High-severity incident → duty manager",
-    desc:"Hot incidents always reach the duty manager and the daily report.",
-    trigger:{ event:"incident", condition:"high severity" },
-    actions:[ { kind:"push", target:"the duty manager" }, { kind:"addToReport", target:"the daily report" } ],
-    on:false, lastRun:"3 days ago 22:14", runCount:2 },
-];
+const SEED_RULES = [];
 
 /* Recent automated actions feed */
-const SEED_ACTIVITY = [
-  { id:1,  t:"14:31", when:"Today",       rule:"AU-101", text:"Escalated SP-2041 to site manager — coffee spill, aisle 4 not cleared in 10 min", icon:"flag",    tone:"crit"   },
-  { id:2,  t:"14:31", when:"Today",       rule:"AU-101", text:"SMS sent to Niamh O'Brien (on-shift cleaner)",                                     icon:"phone",   tone:"accent" },
-  { id:3,  t:"11:08", when:"Today",       rule:"AU-102", text:"WO-2017 reassigned from Citywide to AquaFix Plumbing",                              icon:"users",   tone:"accent" },
-  { id:4,  t:"11:08", when:"Today",       rule:"AU-102", text:"Email sent to AquaFix Plumbing — overdue WO-2017 details",                         icon:"send",    tone:"muted"  },
-  { id:5,  t:"09:42", when:"Today",       rule:"AU-103", text:"Auto-raised PO-3012 to AHU Direct for Pleated air filter (12 units)",              icon:"package", tone:"maint"  },
-  { id:6,  t:"09:42", when:"Today",       rule:"AU-103", text:"Email sent with PO-3012 attached",                                                icon:"send",    tone:"muted"  },
-  { id:7,  t:"07:00", when:"Today",       rule:"AU-105", text:"Email sent to Citywide Cleaning — RAMS expiring in 12 days",                       icon:"send",    tone:"accent" },
-  { id:8,  t:"16:22", when:"Yesterday",   rule:"AU-104", text:"Created WO-2034 — Floor seal damaged, Aviva L2 inspection",                        icon:"wrench",  tone:"maint"  },
-  { id:9,  t:"13:11", when:"Yesterday",   rule:"AU-103", text:"Auto-raised PO-3009 to PoolChem Supplies for chlorine tablets",                    icon:"package", tone:"maint"  },
-  { id:10, t:"08:45", when:"Yesterday",   rule:"AU-101", text:"Escalated SP-2032 to site manager — Riverside Retail Park",                        icon:"flag",    tone:"crit"   },
-  { id:11, t:"19:02", when:"2 days ago",  rule:"AU-102", text:"WO-2008 reassigned to PowerLock Electrical",                                       icon:"users",   tone:"accent" },
-  { id:12, t:"10:18", when:"2 days ago",  rule:"AU-105", text:"Site access blocked for Sam Greene — insurance lapsed",                            icon:"shield",  tone:"crit"   },
-];
+const SEED_ACTIVITY = [];
 
 /* ============================================================
    Rule card
@@ -16542,52 +15428,7 @@ const CMP_STATUS_META = {
   expired:    { label:"Expired",     tone:"crit"  },
 };
 
-const CMP_TASKS = [
-  /* ---- Riverside Retail Park ---- */
-  { id:"CMP-001", site:"Riverside Retail Park", category:"fire",       title:"Fire alarm panel — full functional test",       sfg:"SFG20-04-01", freq:"Quarterly", lastDone:"22 Mar 2026", nextDue:"22 Jun 2026", status:"due-soon",  cert:"FA-RV-Q1-2026.pdf" },
-  { id:"CMP-002", site:"Riverside Retail Park", category:"emlight",    title:"Emergency lighting — duration test (3hr)",       sfg:"SFG20-04-04", freq:"Annual",    lastDone:"04 Oct 2025", nextDue:"04 Oct 2026", status:"compliant", cert:"EL-RV-2025-AN.pdf" },
-  { id:"CMP-003", site:"Riverside Retail Park", category:"electrical", title:"Fixed wire installation test (EICR)",            sfg:"SFG20-03-04", freq:"5 Years",   lastDone:"14 May 2023", nextDue:"14 May 2028", status:"compliant", cert:"EICR-RV-2023.pdf" },
-  { id:"CMP-004", site:"Riverside Retail Park", category:"electrical", title:"Portable appliance testing (PAT)",                sfg:"SFG20-03-03", freq:"Annual",    lastDone:"11 Jan 2026", nextDue:"11 Jan 2027", status:"compliant", cert:"PAT-RV-2026.pdf" },
-  { id:"CMP-005", site:"Riverside Retail Park", category:"lift",       title:"Goods lift LOLER thorough exam",                  sfg:"SFG20-09-01", freq:"6-monthly", lastDone:"18 Dec 2025", nextDue:"18 Jun 2026", status:"due-soon",  cert:"LOLER-RV-2025-H2.pdf" },
-  { id:"CMP-006", site:"Riverside Retail Park", category:"hvac",       title:"HVAC seasonal inspection",                        sfg:"SFG20-19-01", freq:"6-monthly", lastDone:"02 Feb 2026", nextDue:"02 Aug 2026", status:"compliant", cert:"HVAC-RV-W26.pdf" },
-
-  /* ---- Northgate Logistics Hub ---- */
-  { id:"CMP-010", site:"Northgate Logistics Hub", category:"fire",       title:"Sprinkler system — wet alarm valve test",       sfg:"SFG20-04-02", freq:"Weekly",    lastDone:"15 Jun 2026", nextDue:"22 Jun 2026", status:"compliant", cert:"SPRINK-NG-W25.pdf" },
-  { id:"CMP-011", site:"Northgate Logistics Hub", category:"fire",       title:"Fire alarm panel — full functional test",       sfg:"SFG20-04-01", freq:"Quarterly", lastDone:"08 Apr 2026", nextDue:"08 Jul 2026", status:"compliant", cert:"FA-NG-Q2-2026.pdf" },
-  { id:"CMP-012", site:"Northgate Logistics Hub", category:"electrical", title:"Emergency generator — load test",                sfg:"SFG20-25-04", freq:"Annual",    lastDone:"12 Apr 2025", nextDue:"12 Apr 2026", status:"overdue",   cert:null },
-  { id:"CMP-013", site:"Northgate Logistics Hub", category:"emlight",    title:"Emergency lighting — monthly flick test",        sfg:"SFG20-04-04", freq:"Monthly",   lastDone:"01 Jun 2026", nextDue:"01 Jul 2026", status:"compliant", cert:"EL-NG-Jun26.pdf" },
-  { id:"CMP-014", site:"Northgate Logistics Hub", category:"water",      title:"Legionella risk assessment (L8)",                sfg:"SFG20-22-01", freq:"2 Years",   lastDone:"30 May 2024", nextDue:"30 May 2026", status:"overdue",   cert:"LEG-NG-2024.pdf" },
-  { id:"CMP-015", site:"Northgate Logistics Hub", category:"electrical", title:"Fixed wire installation test (EICR)",            sfg:"SFG20-03-04", freq:"5 Years",   lastDone:"02 Sep 2024", nextDue:"02 Sep 2029", status:"compliant", cert:"EICR-NG-2024.pdf" },
-
-  /* ---- Aviva Office Tower ---- */
-  { id:"CMP-020", site:"Aviva Office Tower", category:"hvac",       title:"AHU quarterly service + filter swap",             sfg:"SFG20-19-02", freq:"Quarterly", lastDone:"02 Apr 2026", nextDue:"02 Jul 2026", status:"compliant", cert:"HVAC-AV-Q2.pdf" },
-  { id:"CMP-021", site:"Aviva Office Tower", category:"emlight",    title:"Emergency lighting — duration test (3hr)",         sfg:"SFG20-04-04", freq:"Annual",    lastDone:"19 Nov 2025", nextDue:"19 Nov 2026", status:"compliant", cert:"EL-AV-2025.pdf" },
-  { id:"CMP-022", site:"Aviva Office Tower", category:"fire",       title:"Fire alarm panel — full functional test",         sfg:"SFG20-04-01", freq:"Quarterly", lastDone:"11 Mar 2026", nextDue:"11 Jun 2026", status:"overdue",   cert:"FA-AV-Q1-2026.pdf" },
-  { id:"CMP-023", site:"Aviva Office Tower", category:"lift",       title:"Passenger lift LOLER thorough exam",               sfg:"SFG20-09-01", freq:"6-monthly", lastDone:"22 Jan 2026", nextDue:"22 Jul 2026", status:"compliant", cert:"LOLER-AV-2026-H1.pdf" },
-  { id:"CMP-024", site:"Aviva Office Tower", category:"hvac",       title:"Indoor air quality monitoring (TM40)",             sfg:"SFG20-19-08", freq:"Annual",    lastDone:"02 Feb 2026", nextDue:"02 Feb 2027", status:"compliant", cert:"IAQ-AV-2026.pdf" },
-  { id:"CMP-025", site:"Aviva Office Tower", category:"electrical", title:"Portable appliance testing (PAT)",                  sfg:"SFG20-03-03", freq:"Annual",    lastDone:"15 Sep 2025", nextDue:"15 Sep 2026", status:"compliant", cert:"PAT-AV-2025.pdf" },
-
-  /* ---- Lee Valley Medical Centre ---- */
-  { id:"CMP-030", site:"Lee Valley Medical Centre", category:"gas",        title:"Medical gas pipeline (MGPS) annual inspection", sfg:"SFG20-20-03", freq:"Annual",    lastDone:"10 Jul 2025", nextDue:"10 Jul 2026", status:"due-soon",  cert:"MGPS-LV-2025.pdf" },
-  { id:"CMP-031", site:"Lee Valley Medical Centre", category:"water",      title:"Water hygiene monthly temperature monitoring",  sfg:"SFG20-22-02", freq:"Monthly",   lastDone:"01 Jun 2026", nextDue:"01 Jul 2026", status:"compliant", cert:"WH-LV-Jun26.pdf" },
-  { id:"CMP-032", site:"Lee Valley Medical Centre", category:"water",      title:"Backflow prevention device test",                sfg:"SFG20-22-05", freq:"Annual",    lastDone:"04 Apr 2025", nextDue:"04 Apr 2026", status:"overdue",   cert:null },
-  { id:"CMP-033", site:"Lee Valley Medical Centre", category:"fire",       title:"Fire alarm panel — full functional test",        sfg:"SFG20-04-01", freq:"Quarterly", lastDone:"15 May 2026", nextDue:"15 Aug 2026", status:"compliant", cert:"FA-LV-Q2.pdf" },
-  { id:"CMP-034", site:"Lee Valley Medical Centre", category:"lift",       title:"Passenger lift LOLER thorough exam",              sfg:"SFG20-09-01", freq:"6-monthly", lastDone:"12 Feb 2026", nextDue:"12 Aug 2026", status:"compliant", cert:"LOLER-LV-2026.pdf" },
-  { id:"CMP-035", site:"Lee Valley Medical Centre", category:"electrical", title:"Fixed wire installation test (EICR)",            sfg:"SFG20-03-04", freq:"5 Years",   lastDone:"22 Mar 2022", nextDue:"22 Mar 2027", status:"compliant", cert:"EICR-LV-2022.pdf" },
-
-  /* ---- Tramore Leisure Centre ---- */
-  { id:"CMP-040", site:"Tramore Leisure Centre", category:"water",      title:"Pool plant — daily chemistry log",               sfg:"SFG20-22-09", freq:"Daily",     lastDone:"20 Jun 2026", nextDue:"21 Jun 2026", status:"compliant", cert:"POOL-TM-Daily.pdf" },
-  { id:"CMP-041", site:"Tramore Leisure Centre", category:"water",      title:"Pool plant — microbiology samples",              sfg:"SFG20-22-10", freq:"Monthly",   lastDone:"22 May 2026", nextDue:"22 Jun 2026", status:"due-soon",  cert:"POOL-TM-May26.pdf" },
-  { id:"CMP-042", site:"Tramore Leisure Centre", category:"water",      title:"Legionella risk assessment (L8)",                 sfg:"SFG20-22-01", freq:"2 Years",   lastDone:"08 Aug 2024", nextDue:"08 Aug 2026", status:"compliant", cert:"LEG-TM-2024.pdf" },
-  { id:"CMP-043", site:"Tramore Leisure Centre", category:"fire",       title:"Fire alarm panel — full functional test",         sfg:"SFG20-04-01", freq:"Quarterly", lastDone:"08 Apr 2026", nextDue:"08 Jul 2026", status:"compliant", cert:"FA-TM-Q2.pdf" },
-  { id:"CMP-044", site:"Tramore Leisure Centre", category:"emlight",    title:"Emergency lighting — monthly flick test",         sfg:"SFG20-04-04", freq:"Monthly",   lastDone:"01 Jun 2026", nextDue:"01 Jul 2026", status:"compliant", cert:"EL-TM-Jun26.pdf" },
-
-  /* ---- Galway City Library ---- */
-  { id:"CMP-050", site:"Galway City Library", category:"fire",       title:"Fire alarm panel — full functional test",        sfg:"SFG20-04-01", freq:"Quarterly", lastDone:"11 May 2026", nextDue:"11 Aug 2026", status:"compliant", cert:"FA-GW-Q2.pdf" },
-  { id:"CMP-051", site:"Galway City Library", category:"emlight",    title:"Emergency lighting — duration test (3hr)",        sfg:"SFG20-04-04", freq:"Annual",    lastDone:"04 Dec 2022", nextDue:"04 Dec 2023", status:"expired",   cert:null },
-  { id:"CMP-052", site:"Galway City Library", category:"electrical", title:"Portable appliance testing (PAT)",                 sfg:"SFG20-03-03", freq:"Annual",    lastDone:"04 Mar 2026", nextDue:"04 Mar 2027", status:"compliant", cert:"PAT-GW-2026.pdf" },
-  { id:"CMP-053", site:"Galway City Library", category:"lift",       title:"Passenger lift LOLER thorough exam",                sfg:"SFG20-09-01", freq:"6-monthly", lastDone:"01 Apr 2026", nextDue:"01 Oct 2026", status:"compliant", cert:"LOLER-GW-2026.pdf" },
-];
+const CMP_TASKS = [];
 
 /* ============================================================
    Site scoring
@@ -16962,11 +15803,8 @@ Object.assign(window, { ComplianceView });
 /* ============================================================
    SLA targets per priority (in minutes for response / resolution)
    ============================================================ */
-const SLA_TARGETS = {
-  High:   { label:"Emergency", response: 60,   resolution: 240,   tone:"crit",   color:"var(--crit)"   },
-  Medium: { label:"Urgent",    response: 240,  resolution: 1440,  tone:"warn",   color:"var(--warn)"   },
-  Low:    { label:"Routine",   response: 2880, resolution: 7200,  tone:"muted",  color:"var(--ink-3)"  },
-};
+// Blank for a new org — the SLA tier cards appear once SLA targets are defined.
+const SLA_TARGETS = {};
 
 /* ============================================================
    Performance — current month (computed locally so the numbers
@@ -16974,25 +15812,16 @@ const SLA_TARGETS = {
    for response and resolution.
    ============================================================ */
 const SLA_PERFORMANCE = {
-  High:   { responsePct: 98, resolutionPct: 92, total: 14,  responseBreaches: 0, resolutionBreaches: 1 },
-  Medium: { responsePct: 89, resolutionPct: 84, total: 47,  responseBreaches: 3, resolutionBreaches: 5 },
-  Low:    { responsePct: 95, resolutionPct: 88, total: 92,  responseBreaches: 2, resolutionBreaches: 8 },
+  High:   { responsePct: 0, resolutionPct: 0, total: 0,  responseBreaches: 0, resolutionBreaches: 0 },
+  Medium: { responsePct: 0, resolutionPct: 0, total: 0,  responseBreaches: 0, resolutionBreaches: 0 },
+  Low:    { responsePct: 0, resolutionPct: 0, total: 0,  responseBreaches: 0, resolutionBreaches: 0 },
 };
 
 /* ============================================================
    Active SLA tracked jobs — at-risk + breached
    `etaMin` is minutes remaining; negative means past target.
    ============================================================ */
-const SLA_TRACKED = [
-  { id:"WO-2041", title:"Cold-store drainage leak",         site:"Northgate Logistics Hub", priority:"High",   stage:"Resolution", etaMin:  72, status:"Tendering",   assignee:"AquaFix Plumbing" },
-  { id:"WO-2017", title:"Cold-store door seal replacement", site:"Northgate Logistics Hub", priority:"High",   stage:"Resolution", etaMin:-1680, status:"In progress",  assignee:"AquaFix Plumbing" },
-  { id:"WO-2034", title:"Floor seal damage — Aviva L2",     site:"Aviva Office Tower",      priority:"Medium", stage:"Response",   etaMin:  62, status:"Open",        assignee:"Unassigned" },
-  { id:"WO-2024", title:"Welding repair — flue plant room", site:"Northgate Logistics Hub", priority:"Medium", stage:"Resolution", etaMin: -180, status:"In progress",  assignee:"AquaFix Plumbing" },
-  { id:"WO-2008", title:"Lighting fault — Ward 3",          site:"Lee Valley Medical Centre",priority:"Medium", stage:"Response",   etaMin: -120, status:"Open",        assignee:"PowerLock Electrical" },
-  { id:"WO-2042", title:"Leaking radiator — server room",   site:"Aviva Office Tower",      priority:"High",   stage:"Response",   etaMin:  38, status:"Open",        assignee:"Unassigned" },
-  { id:"WO-2031", title:"Roof drainage cleaning",            site:"Aviva Office Tower",      priority:"Low",    stage:"Resolution", etaMin: 5760, status:"Scheduled",    assignee:"Citywide Facilities" },
-  { id:"WO-2018", title:"UPS battery swap — server room",    site:"Aviva Office Tower",      priority:"Low",    stage:"Resolution", etaMin:-1440, status:"In progress",  assignee:"Citywide Facilities" },
-];
+const SLA_TRACKED = [];
 
 /* ============================================================
    Helpers
@@ -17084,7 +15913,7 @@ function SLAsView({ go }) {
             <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div>
             <span className="kpi-label">On-target this month</span>
           </div>
-          <div className="kpi-val">91<small>%</small></div>
+          <div className="kpi-val">0<small>%</small></div>
           <div className="kpi-foot">weighted across priorities</div>
         </div>
       </div>
@@ -17418,173 +16247,7 @@ const PTW_CHECKS = {
   ],
 };
 
-const SEED_PERMITS = [
-  /* Hot & fire */
-  { id:"PTW-2014", type:"hot",          title:"Hot work — welding repair to plant-room flue",
-    site:"Northgate Logistics Hub", contractor:"AquaFix Plumbing", workOrder:"WO-2024",
-    status:"Active", validFrom:"Today 09:00", validTo:"Today 17:00",
-    approver:"Aoife Kelly", approvedAt:"Today 08:42",
-    notes:"Adjacent to pallet racking — fire watch posted, additional CO2 extinguisher staged.",
-    checks: PTW_CHECKS["hot"].map((c) => ({ label: c, done: true })) },
-
-  { id:"PTW-2013", type:"fire-impair",  title:"Fire system impairment — sprinkler zone B isolation",
-    site:"Aviva Office Tower", contractor:"FireSafe Services", workOrder:"WO-2033",
-    status:"Active", validFrom:"Today 08:00", validTo:"Today 18:00",
-    approver:"Sean Murphy", approvedAt:"Today 07:55",
-    notes:"Zone B isolated for valve replacement. ARC and insurer notified, fire watch on level 6.",
-    checks: PTW_CHECKS["fire-impair"].map((c) => ({ label: c, done: true })) },
-
-  /* Electrical */
-  { id:"PTW-2012", type:"electrical",   title:"Electrical isolation — main panel servicing",
-    site:"Lee Valley Medical Centre", contractor:"PowerLock Electrical", workOrder:"WO-2018",
-    status:"Requested", validFrom:"21 Jun 18:00", validTo:"21 Jun 22:00",
-    approver:"Aoife Kelly",
-    notes:"Out-of-hours to keep clinical areas live. Generator backup confirmed.",
-    checks: PTW_CHECKS["electrical"].map((c, i) => ({ label: c, done: i < 2 })) },
-
-  { id:"PTW-2011", type:"elec-live",    title:"Live electrical work — thermography survey HV switchgear",
-    site:"Northgate Logistics Hub", contractor:"PowerLock Electrical", workOrder:"WO-2026",
-    status:"Approved", validFrom:"22 Jun 06:00", validTo:"22 Jun 10:00",
-    approver:"Owen Farrell", approvedAt:"Today 11:14",
-    notes:"Cannot isolate without downtime — justification signed by HV authority.",
-    checks: PTW_CHECKS["elec-live"].map((c, i) => ({ label: c, done: i < 5 })) },
-
-  /* Height & access */
-  { id:"PTW-2010", type:"high",         title:"Working at height — roof drainage clean",
-    site:"Aviva Office Tower", contractor:"Citywide Facilities", workOrder:"WO-2031",
-    status:"Approved", validFrom:"22 Jun 06:00", validTo:"22 Jun 14:00",
-    approver:"Sean Murphy", approvedAt:"Today 14:02",
-    notes:"MEWP booked, edge protection already in place from January install.",
-    checks: PTW_CHECKS["high"].map((c, i) => ({ label: c, done: i < 4 })) },
-
-  { id:"PTW-2009", type:"roof",         title:"Roof access — fragile light-panel survey",
-    site:"Northgate Logistics Hub", contractor:"Citywide Facilities", workOrder:"WO-2029",
-    status:"Requested", validFrom:"24 Jun 08:00", validTo:"24 Jun 12:00",
-    approver:"Owen Farrell",
-    notes:"Walkway boards required — historical fragile panels on north slope.",
-    checks: PTW_CHECKS["roof"].map((c, i) => ({ label: c, done: i < 2 })) },
-
-  { id:"PTW-2008", type:"scaffold",     title:"Scaffolding — façade snagging access tower",
-    site:"Galway City Library", contractor:"Citywide Facilities", workOrder:"WO-2027",
-    status:"Active", validFrom:"Today 07:00", validTo:"28 Jun 17:00",
-    approver:"Sean Murphy", approvedAt:"Today 06:48",
-    notes:"Three-lift mobile tower, scafftag dated this morning.",
-    checks: PTW_CHECKS["scaffold"].map((c) => ({ label: c, done: true })) },
-
-  /* Confined & ground */
-  { id:"PTW-2007", type:"confined",     title:"Confined space — manhole inspection (rear yard)",
-    site:"Northgate Logistics Hub", contractor:"AquaFix Plumbing", workOrder:"WO-2019",
-    status:"Requested", validFrom:"23 Jun 08:00", validTo:"23 Jun 14:00",
-    approver:"Owen Farrell",
-    notes:"Pre-entry gas test scheduled at 07:45 with site security.",
-    checks: PTW_CHECKS["confined"].map((c, i) => ({ label: c, done: i < 1 })) },
-
-  { id:"PTW-2006", type:"excavation",   title:"Excavation — incoming water main repair",
-    site:"Riverside Retail Park", contractor:"AquaFix Plumbing", workOrder:"WO-2025",
-    status:"Approved", validFrom:"23 Jun 07:00", validTo:"23 Jun 19:00",
-    approver:"Aoife Kelly", approvedAt:"Today 12:10",
-    notes:"CAT scan completed; ESB & Eir drawings reviewed.",
-    checks: PTW_CHECKS["excavation"].map((c, i) => ({ label: c, done: i < 5 })) },
-
-  /* Mechanical & pressure */
-  { id:"PTW-2005", type:"loto-mech",    title:"LOTO — AHU-3 fan belt replacement",
-    site:"Aviva Office Tower", contractor:"Citywide Facilities", workOrder:"WO-2022",
-    status:"Active", validFrom:"Today 13:00", validTo:"Today 18:00",
-    approver:"Sean Murphy", approvedAt:"Today 12:48",
-    notes:"VFD locked at MCC, belt tension to be re-checked tomorrow.",
-    checks: PTW_CHECKS["loto-mech"].map((c) => ({ label: c, done: true })) },
-
-  { id:"PTW-2004", type:"pressure",     title:"Pressure test — chilled water flush after pump swap",
-    site:"Lee Valley Medical Centre", contractor:"AquaFix Plumbing", workOrder:"WO-2021",
-    status:"Approved", validFrom:"22 Jun 18:00", validTo:"22 Jun 22:00",
-    approver:"Aoife Kelly", approvedAt:"Today 09:30",
-    notes:"Test at 1.5x working pressure with water medium.",
-    checks: PTW_CHECKS["pressure"].map((c, i) => ({ label: c, done: i < 4 })) },
-
-  { id:"PTW-2003", type:"line-break",   title:"Line breaking — kitchen grease main joint replacement",
-    site:"Tramore Leisure Centre", contractor:"AquaFix Plumbing", workOrder:"WO-2020",
-    status:"Requested", validFrom:"22 Jun 06:00", validTo:"22 Jun 10:00",
-    approver:"Michael Cronin",
-    notes:"Drip tray and biohazard bag in place; café closed until done.",
-    checks: PTW_CHECKS["line-break"].map((c, i) => ({ label: c, done: i < 3 })) },
-
-  { id:"PTW-2002", type:"lifting",      title:"Lifting — rooftop chiller condenser replacement",
-    site:"Aviva Office Tower", contractor:"LiftRite Crane Hire", workOrder:"WO-2030",
-    status:"Approved", validFrom:"25 Jun 06:00", validTo:"25 Jun 14:00",
-    approver:"Sean Murphy", approvedAt:"Today 15:00",
-    notes:"60T mobile crane, banksman from contractor + site marshal.",
-    checks: PTW_CHECKS["lifting"].map((c, i) => ({ label: c, done: i < 5 })) },
-
-  /* Hazardous materials */
-  { id:"PTW-2001", type:"asbestos",     title:"Asbestos — basement pipe lagging encapsulation",
-    site:"Galway City Library", contractor:"AsbestPro Removal Ltd", workOrder:"WO-2034",
-    status:"Active", validFrom:"Today 07:00", validTo:"27 Jun 18:00",
-    approver:"Sean Murphy", approvedAt:"Yesterday 16:30",
-    notes:"HSA-notified licensed work, NPU running, 3-stage airlock at basement door.",
-    checks: PTW_CHECKS["asbestos"].map((c) => ({ label: c, done: true })) },
-
-  { id:"PTW-2000", type:"coshh",        title:"COSHH — pool dosing tank refill",
-    site:"Tramore Leisure Centre", contractor:"PoolChem Supplies", workOrder:"WO-2003",
-    status:"Active", validFrom:"Today 14:00", validTo:"Today 16:00",
-    approver:"Michael Cronin", approvedAt:"Today 13:30",
-    notes:"Sodium hypochlorite, full face shield + chemical gloves.",
-    checks: PTW_CHECKS["coshh"].map((c) => ({ label: c, done: true })) },
-
-  { id:"PTW-1999", type:"gas",          title:"Gas work — kitchen boiler annual service",
-    site:"Tramore Leisure Centre", contractor:"AquaFix Plumbing", workOrder:"WO-2017",
-    status:"Closed", validFrom:"Yesterday 09:00", validTo:"Yesterday 13:00",
-    approver:"Michael Cronin", approvedAt:"Yesterday 08:30",
-    notes:"RGI cert filed; tightness test passed.",
-    checks: PTW_CHECKS["gas"].map((c) => ({ label: c, done: true })) },
-
-  { id:"PTW-1998", type:"radiation",    title:"Radiography — weld inspection on chilled water riser",
-    site:"Aviva Office Tower", contractor:"NDT Inspect Ltd", workOrder:"WO-2028",
-    status:"Requested", validFrom:"27 Jun 22:00", validTo:"28 Jun 04:00",
-    approver:"Sean Murphy",
-    notes:"Out-of-hours shoot, level 5 evacuated to controlled radius.",
-    checks: PTW_CHECKS["radiation"].map((c, i) => ({ label: c, done: i < 2 })) },
-
-  /* Other */
-  { id:"PTW-1997", type:"cold",         title:"General work — repaint store-room walls",
-    site:"Riverside Retail Park", contractor:"Citywide Facilities", workOrder:"WO-2015",
-    status:"Active", validFrom:"Today 09:00", validTo:"Today 17:00",
-    approver:"Aoife Kelly", approvedAt:"Today 08:15",
-    checks: PTW_CHECKS["cold"].map((c) => ({ label: c, done: true })) },
-
-  { id:"PTW-1996", type:"demolition",   title:"Demolition — partition wall removal level 3",
-    site:"Aviva Office Tower", contractor:"BuildSmart Construction", workOrder:"WO-2032",
-    status:"Requested", validFrom:"26 Jun 18:00", validTo:"27 Jun 06:00",
-    approver:"Sean Murphy",
-    notes:"Asbestos R&D survey clear — non-load-bearing partition.",
-    checks: PTW_CHECKS["demolition"].map((c, i) => ({ label: c, done: i < 3 })) },
-
-  { id:"PTW-1995", type:"water",        title:"Working over water — pool tile repair (drained side)",
-    site:"Tramore Leisure Centre", contractor:"PoolChem Supplies", workOrder:"WO-2009",
-    status:"Approved", validFrom:"24 Jun 07:00", validTo:"24 Jun 15:00",
-    approver:"Michael Cronin", approvedAt:"Today 10:42",
-    checks: PTW_CHECKS["water"].map((c, i) => ({ label: c, done: i < 4 })) },
-
-  { id:"PTW-1994", type:"lone",         title:"Lone working — overnight UPS battery check",
-    site:"Lee Valley Medical Centre", contractor:"Citywide Facilities", workOrder:"WO-2016",
-    status:"Closed", validFrom:"2 days ago 22:00", validTo:"2 days ago 02:00",
-    approver:"Aoife Kelly", approvedAt:"3 days ago",
-    notes:"Lone-worker device check-ins every 30 min — all logged.",
-    checks: PTW_CHECKS["lone"].map((c) => ({ label: c, done: true })) },
-
-  { id:"PTW-1993", type:"occupied",     title:"Public-area work — atrium lighting replacement",
-    site:"Aviva Office Tower", contractor:"Citywide Facilities", workOrder:"WO-2014",
-    status:"Closed", validFrom:"Yesterday 18:00", validTo:"Yesterday 23:00",
-    approver:"Sean Murphy", approvedAt:"Yesterday 14:14",
-    notes:"All luminaires replaced after building closure, scaffold-tag removed.",
-    checks: PTW_CHECKS["occupied"].map((c) => ({ label: c, done: true })) },
-
-  { id:"PTW-1992", type:"traffic",      title:"Vehicle area — line-marking refresh in loading yard",
-    site:"Northgate Logistics Hub", contractor:"Citywide Facilities", workOrder:"WO-2023",
-    status:"Closed", validFrom:"3 days ago", validTo:"3 days ago",
-    approver:"Owen Farrell", approvedAt:"4 days ago",
-    notes:"Yard reduced to one-way during marking; banksman provided.",
-    checks: PTW_CHECKS["traffic"].map((c) => ({ label: c, done: true })) },
-];
+const SEED_PERMITS = [];
 
 /* ============================================================
    Permit detail panel
@@ -18105,141 +16768,7 @@ function nextWeekRota(thisWeek) {
 
 /* ---------- Static team data ---------- */
 
-const TEAM_DATA_RAW = [
-  { id:"u1", name:"Aoife Kelly",     role:"Facilities Manager",   group:"supervisors",
-    homeSite:"All sites",                     initials:"AK", status:"on-shift",
-    allowance:25, used:11, joined:"Jan 2021",
-    phone:"+353 87 555 0101", email:"aoife.kelly@hazardlink.ie",
-    manager:"—", emergency:"Sean Kelly · +353 87 555 0102",
-    pattern:"sup-mon-fri", otherSite:"Riverside Retail Park",
-    history:[
-      { id:"r-001", type:"Annual", from:"2026-05-04", to:"2026-05-08", days:5, status:"approved", note:"Family trip · Donegal", submitted:"15 Mar" },
-      { id:"r-002", type:"Annual", from:"2026-08-17", to:"2026-08-21", days:5, status:"approved", note:"", submitted:"02 Apr" },
-      { id:"r-003", type:"Sick",   from:"2026-02-09", to:"2026-02-09", days:1, status:"approved", note:"", submitted:"09 Feb" },
-    ],
-    thisWeekLeave:[],
-  },
-  { id:"u2", name:"Owen Farrell",    role:"Site Lead",            group:"supervisors",
-    homeSite:"Northgate Logistics Hub",       initials:"OF", status:"on-shift",
-    allowance:25, used:8, joined:"Mar 2022",
-    phone:"+353 87 555 0203", email:"owen.farrell@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Maeve Farrell · +353 87 555 0204",
-    pattern:"sup-site-lead",
-    history:[
-      { id:"r-101", type:"Annual", from:"2026-07-06", to:"2026-07-10", days:5, status:"approved", note:"Summer break", submitted:"10 Apr" },
-      { id:"r-102", type:"Other",  from:"2026-03-21", to:"2026-03-21", days:1, status:"approved", note:"Wedding", submitted:"02 Mar" },
-    ],
-    thisWeekLeave:[],
-  },
-  { id:"u3", name:"Declan Moore",    role:"Maintenance Technician", group:"technicians",
-    homeSite:"Lee Valley Medical Centre",     initials:"DM", status:"on-leave",
-    allowance:25, used:14, joined:"Sep 2022",
-    phone:"+353 87 555 0307", email:"declan.moore@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Sinead Moore · +353 87 555 0308",
-    pattern:"tech-mon-fri",
-    history:[
-      { id:"r-201", type:"Annual", from:"2026-06-15", to:"2026-06-19", days:5, status:"approved", note:"Currently on leave", submitted:"02 Apr" },
-      { id:"r-202", type:"Annual", from:"2026-12-21", to:"2026-12-31", days:9, status:"approved", note:"Christmas", submitted:"01 May" },
-      { id:"r-203", type:"Sick",   from:"2026-01-12", to:"2026-01-13", days:2, status:"approved", note:"", submitted:"12 Jan" },
-    ],
-    thisWeekLeave:[0,1,2,3,4],
-  },
-  { id:"u4", name:"Cathal O'Brien",  role:"Maintenance Technician", group:"technicians",
-    homeSite:"Aviva Office Tower",            initials:"CO", status:"on-shift",
-    allowance:25, used:6, joined:"Nov 2023",
-    phone:"+353 87 555 0411", email:"cathal.obrien@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Una O'Brien · +353 87 555 0412",
-    pattern:"tech-tue-sat", otherSite:"Riverside Retail Park",
-    history:[
-      { id:"r-301", type:"Annual", from:"2026-07-01", to:"2026-07-03", days:3, status:"pending", note:"Long weekend in West Cork", submitted:"yesterday" },
-      { id:"r-302", type:"Annual", from:"2026-04-13", to:"2026-04-17", days:5, status:"approved", note:"", submitted:"05 Mar" },
-    ],
-    thisWeekLeave:[],
-  },
-  { id:"u5", name:"Liam Doyle",      role:"Security & maintenance", group:"guards",
-    homeSite:"Northgate Logistics Hub",       initials:"LD", status:"on-shift",
-    allowance:25, used:9, joined:"Aug 2021",
-    phone:"+353 87 555 0512", email:"liam.doyle@hazardlink.ie",
-    manager:"Owen Farrell", emergency:"Helen Doyle · +353 87 555 0513",
-    pattern:"guard-mixed",
-    history:[
-      { id:"r-401", type:"Sick",   from:"2026-06-22", to:"2026-06-22", days:1, status:"pending", note:"Dental appointment in the morning", submitted:"2 days ago" },
-      { id:"r-402", type:"Annual", from:"2026-05-25", to:"2026-05-29", days:5, status:"approved", note:"", submitted:"10 Apr" },
-      { id:"r-403", type:"Annual", from:"2026-03-09", to:"2026-03-13", days:5, status:"declined", note:"Site cover already short that week", submitted:"15 Feb" },
-    ],
-    thisWeekLeave:[],
-  },
-  { id:"u6", name:"Aoibhe Nolan",    role:"Security guard",       group:"guards",
-    homeSite:"Aviva Office Tower",            initials:"AN", status:"off",
-    allowance:25, used:10, joined:"Feb 2022",
-    phone:"+353 87 555 0608", email:"aoibhe.nolan@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Conor Nolan · +353 87 555 0609",
-    pattern:"guard-nights",
-    history:[
-      { id:"r-501", type:"Annual", from:"2026-08-03", to:"2026-08-09", days:5, status:"approved", note:"Holiday in Greece", submitted:"01 Mar" },
-      { id:"r-502", type:"Unpaid", from:"2026-04-28", to:"2026-04-29", days:2, status:"approved", note:"Family matter", submitted:"20 Apr" },
-    ],
-    thisWeekLeave:[],
-  },
-  { id:"u7", name:"Michael Cronin",  role:"Security guard",       group:"guards",
-    homeSite:"Tramore Leisure Centre",        initials:"MC", status:"on-shift",
-    allowance:25, used:5, joined:"Oct 2023",
-    phone:"+353 87 555 0714", email:"michael.cronin@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Bridie Cronin · +353 87 555 0715",
-    pattern:"guard-days",
-    history:[
-      { id:"r-601", type:"Annual", from:"2026-09-14", to:"2026-09-18", days:5, status:"approved", note:"", submitted:"02 May" },
-    ],
-    thisWeekLeave:[],
-  },
-  { id:"u8", name:"Patricia Ryan",   role:"Cleaner & FM",         group:"cleaners",
-    homeSite:"Riverside Retail Park",         initials:"PR", status:"on-shift",
-    allowance:25, used:12, joined:"May 2020",
-    phone:"+353 87 555 0816", email:"patricia.ryan@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Tom Ryan · +353 87 555 0817",
-    pattern:"clean-early",
-    history:[
-      { id:"r-701", type:"Annual", from:"2026-06-29", to:"2026-07-03", days:5, status:"pending", note:"Daughter's confirmation week", submitted:"3 days ago" },
-      { id:"r-702", type:"Annual", from:"2026-04-06", to:"2026-04-10", days:5, status:"approved", note:"", submitted:"01 Mar" },
-      { id:"r-703", type:"Sick",   from:"2026-05-18", to:"2026-05-19", days:2, status:"approved", note:"Flu", submitted:"18 May" },
-    ],
-    thisWeekLeave:[],
-  },
-  { id:"u9", name:"Siobhan Walsh",   role:"Cleaner",              group:"cleaners",
-    homeSite:"Aviva Office Tower",            initials:"SW", status:"off",
-    allowance:25, used:7, joined:"Jul 2022",
-    phone:"+353 87 555 0918", email:"siobhan.walsh@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Padraig Walsh · +353 87 555 0919",
-    pattern:"clean-late",
-    history:[
-      { id:"r-801", type:"Annual", from:"2026-07-20", to:"2026-07-24", days:5, status:"approved", note:"", submitted:"15 Apr" },
-    ],
-    thisWeekLeave:[],
-  },
-  { id:"u10", name:"Niamh Delaney",  role:"Cleaner",              group:"cleaners",
-    homeSite:"Tramore Leisure Centre",        initials:"ND", status:"on-shift",
-    allowance:25, used:9, joined:"Mar 2023",
-    phone:"+353 87 555 1020", email:"niamh.delaney@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Eileen Delaney · +353 87 555 1021",
-    pattern:"clean-early",
-    history:[
-      { id:"r-901", type:"Annual", from:"2026-06-18", to:"2026-06-19", days:2, status:"approved", note:"", submitted:"02 May" },
-      { id:"r-902", type:"Annual", from:"2026-08-10", to:"2026-08-14", days:5, status:"approved", note:"", submitted:"02 May" },
-    ],
-    thisWeekLeave:[3,4],
-  },
-  { id:"u11", name:"Mairéad Joyce",  role:"Cleaner",              group:"cleaners",
-    homeSite:"Galway City Library",           initials:"MJ", status:"on-shift",
-    allowance:25, used:4, joined:"Jan 2024",
-    phone:"+353 87 555 1122", email:"mairead.joyce@hazardlink.ie",
-    manager:"Aoife Kelly", emergency:"Padraic Joyce · +353 87 555 1123",
-    pattern:"clean-mixed", otherSite:"Riverside Retail Park",
-    history:[
-      { id:"r-1001", type:"Annual", from:"2026-10-12", to:"2026-10-16", days:5, status:"approved", note:"", submitted:"04 May" },
-    ],
-    thisWeekLeave:[],
-  },
-];
+const TEAM_DATA_RAW = [];
 
 // Pre-compute rotas for each person
 const TEAM_DATA = TEAM_DATA_RAW.map((p) => {
@@ -18758,7 +17287,8 @@ Object.assign(window, { TeamView });
 /* HazardLink — Reports view */
 
 function HorizBars({ data, color, max }) {
-  const m = max || Math.max(...data.map((d) => d.v));
+  if (!data || data.length === 0) return null;
+  const m = max || Math.max(...data.map((d) => d.v)) || 1;
   return (
     <div className="bar-group">
       {data.map((d, i) => (
@@ -18776,6 +17306,7 @@ function HorizBars({ data, color, max }) {
 
 function LineSparkline({ data, color }) {
   color = color || "var(--accent)";
+  if (!data || data.length < 2) return null;
   const vals = data.map((d) => d.v);
   const max = Math.max(...vals);
   const min = Math.min(...vals);
@@ -18913,36 +17444,7 @@ const AUDIT_ACTION_META = {
   uploaded:     { tone:"accent", icon:"plus" },
 };
 
-const AUDIT_ENTRIES = [
-  { id:"a01", t:"15:08", date:"Today",     dateLabel:"Today",     user:"AquaFix Plumbing", initials:"AF", role:"Contractor", action:"created",      target:"Quote — WO-2041",     targetType:"Quote",       detail:"Submitted €420, today availability" },
-  { id:"a02", t:"14:52", date:"Today",     dateLabel:"Today",     user:"System",            initials:"SY", role:"Sensor",     action:"created",      target:"SP-2039",             targetType:"Spill alert", detail:"Kitchenette · level 2 · low severity" },
-  { id:"a03", t:"14:48", date:"Today",     dateLabel:"Today",     user:"Owen Farrell",      initials:"OF", role:"Supervisor", action:"acknowledged", target:"SP-2040",             targetType:"Spill alert", detail:"Coffee spill — till 3" },
-  { id:"a04", t:"14:40", date:"Today",     dateLabel:"Today",     user:"Aoife Kelly",       initials:"AK", role:"Admin",      action:"created",      target:"WO-2041",             targetType:"Work order",  detail:"Tender sent to 3 drainage contractors" },
-  { id:"a05", t:"14:31", date:"Today",     dateLabel:"Today",     user:"System",            initials:"SY", role:"Sensor",     action:"created",      target:"SP-2041",             targetType:"Spill alert", detail:"Aisle 4 produce — high severity" },
-  { id:"a06", t:"14:25", date:"Today",     dateLabel:"Today",     user:"AI agent",          initials:"AI", role:"System",     action:"updated",      target:"WO-2041",             targetType:"Work order",  detail:"Auto-triaged to High priority, asset AST-0142" },
-  { id:"a07", t:"14:22", date:"Today",     dateLabel:"Today",     user:"Liam Doyle",        initials:"LD", role:"Field staff",action:"created",      target:"WO-2041",             targetType:"Work order",  detail:"Reported water leak in cold store on patrol" },
-  { id:"a08", t:"14:08", date:"Today",     dateLabel:"Today",     user:"Aoife Kelly",       initials:"AK", role:"Admin",      action:"approved",     target:"Leave — Niamh Delaney", targetType:"Leave request", detail:"2 days, 18–19 Jun" },
-  { id:"a09", t:"13:42", date:"Today",     dateLabel:"Today",     user:"System",            initials:"SY", role:"System",     action:"created",      target:"INC-0033",            targetType:"Incident",    detail:"Lone-worker check-in 15 min overdue — Aoibhe Nolan" },
-  { id:"a10", t:"13:45", date:"Today",     dateLabel:"Today",     user:"Aoibhe Nolan",      initials:"AN", role:"Field staff",action:"resolved",     target:"INC-0033",            targetType:"Incident",    detail:"Confirmed safe via mobile" },
-  { id:"a11", t:"11:18", date:"Today",     dateLabel:"Today",     user:"Cathal O'Brien",    initials:"CO", role:"Field staff",action:"scanned",      target:"P-0987",              targetType:"Part",        detail:"Pleated air filter — used 2 for WO-2025" },
-  { id:"a12", t:"09:14", date:"Today",     dateLabel:"Today",     user:"System",            initials:"SY", role:"System",     action:"created",      target:"Reminder",            targetType:"Reminder",    detail:"Auto-email to Niamh Brennan re: Citywide compliance" },
-  { id:"a13", t:"08:51", date:"Today",     dateLabel:"Today",     user:"Patricia Ryan",     initials:"PR", role:"Field staff",action:"signed_in",    target:"Mobile session",       targetType:"Session",     detail:"iPhone 13 · Riverside Retail Park" },
-  { id:"a14", t:"08:42", date:"Today",     dateLabel:"Today",     user:"Patricia Ryan",     initials:"PR", role:"Field staff",action:"created",      target:"Inspection r1",        targetType:"Round",       detail:"Daily clean complete — 94% score, 6 photos" },
-  { id:"a15", t:"17:32", date:"Yesterday", dateLabel:"Yesterday", user:"Aoife Kelly",       initials:"AK", role:"Admin",      action:"updated",      target:"SDS-038",              targetType:"Safety sheet", detail:"Chlorine sanitiser tablets verified" },
-  { id:"a16", t:"15:11", date:"Yesterday", dateLabel:"Yesterday", user:"Owen Farrell",      initials:"OF", role:"Supervisor", action:"approved",     target:"Leave — Patricia Ryan", targetType:"Leave request", detail:"Pending — sent to Aoife Kelly" },
-  { id:"a17", t:"13:04", date:"Yesterday", dateLabel:"Yesterday", user:"System",            initials:"SY", role:"System",     action:"deactivated",  target:"User — Niall O'Reilly", targetType:"User",        detail:"Auto-deactivated after 90 days inactive" },
-  { id:"a18", t:"11:32", date:"Yesterday", dateLabel:"Yesterday", user:"Aoife Kelly",       initials:"AK", role:"Admin",      action:"invited",      target:"Ronan Kelleher",       targetType:"User",        detail:"Field staff · Riverside Retail Park" },
-  { id:"a19", t:"10:18", date:"Yesterday", dateLabel:"Yesterday", user:"Sean Murphy",       initials:"SM", role:"Admin",      action:"updated",      target:"Settings — Disciplines", targetType:"Settings",    detail:"Cleaning SLA threshold changed 5 min → 3 min" },
-  { id:"a20", t:"09:00", date:"Yesterday", dateLabel:"Yesterday", user:"Aoife Kelly",       initials:"AK", role:"Admin",      action:"exported",     target:"Compliance report",    targetType:"Report",      detail:"PDF · all sites · May 2026" },
-  { id:"a21", t:"16:47", date:"2 days ago", dateLabel:"2 days ago", user:"Maeve O'Connor",  initials:"MO", role:"Supervisor", action:"updated",      target:"AST-0098",             targetType:"Asset",       detail:"Health updated 42% → 38% after service" },
-  { id:"a22", t:"14:22", date:"2 days ago", dateLabel:"2 days ago", user:"Cathal O'Brien",  initials:"CO", role:"Field staff",action:"printed",      target:"P-1042 label",         targetType:"Label",       detail:"V-belt — A85 · Central stores" },
-  { id:"a23", t:"11:09", date:"2 days ago", dateLabel:"2 days ago", user:"Sean Murphy",     initials:"SM", role:"Admin",      action:"updated",      target:"Notification rule",    targetType:"Settings",    detail:"Spill alert SMS recipients changed" },
-  { id:"a24", t:"08:18", date:"2 days ago", dateLabel:"2 days ago", user:"System",          initials:"SY", role:"System",     action:"created",      target:"PPM-104",              targetType:"PPM task",    detail:"Pool plant chemical balance scheduled" },
-  { id:"a25", t:"15:55", date:"3 days ago", dateLabel:"3 days ago", user:"Aoife Kelly",     initials:"AK", role:"Admin",      action:"uploaded",      target:"Floor plan — Aviva L2", targetType:"Floor plan",  detail:"Updated room layout following kitchen renovation" },
-  { id:"a26", t:"10:32", date:"3 days ago", dateLabel:"3 days ago", user:"Maeve O'Connor",  initials:"MO", role:"Supervisor", action:"declined",     target:"Leave — Liam Doyle",   targetType:"Leave request", detail:"Site cover already short 9–13 Mar" },
-  { id:"a27", t:"09:14", date:"3 days ago", dateLabel:"3 days ago", user:"Aoife Kelly",     initials:"AK", role:"Admin",      action:"deleted",      target:"WO-1998",              targetType:"Work order",  detail:"Duplicate — original kept as WO-2001" },
-  { id:"a28", t:"08:01", date:"3 days ago", dateLabel:"3 days ago", user:"Owen Farrell",    initials:"OF", role:"Supervisor", action:"viewed",       target:"Compliance — Citywide", targetType:"Contractor",  detail:"Reviewed blocked status" },
-];
+const AUDIT_ENTRIES = [];
 
 const AUDIT_ACTION_TYPES   = ["All actions","created","updated","deleted","approved","declined","resolved","acknowledged","invited","deactivated","exported","scanned","signed_in"];
 const AUDIT_DATE_RANGES    = ["Today","Last 7 days","Last 30 days","All time"];
@@ -19105,25 +17607,9 @@ const STATUS_META_USERS = {
   "deactivated":  { label:"Deactivated",  tone:"muted" },
 };
 
-const HL_USERS_INITIAL = [
-  { id:"u1",  name:"Aoife Kelly",     email:"aoife.kelly@hazardlink.ie",     role:"admin",       sites:"All sites",                 lastActive:"now",          status:"active",      initials:"AK", joined:"Jan 2021", mfa:true,  manager:"—",                phone:"+353 87 555 0101" },
-  { id:"u2",  name:"Sean Murphy",     email:"sean.murphy@hazardlink.ie",     role:"admin",       sites:"All sites",                 lastActive:"5 min ago",    status:"active",      initials:"SM", joined:"Mar 2021", mfa:true,  manager:"Aoife Kelly",     phone:"+353 87 555 0102" },
-  { id:"u3",  name:"Owen Farrell",    email:"owen.farrell@hazardlink.ie",    role:"supervisor",  sites:"Northgate Logistics Hub",   lastActive:"12 min ago",   status:"active",      initials:"OF", joined:"Mar 2022", mfa:true,  manager:"Aoife Kelly",     phone:"+353 87 555 0203" },
-  { id:"u4",  name:"Maeve O'Connor",  email:"maeve.oconnor@hazardlink.ie",   role:"supervisor",  sites:"Aviva Office Tower",        lastActive:"1 hour ago",   status:"active",      initials:"MO", joined:"Jul 2022", mfa:false, manager:"Aoife Kelly",     phone:"+353 87 555 0204" },
-  { id:"u5",  name:"Liam Doyle",      email:"liam.doyle@hazardlink.ie",      role:"field staff", sites:"Northgate Logistics Hub",   lastActive:"24 min ago",   status:"active",      initials:"LD", joined:"Aug 2021", mfa:true,  manager:"Owen Farrell",    phone:"+353 87 555 0512" },
-  { id:"u6",  name:"Patricia Ryan",   email:"patricia.ryan@hazardlink.ie",   role:"field staff", sites:"Riverside Retail Park",     lastActive:"3 min ago",    status:"active",      initials:"PR", joined:"May 2020", mfa:true,  manager:"Aoife Kelly",     phone:"+353 87 555 0816" },
-  { id:"u7",  name:"Cathal O'Brien",  email:"cathal.obrien@hazardlink.ie",   role:"field staff", sites:"Aviva Office Tower",        lastActive:"42 min ago",   status:"active",      initials:"CO", joined:"Nov 2023", mfa:true,  manager:"Aoife Kelly",     phone:"+353 87 555 0411" },
-  { id:"u8",  name:"Siobhan Walsh",   email:"siobhan.walsh@hazardlink.ie",   role:"field staff", sites:"Aviva Office Tower",        lastActive:"yesterday",    status:"active",      initials:"SW", joined:"Jul 2022", mfa:false, manager:"Aoife Kelly",     phone:"+353 87 555 0918" },
-  { id:"u9",  name:"Declan Moore",    email:"declan.moore@hazardlink.ie",    role:"field staff", sites:"Lee Valley Medical Centre", lastActive:"5 days ago",   status:"on-leave",    initials:"DM", joined:"Sep 2022", mfa:true,  manager:"Aoife Kelly",     phone:"+353 87 555 0307" },
-  { id:"u10", name:"Niamh Delaney",   email:"niamh.delaney@hazardlink.ie",   role:"field staff", sites:"Tramore Leisure Centre",    lastActive:"1 hour ago",   status:"active",      initials:"ND", joined:"Mar 2023", mfa:true,  manager:"Aoife Kelly",     phone:"+353 87 555 1020" },
-  { id:"u11", name:"Aoibhe Nolan",    email:"aoibhe.nolan@hazardlink.ie",    role:"field staff", sites:"Aviva Office Tower",        lastActive:"yesterday",    status:"active",      initials:"AN", joined:"Feb 2022", mfa:true,  manager:"Aoife Kelly",     phone:"+353 87 555 0608" },
-  { id:"u12", name:"Michael Cronin",  email:"michael.cronin@hazardlink.ie",  role:"field staff", sites:"Tramore Leisure Centre",    lastActive:"6 hours ago",  status:"active",      initials:"MC", joined:"Oct 2023", mfa:false, manager:"Aoife Kelly",     phone:"+353 87 555 0714" },
-  { id:"u13", name:"Mairéad Joyce",   email:"mairead.joyce@hazardlink.ie",   role:"field staff", sites:"Galway City Library",       lastActive:"2 hours ago",  status:"active",      initials:"MJ", joined:"Jan 2024", mfa:true,  manager:"Aoife Kelly",     phone:"+353 87 555 1122" },
-  { id:"u14", name:"Ronan Kelleher",  email:"ronan.kelleher@hazardlink.ie",  role:"field staff", sites:"Riverside Retail Park",     lastActive:"never",        status:"invited",     initials:"RK", joined:"yesterday", mfa:false, manager:"Aoife Kelly",    phone:"—" },
-  { id:"u15", name:"Niall O'Reilly",  email:"niall.oreilly@hazardlink.ie",   role:"field staff", sites:"Northgate Logistics Hub",   lastActive:"3 months ago", status:"deactivated", initials:"NO", joined:"Aug 2023", mfa:false, manager:"Owen Farrell",    phone:"—" },
-];
+const HL_USERS_INITIAL = [];
 
-const SITE_OPTIONS = ["All sites","Riverside Retail Park","Northgate Logistics Hub","Aviva Office Tower","Lee Valley Medical Centre","Tramore Leisure Centre","Galway City Library"];
+const SITE_OPTIONS = ["All sites"];
 
 /* ===========================================================
    List view
@@ -19215,7 +17701,7 @@ function UsersView({ go }) {
             const id = "u-new-" + Date.now();
             const initials = vals.email.split("@")[0].slice(0,2).toUpperCase();
             const name = vals.email.split("@")[0].split(/[._]/).map((p) => p[0].toUpperCase() + p.slice(1)).join(" ");
-            setUsers((all) => [{ id, name, email:vals.email, role:vals.role, sites:vals.sites, lastActive:"never", status:"invited", initials, joined:"just now", mfa:false, manager:"Aoife Kelly", phone:"—" }, ...all]);
+            setUsers((all) => [{ id, name, email:vals.email, role:vals.role, sites:vals.sites, lastActive:"never", status:"invited", initials, joined:"just now", mfa:false, manager:"—", phone:"—" }, ...all]);
             showToast("Invite sent to " + vals.email);
           }}
           onClose={() => setInviteOpen(false)} />
@@ -19312,13 +17798,7 @@ function UserDetail({ user, onBack, onSave, onResend, onDeactivate, onReactivate
   const roleMeta   = ROLE_META[user.role];
   const statusMeta = STATUS_META_USERS[user.status];
 
-  const activity = [
-    { state:"done",   title:"Signed in",                   by:"Mobile · iOS · Riverside",     time:"3 min ago" },
-    { state:"done",   title:"Opened SP-2041",              by:"Spill alert · aisle 4 produce", time:"24 min ago" },
-    { state:"done",   title:"Marked round r1 complete",     by:"Inspection score 94%",          time:"Today, 08:42" },
-    { state:"done",   title:"MFA enrolled",                by:"Authenticator app",             time:"6 weeks ago" },
-    { state:"done",   title:"Accepted invite",              by:"From Aoife Kelly",              time:user.joined },
-  ];
+  const activity = [];
 
   return (
     <div className="content-inner">
@@ -19583,12 +18063,12 @@ const SETTINGS_TABS = [
    =========================================================== */
 function OrgSettings({ showToast }) {
   const [vals, setVals] = React.useState({
-    orgName:     "Hazardlink Operations Ltd",
-    contact:     "admin@hazardlink.ie",
+    orgName:     "",
+    contact:     "",
     tz:          "Europe/Dublin",
     currency:    "EUR (€)",
     locale:      "English (Ireland)",
-    address:     "56 Pearse Street, Dublin 2, Ireland",
+    address:     "",
     brand:       "#2563EB",
   });
   const set = (k, v) => setVals((s) => ({ ...s, [k]: v }));
@@ -19649,8 +18129,8 @@ function OrgSettings({ showToast }) {
                 <Icon name="shield" size={20} />
               </div>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:13, fontWeight:650 }}>hazardlink-logo.svg</div>
-                <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2 }}>Square SVG · last updated 4 weeks ago</div>
+                <div style={{ fontSize:13, fontWeight:650 }}>No logo uploaded</div>
+                <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2 }}>Upload a square SVG</div>
               </div>
               <button className="btn">Replace</button>
             </div>
@@ -19822,14 +18302,7 @@ function DisciplinesSettings({ showToast }) {
    Billing tab
    =========================================================== */
 function BillingSettings({ showToast }) {
-  const invoices = [
-    { id:"INV-2026-06", date:"01 Jun 2026", amt:"€2,450.00", status:"Paid",     pdf:true },
-    { id:"INV-2026-05", date:"01 May 2026", amt:"€2,450.00", status:"Paid",     pdf:true },
-    { id:"INV-2026-04", date:"01 Apr 2026", amt:"€2,450.00", status:"Paid",     pdf:true },
-    { id:"INV-2026-03", date:"01 Mar 2026", amt:"€2,210.00", status:"Paid",     pdf:true },
-    { id:"INV-2026-02", date:"01 Feb 2026", amt:"€2,210.00", status:"Paid",     pdf:true },
-    { id:"INV-2026-01", date:"01 Jan 2026", amt:"€2,210.00", status:"Paid",     pdf:true },
-  ];
+  const invoices = [];
   return (
     <div className="settings-card">
       <div className="card plan-card">
@@ -19846,12 +18319,12 @@ function BillingSettings({ showToast }) {
         </div>
         <div className="plan-stats">
           <div className="plan-stat">
-            <div className="plan-stat-n">23<small>/25</small></div>
+            <div className="plan-stat-n">0<small>/25</small></div>
             <div className="plan-stat-l">User seats</div>
-            <div className="plan-bar"><i style={{ width:"92%", background:"var(--warn)" }} /></div>
+            <div className="plan-bar"><i style={{ width:"0%", background:"var(--warn)" }} /></div>
           </div>
           <div className="plan-stat">
-            <div className="plan-stat-n">5</div>
+            <div className="plan-stat-n">0</div>
             <div className="plan-stat-l">Sites included</div>
             <div className="plan-stat-foot">up to 10 on Pro</div>
           </div>
@@ -19861,9 +18334,9 @@ function BillingSettings({ showToast }) {
             <div className="plan-stat-foot">unlimited</div>
           </div>
           <div className="plan-stat">
-            <div className="plan-stat-n">200 GB</div>
+            <div className="plan-stat-n">0 GB</div>
             <div className="plan-stat-l">Document storage</div>
-            <div className="plan-bar"><i style={{ width:"38%", background:"var(--ok)" }} /></div>
+            <div className="plan-bar"><i style={{ width:"0%", background:"var(--ok)" }} /></div>
           </div>
         </div>
       </div>
@@ -19873,19 +18346,19 @@ function BillingSettings({ showToast }) {
         <div className="settings-row-grid">
           <div className="settings-field">
             <label>Billing email</label>
-            <input className="dv-input" defaultValue="billing@hazardlink.ie" />
+            <input className="dv-input" defaultValue="" />
           </div>
           <div className="settings-field">
             <label>VAT number</label>
-            <input className="dv-input" defaultValue="IE 7654321B" />
+            <input className="dv-input" defaultValue="" />
           </div>
           <div className="settings-field">
             <label>Payment method</label>
             <div className="card-method">
               <div className="card-method-ico"><Icon name="creditCard" size={16} /></div>
               <div>
-                <div style={{ fontSize:13, fontWeight:700 }}>Visa ending 4242</div>
-                <div style={{ fontSize:11.5, color:"var(--ink-3)" }}>Expires 11 / 27</div>
+                <div style={{ fontSize:13, fontWeight:700 }}>No card on file</div>
+                <div style={{ fontSize:11.5, color:"var(--ink-3)" }}>—</div>
               </div>
               <button className="btn btn-sm" style={{ marginLeft:"auto" }}>Update card</button>
             </div>
@@ -19893,8 +18366,8 @@ function BillingSettings({ showToast }) {
           <div className="settings-field">
             <label>Next invoice</label>
             <div className="next-invoice">
-              <span style={{ fontFamily:"var(--mono)", fontSize:14, fontWeight:800 }}>€2,450.00</span>
-              <span style={{ fontSize:12, color:"var(--ink-3)", marginLeft:6 }}>on 1 Jul 2026</span>
+              <span style={{ fontFamily:"var(--mono)", fontSize:14, fontWeight:800 }}>€0.00</span>
+              <span style={{ fontSize:12, color:"var(--ink-3)", marginLeft:6 }}>—</span>
             </div>
           </div>
         </div>
@@ -19935,14 +18408,14 @@ function BillingSettings({ showToast }) {
    Integrations tab
    =========================================================== */
 const INTEGRATIONS_INITIAL = [
-  { id:"ms365",  name:"Microsoft 365",    cat:"SSO",        desc:"Single sign-on and directory sync", connected:true,  by:"Sean Murphy",   on:"Mar 2024" },
+  { id:"ms365",  name:"Microsoft 365",    cat:"SSO",        desc:"Single sign-on and directory sync", connected:false, by:"—",             on:"—" },
   { id:"google", name:"Google Workspace", cat:"SSO",        desc:"SAML SSO via Google",                connected:false, by:"—",             on:"—" },
-  { id:"slack",  name:"Slack",            cat:"Comms",      desc:"Post alerts to a channel",          connected:true,  by:"Aoife Kelly",  on:"Aug 2024" },
+  { id:"slack",  name:"Slack",            cat:"Comms",      desc:"Post alerts to a channel",          connected:false, by:"—",             on:"—" },
   { id:"teams",  name:"Microsoft Teams",  cat:"Comms",      desc:"Adaptive cards in a channel",       connected:false, by:"—",             on:"—" },
-  { id:"twilio", name:"Twilio",           cat:"Comms",      desc:"SMS for critical escalations",       connected:true,  by:"Sean Murphy",   on:"Mar 2024" },
+  { id:"twilio", name:"Twilio",           cat:"Comms",      desc:"SMS for critical escalations",       connected:false, by:"—",             on:"—" },
   { id:"xero",   name:"Xero",             cat:"Accounting", desc:"Push invoices and POs to Xero",       connected:false, by:"—",             on:"—" },
   { id:"sap",    name:"SAP S/4HANA",      cat:"ERP",        desc:"Two-way asset and PO sync",           connected:false, by:"—",             on:"—" },
-  { id:"s3",     name:"AWS S3",           cat:"Storage",    desc:"Off-site backup of documents",        connected:true,  by:"Sean Murphy",   on:"Mar 2024" },
+  { id:"s3",     name:"AWS S3",           cat:"Storage",    desc:"Off-site backup of documents",        connected:false, by:"—",             on:"—" },
   { id:"webhook",name:"Custom webhook",   cat:"Developer",  desc:"POST every event to your endpoint",   connected:false, by:"—",             on:"—" },
 ];
 
@@ -19950,7 +18423,7 @@ function IntegrationsSettings({ showToast }) {
   const [items, setItems] = React.useState(INTEGRATIONS_INITIAL);
   const toggle = (id) => {
     setItems((all) => all.map((x) => x.id === id
-      ? { ...x, connected: !x.connected, by: !x.connected ? "Aoife Kelly" : "—", on: !x.connected ? "just now" : "—" }
+      ? { ...x, connected: !x.connected, by: !x.connected ? "You" : "—", on: !x.connected ? "just now" : "—" }
       : x));
     const it = items.find((i) => i.id === id);
     showToast(it.connected ? it.name + " disconnected" : it.name + " connected");
@@ -20246,7 +18719,7 @@ function NotificationsView({ go }) {
             <div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="send" size={16} /></div>
             <span className="kpi-label">Delivered last 24h</span>
           </div>
-          <div className="kpi-val">187</div>
+          <div className="kpi-val">0</div>
           <div className="kpi-foot">in-app · email · sms</div>
         </div>
       </div>
@@ -20338,15 +18811,9 @@ Object.assign(window, { Placeholder });
 ;
 /* HazardLink — AI voice-to-work-order modal */
 
-const SPOKEN = "There's a leaking radiator in the second-floor server room at Aviva Office Tower — it's dripping near the racks, so it's urgent.";
+const SPOKEN = "";
 
-const PARSED = [
-  { label: "Work order", icon: "wrench",  value: "Leaking radiator — 2nd-floor server room" },
-  { label: "Priority",   icon: "flag",    value: "High",  pill: "crit" },
-  { label: "Asset",      icon: "box",     value: "Heating circuit · AST-0061", tag: "matched" },
-  { label: "Site",       icon: "mapPin",  value: "Aviva Office Tower" },
-  { label: "Discipline", icon: "wrench",  value: "Maintenance", tag: "inferred" },
-];
+const PARSED = [];
 
 function AIModal({ onClose, onCreate }) {
   const [phase, setPhase] = React.useState("listening"); // listening | parsed
@@ -20483,12 +18950,12 @@ function App() {
   const offlineDev  = HL.deviceBuildings.filter((b) => matchSite(b.name)).flatMap((b) => b.devices).filter((d) => !d.online).length;
   const blockedCt   = HL.contractors.filter((c) => c.status === "blocked").length;
   const ppmOverdue  = HL.ppmTasks.filter((t) => t.status === "overdue" && matchSite(t.site)).length;
-  const automations = 6;
-  const unassigned  = 4;
-  const billingOverdue = 1;
-  const compliance     = 3;
-  const slaBreach      = 4;
-  const permitsPending = 2;
+  const automations = 0;
+  const unassigned  = 0;
+  const billingOverdue = 0;
+  const compliance     = 0;
+  const slaBreach      = 0;
+  const permitsPending = 0;
 
   const handleCreate = () => {
     const nw = {
