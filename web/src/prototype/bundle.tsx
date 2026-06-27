@@ -2223,7 +2223,8 @@ function AccountMenu({ go }) {
   /* Signed-in user is the first record in the canonical Users seed
      (Aoife Kelly — admin, all sites). Falls back to literals if that
      file hasn't loaded yet. */
-  const ME = (typeof HL_USERS_INITIAL !== "undefined" && HL_USERS_INITIAL[0]) || {
+  const ME = (typeof HL !== "undefined" && HL.currentUser) ||
+    (typeof HL_USERS_INITIAL !== "undefined" && HL_USERS_INITIAL[0]) || {
     name: "Aoife Kelly", email: "aoife.kelly@hazardlink.ie",
     role: "admin", initials: "AK",
   };
@@ -2259,8 +2260,9 @@ function AccountMenu({ go }) {
 
   const signOut = () => {
     setOpen(false);
-    /* Prototype: no real auth, so we just reload to reset transient state. */
-    if (typeof window !== "undefined") window.location.reload();
+    /* Real auth: clear the session token and return to the login screen. */
+    try { localStorage.removeItem("bor.token"); } catch (e) {}
+    if (typeof window !== "undefined") window.location.assign("/login");
   };
 
   return (
@@ -2283,7 +2285,7 @@ function AccountMenu({ go }) {
             <div className="acct-av" aria-hidden="true">{ME.initials}</div>
             <div className="acct-id">
               <div className="acct-name">{ME.name}</div>
-              <div className="acct-role">Admin — Full system access</div>
+              <div className="acct-role">{ME.role === "admin" ? "Admin — Full system access" : ME.role === "supervisor" ? "Supervisor" : "Field staff"}</div>
               <div className="acct-email">{ME.email}</div>
             </div>
           </div>
@@ -2837,7 +2839,7 @@ function Dashboard({ go, feed }) {
       { id:"s4", label:"Lone-workers active",   value: String(loneActive), icon:"user", tone:"accent", live:true, foot:"checked in within 15 min" },
     ];
   } else {
-    greetingMain  = "Good afternoon, Aoife";
+    greetingMain  = "Good afternoon, " + ((HL.currentUser && HL.currentUser.name) ? HL.currentUser.name.split(" ")[0] : "there");
     greetingSub   = "Cleaning, maintenance and security across " + sites.length + " sites — live, in one place.";
     primaryAction = { label: "New work order", icon: "plus", to: "maintenance" };
     heroNode      = <ActiveSpillsCard liveSpills={liveSpills} go={go} />;

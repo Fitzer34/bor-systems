@@ -649,3 +649,18 @@ export const HL = (function () {
            contractors, reminders,
            maintenanceMetrics, parts, meters, ppmTasks, ownStaff };
 })();
+
+/* ── Live-org wiring ──────────────────────────────────────────────────────────
+   The prototype reads HL synchronously, so to run as a real organisation we
+   mutate HL in place. resetHLEmpty() clears every list so a brand-new org shows
+   empty states; hydrateHL() merges in data fetched from the backend;
+   setCurrentUser() records the signed-in user for the greeting + account menu.
+   Driven by prototype/live.tsx. The public /preview route never calls these, so
+   it keeps showing the full sample as a design showcase. */
+function _emptyArraysDeep(o: any) {
+  if (Array.isArray(o)) { o.length = 0; return; }
+  if (o && typeof o === "object") { for (const k of Object.keys(o)) _emptyArraysDeep(o[k]); }
+}
+export function resetHLEmpty() { _emptyArraysDeep(HL); }
+export function hydrateHL(partial: any) { Object.assign(HL, partial || {}); }
+export function setCurrentUser(u: any) { (HL as any).currentUser = u; }

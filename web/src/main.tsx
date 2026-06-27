@@ -60,6 +60,9 @@ import "./prototype/prototype.css";
 // The entire claude.ai/design prototype, assembled verbatim into one module
 // (see prototype/assemble.mjs). Mounted as the authed app below.
 import { App as PrototypeApp } from "./prototype/bundle";
+// Wrapper that empties the demo data, injects the real signed-in user and loads
+// the org's live data into HL before rendering the prototype app.
+import { PrototypeAppLive } from "./prototype/live";
 
 initWebSentry();
 
@@ -137,7 +140,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 above (login + contractor/guard magic links) stay as real flows.
                 The legacy per-page routes are preserved under /_legacy so we can
                 re-wire screens to live data one at a time. */}
-            <Route path="/*" element={<RequireAuth><PrototypeApp /></RequireAuth>} />
+            <Route path="/*" element={<RequireAuth><PrototypeAppLive /></RequireAuth>} />
             <Route
               path="/_legacy"
               element={
