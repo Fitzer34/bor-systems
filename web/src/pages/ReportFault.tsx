@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { apiUrl } from "../lib/api";
 
 /**
@@ -7,6 +7,13 @@ import { apiUrl } from "../lib/api";
  * QR (app.hazardlink.ie/report/:token). Two taps: describe the fault, send. It
  * lands as a maintenance job against that asset + site. The cross-discipline
  * moat — a cleaner or guard can raise maintenance from one shared scan.
+ *
+ * The same route also serves two friendlier public variants (same backend, same
+ * POST payload) selected by query string:
+ *   ?mode=washroom  "How is this washroom?" with big tap targets for the
+ *                   public (needs cleaning / restock / spill / broken / other)
+ *   ?mode=resident  "Report an issue" for residents/tenants
+ * With no mode, the original fault-report flow is unchanged.
  */
 
 interface ReportInfo {
@@ -15,10 +22,49 @@ interface ReportInfo {
   buildingName: string | null;
 }
 
+type Urgency = "routine" | "urgent" | "emergency";
+
+interface QuickOption {
+  label: string;
+  /** Description prefill sent in the standard fault-report payload. */
+  prefill: string;
+  urgency: Urgency;
+}
+
+const MODE_CONFIG: Record<"washroom" | "resident", { title: string; sub: string; options: QuickOption[] }> = {
+  washroom: {
+    title: "How is this washroom?",
+    sub: "Tap the option that fits. It goes straight to the facilities team.",
+    options: [
+      { label: "Needs cleaning", prefill: "Washroom: needs cleaning", urgency: "routine" },
+      { label: "Restock supplies", prefill: "Washroom: restock supplies (soap, paper…)", urgency: "routine" },
+      { label: "Spill or wet floor", prefill: "Washroom: spill or wet floor", urgency: "urgent" },
+      { label: "Something broken", prefill: "Washroom: something broken", urgency: "routine" },
+      { label: "Other", prefill: "Washroom: other issue", urgency: "routine" },
+    ],
+  },
+  resident: {
+    title: "Report an issue",
+    sub: "Tap the option that fits. The building team will pick it up.",
+    options: [
+      { label: "Cleaning", prefill: "Resident report: cleaning needed", urgency: "routine" },
+      { label: "Repair needed", prefill: "Resident report: repair needed", urgency: "routine" },
+      { label: "Security concern", prefill: "Resident report: security concern", urgency: "urgent" },
+      { label: "Other", prefill: "Resident report: other issue", urgency: "routine" },
+    ],
+  },
+};
+
 const NAME_KEY = "hazardlink.reporterName";
 
 export function ReportFault() {
   const { token } = useParams<{ token: string }>();
+  const [params] = useSearchParams();
+  const rawMode = params.get("mode");
+  const mode: "washroom" | "resident" | null =
+    rawMode === "washroom" || rawMode === "resident" ? rawMode : null;
+  const cfg = mode ? MODE_CONFIG[mode] : null;
+
   const [info, setInfo] = useState<ReportInfo | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [description, setDescription] = useState("");
@@ -26,6 +72,9 @@ export function ReportFault() {
   const [urgency, setUrgency] = useState<"routine" | "urgent" | "emergency">("routine");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  // Quick-flow state (?mode=washroom / ?mode=resident)
+  const [picked, setPicked] = useState<QuickOption | null>(null);
+  const [details, setDetails] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -44,6 +93,27 @@ export function ReportFault() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ description: description.trim(), reporterName: reporterName.trim() || undefined, urgency }),
+      });
+      setDone(true);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** Quick-flow submit — same POST payload/fields as the standard flow; the
+   *  tapped option supplies the description prefill and urgency. */
+  async function submitQuick() {
+    if (!picked) return;
+    setSubmitting(true);
+    try {
+      const extra = details.trim();
+      await fetch(apiUrl(`/public/report/${token}`), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          description: extra ? `${picked.prefill}. ${extra}` : picked.prefill,
+          urgency: picked.urgency,
+        }),
       });
       setDone(true);
     } finally {
@@ -86,6 +156,45 @@ export function ReportFault() {
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Reported — thanks!</h1>
               <p className="text-slate-600 mt-2">{info.orgName} has been notified about {info.assetName}. No need to do anything else.</p>
             </div>
+          ) : cfg ? (
+            <>
+              <div className="bg-slate-900 text-white px-6 py-5">
+                <div className="text-xs uppercase tracking-wider text-slate-400">{info.orgName}</div>
+                <div className="text-xl font-semibold mt-0.5">{cfg.title}</div>
+                <div className="text-sm text-slate-300 mt-0.5">
+                  {info.assetName}
+                  {info.buildingName ? ` · ${info.buildingName}` : ""}
+                </div>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-sm text-slate-500">{cfg.sub}</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {cfg.options.map((o) => (
+                    <button key={o.label} type="button" onClick={() => setPicked(o)}
+                      className={"w-full px-4 py-4 rounded-xl border text-left text-base font-semibold transition " +
+                        (picked?.label === o.label
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-white text-slate-800 border-slate-300 hover:border-slate-400 active:bg-slate-50")}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                {picked && (
+                  <>
+                    <div>
+                      <label className="field-label">Anything else we should know? (optional)</label>
+                      <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={2} maxLength={1500}
+                        placeholder={mode === "washroom" ? "e.g. second cubicle, near the sinks…" : "e.g. third floor corridor, by the lift…"}
+                        className="input resize-none" />
+                    </div>
+                    <button onClick={submitQuick} disabled={submitting}
+                      className="btn-primary w-full py-3 text-base">
+                      {submitting ? "Sending…" : "Send report"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
           ) : (
             <>
               <div className="bg-slate-900 text-white px-6 py-5">

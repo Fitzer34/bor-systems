@@ -12382,6 +12382,10 @@ Object.assign(window, { AssetsView, AssetDetail });
    detail with tabs (Documents, Staff, Rate card, Jobs), gate that blocks
    suspended contractors from being dispatched. */
 
+/* Only real backend rows (uuid ids) may call the authed claim-invite
+   endpoint — sample/demo ids like "c1" must never hit the API. */
+const isRealContractorId = (id) => /^[0-9a-f-]{36}$/i.test(String(id || ""));
+
 /* ============================================================
    Display labels for the existing status keys (compliant/expiring/blocked).
    We map them to Approved / Action needed / Suspended for the UI. */
@@ -12593,7 +12597,7 @@ function AccBadge({ a }) {
   );
 }
 
-function ContractorCard({ c, onOpen, onRequest }) {
+function ContractorCard({ c, onOpen, onRequest, onInvite, inviting }) {
   const m = STATUS_META[c.status];
   const counts = countCerts(c);
   const extra  = CONTRACTOR_EXTRA[c.id];
@@ -12650,6 +12654,11 @@ function ContractorCard({ c, onOpen, onRequest }) {
           <button className="btn" onClick={() => onRequest(c, null)}>
             <Icon name="send" size={14} />{blocked ? "Resend reminder" : "Request documents"}
           </button>
+          {onInvite && isRealContractorId(c.id) && (
+            <button className="btn" disabled={!!inviting} onClick={() => onInvite(c)}>
+              <Icon name="link" size={14} />{inviting ? "Inviting…" : "Invite to profile"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -13012,6 +13021,8 @@ function ContractorsView({ go }) {
   const [reqModal, setReqModal]               = React.useState(null); // { c, doc }
   const [pendingOverride, setPendingOverride] = React.useState({});
   const [filter, setFilter]                   = React.useState("All");
+  const [invitingId, setInvitingId]           = React.useState(null);
+  const { showToast, toastNode } = useViewToast();
 
   const contractors = HL.contractors.map((c) =>
     pendingOverride[c.id]
@@ -13024,6 +13035,32 @@ function ContractorsView({ go }) {
   };
 
   const handleRequest = (c, doc) => setReqModal({ c, doc: doc || null });
+
+  /* Send the contractor their no-login profile/claim link. Real backend rows
+     only — the guard means sample ids like "c1" never reach the API. */
+  const handleInvite = (c) => {
+    if (!isRealContractorId(c.id) || invitingId) return;
+    setInvitingId(c.id);
+    const token = localStorage.getItem("bor.token") || "";
+    fetch((window.HL_API_BASE || "/api") + "/contractors/" + c.id + "/claim-invite", {
+      method: "POST",
+      headers: { authorization: "Bearer " + token },
+    })
+      .then((r) => r.json().then((b) => ({ ok: r.ok, b })).catch(() => ({ ok: false, b: null })))
+      .then(({ ok, b }) => {
+        if (!ok || !b || !b.url) throw new Error("invite_failed");
+        if (b.emailed) {
+          showToast("Profile invite emailed to " + (c.email && c.email !== "—" ? c.email : c.name));
+        } else {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(b.url).catch(() => {});
+          }
+          showToast("No email on file. Invite link copied: " + b.url);
+        }
+      })
+      .catch(() => showToast("Could not create the invite. Try again."))
+      .finally(() => setInvitingId(null));
+  };
 
   /* KPIs */
   const total      = contractors.length;
@@ -13052,6 +13089,7 @@ function ContractorsView({ go }) {
             onClose={() => setReqModal(null)}
             onSent={handleSent} />
         )}
+        {toastNode}
       </React.Fragment>
     );
   }
@@ -13131,9 +13169,12 @@ function ContractorsView({ go }) {
         {filtered.map((c) => (
           <ContractorCard key={c.id} c={c}
             onOpen={setOpenId}
-            onRequest={handleRequest} />
+            onRequest={handleRequest}
+            onInvite={handleInvite}
+            inviting={invitingId === c.id} />
         ))}
       </div>
+      {toastNode}
     </div>
   );
 }
@@ -14269,16 +14310,23 @@ function BillingView({ go }) {
           <h1 className="page-title">Billing</h1>
           <p className="page-desc">Quotes and invoices for everything HazardLink delivers — synced to your accounting package. VAT at {vatRate}% across the Republic.</p>
         </div>
-        {tab === "quotes" && (
-          <button className="btn btn-primary" onClick={() => setBuilder({ kind:"quote" })}>
-            <Icon name="plus" size={15} />New quote
+        <div style={{ display:"flex", gap:8 }}>
+          {/* Live export — pulls the org's real invoices from the backend as a
+              Xero/Sage-importable CSV (hlDownloadCsv defined in the Reports view). */}
+          <button className="btn" onClick={() => hlDownloadCsv("/invoices/export.csv", "invoices.csv")}>
+            <Icon name="file" size={15} />Export CSV (Xero/Sage)
           </button>
-        )}
-        {tab === "invoices" && (
-          <button className="btn btn-primary" onClick={() => setBuilder({ kind:"invoice" })}>
-            <Icon name="plus" size={15} />New invoice
-          </button>
-        )}
+          {tab === "quotes" && (
+            <button className="btn btn-primary" onClick={() => setBuilder({ kind:"quote" })}>
+              <Icon name="plus" size={15} />New quote
+            </button>
+          )}
+          {tab === "invoices" && (
+            <button className="btn btn-primary" onClick={() => setBuilder({ kind:"invoice" })}>
+              <Icon name="plus" size={15} />New invoice
+            </button>
+          )}
+        </div>
       </div>
 
       {/* KPI tiles */}
@@ -17286,6 +17334,47 @@ Object.assign(window, { TeamView });
 ;
 /* HazardLink — Reports view */
 
+/* ── Authed export helpers ─────────────────────────────────────────────
+   Hit the live backend with the signed-in user's bearer token. live.tsx
+   sets window.HL_API_BASE once ("/api" behind the Vite proxy in dev, the
+   Render origin in prod) so this plain-JS prototype code can build URLs. */
+function hlAuthedFetch(path) {
+  const token = localStorage.getItem("bor.token") || "";
+  return fetch((window.HL_API_BASE || "/api") + path, {
+    headers: { authorization: "Bearer " + token },
+  });
+}
+
+/* Open the printable HTML audit pack in a new tab. */
+function hlOpenAuditPack() {
+  hlAuthedFetch("/reports/audit-pack")
+    .then((r) => { if (!r.ok) throw new Error("http " + r.status); return r.text(); })
+    .then((html) => {
+      const w = window.open("", "_blank");
+      if (!w) { window.alert("Pop-up blocked. Allow pop-ups for this site to open the audit pack."); return; }
+      w.document.write(html);
+      w.document.close();
+    })
+    .catch(() => window.alert("Could not build the audit pack. Check you have report-export access and try again."));
+}
+
+/* Fetch an authed CSV endpoint and trigger a browser download. */
+function hlDownloadCsv(path, filename) {
+  hlAuthedFetch(path)
+    .then((r) => { if (!r.ok) throw new Error("http " + r.status); return r.blob(); })
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    })
+    .catch(() => window.alert("Could not download the CSV. Check your access and try again."));
+}
+
 function HorizBars({ data, color, max }) {
   if (!data || data.length === 0) return null;
   const m = max || Math.max(...data.map((d) => d.v)) || 1;
@@ -17377,6 +17466,12 @@ function ReportsView({ go }) {
               <button key={v} className={period === v ? "on" : ""} onClick={() => setPeriod(v)}>{l}</button>
             ))}
           </div>
+          <button className="btn" onClick={hlOpenAuditPack}>
+            <Icon name="shield" size={15} />Audit pack
+          </button>
+          <button className="btn" onClick={() => hlDownloadCsv("/reports/energy.csv", "energy-readings.csv")}>
+            <Icon name="file" size={15} />Energy CSV
+          </button>
           <button className="btn"><Icon name="file" size={15} />Export PDF</button>
         </div>
       </div>
@@ -17419,7 +17514,7 @@ function ReportsView({ go }) {
   );
 }
 
-Object.assign(window, { ReportsView, HorizBars, LineSparkline });
+Object.assign(window, { ReportsView, HorizBars, LineSparkline, hlAuthedFetch, hlOpenAuditPack, hlDownloadCsv });
 
 /* ════════════════════ asset_50_fbe6ef22.js ════════════════════ */
 ;

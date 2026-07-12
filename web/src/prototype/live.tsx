@@ -12,10 +12,15 @@
  * loadOrg() and map it into the HL shape the relevant view expects. */
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, API_BASE } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { App as PrototypeApp } from "./bundle";
 import { resetHLEmpty, hydrateHL, setCurrentUser } from "./data";
+
+// Expose the API origin to the assembled prototype code (plain JS, no
+// imports) so its fetch handlers build correct URLs in dev AND prod:
+// in dev API_BASE is "" (Vite proxies /api), in prod it's the Render origin.
+if (typeof window !== "undefined") window.HL_API_BASE = API_BASE || "/api";
 
 /** Public, no-login preview of the EMPTY new-org state — empties HL, no user,
  *  no fetch. Lets the blank states be checked without signing up. */
@@ -48,6 +53,39 @@ async function loadOrg() {
       open: s.openAlerts || 0,
     }));
   } catch { /* leave sites empty */ }
+
+  // Contractors — drives the Contractor accreditation view (asset_41). The
+  // backend row is flat (no per-staff cert data yet), so map defensively into
+  // the richer HL shape with safe fallbacks so missing fields never crash the
+  // view. Real uuid ids also unlock the "Invite to profile" action there.
+  try {
+    const r = await api("/contractors");
+    const today = new Date().toISOString().slice(0, 10);
+    const tierStatus = { blocked: "blocked", on_notice: "expiring", preferred: "compliant", approved: "compliant" };
+    out.contractors = (r.contractors || [])
+      .filter((c) => c && c.id)
+      .map((c) => {
+        let status = tierStatus[c.tier] || "compliant";
+        // An insurance expiry in the past needs attention even if the tier is fine.
+        if (status === "compliant" && c.insuranceExpiry && String(c.insuranceExpiry) < today) status = "expiring";
+        return {
+          id: String(c.id),
+          name: c.name || "Contractor",
+          type: c.services || c.accreditation || "Contractor",
+          location: c.county || c.region || "—",
+          contact: c.contactName || c.name || "—",
+          email: c.email || "—",
+          phone: c.phone || "—",
+          cro: "—",
+          insurance: c.insuranceExpiry ? "On file · expires " + c.insuranceExpiry : "—",
+          status,
+          lastRefresh: c.claimedAt ? "profile claimed by contractor" : "profile not claimed yet",
+          pendingUpload: false,
+          initials: initialsOf(c.name || "?"),
+          staff: [],
+        };
+      });
+  } catch { /* leave contractors empty */ }
 
   return out;
 }

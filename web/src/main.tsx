@@ -46,6 +46,7 @@ import { CheckpointScan } from "./pages/CheckpointScan";
 import { LoneWorker } from "./pages/LoneWorker";
 import { ReportFault } from "./pages/ReportFault";
 import { QuoteSubmit } from "./pages/QuoteSubmit";
+import { ContractorProfile } from "./pages/ContractorProfile";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { ChooseSection } from "./pages/ChooseSection";
 import { Notifications } from "./pages/Notifications";
@@ -131,6 +132,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/report/:token" element={<ReportFault />} />
             {/* Public, no-login contractor quote page from a tender email. */}
             <Route path="/quote/:token" element={<QuoteSubmit />} />
+            {/* Public, no-login contractor profile + document vault, opened
+                from the claim-invite email. */}
+            <Route path="/contractor/:token" element={<ContractorProfile />} />
             {/* Public, no-login page a new staff member opens from their invite
                 email — set a password and get dropped into the app, logged in. */}
             <Route path="/accept-invite/:token" element={<AcceptInvite />} />

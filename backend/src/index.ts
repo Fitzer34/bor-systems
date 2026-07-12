@@ -190,7 +190,7 @@ async function main(): Promise<void> {
     reply.code(status).send({ error: err.message || "internal_error" });
   });
 
-  app.get("/health", async () => ({ ok: true, version: "0.4.1-profile-phone" }));
+  app.get("/health", async () => ({ ok: true, version: "0.5.0-growth" }));
 
   await app.register(authRoutes);
   await app.register(twoFactorRoutes);

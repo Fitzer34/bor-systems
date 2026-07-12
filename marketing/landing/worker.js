@@ -96,9 +96,12 @@ const SECURITY_HEADERS = {
   "Content-Security-Policy":
     "default-src 'self'; " +
     "script-src 'self' 'unsafe-inline'; " +
-    "style-src 'self' 'unsafe-inline'; " +
+    // Google Fonts: the stylesheet comes from fonts.googleapis.com and the
+    // woff2 files from fonts.gstatic.com — without these the whole site fell
+    // back to system fonts because CSP silently blocked the <link>.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
     "img-src 'self' data:; " +
-    "font-src 'self'; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
     // Allow the Status page to poll the backend /health endpoint cross-origin.
     "connect-src 'self' https://bor-systems-backend.onrender.com; " +
     "frame-ancestors 'none'; " +
@@ -124,6 +127,42 @@ function holdingResponse() {
   }));
 }
 
+// ── Same-origin API proxies ──────────────────────────────────────────────
+// Pages call /api/* on this origin and the Worker forwards the request to
+// the backend, so the browser never makes a cross-origin call (the CSP's
+// connect-src stays tight and the backend origin can move without touching
+// any page).
+const BACKEND = "https://bor-systems-backend.onrender.com";
+
+function jsonResponse(status, body) {
+  return withSecurity(new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  }));
+}
+
+async function proxyJson(upstreamUrl, init) {
+  try {
+    const upstream = await fetch(upstreamUrl, init);
+    // Render can serve non-JSON error pages while waking or failing; treat
+    // any upstream 5xx the same as an unreachable backend.
+    if (upstream.status >= 500) return jsonResponse(502, { error: "upstream" });
+    const body = await upstream.text();
+    return withSecurity(new Response(body, {
+      status: upstream.status,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    }));
+  } catch (_err) {
+    return jsonResponse(502, { error: "upstream" });
+  }
+}
+
 export default {
   async fetch(request, env) {
     // ── Canonical redirect: hazardlink.net → hazardlink.ie ────────────────
@@ -141,6 +180,22 @@ export default {
           "Cache-Control": "no-store",
         },
       });
+    }
+
+    // ── API proxies (same-origin for the browser) ─────────────────────────
+    // POST /api/partner-lead → backend /public/partner-lead (JSON body)
+    // GET  /api/directory    → backend /public/directory (query passed through)
+    if (url.pathname === "/api/partner-lead") {
+      if (request.method !== "POST") return jsonResponse(405, { error: "method_not_allowed" });
+      return proxyJson(BACKEND + "/public/partner-lead", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: await request.text(),
+      });
+    }
+    if (url.pathname === "/api/directory") {
+      if (request.method !== "GET") return jsonResponse(405, { error: "method_not_allowed" });
+      return proxyJson(BACKEND + "/public/directory" + url.search, { method: "GET" });
     }
 
     try {
