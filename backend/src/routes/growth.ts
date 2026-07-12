@@ -231,6 +231,57 @@ export default async function growthRoutes(app: FastifyInstance): Promise<void> 
     };
   });
 
+  /* Add a directory-listed contractor to the caller's own org — the "contact/
+     hire from the directory" action. Copies the public profile fields into a
+     fresh contractors row (unclaimed, unlisted) so the org can tender them
+     through the normal flow. Dedupes on email within the org. */
+  app.post(
+    "/directory/:contractorId/add",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
+    async (req, reply) => {
+      const { contractorId } = req.params as { contractorId: string };
+      const c = ctx(req);
+      const [src] = await db
+        .select()
+        .from(schema.contractors)
+        .where(and(
+          eq(schema.contractors.id, contractorId),
+          eq(schema.contractors.publicListed, true),
+          eq(schema.contractors.active, true),
+        ))
+        .limit(1);
+      if (!src) return reply.code(404).send({ error: "not_found" });
+      if (src.organisationId === c.orgId) {
+        return { contractor: src, existed: true };
+      }
+      if (src.email) {
+        const [dupe] = await db
+          .select()
+          .from(schema.contractors)
+          .where(and(eq(schema.contractors.organisationId, c.orgId), eq(schema.contractors.email, src.email)))
+          .limit(1);
+        if (dupe) return { contractor: dupe, existed: true };
+      }
+      const [row] = await db
+        .insert(schema.contractors)
+        .values({
+          organisationId: c.orgId,
+          name: src.name,
+          contactName: src.contactName,
+          email: src.email,
+          phone: src.phone,
+          region: src.region ?? src.county,
+          county: src.county,
+          services: src.services,
+          bio: src.bio,
+          insuranceExpiry: src.insuranceExpiry,
+          notes: "Added from the HazardLink contractor directory",
+        })
+        .returning();
+      return { contractor: row, existed: false };
+    },
+  );
+
   /* ══════════════════ Partner leads (marketing site) ══════════════════ */
 
   const leadBody = z.object({

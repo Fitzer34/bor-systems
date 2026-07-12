@@ -13016,6 +13016,141 @@ function AutoReminderCard({ reminders }) {
 /* ============================================================
    Top-level view
    ============================================================ */
+/* ── Contractor directory (in-app) ──────────────────────────────────────────
+   Contractors who claimed their profile from a tender email and opted in are
+   listed here for every HazardLink organisation. "Add to my contractors"
+   copies them into this org so they can be tendered through the normal flow. */
+function DirectoryPanel({ showToast }) {
+  const [items, setItems]       = React.useState(null); // null = loading
+  const [error, setError]       = React.useState(false);
+  const [q, setQ]               = React.useState("");
+  const [county, setCounty]     = React.useState("All");
+  const [addingId, setAdding]   = React.useState(null);
+  const [addedIds, setAddedIds] = React.useState({});
+
+  React.useEffect(() => {
+    fetch((window.HL_API_BASE || "/api") + "/public/directory")
+      .then((r) => { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+      .then((b) => setItems(b.contractors || []))
+      .catch(() => { setError(true); setItems([]); });
+  }, []);
+
+  const counties = ["All", ...Array.from(new Set((items || []).map((c) => c.county).filter(Boolean))).sort()];
+  const needle = q.trim().toLowerCase();
+  const filtered = (items || []).filter((c) => {
+    if (county !== "All" && c.county !== county) return false;
+    if (needle) {
+      const hay = (c.name + " " + (c.services || "") + " " + (c.bio || "")).toLowerCase();
+      if (!hay.includes(needle)) return false;
+    }
+    return true;
+  });
+
+  const initialsFor = (name) =>
+    (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+
+  const addToMine = (c) => {
+    if (addingId || addedIds[c.id]) return;
+    setAdding(c.id);
+    const token = localStorage.getItem("bor.token") || "";
+    fetch((window.HL_API_BASE || "/api") + "/directory/" + c.id + "/add", {
+      method: "POST",
+      headers: { authorization: "Bearer " + token },
+    })
+      .then((r) => r.json().then((b) => ({ ok: r.ok, b })).catch(() => ({ ok: false, b: null })))
+      .then(({ ok, b }) => {
+        if (!ok || !b || !b.contractor) throw new Error("add_failed");
+        setAddedIds((prev) => ({ ...prev, [c.id]: true }));
+        // Reflect immediately in "my contractors" without a reload.
+        const n = b.contractor;
+        if (!HL.contractors.some((x) => x.id === String(n.id))) {
+          HL.contractors.push({
+            id: String(n.id),
+            name: n.name || c.name,
+            type: n.services || c.services || "Contractor",
+            location: n.county || c.county || "—",
+            contact: n.contactName || n.name || "—",
+            email: n.email || "—",
+            phone: n.phone || "—",
+            cro: "—",
+            insurance: n.insuranceExpiry ? "On file · expires " + n.insuranceExpiry : "—",
+            status: "compliant",
+            lastRefresh: "added from the directory",
+            pendingUpload: false,
+            initials: initialsFor(n.name || c.name),
+            staff: [],
+          });
+        }
+        showToast(b.existed ? c.name + " is already in your contractors" : c.name + " added to your contractors");
+      })
+      .catch(() => showToast("Could not add this contractor. Try again."))
+      .finally(() => setAdding(null));
+  };
+
+  if (items === null) {
+    return <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the directory…</div>;
+  }
+
+  return (
+    <React.Fragment>
+      <div className="toolbar" style={{ marginBottom:14 }}>
+        <input className="dv-input" style={{ maxWidth:260 }} placeholder="Search name or service…"
+          value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="dv-input" style={{ maxWidth:180 }} value={county} onChange={(e) => setCounty(e.target.value)}>
+          {counties.map((x) => <option key={x} value={x}>{x === "All" ? "All counties" : x}</option>)}
+        </select>
+        <div style={{ marginLeft:"auto", fontSize:12.5, color:"var(--ink-3)" }}>
+          {filtered.length} listed contractor{filtered.length === 1 ? "" : "s"}
+        </div>
+      </div>
+
+      {error && (
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5, marginBottom:12 }}>
+          Could not load the directory. Check your connection and reopen this tab.
+        </div>
+      )}
+
+      {!error && filtered.length === 0 && (
+        <div className="card" style={{ textAlign:"center", padding:"44px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>
+            {q || county !== "All" ? "No listed contractors match" : "No listed contractors yet"}
+          </div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", maxWidth:460, margin:"0 auto" }}>
+            Contractors appear here when they claim the profile link from a tender email and opt in to the directory. Invite yours with the Invite to profile button on their card.
+          </div>
+        </div>
+      )}
+
+      <div className="ct-list ct-list-1col">
+        {filtered.map((c) => (
+          <div className="card card-pad" key={c.id} style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
+            <div className="avatar" style={{ flex:"none" }}>{initialsFor(c.name)}</div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                <b style={{ fontSize:14.5 }}>{c.name}</b>
+                {c.county && <Pill tone="muted">{c.county}</Pill>}
+                {c.insuranceValid && <Pill tone="ok" dot>Insurance on file</Pill>}
+                {c.claimed && <Pill tone="accent">Verified profile</Pill>}
+              </div>
+              {c.services && <div style={{ fontSize:12.5, color:"var(--ink-2)", marginTop:3 }}>{c.services}</div>}
+              {c.bio && <div style={{ fontSize:12.5, color:"var(--ink-3)", marginTop:5, lineHeight:1.5 }}>{c.bio}</div>}
+              <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:6 }}>
+                {(c.documentCount || 0)} document{(c.documentCount || 0) === 1 ? "" : "s"} on file{typeof c.rating === "number" ? " · rated " + c.rating + "/100" : ""}
+              </div>
+            </div>
+            <button className="btn" disabled={!!addedIds[c.id] || addingId === c.id}
+              style={addedIds[c.id] ? { opacity:.65 } : null}
+              onClick={() => addToMine(c)}>
+              <Icon name={addedIds[c.id] ? "check" : "plus"} size={14} />
+              {addedIds[c.id] ? "Added" : addingId === c.id ? "Adding…" : "Add to my contractors"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </React.Fragment>
+  );
+}
+
 function ContractorsView({ go }) {
   const [openId, setOpenId]                   = React.useState(null);
   const [reqModal, setReqModal]               = React.useState(null); // { c, doc }
@@ -13095,7 +13230,7 @@ function ContractorsView({ go }) {
   }
 
   /* List view */
-  const tabs = ["All", "Approved", "Action needed", "Suspended"];
+  const tabs = ["All", "Approved", "Action needed", "Suspended", "Directory"];
   const filtered = contractors.filter((c) => {
     if (filter === "All")            return true;
     if (filter === "Approved")       return c.status === "compliant";
@@ -13161,19 +13296,23 @@ function ContractorsView({ go }) {
           ))}
         </div>
         <div style={{ marginLeft:"auto", fontSize:12.5, color:"var(--ink-3)" }}>
-          {filtered.length} of {total} contractors
+          {filter === "Directory" ? "Find and add contractors" : filtered.length + " of " + total + " contractors"}
         </div>
       </div>
 
-      <div className="ct-list ct-list-1col">
-        {filtered.map((c) => (
-          <ContractorCard key={c.id} c={c}
-            onOpen={setOpenId}
-            onRequest={handleRequest}
-            onInvite={handleInvite}
-            inviting={invitingId === c.id} />
-        ))}
-      </div>
+      {filter === "Directory" ? (
+        <DirectoryPanel showToast={showToast} />
+      ) : (
+        <div className="ct-list ct-list-1col">
+          {filtered.map((c) => (
+            <ContractorCard key={c.id} c={c}
+              onOpen={setOpenId}
+              onRequest={handleRequest}
+              onInvite={handleInvite}
+              inviting={invitingId === c.id} />
+          ))}
+        </div>
+      )}
       {toastNode}
     </div>
   );

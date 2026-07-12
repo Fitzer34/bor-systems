@@ -184,7 +184,6 @@ export default {
 
     // ── API proxies (same-origin for the browser) ─────────────────────────
     // POST /api/partner-lead → backend /public/partner-lead (JSON body)
-    // GET  /api/directory    → backend /public/directory (query passed through)
     if (url.pathname === "/api/partner-lead") {
       if (request.method !== "POST") return jsonResponse(405, { error: "method_not_allowed" });
       return proxyJson(BACKEND + "/public/partner-lead", {
@@ -193,9 +192,15 @@ export default {
         body: await request.text(),
       });
     }
-    if (url.pathname === "/api/directory") {
-      if (request.method !== "GET") return jsonResponse(405, { error: "method_not_allowed" });
-      return proxyJson(BACKEND + "/public/directory" + url.search, { method: "GET" });
+
+    // The contractor directory moved INSIDE the app (Contractors → Directory
+    // tab) — it's a working tool for signed-in facilities teams, not a
+    // marketing page. Redirect the old public URL to the app.
+    if (url.pathname === "/contractors" || url.pathname === "/contractors.html") {
+      return new Response(null, {
+        status: 301,
+        headers: { "Location": "https://app.hazardlink.ie/login", "Cache-Control": "no-store" },
+      });
     }
 
     try {
