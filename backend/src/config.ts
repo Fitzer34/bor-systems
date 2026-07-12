@@ -15,6 +15,12 @@ const schema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
+  // WhatsApp sender (a Twilio WhatsApp-enabled number). When unset, the
+  // whatsapp channel records "not configured" and delivers nothing — the same
+  // env-gated pattern as SMS.
+  TWILIO_WHATSAPP_FROM: z.string().optional(),
+  // Where inbound partner enquiries from the marketing site are emailed.
+  LEADS_EMAIL: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional(),
   SMTP_USER: z.string().optional(),

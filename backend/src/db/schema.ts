@@ -51,6 +51,7 @@ export const notificationChannel = pgEnum("notification_channel", [
   "push",
   "sms",
   "email",
+  "whatsapp",
 ]);
 
 export const notificationKind = pgEnum("notification_kind", [
@@ -70,6 +71,9 @@ export const organisations = pgTable("organisations", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   plan: orgPlan("plan").notNull().default("starter"),
+  // White-label branding, used in outbound email + the client portal.
+  brandColor: text("brand_color"),
+  logoUrl: text("logo_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -704,6 +708,7 @@ export const notificationPreferences = pgTable(
     inApp: boolean("in_app").notNull().default(true),
     email: boolean("email").notNull().default(false),
     sms: boolean("sms").notNull().default(false),
+    whatsapp: boolean("whatsapp").notNull().default(false),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.eventType] }),
@@ -1039,10 +1044,74 @@ export const contractors = pgTable(
     ratingAvg: smallint("rating_avg"), // 0..100 blended score
     notes: text("notes"),
     active: boolean("active").notNull().default(true),
+    // Contractor growth loop: claimable profile + opt-in public directory.
+    claimToken: text("claim_token"),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    publicListed: boolean("public_listed").notNull().default(false),
+    services: text("services"),
+    county: text("county"),
+    bio: text("bio"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({ orgIdx: index("contractors_org_idx").on(t.organisationId) }),
 );
+
+/// Reusable contractor document vault (insurance, SafePass, RAMS, method
+/// statements…). Uploaded once via the claim page, reused for every tender;
+/// expiry dates drive "not permitted on site" warnings.
+export const contractorDocuments = pgTable(
+  "contractor_documents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    contractorId: uuid("contractor_id").references(() => contractors.id, { onDelete: "cascade" }).notNull(),
+    type: text("type").notNull().default("other"), // insurance|safe_pass|manual_handling|rams|method_statement|cert|other
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    expiresOn: date("expires_on", { mode: "string" }),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    contractorIdx: index("contractor_documents_contractor_idx").on(t.contractorId),
+    orgIdx: index("contractor_documents_org_idx").on(t.organisationId),
+  }),
+);
+
+/// Visitor management: expected visitors + walk-in sign-in/out per site.
+export const visitors = pgTable(
+  "visitors",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    company: text("company"),
+    host: text("host"),
+    purpose: text("purpose"),
+    badge: text("badge"),
+    expectedAt: timestamp("expected_at", { withTimezone: true }),
+    signedInAt: timestamp("signed_in_at", { withTimezone: true }),
+    signedOutAt: timestamp("signed_out_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgIdx: index("visitors_org_idx").on(t.organisationId, t.createdAt),
+    buildingIdx: index("visitors_building_idx").on(t.buildingId),
+  }),
+);
+
+/// Inbound partner enquiries from the marketing site (distributors, security
+/// installers, FM consultancies, cleaning franchises). No org — pre-sales.
+export const partnerLeads = pgTable("partner_leads", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  company: text("company"),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  segment: text("segment"), // distributor|installer|consultancy|franchise|other
+  message: text("message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const contractorTrades = pgTable(
   "contractor_trades",

@@ -278,7 +278,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
           ? (await db.select({ name: schema.buildings.name }).from(schema.buildings).where(eq(schema.buildings.id, job.buildingId)).limit(1))[0]?.name ?? null
           : null;
         const cons = await db
-          .select({ id: schema.contractors.id, name: schema.contractors.name, email: schema.contractors.email })
+          .select({ id: schema.contractors.id, name: schema.contractors.name, email: schema.contractors.email, claimToken: schema.contractors.claimToken })
           .from(schema.contractors)
           .where(and(eq(schema.contractors.organisationId, c.orgId), inArray(schema.contractors.id, parsed.data.contractorIds)));
         const byId = new Map(cons.map((x) => [x.id, x]));
@@ -286,6 +286,15 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
           const con = byId.get(q.contractorId);
           if (!con?.email || !q.token) continue;
           const url = `${QUOTE_BASE}/quote/${q.token}`;
+          // Growth loop: every tender email carries the contractor's claim-your-
+          // profile link (mint the token on first use). One upload of insurance
+          // and certs is then reused for every future job.
+          let claimToken = con.claimToken;
+          if (!claimToken) {
+            claimToken = randomBytes(18).toString("base64url");
+            await db.update(schema.contractors).set({ claimToken }).where(eq(schema.contractors.id, con.id));
+          }
+          const claimUrl = `${QUOTE_BASE}/contractor/${claimToken}`;
           await sendEmail({
             to: con.email,
             fromName: orgName,
@@ -302,6 +311,10 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
               `Submit your quote (price + earliest start date) here — no login or account needed:`,
               ``,
               url,
+              ``,
+              `Tip: keep your insurance and certs in one reusable profile so you never have to email them again. Set yours up here (free, no login):`,
+              ``,
+              claimUrl,
               ``,
               `Kind regards,`,
               orgName,

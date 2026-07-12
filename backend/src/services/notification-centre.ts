@@ -17,7 +17,8 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { eventBus } from "./event-bus.js";
-import { sendEmailToUser, notifySms } from "./notifications.js";
+import { sendEmailToUser, notifySms, notifyWhatsApp } from "./notifications.js";
+import { postTeamsCard } from "./teams.js";
 
 export type Role = typeof schema.userRole.enumValues[number];
 
@@ -35,16 +36,18 @@ export interface ChannelPrefs {
   inApp: boolean;
   email: boolean;
   sms: boolean;
+  whatsapp: boolean;
 }
 
 /**
  * Default channel routing per event type. in_app is always on. A few important
  * events default email on too; the rest are in-app only until a user opts in.
- * Unknown event types fall back to FALLBACK_PREFS.
+ * WhatsApp is opt-in everywhere (and env-gated until Twilio WhatsApp is
+ * configured). Unknown event types fall back to FALLBACK_PREFS.
  */
-const FALLBACK_PREFS: ChannelPrefs = { inApp: true, email: false, sms: false };
+const FALLBACK_PREFS: ChannelPrefs = { inApp: true, email: false, sms: false, whatsapp: false };
 
-export const DEFAULT_PREFS: Record<string, ChannelPrefs> = {
+const BASE_DEFAULTS: Record<string, Omit<ChannelPrefs, "whatsapp">> = {
   "spill.open":        { inApp: true, email: false, sms: false },
   "spill.escalated":   { inApp: true, email: true,  sms: false },
   "ppm.overdue":       { inApp: true, email: true,  sms: false },
@@ -56,6 +59,10 @@ export const DEFAULT_PREFS: Record<string, ChannelPrefs> = {
   "quote.awaiting_approval": { inApp: true, email: true, sms: false },
   "patrol.missed":     { inApp: true, email: true,  sms: false },
 };
+
+export const DEFAULT_PREFS: Record<string, ChannelPrefs> = Object.fromEntries(
+  Object.entries(BASE_DEFAULTS).map(([k, v]) => [k, { ...v, whatsapp: false }]),
+);
 
 function defaultPrefFor(eventType: string): ChannelPrefs {
   return DEFAULT_PREFS[eventType] ?? FALLBACK_PREFS;
@@ -69,7 +76,7 @@ export async function getPrefs(userId: string, eventType: string): Promise<Chann
     .where(and(eq(schema.notificationPreferences.userId, userId), eq(schema.notificationPreferences.eventType, eventType)))
     .limit(1);
   if (!row) return defaultPrefFor(eventType);
-  return { inApp: row.inApp, email: row.email, sms: row.sms };
+  return { inApp: row.inApp, email: row.email, sms: row.sms, whatsapp: row.whatsapp };
 }
 
 /**
@@ -83,7 +90,7 @@ export async function getAllPrefs(userId: string): Promise<Record<string, Channe
     .where(eq(schema.notificationPreferences.userId, userId));
   const out: Record<string, ChannelPrefs> = {};
   for (const [type, pref] of Object.entries(DEFAULT_PREFS)) out[type] = { ...pref };
-  for (const r of rows) out[r.eventType] = { inApp: r.inApp, email: r.email, sms: r.sms };
+  for (const r of rows) out[r.eventType] = { inApp: r.inApp, email: r.email, sms: r.sms, whatsapp: r.whatsapp };
   return out;
 }
 
@@ -99,13 +106,14 @@ export async function setPrefs(
     inApp: prefs.inApp ?? current.inApp,
     email: prefs.email ?? current.email,
     sms: prefs.sms ?? current.sms,
+    whatsapp: prefs.whatsapp ?? current.whatsapp,
   };
   await db
     .insert(schema.notificationPreferences)
-    .values({ organisationId: orgId, userId, eventType, inApp: next.inApp, email: next.email, sms: next.sms })
+    .values({ organisationId: orgId, userId, eventType, inApp: next.inApp, email: next.email, sms: next.sms, whatsapp: next.whatsapp })
     .onConflictDoUpdate({
       target: [schema.notificationPreferences.userId, schema.notificationPreferences.eventType],
-      set: { inApp: next.inApp, email: next.email, sms: next.sms },
+      set: { inApp: next.inApp, email: next.email, sms: next.sms, whatsapp: next.whatsapp },
     });
   return next;
 }
@@ -159,6 +167,16 @@ export async function createNotification(input: CreateNotificationInput): Promis
         kind: "alert",
       });
     }
+    if (prefs.whatsapp) {
+      await notifyWhatsApp({
+        orgId: input.orgId,
+        alertId: input.entityType === "alert" ? input.entityId ?? null : null,
+        userId: input.userId,
+        title: input.title,
+        body: input.body,
+        kind: "alert",
+      });
+    }
   } catch (err) {
     console.error("notification-centre fan-out failed:", err);
   }
@@ -175,6 +193,11 @@ export async function notifyOrgRole(
   roles: Role[],
   input: Omit<CreateNotificationInput, "orgId" | "userId">,
 ): Promise<void> {
+  // Org-broadcast events also post ONE card to the org's Teams channel (if a
+  // webhook is configured) — here rather than in createNotification so a
+  // 10-recipient broadcast doesn't post 10 duplicate cards.
+  void postTeamsCard(orgId, input.title, input.body);
+
   const recipients = await db
     .select({ id: schema.users.id })
     .from(schema.users)

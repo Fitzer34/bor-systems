@@ -137,6 +137,33 @@ export async function notifyPush(input: DispatchInput): Promise<void> {
   }
 }
 
+/**
+ * WhatsApp via Twilio's WhatsApp channel. Env-gated on TWILIO_WHATSAPP_FROM —
+ * until that's configured every attempt records "not configured" and delivers
+ * nothing (same pattern as SMS). Uses the same Twilio account/client.
+ */
+export async function notifyWhatsApp(input: DispatchInput): Promise<void> {
+  const user = await loadUser(input.userId);
+  if (!user?.phoneE164) {
+    await record(input, "whatsapp", false, "no_phone");
+    return;
+  }
+  if (!smsReady() || !config.TWILIO_WHATSAPP_FROM) {
+    await record(input, "whatsapp", false, "whatsapp_not_configured");
+    return;
+  }
+  try {
+    await sms!.messages.create({
+      to: `whatsapp:${user.phoneE164}`,
+      from: `whatsapp:${config.TWILIO_WHATSAPP_FROM}`,
+      body: `${input.title}\n${input.body}`,
+    });
+    await record(input, "whatsapp", true);
+  } catch (err) {
+    await record(input, "whatsapp", false, String(err));
+  }
+}
+
 export async function notifySms(input: DispatchInput): Promise<void> {
   const user = await loadUser(input.userId);
   if (!user?.phoneE164) {

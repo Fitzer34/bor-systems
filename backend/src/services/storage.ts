@@ -79,6 +79,14 @@ export async function uploadSds(input: UploadInput): Promise<UploadResult> {
   return uploadInternal(input, "sds");
 }
 
+/**
+ * Contractor vault documents (insurance certs, SafePass, RAMS, method
+ * statements) uploaded from the no-login claim page. PDF or image.
+ */
+export async function uploadContractorDoc(input: UploadInput): Promise<UploadResult> {
+  return uploadInternal(input, "contractor-docs");
+}
+
 async function uploadInternal(input: UploadInput, prefix: string): Promise<UploadResult> {
   const ext =
     extname(input.filename) ||
