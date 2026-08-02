@@ -18769,27 +18769,38 @@ function BillingSettings({ showToast }) {
 /* ===========================================================
    Integrations tab
    =========================================================== */
+/* Each entry carries an honest status:
+     "builtin" — the code is live in the product, switching on platform-side
+     "csv"     — works today via file export, direct API sync planned
+     "planned" — genuinely on the roadmap, nothing behind it yet
+   Microsoft Teams is NOT in this list — it has a real connect card above. */
 const INTEGRATIONS_INITIAL = [
-  { id:"ms365",  name:"Microsoft 365",    cat:"SSO",        desc:"Single sign-on and directory sync", connected:false, by:"—",             on:"—" },
-  { id:"google", name:"Google Workspace", cat:"SSO",        desc:"SAML SSO via Google",                connected:false, by:"—",             on:"—" },
-  { id:"slack",  name:"Slack",            cat:"Comms",      desc:"Post alerts to a channel",          connected:false, by:"—",             on:"—" },
-  { id:"teams",  name:"Microsoft Teams",  cat:"Comms",      desc:"Adaptive cards in a channel",       connected:false, by:"—",             on:"—" },
-  { id:"twilio", name:"Twilio",           cat:"Comms",      desc:"SMS for critical escalations",       connected:false, by:"—",             on:"—" },
-  { id:"xero",   name:"Xero",             cat:"Accounting", desc:"Push invoices and POs to Xero",       connected:false, by:"—",             on:"—" },
-  { id:"sap",    name:"SAP S/4HANA",      cat:"ERP",        desc:"Two-way asset and PO sync",           connected:false, by:"—",             on:"—" },
-  { id:"s3",     name:"AWS S3",           cat:"Storage",    desc:"Off-site backup of documents",        connected:false, by:"—",             on:"—" },
-  { id:"webhook",name:"Custom webhook",   cat:"Developer",  desc:"POST every event to your endpoint",   connected:false, by:"—",             on:"—" },
+  { id:"twilio", name:"SMS & WhatsApp",   cat:"Comms",      status:"builtin", desc:"Critical escalations by text and WhatsApp. Built into notification preferences; switching on with our SMS provider setup — nothing needed on your side." },
+  { id:"xero",   name:"Xero",             cat:"Accounting", status:"csv",     desc:"Invoices export as Xero-ready CSV today from Billing. Direct API sync is planned." },
+  { id:"sage",   name:"Sage",             cat:"Accounting", status:"csv",     desc:"The same invoice CSV imports into Sage today. Direct API sync is planned." },
+  { id:"ms365",  name:"Microsoft 365",    cat:"SSO",        status:"planned", desc:"Single sign-on and directory sync" },
+  { id:"google", name:"Google Workspace", cat:"SSO",        status:"planned", desc:"SAML SSO via Google" },
+  { id:"slack",  name:"Slack",            cat:"Comms",      status:"planned", desc:"Post alerts to a channel" },
+  { id:"sap",    name:"SAP S/4HANA",      cat:"ERP",        status:"planned", desc:"Two-way asset and PO sync" },
+  { id:"s3",     name:"AWS S3",           cat:"Storage",    status:"planned", desc:"Off-site backup of documents" },
+  { id:"webhook",name:"Custom webhook",   cat:"Developer",  status:"planned", desc:"POST every event to your endpoint" },
 ];
 
 function IntegrationsSettings({ showToast }) {
-  const [items] = React.useState(INTEGRATIONS_INITIAL);
-  // Honest catalogue: these aren't connectable yet, so no fake connects.
-  const toggle = (id) => {
-    const it = items.find((i) => i.id === id);
-    showToast((it ? it.name : "This integration") + " is on the roadmap — not connectable yet");
-  };
-
+  const items = INTEGRATIONS_INITIAL;
   const grouped = items.reduce((m, x) => { (m[x.cat] = m[x.cat] || []).push(x); return m; }, {});
+
+  // No switches on catalogue cards — a switch promises a connection. Each card
+  // states plainly what works today, what's built and being switched on, and
+  // what's genuinely still planned.
+  const statusPill = (s) =>
+    s === "builtin" ? <Pill tone="ok" dot>Built in</Pill>
+    : s === "csv"   ? <Pill tone="accent" dot>Works today</Pill>
+    :                 <Pill tone="muted">Planned</Pill>;
+  const statusFoot = (s) =>
+    s === "builtin" ? "Live in the product — being switched on, nothing needed from you"
+    : s === "csv"   ? "Working now via export — one-click API sync is planned"
+    :                 "On the roadmap";
 
   return (
     <div className="settings-card">
@@ -18799,19 +18810,17 @@ function IntegrationsSettings({ showToast }) {
           <div className="settings-group-label">{cat}</div>
           <div className="integration-grid">
             {list.map((it) => (
-              <div className={"integration-card" + (it.connected ? " on" : "")} key={it.id}>
+              <div className="integration-card" key={it.id}>
                 <div className="integration-head">
                   <div className="integration-tile">{it.name[0]}</div>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div className="integration-name">{it.name}</div>
                     <div className="integration-desc">{it.desc}</div>
                   </div>
-                  <Toggle on={it.connected} onChange={() => toggle(it.id)} />
+                  {statusPill(it.status)}
                 </div>
                 <div className="integration-foot">
-                  {it.connected
-                    ? <span><Icon name="checkCircle" size={11} /> Connected by {it.by} · {it.on}</span>
-                    : <span>Not connected</span>}
+                  <span>{statusFoot(it.status)}</span>
                 </div>
               </div>
             ))}
