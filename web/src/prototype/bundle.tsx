@@ -2227,7 +2227,7 @@ function AccountMenu({ go }) {
               <Icon name="chevronRight" size={13} />
             </button>
             <button className="acct-menu-item" role="menuitem"
-              onClick={() => goAndClose("settings")}>
+              onClick={() => { window.__settingsInitialTab = "security"; goAndClose("settings"); }}>
               <Icon name="lock" size={15} />
               <span>Account & security</span>
               <Icon name="chevronRight" size={13} />
@@ -14576,6 +14576,131 @@ Object.assign(window, { BillingView });
 ;
 /* HazardLink — Automations engine */
 
+/* ── Authed JSON helper for the live backend (shared across views) ──────────
+   Bearer token + HL_API_BASE (dev proxy or prod origin). Returns
+   { ok, status, b } with b = parsed JSON body or null. */
+function hlApi(path, opts) {
+  opts = opts || {};
+  const headers = { authorization: "Bearer " + (localStorage.getItem("bor.token") || "") };
+  if (opts.body) headers["content-type"] = "application/json";
+  return fetch((window.HL_API_BASE || "/api") + path, {
+    method: opts.method || (opts.body ? "POST" : "GET"),
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  }).then((r) =>
+    r.json().then((b) => ({ ok: r.ok, status: r.status, b })).catch(() => ({ ok: r.ok, status: r.status, b: null }))
+  );
+}
+
+/* ── Built-in automations — LIVE, wired to the backend ──────────────────────
+   These run on the org right now (escalation timers, reminder jobs). The
+   timers save with one click; the rest are always on. Nothing here is a mock. */
+function BuiltInAutomations({ showToast }) {
+  const [s, setS]             = React.useState(null);
+  const [editing, setEditing] = React.useState(null);
+  const [val, setVal]         = React.useState("");
+  const [busy, setBusy]       = React.useState(false);
+
+  React.useEffect(() => {
+    hlApi("/settings").then(({ ok, b }) => { if (ok && b) setS(b); else setS(false); });
+  }, []);
+
+  const NUMBER_ROWS = [
+    { key:"ackMinutes", icon:"alertTri", tone:"crit", title:"Spill escalation",
+      desc:"A spill alert nobody acknowledges in time escalates up the chain automatically.",
+      unit:"min", put:"/settings/ack-timer", body:(v)=>({ minutes:v }), max:120 },
+    { key:"resolutionMinutes", icon:"clock", tone:"warn", title:"Overdue spill flag",
+      desc:"A spill still open after this long is flagged overdue and chased.",
+      unit:"min", put:"/settings/resolution-timer", body:(v)=>({ minutes:v }), max:720 },
+    { key:"expectedCleaningMinutes", icon:"droplet", tone:"clean", title:"Cleaning response target",
+      desc:"The response-time target your spill reporting measures against.",
+      unit:"min", put:"/settings/expected-cleaning-time", body:(v)=>({ minutes:v }), max:240 },
+    { key:"lowBatteryThreshold", icon:"activity", tone:"accent", title:"Low-battery alerts",
+      desc:"Alert automatically when a sensor battery falls below this level.",
+      unit:"%", put:"/settings/low-battery-threshold", body:(v)=>({ pct:v }), max:99 },
+  ];
+  const ALWAYS_ON = [
+    { icon:"clock",      title:"PPM auto-chase",            desc:"Planned maintenance emails the assigned contractor before the due date, and chases it." },
+    { icon:"award",      title:"Certificate expiry alerts", desc:"Staff and contractor certs nearing expiry notify admins before they lapse." },
+    { icon:"creditCard", title:"Invoice overdue chase",     desc:"A sent invoice past its due date flips to overdue and notifies the team." },
+    { icon:"user",       title:"Lone-worker escalation",    desc:"A missed check-in alerts your escalation contacts with the worker's last confirmation." },
+    { icon:"bell",       title:"Microsoft Teams cards",     desc:"Org-wide alerts post a card to your Teams channel once a webhook is set in Settings → Integrations." },
+  ];
+
+  const startEdit = (row) => { setEditing(row.key); setVal(String(s[row.key] ?? "")); };
+  const save = (row) => {
+    const v = parseInt(val, 10);
+    if (!v || v < 1 || v > row.max) { showToast("Enter a number between 1 and " + row.max); return; }
+    setBusy(true);
+    hlApi(row.put, { method:"PUT", body: row.body(v) })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not save — check your access."); return; }
+        setS((p) => ({ ...p, [row.key]: v }));
+        setEditing(null);
+        showToast(row.title + " set to " + v + " " + row.unit);
+      })
+      .finally(() => setBusy(false));
+  };
+  const toggleAlarm = () => {
+    const next = !s.defaultAudibleAlarm;
+    hlApi("/settings/default-audible-alarm", { method:"PUT", body:{ enabled: next } }).then(({ ok }) => {
+      if (!ok) { showToast("Could not save — check your access."); return; }
+      setS((p) => ({ ...p, defaultAudibleAlarm: next }));
+      showToast(next ? "New sensors will sound the audible alarm" : "Audible alarm off for new sensors");
+    });
+  };
+
+  if (s === null) {
+    return <div className="card card-pad" style={{ marginBottom:18, color:"var(--ink-3)", fontSize:13.5 }}>Loading your live automations…</div>;
+  }
+  if (s === false) {
+    return <div className="card card-pad" style={{ marginBottom:18, color:"var(--warn)", fontSize:13.5 }}>Could not load your automation settings. Refresh to try again.</div>;
+  }
+
+  const row = (icon, tone, title, desc, right) => (
+    <div key={title} style={{ display:"flex", gap:12, alignItems:"center", padding:"11px 0", borderTop:"1px solid var(--line)" }}>
+      <div className="kpi-ico" style={{ background:softBg(tone), color:solid(tone), flex:"none" }}><Icon name={icon} size={15} /></div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontWeight:700, fontSize:13.5 }}>{title}</div>
+        <div style={{ fontSize:12.5, color:"var(--ink-3)", marginTop:1 }}>{desc}</div>
+      </div>
+      {right}
+    </div>
+  );
+
+  return (
+    <div className="card" style={{ marginBottom:18 }}>
+      <div className="card-head">
+        <h3>Built-in automations</h3>
+        <span className="sub">Live on your organisation right now. The timers are yours to tune — one click, saved.</span>
+      </div>
+      <div className="card-pad" style={{ paddingTop:0 }}>
+        {NUMBER_ROWS.map((r) => row(r.icon, r.tone, r.title, r.desc,
+          editing === r.key ? (
+            <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+              <input className="dv-input" type="number" autoFocus value={val} min={1} max={r.max}
+                onChange={(e) => setVal(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") save(r); if (e.key === "Escape") setEditing(null); }}
+                style={{ width:76 }} />
+              <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => save(r)}>Save</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+            </div>
+          ) : (
+            <button className="btn btn-sm" onClick={() => startEdit(r)} title="Change">
+              {String(s[r.key] ?? "—")} {r.unit}<Icon name="edit" size={12} />
+            </button>
+          )
+        ))}
+        {row("wifi", "muted", "Audible alarm on new sensors",
+          "Whether newly-registered wet-floor sensors sound their local alarm by default.",
+          <Toggle on={!!s.defaultAudibleAlarm} onChange={toggleAlarm} />)}
+        {ALWAYS_ON.map((r) => row(r.icon, "muted", r.title, r.desc,
+          <Pill tone="ok" dot>Always on</Pill>))}
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    Catalogues for the builder + plain-English helpers
    ============================================================ */
@@ -15071,6 +15196,8 @@ function AutomationsView({ go }) {
           <div className="kpi-foot">Auto-escalated to managers</div>
         </div>
       </div>
+
+      <BuiltInAutomations showToast={showToast} />
 
       <div className="auto-grid">
         {/* Left column — rules */}
@@ -18288,6 +18415,7 @@ const SETTINGS_TABS = [
   { id:"sites",        label:"Sites",               icon:"mapPin" },
   { id:"disciplines",  label:"Disciplines",         icon:"layers" },
   { id:"roles",        label:"Roles & permissions", icon:"lock" },
+  { id:"security",     label:"Account & security",  icon:"lock" },
   { id:"billing",      label:"Billing",             icon:"creditCard" },
   { id:"integrations", label:"Integrations",        icon:"link" },
 ];
@@ -18654,19 +18782,18 @@ const INTEGRATIONS_INITIAL = [
 ];
 
 function IntegrationsSettings({ showToast }) {
-  const [items, setItems] = React.useState(INTEGRATIONS_INITIAL);
+  const [items] = React.useState(INTEGRATIONS_INITIAL);
+  // Honest catalogue: these aren't connectable yet, so no fake connects.
   const toggle = (id) => {
-    setItems((all) => all.map((x) => x.id === id
-      ? { ...x, connected: !x.connected, by: !x.connected ? "You" : "—", on: !x.connected ? "just now" : "—" }
-      : x));
     const it = items.find((i) => i.id === id);
-    showToast(it.connected ? it.name + " disconnected" : it.name + " connected");
+    showToast((it ? it.name : "This integration") + " is on the roadmap — not connectable yet");
   };
 
   const grouped = items.reduce((m, x) => { (m[x.cat] = m[x.cat] || []).push(x); return m; }, {});
 
   return (
     <div className="settings-card">
+      <TeamsWebhookCard showToast={showToast} />
       {Object.entries(grouped).map(([cat, list]) => (
         <div key={cat}>
           <div className="settings-group-label">{cat}</div>
@@ -18691,6 +18818,211 @@ function IntegrationsSettings({ showToast }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ===========================================================
+   Account & security tab — REAL two-factor authentication.
+   Wired to the live backend (/auth/2fa/*): enrol shows a scannable
+   QR from the server, confirming returns one-time recovery codes,
+   and sign-in then requires the 6-digit code. Nothing mocked.
+   =========================================================== */
+function SecuritySettings({ showToast }) {
+  const [status, setStatus]     = React.useState(null);  // {enrolled, enrolledAt, required} | false on error
+  const [mode, setMode]         = React.useState("idle"); // idle | setup | recovery | disable
+  const [setup, setSetup]       = React.useState(null);   // { qrDataUrl, secret }
+  const [code, setCode]         = React.useState("");
+  const [busy, setBusy]         = React.useState(false);
+  const [recovery, setRecovery] = React.useState([]);
+
+  const load = () => hlApi("/auth/2fa/status").then(({ ok, b }) => setStatus(ok && b ? b : false));
+  React.useEffect(() => { load(); }, []);
+
+  const begin = () => {
+    setBusy(true);
+    hlApi("/auth/2fa/enrol", { method: "POST" })
+      .then(({ ok, b }) => {
+        if (!ok || !b || !b.qrDataUrl) { showToast("Could not start setup. Try again."); return; }
+        setSetup({ qrDataUrl: b.qrDataUrl, secret: b.secret });
+        setCode("");
+        setMode("setup");
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const confirm = () => {
+    if (!/^\d{6}$/.test(code.trim())) { showToast("Enter the 6-digit code from your authenticator app."); return; }
+    setBusy(true);
+    hlApi("/auth/2fa/enrol/confirm", { method: "POST", body: { code: code.trim() } })
+      .then(({ ok, b }) => {
+        if (!ok) { showToast("That code didn't match. Check the app and try again."); return; }
+        setRecovery((b && b.recoveryCodes) || []);
+        setMode("recovery");
+        setCode("");
+        load();
+        showToast("Two-factor authentication is on");
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const disable = () => {
+    if (!code.trim()) { showToast("Enter a 6-digit code or a recovery code."); return; }
+    setBusy(true);
+    hlApi("/auth/2fa/disable", { method: "POST", body: { code: code.trim() } })
+      .then(({ ok }) => {
+        if (!ok) { showToast("That code didn't match."); return; }
+        setMode("idle");
+        setCode("");
+        load();
+        showToast("Two-factor authentication is off");
+      })
+      .finally(() => setBusy(false));
+  };
+
+  if (status === null) {
+    return <div className="settings-card"><div style={{ color:"var(--ink-3)", fontSize:13.5 }}>Checking your security settings…</div></div>;
+  }
+  if (status === false) {
+    return <div className="settings-card"><div style={{ color:"var(--warn)", fontSize:13.5 }}>Could not load your security settings. Refresh to try again.</div></div>;
+  }
+
+  return (
+    <div className="settings-card">
+      <div style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
+        <div className="kpi-ico" style={{ background: status.enrolled ? "var(--ok-soft)" : "var(--warn-soft)", color: status.enrolled ? "var(--ok)" : "var(--warn)", flex:"none" }}>
+          <Icon name="lock" size={16} />
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <b style={{ fontSize:14.5 }}>Two-factor authentication</b>
+            {status.enrolled
+              ? <Pill tone="ok" dot>On</Pill>
+              : status.required
+                ? <Pill tone="warn" dot>Recommended for admins</Pill>
+                : <Pill tone="muted" dot>Off</Pill>}
+          </div>
+          <p style={{ margin:"6px 0 0", fontSize:13, color:"var(--ink-2)", lineHeight:1.55, maxWidth:520 }}>
+            Signing in asks for a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…) as well as the password. It protects the account even if the password leaks.
+          </p>
+
+          {mode === "idle" && !status.enrolled && (
+            <button className="btn btn-primary" style={{ marginTop:14 }} disabled={busy} onClick={begin}>
+              <Icon name="lock" size={14} />Set up two-factor
+            </button>
+          )}
+
+          {mode === "idle" && status.enrolled && (
+            <div style={{ marginTop:12, fontSize:12.5, color:"var(--ink-3)" }}>
+              Enabled {status.enrolledAt ? "on " + String(status.enrolledAt).slice(0, 10) : ""}.
+              <button className="btn btn-sm" style={{ marginLeft:12 }} onClick={() => { setMode("disable"); setCode(""); }}>Turn off</button>
+            </div>
+          )}
+
+          {mode === "setup" && setup && (
+            <div className="card card-pad" style={{ marginTop:14, maxWidth:480 }}>
+              <div style={{ fontWeight:700, fontSize:13.5, marginBottom:8 }}>1 · Scan this with your authenticator app</div>
+              <img src={setup.qrDataUrl} alt="Two-factor setup QR code" width="168" height="168"
+                style={{ borderRadius:10, border:"1px solid var(--line)", background:"#fff", padding:6 }} />
+              <div style={{ fontSize:12, color:"var(--ink-3)", margin:"8px 0 14px" }}>
+                Can't scan? Enter this key manually: <span style={{ fontFamily:"var(--mono)", userSelect:"all" }}>{setup.secret}</span>
+              </div>
+              <div style={{ fontWeight:700, fontSize:13.5, marginBottom:8 }}>2 · Enter the 6-digit code it shows</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <input className="dv-input" style={{ width:130, fontFamily:"var(--mono)", letterSpacing:"2px" }}
+                  inputMode="numeric" maxLength={6} placeholder="123456" autoFocus
+                  value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} />
+                <button className="btn btn-primary" disabled={busy} onClick={confirm}>Verify &amp; turn on</button>
+                <button className="btn btn-ghost" onClick={() => { setMode("idle"); setSetup(null); }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {mode === "recovery" && (
+            <div className="card card-pad" style={{ marginTop:14, maxWidth:480 }}>
+              <div style={{ fontWeight:700, fontSize:13.5 }}>Save your recovery codes</div>
+              <p style={{ margin:"6px 0 10px", fontSize:12.5, color:"var(--ink-2)", lineHeight:1.5 }}>
+                Each code signs you in once if you lose your phone. Keep them somewhere safe — they are shown only this once.
+              </p>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, fontFamily:"var(--mono)", fontSize:13, userSelect:"all" }}>
+                {recovery.map((c) => <div key={c} style={{ padding:"6px 10px", background:"var(--surface-2)", borderRadius:8 }}>{c}</div>)}
+              </div>
+              <button className="btn btn-primary" style={{ marginTop:12 }} onClick={() => setMode("idle")}>
+                <Icon name="check" size={14} />I've saved these
+              </button>
+            </div>
+          )}
+
+          {mode === "disable" && (
+            <div className="card card-pad" style={{ marginTop:14, maxWidth:480 }}>
+              <div style={{ fontWeight:700, fontSize:13.5, marginBottom:8 }}>Confirm with a code to turn off</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <input className="dv-input" style={{ width:170, fontFamily:"var(--mono)" }}
+                  placeholder="6-digit or recovery code" autoFocus
+                  value={code} onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") disable(); }} />
+                <button className="btn btn-danger" disabled={busy} onClick={disable}>Turn off</button>
+                <button className="btn btn-ghost" onClick={() => setMode("idle")}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Live Microsoft Teams connection — org-wide alerts post a card to the
+   channel behind this incoming-webhook URL. Wired to /settings/integrations. */
+function TeamsWebhookCard({ showToast }) {
+  const [saved, setSaved] = React.useState(null); // null loading | "" none | url
+  const [draft, setDraft] = React.useState("");
+  const [busy, setBusy]   = React.useState(false);
+
+  React.useEffect(() => {
+    hlApi("/settings/integrations").then(({ ok, b }) => {
+      const url = ok && b && b.teamsWebhookUrl ? b.teamsWebhookUrl : "";
+      setSaved(url); setDraft(url);
+    });
+  }, []);
+
+  const save = (next) => {
+    setBusy(true);
+    hlApi("/settings/integrations", { method:"PUT", body:{ teamsWebhookUrl: next || null } })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not save — admin access is needed."); return; }
+        setSaved(next || ""); setDraft(next || "");
+        showToast(next ? "Teams connected — alerts will post to your channel" : "Teams disconnected");
+      })
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div style={{ marginBottom:18 }}>
+      <div className="settings-group-label">Live now</div>
+      <div className="card card-pad" style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
+        <div className="integration-tile" style={{ flex:"none" }}>T</div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <b style={{ fontSize:13.5 }}>Microsoft Teams</b>
+            {saved ? <Pill tone="ok" dot>Connected</Pill> : <Pill tone="muted" dot>Not connected</Pill>}
+          </div>
+          <p style={{ margin:"5px 0 10px", fontSize:12.5, color:"var(--ink-2)", lineHeight:1.5 }}>
+            Paste an incoming-webhook URL from a Teams channel and org-wide alerts (overdue work, escalated spills, expiring certs) post there as cards.
+          </p>
+          {saved === null ? (
+            <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>Loading…</div>
+          ) : (
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <input className="dv-input" style={{ flex:1, minWidth:240 }} placeholder="https://…webhook.office.com/…"
+                value={draft} onChange={(e) => setDraft(e.target.value)} />
+              <button className="btn btn-primary" disabled={busy || !/^https:\/\//.test(draft.trim())} onClick={() => save(draft.trim())}>Save</button>
+              {saved && <button className="btn btn-ghost" disabled={busy} onClick={() => save("")}>Remove</button>}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -18730,6 +19062,7 @@ function SettingsView({ go }) {
       {tab === "sites"        && <SitesSettings            showToast={showToast} />}
       {tab === "disciplines"  && <DisciplinesSettings      showToast={showToast} />}
       {tab === "roles"        && <RolesPermissionsSettings showToast={showToast} />}
+      {tab === "security"     && <SecuritySettings         showToast={showToast} />}
       {tab === "billing"      && <BillingSettings          showToast={showToast} />}
       {tab === "integrations" && <IntegrationsSettings     showToast={showToast} />}
 
