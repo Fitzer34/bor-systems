@@ -1580,27 +1580,31 @@ function Sidebar({ view, go, counts }) {
     view === "user" ? "users"       :
     view;
 
-  // Pinned top-level items — always visible, never inside a group.
+  // Pinned essentials — always visible, in the order a brand-new customer
+  // needs them. Six rows, plain words, nothing else shouting.
   const pinnedTop = [
     { id: "dashboard", label: "Dashboard",      icon: "grid" },
     { id: "assistant", label: "Ask HazardLink", icon: "sparkles" },
+    { id: "spills",    label: "Spill alerts",   icon: "alertTri", count: counts.spills },
+    { id: "floorplan", label: "Floor plans",    icon: "mapPin" },
+    { id: "devices",   label: "Devices",        icon: "monitor",  count: counts.devices },
+    { id: "reports",   label: "Reports",        icon: "chart" },
   ];
-  // Devices is the IoT hardware hub — pinned as its own top-level item, after the groups.
-  const pinnedDevices = { id: "devices", label: "Devices", icon: "monitor", count: counts.devices };
+  // Kept so older references don't break; no longer rendered separately.
+  const pinnedDevices = null;
 
-  // Collapsible groups. Each parent row is a real button with aria-expanded.
+  // Four sections — one per discipline plus the business/admin drawer. All
+  // collapsed until opened (or containing the current page), so the full
+  // depth is one click away without ever being in your face.
   const groups = [
     {
-      id: "ops",
-      label: "Operations",
-      icon: "calendar",
+      id: "clean",
+      label: "Cleaning",
+      icon: "droplet",
       items: [
-        { id: "scheduling", label: "Scheduling",   icon: "calendar", count: counts.unassigned },
-        { id: "cleaning",   label: "Cleaning",     icon: "droplet"  },
-        { id: "spills",     label: "Spill alerts", icon: "alertTri", count: counts.spills },
-        { id: "floorplan",  label: "Floor plans",  icon: "mapPin"   },
-        { id: "security",   label: "Security",     icon: "shield"   },
-        { id: "visitors",   label: "Visitors",     icon: "users"    },
+        { id: "cleaning",   label: "Rounds & inspections", icon: "droplet" },
+        { id: "scheduling", label: "Scheduling",           icon: "calendar", count: counts.unassigned },
+        { id: "sds",        label: "Safety sheets",        icon: "beaker" },
       ],
     },
     {
@@ -1608,57 +1612,43 @@ function Sidebar({ view, go, counts }) {
       label: "Maintenance",
       icon: "wrench",
       items: [
-        { id: "maint-overview", label: "Overview",            icon: "gauge"   },
-        { id: "maintenance",    label: "Work orders",         icon: "wrench",  count: counts.maint },
-        { id: "ppm",            label: "PPM schedule",        icon: "clock",   count: counts.ppmOverdue },
-        { id: "assets",         label: "Assets",              icon: "box"     },
+        { id: "maint-overview", label: "Overview",            icon: "gauge" },
+        { id: "maintenance",    label: "Work orders",         icon: "wrench",      count: counts.maint },
+        { id: "ppm",            label: "PPM schedule",        icon: "clock",       count: counts.ppmOverdue },
+        { id: "assets",         label: "Assets",              icon: "box" },
         { id: "parts",          label: "Parts and inventory", icon: "package" },
-        { id: "meters",         label: "Meters",              icon: "activity"},
+        { id: "meters",         label: "Meters",              icon: "activity" },
+        { id: "contractors",    label: "Contractors",         icon: "user",        count: counts.blocked },
+        { id: "compliance",     label: "Compliance",          icon: "checkCircle", count: counts.compliance },
+        { id: "slas",           label: "SLAs",                icon: "clock",       count: counts.slaBreach },
+        { id: "permits",        label: "Permits",             icon: "flag",        count: counts.permitsPending },
+        { id: "competency",     label: "Competency",          icon: "award" },
       ],
     },
     {
-      id: "compliance",
-      label: "Compliance & Safety",
+      id: "secure",
+      label: "Security",
       icon: "shield",
       items: [
-        { id: "compliance", label: "Compliance",   icon: "checkCircle", count: counts.compliance },
-        { id: "slas",       label: "SLAs",         icon: "clock",       count: counts.slaBreach },
-        { id: "permits",    label: "Permits",      icon: "flag",        count: counts.permitsPending },
-        { id: "competency", label: "Competency",   icon: "award"   },
-        { id: "sds",        label: "Safety sheets",icon: "beaker"  },
-      ],
-    },
-    {
-      id: "business",
-      label: "Business",
-      icon: "creditCard",
-      items: [
-        { id: "contractors",  label: "Contractors",   icon: "user",       count: counts.blocked },
-        { id: "clientportal", label: "Client portal", icon: "layers"     },
-        { id: "billing",      label: "Billing",       icon: "creditCard", count: counts.billingOverdue },
-        { id: "timesheets",   label: "Timesheets",    icon: "clock"      },
-        { id: "forms",        label: "Forms",         icon: "file"       },
-      ],
-    },
-    {
-      id: "insights",
-      label: "Insights",
-      icon: "chart",
-      items: [
-        { id: "reports",     label: "Reports",     icon: "chart"    },
-        { id: "automations", label: "Automations", icon: "sparkles", count: counts.automations },
-        { id: "audit",       label: "Audit log",   icon: "activity" },
+        { id: "security", label: "Patrols & incidents", icon: "shield" },
+        { id: "visitors", label: "Visitors",            icon: "users" },
       ],
     },
     {
       id: "admin",
-      label: "Admin",
+      label: "Business & admin",
       icon: "cog",
       items: [
+        { id: "clientportal",  label: "Client portal", icon: "layers" },
+        { id: "billing",       label: "Billing",       icon: "creditCard", count: counts.billingOverdue },
+        { id: "timesheets",    label: "Timesheets",    icon: "clock" },
+        { id: "forms",         label: "Forms",         icon: "file" },
+        { id: "automations",   label: "Automations",   icon: "sparkles",   count: counts.automations },
+        { id: "audit",         label: "Audit log",     icon: "activity" },
         { id: "team",          label: "Team",          icon: "users" },
-        { id: "users",         label: "Users",         icon: "user"  },
-        { id: "settings",      label: "Settings",      icon: "cog"   },
-        { id: "notifications", label: "Notifications", icon: "bell"  },
+        { id: "users",         label: "Users",         icon: "user" },
+        { id: "notifications", label: "Notifications", icon: "bell" },
+        { id: "settings",      label: "Settings",      icon: "cog" },
       ],
     },
   ];
@@ -1674,7 +1664,7 @@ function Sidebar({ view, go, counts }) {
 
   // Manual open/closed overrides, persisted. A group not in the map
   // defaults to open only if it contains the active page.
-  const LS_KEY = "hl.sidebar.openGroups";
+  const LS_KEY = "hl.sidebar.openGroups.v2";
   const [manual, setManual] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; }
     catch (e) { return {}; }
@@ -1751,13 +1741,6 @@ function Sidebar({ view, go, counts }) {
           </div>
         );
       })}
-
-      {canSee(pinnedDevices.id) && (
-        <React.Fragment>
-          <div className="nav-divider" aria-hidden="true" />
-          {Item(pinnedDevices)}
-        </React.Fragment>
-      )}
 
       <div className="sidebar-foot">
         <div className="site-mini">
@@ -13440,16 +13423,15 @@ function respondTo(q) {
   }
 
   if (has("attention") || has("needs my attention") || has("priorities") || has("what should i") || has("top of the list") || (has("today") && (has("attention") || has("focus") || has("priorit") || has("need") || has("important") || has("urgent") || has("my")))) {
-    /* Optional "at {site}" filter — match against ATTENTION_ITEMS metadata. */
-    const siteHints = [
-      { key:"aviva",     name:"Aviva Office Tower" },
-      { key:"northgate", name:"Northgate Logistics Hub" },
-      { key:"riverside", name:"Riverside Retail Park" },
-      { key:"lee valley",name:"Lee Valley Medical Centre" },
-      { key:"tramore",   name:"Tramore Leisure Centre" },
-      { key:"galway",    name:"Galway City Library" },
-    ];
-    const hint = siteHints.find((h) => s.includes(h.key));
+    /* Optional "at {site}" filter — built from the org's OWN sites (HL.sites
+       is hydrated from the backend), never from a hardcoded demo list. */
+    const siteHints = (HL.sites || []).map((x) => ({
+      key: String(x.name || "").toLowerCase(),
+      name: x.name,
+    })).filter((h) => h.key);
+    const hint = siteHints.find((h) =>
+      s.includes(h.key) ||
+      h.key.split(/\s+/).some((w) => w.length > 3 && s.includes(w)));
     const items = hint
       ? ATTENTION_ITEMS.filter((it) => it.meta.toLowerCase().includes(hint.key))
       : ATTENTION_ITEMS;
@@ -19534,24 +19516,14 @@ function App() {
   const permitsPending = 0;
 
   const handleCreate = () => {
-    const nw = {
-      id:"WO-2042", title:"Leaking radiator — 2nd-floor server room",
-      asset:"Heating circuit", site:"Aviva Office Tower", priority:"High",
-      status:"Open", statusTone:"muted", assignee:"Unassigned", initials:"—", source:"Voice (AI)",
-    };
-    const nf = { id:"fnew", disc:"maint", sev:"warn",
-      title:"Work order created by voice — leaking radiator", site:"Aviva Office Tower",
-      detail:"Spoken fault · structured by AI", time:"now", wo:"WO-2042",
-      panel:{ type:"Fault logged by voice", asset:"Heating circuit", woStatus:"Open, awaiting assignment",
-        action:"Work order created in seconds from a spoken description. Ready to tender." }};
-    setWorkOrders((ws) => [nw, ...ws.filter((w) => w.id !== "WO-2042")]);
-    setFeed((fs) => [nf, ...fs.filter((f) => f.id !== "fnew")]);
+    // The demo used to inject a fabricated work order ("Aviva Office Tower")
+    // here. In the live product the AI must NEVER invent a job at a site the
+    // org doesn't have — so until voice→job is wired to the backend, this
+    // closes honestly and creates nothing.
     setAiOpen(false);
-    setFlashId("WO-2042");
     go("maintenance");
-    setToast("Work order WO-2042 created");
-    setTimeout(() => setToast(null), 4200);
-    setTimeout(() => setFlashId(null), 2600);
+    setToast("Voice work orders are being wired up — nothing was created. Use New work order for now.");
+    setTimeout(() => setToast(null), 5200);
   };
 
   let content;
