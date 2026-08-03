@@ -16974,11 +16974,11 @@ Object.assign(window, { PermitsView });
 ;
 /* HazardLink — Team view: staff roster, time-off overview, profiles */
 
+/* Groups mirror the REAL roles on the org (users.role), not demo job titles. */
 const TEAM_GROUPS = [
-  { id: "supervisors", label: "Supervisors", icon: "award",   tone: "accent" },
-  { id: "technicians", label: "Technicians", icon: "wrench",  tone: "maint" },
-  { id: "guards",      label: "Guards",      icon: "shield",  tone: "secure" },
-  { id: "cleaners",    label: "Cleaners",    icon: "droplet", tone: "clean" },
+  { id: "admin",      label: "Admins",      icon: "shield",  tone: "accent" },
+  { id: "supervisor", label: "Supervisors", icon: "award",   tone: "secure" },
+  { id: "cleaner",    label: "Field staff", icon: "droplet", tone: "clean" },
 ];
 
 // 7 days, Mon-Sun. Each is either null (off) or { start, end, site, disc }
@@ -17091,19 +17091,71 @@ function nextWeekRota(thisWeek) {
   return thisWeek.slice(1).concat([thisWeek[0]]);
 }
 
-/* ---------- Static team data ---------- */
+/* ---------- Live data (real users + real leave from the backend) ---------- */
 
-const TEAM_DATA_RAW = [];
+function _cap(s) { return (s || "other").charAt(0).toUpperCase() + (s || "other").slice(1); }
+function _initialsTeam(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+function _covers(r, iso) { return r.startsOn <= iso && iso <= r.endsOn; }
 
-// Pre-compute rotas for each person
-const TEAM_DATA = TEAM_DATA_RAW.map((p) => {
-  const thisWeek = rotaFor(p.pattern, p.homeSite, p.otherSite);
-  // For people on leave this week, replace those days with a leave marker
-  const tw = thisWeek.map((d, i) => p.thisWeekLeave.includes(i)
-    ? { leave:true, label:"Annual leave" }
-    : d);
-  return { ...p, rota: { thisWeek: tw, nextWeek: nextWeekRota(thisWeek) } };
-});
+function buildPeople(users, leave) {
+  const byUser = {};
+  for (const r of (leave || [])) (byUser[r.userId] = byUser[r.userId] || []).push(r);
+  const todayIso = _isoDay(WEEK_START_THIS, TODAY_INDEX);
+  const year = String(new Date().getFullYear());
+  const roleLabel = { admin: "Admin", supervisor: "Supervisor", cleaner: "Field staff" };
+
+  return (users || [])
+    .filter((u) => !u.deactivatedAt)
+    .map((u) => {
+      const rows = (byUser[u.id] || [])
+        .filter((r) => r.status !== "cancelled")
+        .sort((a, b) => (a.startsOn < b.startsOn ? 1 : -1));
+      const history = rows.map((r) => ({
+        id: r.id,
+        type: _cap(r.type),
+        from: r.startsOn,
+        to: r.endsOn,
+        days: (() => { try { return Math.max(1, daysBetween(r.startsOn, r.endsOn)); } catch (e) { return 1; } })(),
+        status: r.status,
+        note: r.note || "",
+        submitted: (r.createdAt || "").slice(0, 10),
+      }));
+      const approvedRows = rows.filter((r) => r.status === "approved");
+      const thisWeekLeave = [];
+      const nextWeekLeave = [];
+      for (let i = 0; i < 7; i++) {
+        if (approvedRows.some((r) => _covers(r, _isoDay(WEEK_START_THIS, i)))) thisWeekLeave.push(i);
+        if (approvedRows.some((r) => _covers(r, _isoDay(WEEK_START_NEXT, i)))) nextWeekLeave.push(i);
+      }
+      const onLeaveToday = approvedRows.some((r) => _covers(r, todayIso));
+      const used = approvedRows
+        .filter((r) => (r.startsOn || "").slice(0, 4) === year)
+        .reduce((n, r) => { try { return n + Math.max(1, daysBetween(r.startsOn, r.endsOn)); } catch (e) { return n + 1; } }, 0);
+      const mkWeek = (weekLeave) => Array.from({ length: 7 }, (_, i) =>
+        weekLeave.includes(i) ? { leave: true, label: "On leave" } : null);
+      return {
+        id: u.id,
+        name: u.name || u.email,
+        initials: _initialsTeam(u.name || u.email),
+        role: roleLabel[u.role] || u.role,
+        group: u.role,
+        status: onLeaveToday ? "on-leave" : (u.onDuty ? "on-shift" : "off"),
+        homeSite: "—",
+        joined: (u.inviteAcceptedAt || u.invitedAt || "").slice(0, 10) || "—",
+        email: u.email,
+        phone: "—",
+        manager: "—",
+        emergency: "—",
+        allowance: 20, // org-configurable later; 20 days is the sensible default
+        used,
+        thisWeekLeave,
+        history,
+        rota: { thisWeek: mkWeek(thisWeekLeave), nextWeek: mkWeek(nextWeekLeave) },
+      };
+    });
+}
 
 const STATUS_META_TEAM = {
   "on-shift": { label:"On shift",  tone:"ok" },
@@ -17117,11 +17169,31 @@ const REQ_STATUS_META = {
   declined: { label:"Declined", tone:"crit" },
 };
 
-// "This week" anchor — Mon 15 Jun 2026. Today is Fri 19 Jun.
-const WEEK_DOW   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const WEEK_DATES_THIS = [15, 16, 17, 18, 19, 20, 21];
-const WEEK_DATES_NEXT = [22, 23, 24, 25, 26, 27, 28];
-const TODAY_INDEX = 4; // Fri
+// The REAL current week (Mon-anchored), computed from today's date.
+const WEEK_DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+function _mondayOf(d) {
+  const x = new Date(d);
+  x.setHours(12, 0, 0, 0); // noon dodges DST edges
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+function _isoDay(base, i) {
+  const d = new Date(base);
+  d.setDate(d.getDate() + i);
+  return d.toISOString().slice(0, 10);
+}
+const _NOW = new Date();
+const WEEK_START_THIS = _mondayOf(_NOW);
+const WEEK_START_NEXT = (() => { const d = new Date(WEEK_START_THIS); d.setDate(d.getDate() + 7); return d; })();
+const WEEK_DATES_THIS = Array.from({ length: 7 }, (_, i) => { const d = new Date(WEEK_START_THIS); d.setDate(d.getDate() + i); return d.getDate(); });
+const WEEK_DATES_NEXT = Array.from({ length: 7 }, (_, i) => { const d = new Date(WEEK_START_NEXT); d.setDate(d.getDate() + i); return d.getDate(); });
+const TODAY_INDEX = (_NOW.getDay() + 6) % 7;
+function weekRangeLabel(start) {
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const a = new Date(start);
+  const b = new Date(start); b.setDate(b.getDate() + 6);
+  return "Mon " + a.getDate() + " " + m[a.getMonth()] + " — Sun " + b.getDate() + " " + m[b.getMonth()];
+}
 
 function fmtRange(from, to) {
   // "2026-06-29" → "29 Jun"
@@ -17156,7 +17228,7 @@ function TimeOffOverview({ staff, pendingCount, onJumpToPending }) {
         </div>
         <div>
           <div className="tof-title">Who's off this week</div>
-          <div className="tof-sub">Week of Mon 15 Jun — Sun 21 Jun, 2026</div>
+          <div className="tof-sub">Week of {weekRangeLabel(WEEK_START_THIS)}, {new Date().getFullYear()}</div>
         </div>
         {pendingCount > 0 && (
           <button className="tof-pending" onClick={onJumpToPending}>
@@ -17216,7 +17288,7 @@ function StaffRow({ p, onOpen }) {
 /* ===========================================================
    Team list page
    =========================================================== */
-function TeamList({ staff, onOpen, onJumpToPending }) {
+function TeamList({ staff, onOpen, onJumpToPending, onMarkOff, canManage, go }) {
   const pendingCount = staff.reduce(
     (n, p) => n + p.history.filter((r) => r.status === "pending").length, 0
   );
@@ -17226,32 +17298,51 @@ function TeamList({ staff, onOpen, onJumpToPending }) {
       <div className="page-head">
         <div>
           <h1 className="page-title">Team</h1>
-          <p className="page-desc">In-house staff, weekly rota and time off. Click anyone to open their profile.</p>
+          <p className="page-desc">Your staff, this week's time off and leave requests. Click anyone to open their profile.</p>
         </div>
+        {canManage && staff.length > 0 && (
+          <button className="btn btn-primary" onClick={onMarkOff}>
+            <Icon name="calendar" size={15} />Mark time off
+          </button>
+        )}
       </div>
 
-      <TimeOffOverview staff={staff} pendingCount={pendingCount} onJumpToPending={onJumpToPending} />
+      {staff.length === 0 ? (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No staff yet</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", marginBottom:14 }}>
+            Invite your team and they'll appear here with their time off and rota.
+          </div>
+          <button className="btn btn-primary" onClick={() => go && go("users")}>
+            <Icon name="users" size={15} />Invite people in Users
+          </button>
+        </div>
+      ) : (
+        <React.Fragment>
+          <TimeOffOverview staff={staff} pendingCount={pendingCount} onJumpToPending={onJumpToPending} />
 
-      <div className="team-grid">
-        {TEAM_GROUPS.map((g) => {
-          const members = staff.filter((p) => p.group === g.id);
-          if (members.length === 0) return null;
-          return (
-            <div key={g.id}>
-              <div className="team-group-head">
-                <div className="tg-ico" style={{ background:softBg(g.tone), color:solid(g.tone) }}>
-                  <Icon name={g.icon} size={15} />
+          <div className="team-grid">
+            {TEAM_GROUPS.map((g) => {
+              const members = staff.filter((p) => p.group === g.id);
+              if (members.length === 0) return null;
+              return (
+                <div key={g.id}>
+                  <div className="team-group-head">
+                    <div className="tg-ico" style={{ background:softBg(g.tone), color:solid(g.tone) }}>
+                      <Icon name={g.icon} size={15} />
+                    </div>
+                    <h3>{g.label}</h3>
+                    <span className="tg-count">{members.length}</span>
+                  </div>
+                  <div className="card">
+                    {members.map((p) => <StaffRow key={p.id} p={p} onOpen={onOpen} />)}
+                  </div>
                 </div>
-                <h3>{g.label}</h3>
-                <span className="tg-count">{members.length}</span>
-              </div>
-              <div className="card">
-                {members.map((p) => <StaffRow key={p.id} p={p} onOpen={onOpen} />)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </React.Fragment>
+      )}
     </div>
   );
 }
@@ -17304,7 +17395,8 @@ function ScheduleTab({ person }) {
           <button className={week === "next" ? "on" : ""} onClick={() => setWeek("next")}>Next week</button>
         </div>
         <div className="rota-bar-title">
-          {week === "this" ? "Mon 15 Jun — Sun 21 Jun" : "Mon 22 Jun — Sun 28 Jun"} · {shiftCount} shift{shiftCount === 1 ? "" : "s"}, {totalHours}h
+          {weekRangeLabel(week === "this" ? WEEK_START_THIS : WEEK_START_NEXT)}
+          {shiftCount > 0 ? " · " + shiftCount + " shift" + (shiftCount === 1 ? "" : "s") + ", " + totalHours + "h" : " · rota comes from Scheduling"}
         </div>
       </div>
 
@@ -17353,9 +17445,7 @@ function TimeOffTab({ person, onRequest, onAct, pendingFocus }) {
     const order = { pending:0, approved:1, declined:2 };
     return order[a.status] - order[b.status];
   });
-  const used = person.used + person.history
-    .filter((r) => r.status === "approved" && new Date(r.from) >= new Date("2026-06-15"))
-    .reduce((n, r) => n + r.days, 0);
+  const used = person.used; // summed from real approved leave this year
   const approved = person.history.filter((r) => r.status === "approved").length;
   const pending  = person.history.filter((r) => r.status === "pending").length;
   const declined = person.history.filter((r) => r.status === "declined").length;
@@ -17520,51 +17610,89 @@ function StaffProfile({ person, onBack, onAct, onRequest, focusPending }) {
    Top-level view
    =========================================================== */
 function TeamView({ go }) {
-  const [staff, setStaff]       = React.useState(TEAM_DATA);
+  const [staff, setStaff]       = React.useState(null);  // null loading | false error | [people]
   const [openId, setOpenId]     = React.useState(null);
-  const [modal, setModal]       = React.useState(null);     // { personId } or null
+  const [modal, setModal]       = React.useState(null);  // { personId } | { pick: true }
   const [focusPending, setFocusPending] = React.useState(false);
   const { showToast, toastNode } = useViewToast();
 
-  const open = openId ? staff.find((p) => p.id === openId) : null;
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canManage = me.role === "admin" || me.role === "supervisor";
+
+  const refresh = React.useCallback(() => {
+    return Promise.all([hlApi("/users"), hlApi("/leave")])
+      .then(([u, l]) => {
+        if (!u.ok || !l.ok) { setStaff(false); return; }
+        setStaff(buildPeople(u.b && u.b.users, l.b && l.b.leave));
+      })
+      .catch(() => setStaff(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const people = Array.isArray(staff) ? staff : [];
+  const open = openId ? people.find((p) => p.id === openId) : null;
 
   const handleAct = (reqId, newStatus) => {
-    setStaff((all) => all.map((p) => {
-      const hit = p.history.find((r) => r.id === reqId);
-      if (!hit) return p;
-      const history = p.history.map((r) => r.id === reqId ? { ...r, status: newStatus } : r);
-      return { ...p, history };
-    }));
-    showToast(newStatus === "approved" ? "Leave request approved" : "Leave request declined");
+    hlApi("/leave/" + reqId, { method: "PATCH", body: { status: newStatus } }).then(({ ok }) => {
+      if (!ok) { showToast("Could not update that request — check your access."); return; }
+      showToast(newStatus === "approved" ? "Leave request approved" : "Leave request declined");
+      refresh();
+    });
   };
 
-  const handleSubmitRequest = (vals) => {
-    const personId = modal.personId;
+  const submitLeave = (userId, vals) => {
     const from = vals.from, to = vals.to || vals.from;
-    const id = "r-new-" + Date.now();
-    const days = (() => { try { return Math.max(1, daysBetween(from, to)); } catch (e) { return 1; } })();
-    setStaff((all) => all.map((p) => p.id === personId
-      ? { ...p, history: [{ id, type: vals.type, from, to, days, status:"pending", note: vals.note || "", submitted:"just now" }, ...p.history] }
-      : p));
-    showToast("Leave request submitted for approval");
+    hlApi("/leave", { method: "POST", body: {
+      userId,
+      type: String(vals.type || "annual").toLowerCase(),
+      startsOn: from,
+      endsOn: to,
+      note: vals.note || undefined,
+    }}).then(({ ok, b }) => {
+      if (!ok) { showToast("Could not save the time off — check the dates."); return; }
+      const applied = b && b.leave && b.leave.status === "approved";
+      showToast(applied ? "Time off booked — it's on the week now" : "Leave request submitted for approval");
+      refresh();
+    });
+  };
+
+  const handleSubmitRequest = (vals) => submitLeave(modal.personId, vals);
+  const handleSubmitPick = (vals) => {
+    const person = people.find((p) => p.name === vals.person);
+    if (!person) { showToast("Pick who's off first."); return; }
+    submitLeave(person.id, vals);
   };
 
   const handleJumpToPending = () => {
-    // find first staff member with a pending request, open them, focus pending
-    const first = staff.find((p) => p.history.some((r) => r.status === "pending"));
+    const first = people.find((p) => p.history.some((r) => r.status === "pending"));
     if (first) {
       setOpenId(first.id);
       setFocusPending(true);
     }
   };
 
-  // Reset focusPending after opening
   React.useEffect(() => {
     if (focusPending && openId) {
       const t = setTimeout(() => setFocusPending(false), 100);
       return () => clearTimeout(t);
     }
   }, [focusPending, openId]);
+
+  if (staff === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading your team…</div></div>;
+  }
+  if (staff === false) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>Could not load the team. Refresh to try again.</div></div>;
+  }
+
+  const leaveFields = [
+    { id:"type", label:"Leave type", type:"select",
+      options:["Annual","Sick","Unpaid","Other"], default:"Annual" },
+    { id:"from", label:"First day off", type:"date" },
+    { id:"to",   label:"Last day off (inclusive)", type:"date" },
+    { id:"note", label:"Note (optional)", type:"textarea", rows:3,
+      placeholder:"e.g. Family wedding in Donegal", required:false },
+  ];
 
   return (
     <React.Fragment>
@@ -17577,25 +17705,40 @@ function TeamView({ go }) {
           focusPending={focusPending}
         />
       ) : (
-        <TeamList staff={staff} onOpen={(p) => setOpenId(p.id)} onJumpToPending={handleJumpToPending} />
+        <TeamList staff={people} onOpen={(p) => setOpenId(p.id)} onJumpToPending={handleJumpToPending}
+          onMarkOff={() => setModal({ pick: true })} canManage={canManage} go={go} />
       )}
 
-      {modal && (
+      {modal && modal.pick && (
         <SimpleAddModal
-          title={"Request time off — " + (staff.find((p) => p.id === modal.personId) || {}).name}
-          subtitle="Submit a leave request. It will sit in pending until a supervisor approves it."
+          title="Mark somebody as off"
+          subtitle="Booked by you, it applies straight away — it shows on the week and the person is notified."
           icon="calendar"
-          submitLabel="Submit request" submitIcon="send"
-          successTitle="Request submitted"
-          successCopy="Your request is pending. You'll be notified when it's approved or declined."
+          submitLabel="Book time off" submitIcon="check"
+          successTitle="Time off saved"
+          successCopy="It's recorded, visible on the team page, and the person has been notified."
           fields={[
-            { id:"type", label:"Leave type", type:"select",
-              options:["Annual","Sick","Unpaid","Other"], default:"Annual" },
-            { id:"from", label:"Start date",  type:"date" },
-            { id:"to",   label:"End date",    type:"date" },
-            { id:"note", label:"Note (optional)", type:"textarea", rows:3,
-              placeholder:"e.g. Family wedding in Donegal", required:false },
+            { id:"person", label:"Who is off", type:"select", options: people.map((p) => p.name) },
+            ...leaveFields,
           ]}
+          onSubmit={handleSubmitPick}
+          onClose={() => setModal(null)} />
+      )}
+
+      {modal && modal.personId && (
+        <SimpleAddModal
+          title={"Time off — " + ((people.find((p) => p.id === modal.personId) || {}).name || "")}
+          subtitle={canManage
+            ? "Booked by a supervisor or admin, this applies straight away."
+            : "Submit a leave request. It sits in pending until a supervisor approves it."}
+          icon="calendar"
+          submitLabel={canManage ? "Book time off" : "Submit request"}
+          submitIcon={canManage ? "check" : "send"}
+          successTitle={canManage ? "Time off saved" : "Request submitted"}
+          successCopy={canManage
+            ? "It's recorded and shows on the team page."
+            : "Your request is pending. You'll be notified when it's decided."}
+          fields={leaveFields}
           onSubmit={handleSubmitRequest}
           onClose={() => setModal(null)} />
       )}

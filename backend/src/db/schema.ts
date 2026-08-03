@@ -1100,6 +1100,30 @@ export const visitors = pgTable(
   }),
 );
 
+/// Staff leave / time off. A supervisor booking someone off is created straight
+/// to 'approved'; a self-request starts 'pending'. Dates inclusive.
+export const leaveRequests = pgTable(
+  "leave_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    type: text("type").notNull().default("annual"), // annual|sick|unpaid|other
+    startsOn: date("starts_on", { mode: "string" }).notNull(),
+    endsOn: date("ends_on", { mode: "string" }).notNull(),
+    note: text("note"),
+    status: text("status").notNull().default("pending"), // pending|approved|declined|cancelled
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgDatesIdx: index("leave_org_dates_idx").on(t.organisationId, t.startsOn, t.endsOn),
+    userIdx: index("leave_user_idx").on(t.userId),
+  }),
+);
+
 /// Inbound partner enquiries from the marketing site (distributors, security
 /// installers, FM consultancies, cleaning franchises). No org — pre-sales.
 export const partnerLeads = pgTable("partner_leads", {

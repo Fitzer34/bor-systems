@@ -39,6 +39,7 @@ import permissionsRoutes from "./routes/permissions.js";
 import notificationsRoutes from "./routes/notifications.js";
 import invoiceRoutes from "./routes/invoices.js";
 import growthRoutes from "./routes/growth.js";
+import leaveRoutes from "./routes/leave.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
@@ -223,6 +224,7 @@ async function main(): Promise<void> {
   await app.register(notificationsRoutes);
   await app.register(invoiceRoutes);
   await app.register(growthRoutes);
+  await app.register(leaveRoutes);
 
   startEscalationTimer();
   startAntiTheftWatcher();

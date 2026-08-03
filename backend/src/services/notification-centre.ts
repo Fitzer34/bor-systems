@@ -58,6 +58,8 @@ const BASE_DEFAULTS: Record<string, Omit<ChannelPrefs, "whatsapp">> = {
   "lone_worker.overdue": { inApp: true, email: true, sms: true },
   "quote.awaiting_approval": { inApp: true, email: true, sms: false },
   "patrol.missed":     { inApp: true, email: true,  sms: false },
+  "leave.requested":   { inApp: true, email: true,  sms: false },
+  "leave.decided":     { inApp: true, email: true,  sms: false },
 };
 
 export const DEFAULT_PREFS: Record<string, ChannelPrefs> = Object.fromEntries(
