@@ -1978,6 +1978,32 @@ function TeamSwitcher() {
   );
 }
 
+/* Renders the role-preview chip ONLY while a preview is active — the entry
+   point moved into the account menu to keep the top bar calm. */
+function PreviewActiveChip() {
+  const { previewRole } = React.useContext(PermissionsContext);
+  if (!previewRole) return null;
+  return <PreviewRoleSwitcher />;
+}
+
+/* Account-menu items for role preview (admins). Toggling off is one click. */
+function AcctPreviewItems({ onDone }) {
+  const { previewRole, setPreviewRole } = React.useContext(PermissionsContext);
+  const roles = (typeof ROLE_LIST !== "undefined" ? ROLE_LIST : []).filter((r) => r.id !== "admin");
+  return (
+    <React.Fragment>
+      {roles.map((r) => (
+        <button key={r.id} className="acct-menu-item" role="menuitem"
+          onClick={() => { setPreviewRole(previewRole === r.id ? null : r.id); onDone(); }}>
+          <Icon name="eye" size={15} />
+          <span>{previewRole === r.id ? "Exit " + r.label.toLowerCase() + " preview" : "Preview as " + r.label.toLowerCase()}</span>
+          <Icon name="chevronRight" size={13} />
+        </button>
+      ))}
+    </React.Fragment>
+  );
+}
+
 function TopBar({ view, onAI, onScan, go }) {
   const { site, setSite } = React.useContext(SiteContext);
   const staticPath = crumbs[view] || ["Dashboard"];
@@ -2015,8 +2041,12 @@ function TopBar({ view, onAI, onScan, go }) {
 
       <div style={{ marginLeft: 8, display: "flex", alignItems: "center", gap: 8 }}>
         <TeamSwitcher />
-        <SitePicker go={go} />
-        <PreviewRoleSwitcher />
+        {/* One site (or none yet) needs no site picker — it appears once a
+            second site exists. */}
+        {(HL.sites || []).length > 1 && <SitePicker go={go} />}
+        {/* Role preview lives in the account menu now; the chip only shows
+            while a preview is actually running, so you can always exit it. */}
+        <PreviewActiveChip />
       </div>
 
       <div className="topbar-spacer" />
@@ -2030,11 +2060,6 @@ function TopBar({ view, onAI, onScan, go }) {
       <button className="scan-btn" onClick={onScan} title="Scan QR or barcode">
         <Icon name="scan" size={16} />
         Scan
-      </button>
-
-      <button className="ai-btn" onClick={onAI}>
-        <Icon name="sparkles" size={16} />
-        Ask HazardLink
       </button>
 
       <NotifBell go={go} />
@@ -2221,6 +2246,7 @@ function AccountMenu({ go }) {
               <span>Notification preferences</span>
               <Icon name="chevronRight" size={13} />
             </button>
+            {ME.role === "admin" && <AcctPreviewItems onDone={() => setOpen(false)} />}
           </div>
 
           <div className="acct-menu-foot">

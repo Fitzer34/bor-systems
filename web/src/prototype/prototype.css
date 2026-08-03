@@ -802,8 +802,10 @@ button { font-family: inherit; cursor: pointer; }
   .detail-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .app { grid-template-columns: 64px 1fr; }
-  .brand-name, .brand-sub, .nav-label, .nav-item span, .nav-item-lbl, .nav-parent-lbl, .nav-chev, .nav-count, .sidebar-foot { display: none; }
+  /* Keep the labels — an icon-only rail reads as a wall of cryptic symbols
+     to a new customer. The sidebar just slims down instead. */
+  .app { grid-template-columns: 196px 1fr; }
+  .brand-sub, .sidebar-foot { display: none; }
   .nav-group-items { margin-left: 0; padding-left: 0; border-left: none; }
   .search { display: none; }
 }
