@@ -161,6 +161,26 @@ async function generateMaintenanceNotifications(orgId: string, today: string): P
       }
     }
 
+    // Overdue statutory compliance items (fire alarm service, EICR, gas cert…).
+    const overdueCompliance = await db
+      .select({ id: schema.complianceItems.id, name: schema.complianceItems.name, nextDueOn: schema.complianceItems.nextDueOn })
+      .from(schema.complianceItems)
+      .where(and(
+        eq(schema.complianceItems.organisationId, orgId),
+        lt(schema.complianceItems.nextDueOn, today),
+      ));
+    for (const item of overdueCompliance) {
+      if (await dedupKeyFired(orgId, "compliance.overdue", item.id, today)) {
+        await notifyOrgRole(orgId, ["admin", "supervisor"], {
+          type: "compliance.overdue",
+          title: `Compliance overdue: ${item.name}`,
+          body: `"${item.name}" was due ${item.nextDueOn} and hasn't been marked done.`,
+          entityType: "compliance",
+          entityId: item.id,
+        });
+      }
+    }
+
     // Expiring / expired certifications (within 60 days).
     const certs = await db
       .select()

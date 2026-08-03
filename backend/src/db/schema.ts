@@ -1006,6 +1006,8 @@ export const staffCertifications = pgTable(
     issuedOn: date("issued_on", { mode: "string" }),
     expiresOn: date("expires_on", { mode: "string" }),
     notes: text("notes"),
+    documentUrl: text("document_url"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
@@ -1413,25 +1415,3 @@ export const clientPortals = pgTable(
   }),
 );
 
-/// Staff certifications (SafePass, Manual Handling, First Aid, …).
-/// Status derived from expiresOn at read time.
-export const staffCerts = pgTable(
-  "staff_certs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
-    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-    name: text("name").notNull(),
-    issuer: text("issuer"),
-    certNo: text("cert_no"),
-    issuedOn: date("issued_on"),
-    expiresOn: date("expires_on"),
-    documentUrl: text("document_url"),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => ({
-    userIdx: index("staff_certs_user_idx").on(t.userId),
-    orgExpIdx: index("staff_certs_org_exp_idx").on(t.organisationId, t.expiresOn),
-  }),
-);

@@ -39,19 +39,20 @@ export default async function certRoutes(app: FastifyInstance): Promise<void> {
     const c = ctx(req);
     const role = (req as any).user?.role as string;
     const isStaff = role === "admin" || role === "supervisor";
-    const conds = [eq(schema.staffCerts.organisationId, c.orgId)];
-    if (!isStaff) conds.push(eq(schema.staffCerts.userId, c.sub));
-    else if (q.data.userId) conds.push(eq(schema.staffCerts.userId, q.data.userId));
+    const conds = [eq(schema.staffCertifications.organisationId, c.orgId)];
+    if (!isStaff) conds.push(eq(schema.staffCertifications.userId, c.sub));
+    else if (q.data.userId) conds.push(eq(schema.staffCertifications.userId, q.data.userId));
     const rows = await db
-      .select({ cert: schema.staffCerts, userName: schema.users.name, userRole: schema.users.role })
-      .from(schema.staffCerts)
-      .innerJoin(schema.users, eq(schema.staffCerts.userId, schema.users.id))
+      .select({ cert: schema.staffCertifications, userName: schema.users.name, userRole: schema.users.role })
+      .from(schema.staffCertifications)
+      .innerJoin(schema.users, eq(schema.staffCertifications.userId, schema.users.id))
       .where(and(...conds))
-      .orderBy(schema.staffCerts.expiresOn)
+      .orderBy(schema.staffCertifications.expiresOn)
       .limit(1000);
     return {
       certs: rows.map((r) => ({
         ...r.cert,
+        certNo: r.cert.reference,
         userName: r.userName,
         userRole: r.userRole,
         status: statusOf(r.cert.expiresOn),
@@ -75,17 +76,17 @@ export default async function certRoutes(app: FastifyInstance): Promise<void> {
     const [target] = await db.select({ id: schema.users.id }).from(schema.users)
       .where(and(eq(schema.users.id, b.userId), eq(schema.users.organisationId, c.orgId))).limit(1);
     if (!target) return reply.code(404).send({ error: "not_found" });
-    const [row] = await db.insert(schema.staffCerts).values({
+    const [row] = await db.insert(schema.staffCertifications).values({
       organisationId: c.orgId,
       userId: b.userId,
       name: b.name,
       issuer: b.issuer ?? null,
-      certNo: b.certNo ?? null,
+      reference: b.certNo ?? null,
       issuedOn: b.issuedOn ?? null,
       expiresOn: b.expiresOn ?? null,
       createdBy: c.sub,
     }).returning();
-    return { cert: { ...row, status: statusOf(row!.expiresOn) } };
+    return { cert: { ...row, certNo: row!.reference, status: statusOf(row!.expiresOn) } };
   });
 
   const patchBody = createBody.partial().omit({ userId: true });
@@ -95,26 +96,26 @@ export default async function certRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     const b = parsed.data;
     const c = ctx(req);
-    const [row] = await db.update(schema.staffCerts)
+    const [row] = await db.update(schema.staffCertifications)
       .set({
         ...(b.name != null ? { name: b.name } : {}),
         ...(b.issuer !== undefined ? { issuer: b.issuer } : {}),
-        ...(b.certNo !== undefined ? { certNo: b.certNo } : {}),
+        ...(b.certNo !== undefined ? { reference: b.certNo } : {}),
         ...(b.issuedOn !== undefined ? { issuedOn: b.issuedOn } : {}),
         ...(b.expiresOn !== undefined ? { expiresOn: b.expiresOn } : {}),
       })
-      .where(and(eq(schema.staffCerts.id, id), eq(schema.staffCerts.organisationId, c.orgId)))
+      .where(and(eq(schema.staffCertifications.id, id), eq(schema.staffCertifications.organisationId, c.orgId)))
       .returning();
     if (!row) return reply.code(404).send({ error: "not_found" });
-    return { cert: { ...row, status: statusOf(row.expiresOn) } };
+    return { cert: { ...row, certNo: row.reference, status: statusOf(row.expiresOn) } };
   });
 
   app.delete("/certs/:id", { preHandler: [app.authenticate, requireStaff] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);
-    const rows = await db.delete(schema.staffCerts)
-      .where(and(eq(schema.staffCerts.id, id), eq(schema.staffCerts.organisationId, c.orgId)))
-      .returning({ id: schema.staffCerts.id });
+    const rows = await db.delete(schema.staffCertifications)
+      .where(and(eq(schema.staffCertifications.id, id), eq(schema.staffCertifications.organisationId, c.orgId)))
+      .returning({ id: schema.staffCertifications.id });
     if (!rows.length) return reply.code(404).send({ error: "not_found" });
     return { ok: true };
   });
@@ -122,8 +123,8 @@ export default async function certRoutes(app: FastifyInstance): Promise<void> {
   app.post("/certs/:id/document", { preHandler: [app.authenticate, requireStaff] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);
-    const [existing] = await db.select({ id: schema.staffCerts.id }).from(schema.staffCerts)
-      .where(and(eq(schema.staffCerts.id, id), eq(schema.staffCerts.organisationId, c.orgId))).limit(1);
+    const [existing] = await db.select({ id: schema.staffCertifications.id }).from(schema.staffCertifications)
+      .where(and(eq(schema.staffCertifications.id, id), eq(schema.staffCertifications.organisationId, c.orgId))).limit(1);
     if (!existing) return reply.code(404).send({ error: "not_found" });
     const file = await (req as any).file();
     if (!file) return reply.code(400).send({ error: "no_file" });
@@ -134,10 +135,10 @@ export default async function certRoutes(app: FastifyInstance): Promise<void> {
       mimetype: file.mimetype || "application/pdf",
       body: buf,
     });
-    const [row] = await db.update(schema.staffCerts)
+    const [row] = await db.update(schema.staffCertifications)
       .set({ documentUrl: url })
-      .where(eq(schema.staffCerts.id, id))
+      .where(eq(schema.staffCertifications.id, id))
       .returning();
-    return { cert: { ...row, status: statusOf(row!.expiresOn) } };
+    return { cert: { ...row, certNo: row!.reference, status: statusOf(row!.expiresOn) } };
   });
 }
