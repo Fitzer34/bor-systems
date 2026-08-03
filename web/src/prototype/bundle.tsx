@@ -1580,28 +1580,26 @@ function Sidebar({ view, go, counts }) {
     view === "user" ? "users"       :
     view;
 
-  // Pinned essentials — always visible, in the order a brand-new customer
-  // needs them. Six rows, plain words, nothing else shouting.
+  // Two fixed rows, then THE three parts of the product — Cleaning,
+  // Maintenance, Security — each carrying its discipline colour, with one
+  // business/admin drawer underneath. A brand-new customer sees six rows.
   const pinnedTop = [
     { id: "dashboard", label: "Dashboard",      icon: "grid" },
     { id: "assistant", label: "Ask HazardLink", icon: "sparkles" },
-    { id: "spills",    label: "Spill alerts",   icon: "alertTri", count: counts.spills },
-    { id: "floorplan", label: "Floor plans",    icon: "mapPin" },
-    { id: "devices",   label: "Devices",        icon: "monitor",  count: counts.devices },
-    { id: "reports",   label: "Reports",        icon: "chart" },
   ];
   // Kept so older references don't break; no longer rendered separately.
   const pinnedDevices = null;
 
-  // Four sections — one per discipline plus the business/admin drawer. All
-  // collapsed until opened (or containing the current page), so the full
-  // depth is one click away without ever being in your face.
   const groups = [
     {
       id: "clean",
       label: "Cleaning",
       icon: "droplet",
+      tint: "#2dd4bf", /* brighter teal for the dark sidebar */
       items: [
+        { id: "spills",     label: "Spill alerts",         icon: "alertTri", count: counts.spills },
+        { id: "floorplan",  label: "Floor plans",          icon: "mapPin" },
+        { id: "devices",    label: "Devices",              icon: "monitor",  count: counts.devices },
         { id: "cleaning",   label: "Rounds & inspections", icon: "droplet" },
         { id: "scheduling", label: "Scheduling",           icon: "calendar", count: counts.unassigned },
         { id: "sds",        label: "Safety sheets",        icon: "beaker" },
@@ -1611,6 +1609,7 @@ function Sidebar({ view, go, counts }) {
       id: "maint",
       label: "Maintenance",
       icon: "wrench",
+      tint: "#fbbf24", /* brighter amber for the dark sidebar */
       items: [
         { id: "maint-overview", label: "Overview",            icon: "gauge" },
         { id: "maintenance",    label: "Work orders",         icon: "wrench",      count: counts.maint },
@@ -1629,6 +1628,7 @@ function Sidebar({ view, go, counts }) {
       id: "secure",
       label: "Security",
       icon: "shield",
+      tint: "#818cf8", /* brighter indigo for the dark sidebar */
       items: [
         { id: "security", label: "Patrols & incidents", icon: "shield" },
         { id: "visitors", label: "Visitors",            icon: "users" },
@@ -1639,6 +1639,7 @@ function Sidebar({ view, go, counts }) {
       label: "Business & admin",
       icon: "cog",
       items: [
+        { id: "reports",       label: "Reports",       icon: "chart" },
         { id: "clientportal",  label: "Client portal", icon: "layers" },
         { id: "billing",       label: "Billing",       icon: "creditCard", count: counts.billingOverdue },
         { id: "timesheets",    label: "Timesheets",    icon: "clock" },
@@ -1721,7 +1722,9 @@ function Sidebar({ view, go, counts }) {
               aria-expanded={open}
               aria-controls={`navgrp-${g.id}`}
               onClick={() => toggleGroup(g.id)}>
-              <Icon name={g.icon} size={18} />
+              <span style={{ display:"inline-flex", color: g.tint || "inherit" }}>
+                <Icon name={g.icon} size={18} />
+              </span>
               <span className="nav-parent-lbl">{g.label}</span>
               {showActiveDot && (
                 <span className="nav-active-dot" aria-label="current section" />
