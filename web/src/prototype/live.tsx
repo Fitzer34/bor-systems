@@ -195,6 +195,7 @@ export function PrototypeAppLive() {
   resetHLEmpty();
   if (user) {
     setCurrentUser({
+      id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,

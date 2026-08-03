@@ -11716,42 +11716,252 @@ Object.assign(window, { PurchaseOrdersTab, PART_REORDER_CFG, PO_SEED });
 /* ════════════════════ asset_25_a86cbb3a.js ════════════════════ */
 ;
 /* HazardLink — Timesheets
-   Logged hours per job/shift across staff and contractors, with weekly
-   totals, an Approve action, and a labour cost summary that ties into billing. */
+   Live time and attendance. Clock in and out for the signed-in user, the
+   org's real entries for the visible week, supervisor approval, manual
+   entries for forgotten clocks, and the payroll CSV export. Every number
+   on this screen comes from the backend. */
 
-/* People — own staff and contractor operatives, with hourly rates */
-const TS_PEOPLE = [];
+/* Status pills map straight onto the backend's entry states. */
+const TS_STATUS_TONE  = { open: "clean", pending: "warn", approved: "ok" };
+const TS_STATUS_LABEL = { open: "Open", pending: "Pending", approved: "Approved" };
 
-/* Entries for the week of Mon 15 Jun – Sun 21 Jun 2026.
-   Mixed status — most Approved or Submitted; a couple Draft. */
-const TS_ENTRIES_SEED = [];
+/* ── Local-time date helpers (payroll weeks run Mon-Sun) ── */
+const TS_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const TS_DOW    = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+function tsMondayOf(d) {
+  const x = new Date(d);
+  x.setHours(12, 0, 0, 0); // noon dodges DST edges
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+function tsAddDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function tsIsoDate(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+function tsWeekLabel(start) {
+  const b = tsAddDays(start, 6);
+  return "Mon " + start.getDate() + " " + TS_MONTHS[start.getMonth()] + " → Sun " + b.getDate() + " " + TS_MONTHS[b.getMonth()];
+}
+function tsFmtDay(iso) {
+  const d = new Date(iso);
+  return TS_DOW[d.getDay()] + " " + d.getDate() + " " + TS_MONTHS[d.getMonth()];
+}
+function tsFmtTime(iso) {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function tsToLocalInput(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function tsInitials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+function tsOpenHours(e) { // elapsed hours on a still-open entry — real time, not a guess
+  return Math.max(0, (Date.now() - new Date(e.clockInAt).getTime()) / 3600000);
+}
+function tsUuidOr(id) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || "") ? id : undefined;
+}
+const TS_ROLE_LABEL = { admin: "Admin", supervisor: "Supervisor", cleaner: "Field staff" };
 
-const TS_STATUS_TONE = {
-  "Draft":     "muted",
-  "Submitted": "warn",
-  "Approved":  "ok",
-  "Rejected":  "crit",
-};
-
-const moneyEUR2 = (n) => "€" + n.toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-function getPerson(id) { return TS_PEOPLE.find((p) => p.id === id); }
+/* Authed CSV download — fetch with the bearer token, then a blob link. */
+function tsDownloadCsv(path, filename, onErr) {
+  fetch((window.HL_API_BASE || "/api") + path, {
+    headers: { Authorization: "Bearer " + (localStorage.getItem("bor.token") || "") },
+  })
+    .then((r) => { if (!r.ok) throw new Error("http " + r.status); return r.blob(); })
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    })
+    .catch(() => onErr && onErr());
+}
 
 /* ============================================================
-   Timesheet detail modal
+   Clock in / clock out card — the signed-in user's live state,
+   straight from GET /time/status
    ============================================================ */
-function TimesheetDetailModal({ entry, onClose, onApprove, onReject }) {
-  const person = getPerson(entry.personId);
-  const cost   = entry.hours * person.rate;
-  const canApprove = entry.status === "Submitted";
+function TsClockCard({ status, onRetry, onChanged, showToast }) {
+  const sites = (typeof HL !== "undefined" && HL.sites) || [];
+  const [buildingId, setBId]    = React.useState("");
+  const [breakMin, setBreakMin] = React.useState("");
+  const [busy, setBusy]         = React.useState(false);
+  const open = status && status.open;
+
+  // Re-render each minute while clocked in so "Xh" stays live.
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!open) return;
+    const t = setInterval(() => setTick((n) => n + 1), 60000);
+    return () => clearInterval(t);
+  }, [open ? open.id : null]);
+
+  const clockIn = () => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/time/clock-in", { method: "POST", body: { buildingId: tsUuidOr(buildingId) } })
+      .then((r) => {
+        if (!r.ok && r.status === 409) { showToast("You're already clocked in."); onChanged(); return; }
+        if (!r.ok) { showToast("Could not clock in. Try again."); return; }
+        showToast("Clocked in. The clock is running.");
+        setBId("");
+        onChanged();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  const clockOut = () => {
+    if (busy) return;
+    const bm = Math.max(0, parseInt(breakMin || "0", 10) || 0);
+    setBusy(true);
+    hlApi("/time/clock-out", { method: "POST", body: bm > 0 ? { breakMinutes: bm } : {} })
+      .then((r) => {
+        if (!r.ok && r.status === 409) { showToast("You weren't clocked in."); onChanged(); return; }
+        if (!r.ok) { showToast("Could not clock out. Try again."); return; }
+        const e = r.b && r.b.entry;
+        let h = null;
+        if (e && e.clockOutAt) {
+          h = Math.max(0, (new Date(e.clockOutAt) - new Date(e.clockInAt)) / 3600000 - (e.breakMinutes || 0) / 60);
+        }
+        showToast(h != null ? "Clocked out. " + h.toFixed(2) + " h logged, pending approval." : "Clocked out.");
+        setBreakMin("");
+        onChanged();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  const hrs = open ? tsOpenHours(open) : 0;
+  const siteName = open ? (sites.find((s) => s.id === open.buildingId) || {}).name : null;
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 20 }}>
+      {status === undefined && (
+        <div style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Checking whether you're clocked in…</div>
+      )}
+      {status === false && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ color: "var(--warn)", fontSize: 13.5 }}>Couldn't check your clock status.</span>
+          <button className="btn btn-sm" onClick={onRetry}><Icon name="rotateCw" size={13} />Retry</button>
+        </div>
+      )}
+      {status && !open && (
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: softBg("muted"), color: solid("muted"), display: "grid", placeItems: "center", flex: "none" }}>
+            <Icon name="clock" size={18} />
+          </div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5 }}>You're clocked out</div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Clock in when you start. Your hours land in this timesheet.</div>
+          </div>
+          <select className="dv-input" style={{ width: 200 }} value={buildingId} onChange={(e) => setBId(e.target.value)}>
+            <option value="">No site</option>
+            {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <button className="btn btn-primary" disabled={busy} style={{ opacity: busy ? .6 : 1 }} onClick={clockIn}>
+            <Icon name="clock" size={15} />{busy ? "Clocking in…" : "Clock in"}
+          </button>
+        </div>
+      )}
+      {status && open && (
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: softBg("ok"), color: solid("ok"), display: "grid", placeItems: "center", flex: "none" }}>
+            <Icon name="clock" size={18} />
+          </div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              Clocked in since {tsFmtTime(open.clockInAt)}
+              <Pill tone="ok" dot>{hrs.toFixed(1)} h</Pill>
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
+              {siteName ? "At " + siteName : "No site picked"}{open.note ? " · " + open.note : ""}
+            </div>
+            {hrs > 16 && (
+              <div style={{ fontSize: 12.5, color: "var(--warn)", fontWeight: 600, marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
+                <Icon name="alertTri" size={13} />Open for {Math.round(hrs)} h. Forgot to clock out?
+              </div>
+            )}
+          </div>
+          <label style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", alignItems: "center", gap: 7 }}>
+            Break
+            <input className="dv-input" type="number" min="0" max="600" style={{ width: 74 }}
+              value={breakMin} onChange={(e) => setBreakMin(e.target.value)} placeholder="0" />
+            min
+          </label>
+          <button className="btn btn-primary" disabled={busy} style={{ opacity: busy ? .6 : 1 }} onClick={clockOut}>
+            <Icon name="check" size={15} />{busy ? "Clocking out…" : "Clock out"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Timesheet detail modal — read-only for field staff, editable
+   times/break/site/note plus approve and delete for staff
+   ============================================================ */
+function TimesheetDetailModal({ entry, canManage, busy, onClose, onApprove, onDelete, onSave, showToast }) {
+  const sites = (typeof HL !== "undefined" && HL.sites) || [];
+  const [cin, setCin]   = React.useState(tsToLocalInput(entry.clockInAt));
+  const [cout, setCout] = React.useState(tsToLocalInput(entry.clockOutAt));
+  const [brk, setBrk]   = React.useState(String(entry.breakMinutes || 0));
+  const [bId, setBId]   = React.useState(entry.buildingId || "");
+  const [note, setNote] = React.useState(entry.note || "");
+  const [confirmDel, setConfirmDel] = React.useState(false);
+
+  const openHrs = entry.clockOutAt ? null : tsOpenHours(entry);
+  const dirty = canManage && (
+    cin !== tsToLocalInput(entry.clockInAt) ||
+    cout !== tsToLocalInput(entry.clockOutAt) ||
+    (parseInt(brk, 10) || 0) !== (entry.breakMinutes || 0) ||
+    bId !== (entry.buildingId || "") ||
+    note !== (entry.note || "")
+  );
+
+  const previewHours = (() => {
+    if (!cin || !cout) return null;
+    const h = (new Date(cout) - new Date(cin)) / 3600000 - (parseInt(brk, 10) || 0) / 60;
+    return h > 0 ? Math.round(h * 100) / 100 : null;
+  })();
+
+  const save = () => {
+    if (!dirty || busy) return;
+    if (!cin) { showToast("A clock-in time is needed."); return; }
+    if (entry.clockOutAt && !cout) { showToast("Clock-out can't be removed. Set the real time instead."); return; }
+    if (cout && new Date(cout) <= new Date(cin)) { showToast("Clock-out must be after clock-in."); return; }
+    const patch = {};
+    if (cin !== tsToLocalInput(entry.clockInAt)) patch.clockInAt = new Date(cin).toISOString();
+    if (cout && cout !== tsToLocalInput(entry.clockOutAt)) patch.clockOutAt = new Date(cout).toISOString();
+    if ((parseInt(brk, 10) || 0) !== (entry.breakMinutes || 0)) patch.breakMinutes = Math.max(0, parseInt(brk, 10) || 0);
+    if (bId !== (entry.buildingId || "")) patch.buildingId = bId || null;
+    if (note !== (entry.note || "")) patch.note = note.trim() || null;
+    if (Object.keys(patch).length === 0) { onClose(); return; }
+    onSave(entry.id, patch);
+  };
+
+  const sourceText = entry.source === "manual" ? "Added manually by a supervisor" : "Clocked in the app";
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
         <div className="modal-head">
           <div className="mh-ico"><Icon name="clock" size={18} /></div>
           <div>
-            <h3>Timesheet entry {entry.id}</h3>
-            <p>{person.name} · {entry.date}</p>
+            <h3>Timesheet entry</h3>
+            <p>{entry.userName} · {tsFmtDay(entry.clockInAt)}</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
@@ -11759,42 +11969,102 @@ function TimesheetDetailModal({ entry, onClose, onApprove, onReject }) {
           <div className="ts-detail">
             <div className="ts-d-row"><span>Person</span>
               <b style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="ts-av">{person.initials}</span>
-                {person.name} <small style={{ color: "var(--ink-3)", fontWeight: 500 }}>· {person.role}</small>
+                <span className="ts-av">{tsInitials(entry.userName)}</span>
+                {entry.userName} <small style={{ color: "var(--ink-3)", fontWeight: 500 }}>· {entry.userEmail}</small>
               </b>
             </div>
-            <div className="ts-d-row"><span>Organisation</span><b>{person.org === "internal" ? "In-house" : person.org}</b></div>
-            <div className="ts-d-row"><span>Date</span><b>{entry.date}</b></div>
-            <div className="ts-d-row"><span>Site</span><b>{entry.site}</b></div>
-            <div className="ts-d-row"><span>Job / shift</span><b>{entry.ref}</b></div>
-            <div className="ts-d-row"><span>Time</span><b style={{ fontFamily: "var(--mono)" }}>{entry.start} – {entry.end}</b></div>
-            <div className="ts-d-row"><span>Hours logged</span><b style={{ fontFamily: "var(--mono)", fontSize: 16 }}>{entry.hours.toFixed(2)}</b></div>
-            <div className="ts-d-row"><span>Rate</span><b style={{ fontFamily: "var(--mono)" }}>{moneyEUR2(person.rate)}<small style={{ color: "var(--ink-3)", fontWeight: 500 }}> /hr</small></b></div>
-            <div className="ts-d-row"><span>Billable</span>
-              <b><Pill tone={entry.billable ? "ok" : "muted"} dot>{entry.billable ? "Billable to client" : "Internal"}</Pill></b>
+            <div className="ts-d-row"><span>Status</span>
+              <b style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Pill tone={TS_STATUS_TONE[entry.status] || "muted"} dot>{TS_STATUS_LABEL[entry.status] || entry.status}</Pill>
+                <small style={{ color: "var(--ink-3)", fontWeight: 500 }}>
+                  {sourceText}{entry.editedBy ? " · adjusted" : ""}
+                  {entry.status === "approved" && entry.approvedAt ? " · approved " + tsFmtDay(entry.approvedAt) : ""}
+                </small>
+              </b>
             </div>
+            <div className="ts-d-row"><span>Date</span><b>{tsFmtDay(entry.clockInAt)}</b></div>
+            <div className="ts-d-row"><span>Site</span>
+              {canManage ? (
+                <select className="dv-input" style={{ width: 220 }} value={bId} onChange={(e) => setBId(e.target.value)}>
+                  <option value="">No site</option>
+                  {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              ) : (
+                <b>{entry.buildingName || "No site"}</b>
+              )}
+            </div>
+            <div className="ts-d-row"><span>Clock in</span>
+              {canManage ? (
+                <input className="dv-input" type="datetime-local" style={{ width: 220 }} value={cin} onChange={(e) => setCin(e.target.value)} />
+              ) : (
+                <b style={{ fontFamily: "var(--mono)" }}>{tsFmtTime(entry.clockInAt)}</b>
+              )}
+            </div>
+            <div className="ts-d-row"><span>Clock out</span>
+              {canManage ? (
+                <input className="dv-input" type="datetime-local" style={{ width: 220 }} value={cout} onChange={(e) => setCout(e.target.value)} />
+              ) : (
+                <b style={{ fontFamily: "var(--mono)" }}>{entry.clockOutAt ? tsFmtTime(entry.clockOutAt) : "Still on the clock"}</b>
+              )}
+            </div>
+            <div className="ts-d-row"><span>Break</span>
+              {canManage ? (
+                <b style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }}>
+                  <input className="dv-input" type="number" min="0" max="600" style={{ width: 80 }} value={brk} onChange={(e) => setBrk(e.target.value)} />
+                  <small style={{ color: "var(--ink-3)" }}>min</small>
+                </b>
+              ) : (
+                <b style={{ fontFamily: "var(--mono)" }}>{entry.breakMinutes || 0} min</b>
+              )}
+            </div>
+            {(canManage || entry.note) && (
+              <div className="ts-d-row"><span>Note</span>
+                {canManage ? (
+                  <input className="dv-input" style={{ width: 260 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
+                ) : (
+                  <b style={{ fontWeight: 500 }}>{entry.note}</b>
+                )}
+              </div>
+            )}
             <div className="ts-d-row ts-d-total">
-              <span>{entry.billable ? "To bill to client" : "Cost to facility"}</span>
-              <b style={{ fontFamily: "var(--mono)", fontSize: 18, color: entry.billable ? "var(--ok)" : "var(--ink-2)" }}>{moneyEUR2(cost)}</b>
+              <span>{openHrs != null ? "On the clock" : "Hours logged"}</span>
+              <b style={{ fontFamily: "var(--mono)", fontSize: 18, color: entry.status === "approved" ? "var(--ok)" : "var(--ink-2)" }}>
+                {openHrs != null
+                  ? openHrs.toFixed(1) + " h so far"
+                  : (canManage && previewHours != null ? previewHours.toFixed(2) : (entry.hours != null ? entry.hours.toFixed(2) : "—"))}
+              </b>
             </div>
           </div>
 
+          {openHrs != null && openHrs > 16 && (
+            <p style={{ marginTop: 14, fontSize: 12.5, color: "var(--warn)", fontWeight: 600, lineHeight: 1.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="alertTri" size={12} />Open for {Math.round(openHrs)} h. Forgot to clock out?
+              {canManage ? " Set the real clock-out above and save." : " Ask a supervisor to set the real end time."}
+            </p>
+          )}
           <p style={{ marginTop: 14, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
-            <Icon name="checkCircle" size={11} /> Approved billable entries feed the next billing run automatically.
+            <Icon name="checkCircle" size={11} /> Approved hours are what the payroll CSV export includes.
           </p>
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>Close</button>
-          {canApprove && (
+          {canManage && (
             <React.Fragment>
-              <button className="btn" style={{ background: "var(--crit-soft)", color: "var(--crit)", borderColor: "color-mix(in oklch, var(--crit) 30%, var(--line))" }}
-                onClick={() => onReject(entry.id)}>
-                <Icon name="x" size={14} />Reject
+              <button className="btn" disabled={busy}
+                style={{ background: "var(--crit-soft)", color: "var(--crit)", borderColor: "color-mix(in oklch, var(--crit) 30%, var(--line))" }}
+                onClick={() => (confirmDel ? onDelete(entry.id) : setConfirmDel(true))}>
+                <Icon name="trash" size={14} />{confirmDel ? "Really delete?" : "Delete"}
               </button>
-              <button className="btn btn-primary" style={{ background: "var(--ok)" }}
-                onClick={() => onApprove(entry.id)}>
-                <Icon name="check" size={14} />Approve
-              </button>
+              {dirty ? (
+                <button className="btn btn-primary" disabled={busy} style={{ opacity: busy ? .6 : 1 }} onClick={save}>
+                  <Icon name="check" size={14} />{busy ? "Saving…" : "Save changes"}
+                </button>
+              ) : entry.status === "pending" ? (
+                <button className="btn btn-primary" disabled={busy} style={{ background: "var(--ok)", opacity: busy ? .6 : 1 }}
+                  onClick={() => onApprove(entry.id)}>
+                  <Icon name="check" size={14} />Approve
+                </button>
+              ) : null}
             </React.Fragment>
           )}
         </div>
@@ -11804,79 +12074,187 @@ function TimesheetDetailModal({ entry, onClose, onApprove, onReject }) {
 }
 
 /* ============================================================
-   Weekly totals panel
+   Manual entry modal — staff only, for hours somebody worked
+   without clocking. Saves as pending via POST /time/entries.
    ============================================================ */
-function WeeklyTotals({ entries }) {
+function TsManualEntryModal({ users, busy, onClose, onSubmit }) {
+  const sites = (typeof HL !== "undefined" && HL.sites) || [];
+  const [userId, setUserId] = React.useState("");
+  const [bId, setBId]       = React.useState("");
+  const [date, setDate]     = React.useState(tsIsoDate(new Date()));
+  const [start, setStart]   = React.useState("09:00");
+  const [end, setEnd]       = React.useState("17:00");
+  const [brk, setBrk]       = React.useState("0");
+  const [note, setNote]     = React.useState("");
+  const canSave = userId && date && start && end && !busy;
+
+  const submit = () => {
+    if (!canSave) return;
+    const cin = new Date(date + "T" + start);
+    let cout = new Date(date + "T" + end);
+    if (cout <= cin) cout = new Date(cout.getTime() + 86400000); // overnight shift rolls to the next day
+    onSubmit({
+      userId,
+      buildingId: tsUuidOr(bId),
+      clockInAt: cin.toISOString(),
+      clockOutAt: cout.toISOString(),
+      breakMinutes: Math.max(0, parseInt(brk || "0", 10) || 0),
+      note: note.trim() || undefined,
+    });
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="plus" size={18} /></div>
+          <div>
+            <h3>Add a timesheet entry</h3>
+            <p>For hours someone worked without clocking. It saves as pending, ready to approve.</p>
+          </div>
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="ai-fields">
+            <div className="ai-field">
+              <label>Who worked</label>
+              <select className="dv-input" value={userId} onChange={(e) => setUserId(e.target.value)}>
+                <option value="">Select…</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{(u.name || u.email) + " · " + (TS_ROLE_LABEL[u.role] || u.role)}</option>
+                ))}
+              </select>
+              {users.length === 0 && <div className="ai-hint">No staff to pick. Invite people in Users first.</div>}
+            </div>
+            <div className="ai-field">
+              <label>Site</label>
+              <select className="dv-input" value={bId} onChange={(e) => setBId(e.target.value)}>
+                <option value="">No site</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="ai-field">
+              <label>Date</label>
+              <input className="dv-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <div className="ai-field">
+                <label>Start</label>
+                <input className="dv-input" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+              </div>
+              <div className="ai-field">
+                <label>End</label>
+                <input className="dv-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+              </div>
+              <div className="ai-field">
+                <label>Break (min)</label>
+                <input className="dv-input" type="number" min="0" max="600" value={brk} onChange={(e) => setBrk(e.target.value)} />
+              </div>
+            </div>
+            <div className="ai-hint">An end time earlier than the start rolls into the next day, for night shifts.</div>
+            <div className="ai-field">
+              <label>Note (optional)</label>
+              <input className="dv-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Forgot to clock, confirmed with the site lead" />
+            </div>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!canSave} style={{ opacity: canSave ? 1 : .5 }} onClick={submit}>
+            <Icon name="check" size={15} />{busy ? "Saving…" : "Add entry"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Weekly totals panel — per person, computed from real entries
+   ============================================================ */
+function WeeklyTotals({ entries, weekStart }) {
   const byPerson = React.useMemo(() => {
     const m = new Map();
     entries.forEach((e) => {
-      const p = getPerson(e.personId);
-      if (!p) return;
-      if (!m.has(p.id)) m.set(p.id, { person: p, hours: 0, billable: 0, internal: 0, cost: 0, billableCost: 0 });
-      const r = m.get(p.id);
-      r.hours += e.hours;
-      if (e.billable) {
-        r.billable += e.hours;
-        r.billableCost += e.hours * p.rate;
-      } else {
-        r.internal += e.hours;
+      if (!m.has(e.userId)) {
+        m.set(e.userId, { id: e.userId, name: e.userName || e.userEmail, email: e.userEmail, hours: 0, approved: 0, pending: 0, breakMin: 0, count: 0, openCt: 0 });
       }
-      r.cost += e.hours * p.rate;
+      const r = m.get(e.userId);
+      r.count += 1;
+      if (e.status === "open") r.openCt += 1;
+      if (e.hours != null) {
+        r.hours += e.hours;
+        if (e.status === "approved") r.approved += e.hours;
+        else r.pending += e.hours;
+      }
+      r.breakMin += e.breakMinutes || 0;
     });
     return [...m.values()].sort((a, b) => b.hours - a.hours);
   }, [entries]);
 
-  const grandHours = byPerson.reduce((s, x) => s + x.hours, 0);
-  const grandCost  = byPerson.reduce((s, x) => s + x.cost, 0);
-  const grandBill  = byPerson.reduce((s, x) => s + x.billableCost, 0);
+  const grandHours    = byPerson.reduce((s, x) => s + x.hours, 0);
+  const grandApproved = byPerson.reduce((s, x) => s + x.approved, 0);
+  const grandPending  = byPerson.reduce((s, x) => s + x.pending, 0);
+  const grandBreak    = byPerson.reduce((s, x) => s + x.breakMin, 0);
+  const grandCount    = byPerson.reduce((s, x) => s + x.count, 0);
 
   return (
     <div className="card">
       <div className="card-head">
-        <h3>Weekly totals — Mon 15 Jun → Sun 21 Jun</h3>
-        <span className="sub">hours per person, billable split, cost</span>
-        <span className="head-act"><Pill tone="accent" dot>{byPerson.length} people</Pill></span>
+        <h3>Weekly totals · {tsWeekLabel(weekStart)}</h3>
+        <span className="sub">hours per person from real clock-ins</span>
+        <span className="head-act"><Pill tone="accent" dot>{byPerson.length} {byPerson.length === 1 ? "person" : "people"}</Pill></span>
       </div>
-      <div className="ts-wk-head">
-        <div>Person</div>
-        <div>Total</div>
-        <div>Billable</div>
-        <div>Internal</div>
-        <div>Cost this week</div>
-        <div>To bill</div>
-      </div>
-      {byPerson.map((r) => {
-        const pctBill = r.hours ? (r.billable / r.hours) * 100 : 0;
-        return (
-          <div key={r.person.id} className="ts-wk-row">
-            <div className="ts-wk-person">
-              <span className="ts-av">{r.person.initials}</span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 650, fontSize: 13.5 }}>{r.person.name}</div>
-                <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{r.person.role}{r.person.org !== "internal" ? " · " + r.person.org : ""}</div>
-              </div>
-            </div>
-            <div className="ts-wk-h">
-              {r.hours.toFixed(1)}<small>h</small>
-              <div className="ts-wk-bar">
-                <div className="ts-wk-bar-fill" style={{ width: pctBill + "%" }} />
-              </div>
-            </div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, color: "var(--ok)", fontWeight: 700 }}>{r.billable.toFixed(1)}h</div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, color: "var(--ink-3)", fontWeight: 600 }}>{r.internal.toFixed(1)}h</div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 700 }}>{moneyEUR2(r.cost)}</div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 700, color: "var(--ok)" }}>{moneyEUR2(r.billableCost)}</div>
+      {byPerson.length === 0 ? (
+        <div style={{ padding: "30px", textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>
+          No hours logged this week yet.
+        </div>
+      ) : (
+        <React.Fragment>
+          <div className="ts-wk-head">
+            <div>Person</div>
+            <div>Total</div>
+            <div>Approved</div>
+            <div>Pending</div>
+            <div>Break</div>
+            <div>Entries</div>
           </div>
-        );
-      })}
-      <div className="ts-wk-totals">
-        <div>Totals</div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 800 }}>{grandHours.toFixed(1)}h</div>
-        <div></div>
-        <div></div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 800 }}>{moneyEUR2(grandCost)}</div>
-        <div style={{ fontFamily: "var(--mono)", fontWeight: 800, color: "var(--ok)" }}>{moneyEUR2(grandBill)}</div>
-      </div>
+          {byPerson.map((r) => {
+            const pctApproved = r.hours ? (r.approved / r.hours) * 100 : 0;
+            return (
+              <div key={r.id} className="ts-wk-row">
+                <div className="ts-wk-person">
+                  <span className="ts-av">{tsInitials(r.name)}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 650, fontSize: 13.5 }}>{r.name}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email}</div>
+                  </div>
+                </div>
+                <div className="ts-wk-h">
+                  {r.hours.toFixed(1)}<small>h</small>
+                  <div className="ts-wk-bar">
+                    <div className="ts-wk-bar-fill" style={{ width: pctApproved + "%" }} />
+                  </div>
+                </div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, color: "var(--ok)", fontWeight: 700 }}>{r.approved.toFixed(1)}h</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, color: r.pending ? "var(--warn)" : "var(--ink-3)", fontWeight: 600 }}>{r.pending.toFixed(1)}h</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, color: "var(--ink-3)", fontWeight: 600 }}>{r.breakMin ? r.breakMin + "m" : "—"}</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 700 }}>
+                  {r.count}{r.openCt > 0 && <small style={{ fontFamily: "var(--font)", color: "var(--warn)", fontWeight: 700 }}> · {r.openCt} open</small>}
+                </div>
+              </div>
+            );
+          })}
+          <div className="ts-wk-totals">
+            <div>Totals</div>
+            <div style={{ fontFamily: "var(--mono)", fontWeight: 800 }}>{grandHours.toFixed(1)}h</div>
+            <div style={{ fontFamily: "var(--mono)", fontWeight: 800 }}>{grandApproved.toFixed(1)}h</div>
+            <div style={{ fontFamily: "var(--mono)", fontWeight: 800 }}>{grandPending.toFixed(1)}h</div>
+            <div style={{ fontFamily: "var(--mono)", fontWeight: 800 }}>{grandBreak ? grandBreak + "m" : "—"}</div>
+            <div style={{ fontFamily: "var(--mono)", fontWeight: 800 }}>{grandCount}</div>
+          </div>
+        </React.Fragment>
+      )}
     </div>
   );
 }
@@ -11886,55 +12264,164 @@ function WeeklyTotals({ entries }) {
    ============================================================ */
 function TimesheetsView({ go }) {
   const { site } = React.useContext(SiteContext);
-  const [entries, setEntries] = React.useState(TS_ENTRIES_SEED);
-  const [filter, setFilter]   = React.useState("All");
-  const [open, setOpen]       = React.useState(null);  // entry id
-  const [tab, setTab]         = React.useState("entries"); // entries | totals
-  const { showToast, toastNode } = useViewToast();
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canManage = me.role === "admin" || me.role === "supervisor";
 
-  /* Site scope — entire view reads from this scoped list, so KPIs,
-     filters, weekly totals and counts all match the active site. */
-  const scopedEntries = site
-    ? entries.filter((e) => e.site === site.name || (site.name === "All sites" && true))
-    : entries;
+  const [weekStart, setWeekStart] = React.useState(() => tsMondayOf(new Date()));
+  const [entries, setEntries]     = React.useState(null);      // null loading | false error | [rows]
+  const [status, setStatus]       = React.useState(undefined); // undefined loading | false error | {open}
+  const [users, setUsers]         = React.useState([]);
+  const [filter, setFilter]       = React.useState("All");
+  const [openId, setOpenId]       = React.useState(null);
+  const [tab, setTab]             = React.useState("entries"); // entries | totals
+  const [showAdd, setShowAdd]     = React.useState(false);
+  const [busyAll, setBusyAll]     = React.useState(false);
+  const [modalBusy, setModalBusy] = React.useState(false);
+  const { showToast, toastNode }  = useViewToast();
 
-  const filtered = scopedEntries.filter((e) => {
+  const from = tsIsoDate(weekStart);
+  const to   = tsIsoDate(tsAddDays(weekStart, 6));
+  const isThisWeek = tsIsoDate(weekStart) === tsIsoDate(tsMondayOf(new Date()));
+
+  const refreshEntries = React.useCallback(() => {
+    return hlApi("/time/entries?from=" + from + "&to=" + to)
+      .then(({ ok, b }) => setEntries(ok && b ? (b.entries || []) : false))
+      .catch(() => setEntries(false));
+  }, [from, to]);
+  const refreshStatus = React.useCallback(() => {
+    return hlApi("/time/status")
+      .then(({ ok, b }) => setStatus(ok && b ? b : false))
+      .catch(() => setStatus(false));
+  }, []);
+
+  React.useEffect(() => { setEntries(null); refreshEntries(); }, [refreshEntries]);
+  React.useEffect(() => { refreshStatus(); }, [refreshStatus]);
+  React.useEffect(() => {
+    if (!canManage) return;
+    hlApi("/users")
+      .then(({ ok, b }) => { if (ok && b) setUsers((b.users || []).filter((u) => !u.deactivatedAt)); })
+      .catch(() => {});
+  }, [canManage]);
+
+  /* Site scope — the active site filters the whole view, so KPIs, the
+     table, weekly totals and counts all match the picker. */
+  const list = Array.isArray(entries) ? entries : [];
+  const scoped = site ? list.filter((e) => (e.buildingName || "") === site.name) : list;
+
+  const filtered = scoped.filter((e) => {
     if (filter === "All") return true;
-    if (filter === "Submitted") return e.status === "Submitted";
-    if (filter === "Approved")  return e.status === "Approved";
-    if (filter === "Draft")     return e.status === "Draft";
-    if (filter === "Billable")  return e.billable;
+    if (filter === "Open") return e.status === "open";
+    if (filter === "Pending") return e.status === "pending";
+    if (filter === "Approved") return e.status === "approved";
     return true;
   });
 
-  const grid = "1.3fr 110px 1.4fr 1.4fr 130px 70px 90px 110px 120px";
+  const grid = "1.3fr 110px 1.2fr 1.2fr 130px 70px 80px 110px 110px";
 
-  /* KPI numbers — across SCOPED entries (so the active site filters them) */
-  const allHours    = scopedEntries.reduce((s, e) => s + e.hours, 0);
-  const billHours   = scopedEntries.filter((e) => e.billable).reduce((s, e) => s + e.hours, 0);
-  const pendingCt   = scopedEntries.filter((e) => e.status === "Submitted").length;
-  const allCost     = scopedEntries.reduce((s, e) => s + e.hours * getPerson(e.personId).rate, 0);
-  const billableCost = scopedEntries.filter((e) => e.billable).reduce((s, e) => s + e.hours * getPerson(e.personId).rate, 0);
-  const billablePct = allHours ? (billHours / allHours) * 100 : 0;
+  /* KPI numbers — all computed from the real entries in view */
+  const doneHours     = scoped.reduce((s, e) => s + (e.hours || 0), 0);
+  const approvedHours = scoped.filter((e) => e.status === "approved").reduce((s, e) => s + (e.hours || 0), 0);
+  const pendingCt     = scoped.filter((e) => e.status === "pending").length;
+  const openNow       = scoped.filter((e) => e.status === "open").length;
+  const peopleCt      = new Set(scoped.map((e) => e.userId)).size;
+  const sitesCt       = new Set(scoped.filter((e) => e.buildingName).map((e) => e.buildingName)).size;
+
+  const refreshAll = () => { refreshStatus(); refreshEntries(); };
 
   const approve = (id) => {
-    setEntries((xs) => xs.map((x) => x.id === id ? { ...x, status: "Approved" } : x));
-    setOpen(null);
-    showToast(`Timesheet ${id} approved`);
-  };
-  const reject  = (id) => {
-    setEntries((xs) => xs.map((x) => x.id === id ? { ...x, status: "Rejected" } : x));
-    setOpen(null);
-    showToast(`Timesheet ${id} rejected`);
-  };
-  const approveAllPending = () => {
-    const ids = scopedEntries.filter((e) => e.status === "Submitted").map((e) => e.id);
-    if (ids.length === 0) return;
-    setEntries((xs) => xs.map((x) => ids.includes(x.id) ? { ...x, status: "Approved" } : x));
-    showToast(`${ids.length} timesheet${ids.length === 1 ? "" : "s"} approved`);
+    hlApi("/time/entries/" + id + "/approve", { method: "POST" })
+      .then(({ ok, b }) => {
+        if (!ok) {
+          const err = b && b.error;
+          showToast(err === "still_clocked_in" ? "Still on the clock. Set a clock-out time first."
+            : err === "already_approved" ? "That entry is already approved."
+            : "Could not approve. Check your access.");
+          if (err === "already_approved") refreshEntries();
+          return;
+        }
+        showToast("Entry approved");
+        setOpenId(null);
+        refreshEntries();
+      })
+      .catch(() => showToast("No connection. Try again."));
   };
 
-  const entry = open ? entries.find((e) => e.id === open) : null;
+  const approveAllPending = () => {
+    if (pendingCt === 0 || busyAll) return;
+    setBusyAll(true);
+    const done = (n) => { showToast(n + (n === 1 ? " entry" : " entries") + " approved"); refreshEntries(); };
+    if (!site) {
+      hlApi("/time/approve-all", { method: "POST", body: { from, to } })
+        .then(({ ok, b }) => {
+          if (!ok) { showToast("Could not approve. Check your access."); return; }
+          done((b && b.approved) || 0);
+        })
+        .catch(() => showToast("No connection. Try again."))
+        .finally(() => setBusyAll(false));
+    } else {
+      // A site scope is active, so approve just this site's pending rows.
+      const ids = scoped.filter((e) => e.status === "pending").map((e) => e.id);
+      Promise.all(ids.map((id) => hlApi("/time/entries/" + id + "/approve", { method: "POST" })))
+        .then((rs) => done(rs.filter((r) => r.ok).length))
+        .catch(() => showToast("No connection. Try again."))
+        .finally(() => setBusyAll(false));
+    }
+  };
+
+  const del = (id) => {
+    setModalBusy(true);
+    hlApi("/time/entries/" + id, { method: "DELETE" })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not delete. Check your access."); return; }
+        showToast("Entry deleted");
+        setOpenId(null);
+        refreshEntries();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setModalBusy(false));
+  };
+
+  const saveEdit = (id, patch) => {
+    setModalBusy(true);
+    hlApi("/time/entries/" + id, { method: "PATCH", body: patch })
+      .then(({ ok, b }) => {
+        if (!ok) {
+          showToast(b && b.error === "out_before_in" ? "Clock-out must be after clock-in." : "Could not save. Check the times.");
+          return;
+        }
+        showToast("Entry updated");
+        setOpenId(null);
+        refreshAll();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setModalBusy(false));
+  };
+
+  const addManual = (body) => {
+    setModalBusy(true);
+    hlApi("/time/entries", { method: "POST", body })
+      .then(({ ok, b }) => {
+        if (!ok) {
+          showToast(b && b.error === "out_before_in" ? "The end time must be after the start." : "Could not add the entry. Check the details.");
+          return;
+        }
+        showToast("Entry added. It's pending approval.");
+        setShowAdd(false);
+        refreshEntries();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setModalBusy(false));
+  };
+
+  const exportCsv = () => {
+    tsDownloadCsv("/time/export.csv?from=" + from + "&to=" + to, "timesheets-" + from + ".csv",
+      () => showToast("Could not download the CSV. Check your access."));
+  };
+
+  const entry = openId ? list.find((e) => e.id === openId) : null;
+  const kpiFootPeople = peopleCt
+    ? "across " + peopleCt + (peopleCt === 1 ? " person" : " people") + (sitesCt ? " · " + sitesCt + (sitesCt === 1 ? " site" : " sites") : "")
+    : "no completed hours yet";
 
   return (
     <div className="content-inner">
@@ -11942,119 +12429,183 @@ function TimesheetsView({ go }) {
         <div>
           <h1 className="page-title">Timesheets</h1>
           <p className="page-desc">
-            Hours logged per job and shift by your team and approved contractors.
-            Approved billable hours feed the next billing run automatically.
+            {canManage
+              ? "Hours clocked by your team for the week shown. Approve entries as they come in, then export the week for payroll."
+              : "Your clocked hours for the week shown. A supervisor approves them before payroll."}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn"><Icon name="file" size={15} />Export CSV</button>
-          <button className="btn btn-primary" onClick={approveAllPending} disabled={pendingCt === 0}
-            style={{ opacity: pendingCt === 0 ? .5 : 1 }}>
-            <Icon name="check" size={15} />Approve {pendingCt} pending
+        {canManage && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn" onClick={exportCsv}><Icon name="file" size={15} />Export CSV</button>
+            <button className="btn" onClick={() => setShowAdd(true)}><Icon name="plus" size={15} />Add entry</button>
+            <button className="btn btn-primary" onClick={approveAllPending} disabled={pendingCt === 0 || busyAll}
+              style={{ opacity: pendingCt === 0 || busyAll ? .5 : 1 }}>
+              <Icon name="check" size={15} />{busyAll ? "Approving…" : "Approve " + pendingCt + " pending"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <TsClockCard status={status} onRetry={refreshStatus} onChanged={refreshAll} showToast={showToast} />
+
+      <div className="toolbar" style={{ alignItems: "center" }}>
+        <button className="btn btn-sm" onClick={() => setWeekStart((w) => tsAddDays(w, -7))} aria-label="Previous week">
+          <Icon name="chevronLeft" size={14} />
+        </button>
+        <b style={{ fontSize: 13, textAlign: "center", minWidth: 185 }}>{tsWeekLabel(weekStart)}</b>
+        <button className="btn btn-sm" onClick={() => setWeekStart((w) => tsAddDays(w, 7))} aria-label="Next week">
+          <Icon name="chevronRight" size={14} />
+        </button>
+        {!isThisWeek && (
+          <button className="btn btn-sm" onClick={() => setWeekStart(tsMondayOf(new Date()))}>This week</button>
+        )}
+        {site && (
+          <div style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--ink-3)" }}>Scoped to {site.name}</div>
+        )}
+      </div>
+
+      {entries === null && (
+        <div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Loading timesheets…</div>
+      )}
+      {entries === false && (
+        <div className="card card-pad" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ color: "var(--warn)", fontSize: 13.5 }}>Couldn't load timesheets.</span>
+          <button className="btn btn-sm" onClick={() => { setEntries(null); refreshEntries(); }}>
+            <Icon name="rotateCw" size={13} />Retry
           </button>
         </div>
-      </div>
+      )}
 
-      <div className="kpi-row" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
-        <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("accent"), color: solid("accent") }}><Icon name="clock" size={16} /></div><span className="kpi-label">Hours this week</span></div>
-          <div className="kpi-val">{allHours.toFixed(1)}<small>h</small></div>
-          <div className="kpi-foot">across {TS_PEOPLE.length} people, {new Set(entries.map((e) => e.site)).size} sites</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">Billable</span></div>
-          <div className="kpi-val">{billHours.toFixed(1)}<small>h</small></div>
-          <div className="kpi-foot">{billablePct.toFixed(0)}% of total · {moneyEUR2(billableCost)}</div>
-        </div>
-        <div className="kpi" style={{ borderColor: pendingCt ? "var(--warn)" : "" }}>
-          <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="alertCircle" size={16} /></div><span className="kpi-label">Pending approval</span></div>
-          <div className="kpi-val" style={{ color: pendingCt ? "var(--warn)" : "var(--ok)" }}>{pendingCt}</div>
-          <div className="kpi-foot">submitted, awaiting your sign-off</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("muted"), color: solid("muted") }}><Icon name="creditCard" size={16} /></div><span className="kpi-label">Labour cost</span></div>
-          <div className="kpi-val">{moneyEUR2(allCost)}</div>
-          <div className="kpi-foot">includes in-house + contractor rates</div>
-        </div>
-      </div>
-
-      <div className="tabs">
-        <button className={"tab-btn" + (tab === "entries" ? " on" : "")} onClick={() => setTab("entries")}>Entries ({scopedEntries.length})</button>
-        <button className={"tab-btn" + (tab === "totals" ? " on" : "")} onClick={() => setTab("totals")}>Weekly totals ({TS_PEOPLE.length})</button>
-      </div>
-
-      {tab === "totals" && <WeeklyTotals entries={scopedEntries} />}
-
-      {tab === "entries" && (
+      {Array.isArray(entries) && (
         <React.Fragment>
-          <div className="toolbar">
-            <div className="seg">
-              {["All", "Submitted", "Approved", "Draft", "Billable"].map((t) => (
-                <button key={t} className={filter === t ? "on" : ""} onClick={() => setFilter(t)}>{t}</button>
-              ))}
+          <div className="kpi-row" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("accent"), color: solid("accent") }}><Icon name="clock" size={16} /></div><span className="kpi-label">Hours this week</span></div>
+              <div className="kpi-val">{doneHours.toFixed(1)}<small>h</small></div>
+              <div className="kpi-foot">{kpiFootPeople}</div>
             </div>
-            <div style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--ink-3)" }}>
-              {filtered.length} of {scopedEntries.length} entries
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}><Icon name="activity" size={16} /></div><span className="kpi-label">Clocked in now</span></div>
+              <div className="kpi-val" style={{ color: openNow ? "var(--ok)" : "" }}>{openNow}</div>
+              <div className="kpi-foot">on the clock right now</div>
+            </div>
+            <div className="kpi" style={{ borderColor: pendingCt ? "var(--warn)" : "" }}>
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="alertCircle" size={16} /></div><span className="kpi-label">Pending approval</span></div>
+              <div className="kpi-val" style={{ color: pendingCt ? "var(--warn)" : "var(--ok)" }}>{pendingCt}</div>
+              <div className="kpi-foot">{canManage ? "completed shifts awaiting your sign-off" : "awaiting a supervisor's sign-off"}</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("muted"), color: solid("muted") }}><Icon name="check" size={16} /></div><span className="kpi-label">Approved hours</span></div>
+              <div className="kpi-val">{approvedHours.toFixed(1)}<small>h</small></div>
+              <div className="kpi-foot">included in the payroll export</div>
             </div>
           </div>
 
-          <div className="card">
-            <div className="wo-head" style={{ gridTemplateColumns: grid }}>
-              <div>Person</div>
-              <div>Date</div>
-              <div>Site</div>
-              <div>Job / shift</div>
-              <div>Start–End</div>
-              <div>Hours</div>
-              <div>Billable</div>
-              <div>Status</div>
-              <div></div>
-            </div>
-            {filtered.map((e) => {
-              const person = getPerson(e.personId);
-              const cost = e.hours * person.rate;
-              return (
-                <div key={e.id} className="wo-row" style={{ gridTemplateColumns: grid }} onClick={() => setOpen(e.id)}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span className="ts-av">{person.initials}</span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 650, fontSize: 13.5 }}>{person.name}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{person.org === "internal" ? "In-house" : person.org}</div>
-                    </div>
+          <div className="tabs">
+            <button className={"tab-btn" + (tab === "entries" ? " on" : "")} onClick={() => setTab("entries")}>Entries ({scoped.length})</button>
+            <button className={"tab-btn" + (tab === "totals" ? " on" : "")} onClick={() => setTab("totals")}>Weekly totals ({peopleCt})</button>
+          </div>
+
+          {tab === "totals" && <WeeklyTotals entries={scoped} weekStart={weekStart} />}
+
+          {tab === "entries" && (
+            scoped.length === 0 ? (
+              <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+                <div style={{ fontWeight: 700, color: "var(--ink-2)", marginBottom: 6 }}>No hours logged this week</div>
+                <div style={{ fontSize: 13.5, color: "var(--ink-3)" }}>
+                  {canManage
+                    ? "Entries appear the moment someone clocks in. You can also add one for hours already worked."
+                    : "Clock in above and your hours will show here."}
+                </div>
+                {canManage && (
+                  <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setShowAdd(true)}>
+                    <Icon name="plus" size={15} />Add an entry
+                  </button>
+                )}
+              </div>
+            ) : (
+              <React.Fragment>
+                <div className="toolbar">
+                  <div className="seg">
+                    {["All", "Open", "Pending", "Approved"].map((t) => (
+                      <button key={t} className={filter === t ? "on" : ""} onClick={() => setFilter(t)}>{t}</button>
+                    ))}
                   </div>
-                  <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{e.date}</div>
-                  <div className="wo-site" style={{ fontSize: 12.5 }}>{e.site}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{e.ref}</div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-2)" }}>{e.start}–{e.end}</div>
-                  <div>
-                    <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 14 }}>{e.hours.toFixed(1)}</div>
-                    <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-3)" }}>{moneyEUR2(cost)}</div>
-                  </div>
-                  <div>
-                    {e.billable
-                      ? <Pill tone="ok" dot>Billable</Pill>
-                      : <Pill tone="muted">Internal</Pill>}
-                  </div>
-                  <div><Pill tone={TS_STATUS_TONE[e.status]} dot>{e.status}</Pill></div>
-                  <div style={{ textAlign: "right" }} onClick={(ev) => ev.stopPropagation()}>
-                    {e.status === "Submitted" && (
-                      <button className="btn btn-sm btn-primary" style={{ background: "var(--ok)" }}
-                        onClick={() => approve(e.id)}>
-                        <Icon name="check" size={12} />Approve
-                      </button>
-                    )}
+                  <div style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--ink-3)" }}>
+                    {filtered.length} of {scoped.length} entries
                   </div>
                 </div>
-              );
-            })}
-          </div>
+
+                <div className="card">
+                  <div className="wo-head" style={{ gridTemplateColumns: grid }}>
+                    <div>Person</div>
+                    <div>Date</div>
+                    <div>Site</div>
+                    <div>Note</div>
+                    <div>In / out</div>
+                    <div>Break</div>
+                    <div>Hours</div>
+                    <div>Status</div>
+                    <div></div>
+                  </div>
+                  {filtered.map((e) => {
+                    const longOpen = e.status === "open" && tsOpenHours(e) > 16;
+                    return (
+                      <div key={e.id} className="wo-row" style={{ gridTemplateColumns: grid }} onClick={() => setOpenId(e.id)}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span className="ts-av">{tsInitials(e.userName)}</span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 650, fontSize: 13.5 }}>{e.userName}</div>
+                            <div style={{ fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.userEmail}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{tsFmtDay(e.clockInAt)}</div>
+                        <div className="wo-site" style={{ fontSize: 12.5 }}>{e.buildingName || "—"}</div>
+                        <div style={{ fontSize: 12.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.note || (e.source === "manual" ? "Manual entry" : "—")}
+                        </div>
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-2)" }}>
+                          {tsFmtTime(e.clockInAt)}–{e.clockOutAt ? tsFmtTime(e.clockOutAt) : "…"}
+                          {longOpen && (
+                            <div style={{ fontFamily: "var(--font)", fontSize: 10.5, color: "var(--warn)", fontWeight: 700 }}>
+                              open {Math.round(tsOpenHours(e))} h
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-3)" }}>{e.breakMinutes ? e.breakMinutes + "m" : "—"}</div>
+                        <div>
+                          <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 14 }}>
+                            {e.hours != null ? e.hours.toFixed(1) : tsOpenHours(e).toFixed(1)}
+                          </div>
+                          <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-3)" }}>{e.hours != null ? "h" : "so far"}</div>
+                        </div>
+                        <div><Pill tone={TS_STATUS_TONE[e.status] || "muted"} dot>{TS_STATUS_LABEL[e.status] || e.status}</Pill></div>
+                        <div style={{ textAlign: "right" }} onClick={(ev) => ev.stopPropagation()}>
+                          {canManage && e.status === "pending" && (
+                            <button className="btn btn-sm btn-primary" style={{ background: "var(--ok)" }}
+                              onClick={() => approve(e.id)}>
+                              <Icon name="check" size={12} />Approve
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </React.Fragment>
+            )
+          )}
         </React.Fragment>
       )}
 
       {entry && (
-        <TimesheetDetailModal entry={entry}
-          onClose={() => setOpen(null)}
-          onApprove={approve} onReject={reject} />
+        <TimesheetDetailModal key={entry.id} entry={entry} canManage={canManage} busy={modalBusy}
+          onClose={() => setOpenId(null)}
+          onApprove={approve} onDelete={del} onSave={saveEdit} showToast={showToast} />
+      )}
+      {showAdd && (
+        <TsManualEntryModal users={users} busy={modalBusy}
+          onClose={() => setShowAdd(false)} onSubmit={addManual} />
       )}
       {toastNode}
     </div>
@@ -14335,104 +14886,169 @@ Object.assign(window, { VisitorsView });
 
 /* ════════════════════ asset_29_e6e719f3.js ════════════════════ */
 ;
-/* HazardLink — Client portal
-   A limited, read-mostly view branded for the customer.
-   Shows their sites' status, requests they raised, quotes awaiting approval,
-   invoices, upcoming PPM visits, and a 'Log a request' button. */
+/* HazardLink — Client portals (admin side)
+   Staff create, share and revoke the no-login links that give each
+   building's client a live, read-only window into their site: open jobs,
+   completed work, compliance status, upcoming planned maintenance, and a
+   form to raise a request that logs a real job.
+   The public page itself lives at /portal/<token>. */
 
-const CLIENT_SITES = [];
+/* ── Small helpers ─────────────────────────────────────────── */
 
-const CP_REQUESTS = [];
+function _portalDate(iso) {
+  if (!iso) return "—";
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso).slice(0, 10);
+  return d.getDate() + " " + m[d.getMonth()] + " " + d.getFullYear();
+}
 
-const CP_QUOTES = [];
+function _portalUrl(p) {
+  return window.location.origin + p.path;
+}
 
-const CP_INVOICES = [];
-
-const CP_VISITS = [];
+/* Clipboard with a prompt fallback so the link is always reachable. */
+function _portalCopy(url, showToast) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url)
+      .then(() => showToast("Link copied. Send it to your client, no login needed."))
+      .catch(() => { window.prompt("Copy this link:", url); });
+  } else {
+    window.prompt("Copy this link:", url);
+  }
+}
 
 /* ============================================================
-   Log a request modal
+   Create portal link modal (repurposed from LogRequestModal)
    ============================================================ */
-function LogRequestModal({ onClose, onSubmit }) {
-  const [title, setTitle]   = React.useState("");
-  const [site, setSite]     = React.useState(CLIENT_SITES[0] ? CLIENT_SITES[0].name : "");
-  const [where, setWhere]   = React.useState("");
-  const [pri, setPri]       = React.useState("Medium");
-  const [desc, setDesc]     = React.useState("");
-  const canSubmit = title.trim().length > 3;
+function LogRequestModal({ onClose, onCreated }) {
+  const sites = (typeof HL !== "undefined" && HL.sites) || [];
+  const [clientName, setClientName] = React.useState("");
+  const [buildingId, setBuildingId] = React.useState(sites[0] ? sites[0].id : "");
+  const [email, setEmail]           = React.useState("");
+  const [busy, setBusy]             = React.useState(false);
+  const [error, setError]           = React.useState(null);
+  const [done, setDone]             = React.useState(null); // created portal row
+  const [copied, setCopied]         = React.useState(false);
+
+  const emailOk  = email.trim() === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const canSubmit = clientName.trim() !== "" && buildingId !== "" && emailOk && !busy;
+  const buildingName = (sites.find((s) => s.id === (done ? done.buildingId : buildingId)) || {}).name || "their building";
 
   const submit = () => {
     if (!canSubmit) return;
-    onSubmit({
-      id: "CR-" + Math.floor(1050 + Math.random() * 30),
-      title: title.trim(), site, raised: "just now",
-      status: "Awaiting triage", tone: "muted",
-      wo: null, note: "Logged via Client portal · being triaged",
-      raisedBy: "You (client)", where, pri, desc,
-    });
+    setBusy(true); setError(null);
+    hlApi("/portals", { method: "POST", body: {
+      buildingId,
+      clientName: clientName.trim(),
+      email: email.trim() === "" ? undefined : email.trim().toLowerCase(),
+    }}).then(({ ok, status, b }) => {
+      setBusy(false);
+      if (!ok) {
+        setError(
+          status === 403 ? "Only admins and supervisors can create portal links." :
+          status === 404 ? "That building no longer exists. Refresh and try again." :
+          status === 400 ? "Check the client name and email address." :
+          "Could not create the link. Try again.");
+        return;
+      }
+      setDone(b && b.portal);
+      onCreated && onCreated();
+    }).catch(() => { setBusy(false); setError("Could not reach the server. Try again."); });
+  };
+
+  const copyLink = () => {
+    if (!done) return;
+    const url = _portalUrl(done);
+    const mark = () => { setCopied(true); setTimeout(() => setCopied(false), 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(mark).catch(() => { window.prompt("Copy this link:", url); });
+    } else {
+      window.prompt("Copy this link:", url);
+    }
   };
 
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <div className="mh-ico"><Icon name="plus" size={18} /></div>
+          <div className="mh-ico"><Icon name="link" size={18} /></div>
           <div>
-            <h3>Log a new request</h3>
-            <p>Tell us what's wrong — the FM team will triage and update you here.</p>
+            <h3>Create a portal link</h3>
+            <p>A private link for one building's client. Anyone who has it can view that site's status and raise a request.</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="modal-body">
-          <div className="ai-field">
-            <label>What's the issue?</label>
-            <input className="dv-input" autoFocus value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Hot water out in west wing washrooms" />
-          </div>
-          <div className="vm-grid" style={{ marginTop: 12 }}>
-            <div className="ai-field">
-              <label>Site</label>
-              <select className="dv-input" value={site} onChange={(e) => setSite(e.target.value)}>
-                {CLIENT_SITES.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-              </select>
+          {!done ? (
+            sites.length === 0 ? (
+              <p style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55, margin: 0 }}>
+                <Icon name="alertCircle" size={13} /> Portal links are per building, and this organisation has no
+                buildings yet. Add a site first, then come back here.
+              </p>
+            ) : (
+              <div className="ai-fields">
+                <div className="ai-field">
+                  <label>Client name</label>
+                  <input className="dv-input" autoFocus value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="e.g. Meridian Property Group" />
+                </div>
+                <div className="ai-field">
+                  <label>Building</label>
+                  <select className="dv-input" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
+                    {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="ai-field">
+                  <label>Client email (optional)</label>
+                  <input className="dv-input" type="email" value={email}
+                    onChange={(e) => setEmail(e.target.value)} placeholder="name@company.ie" />
+                </div>
+                <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+                  The email is kept on the record so you know who the link went to. Nothing is sent
+                  automatically. You share the link yourself.
+                </p>
+                {error && (
+                  <div style={{ fontSize: 13, color: "var(--crit)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Icon name="alertCircle" size={14} />{error}
+                  </div>
+                )}
+              </div>
+            )
+          ) : (
+            <div style={{ padding: "6px 0" }}>
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <div className="mic-orb" style={{ width: 64, height: 64, margin: "0 auto" }}><Icon name="checkCircle" size={24} /></div>
+                <h3 style={{ margin: "14px 0 4px", fontSize: 16, fontFamily: "var(--font-head)" }}>Portal link created</h3>
+                <p style={{ fontSize: 13, color: "var(--ink-2)", margin: "0 auto", maxWidth: 400, lineHeight: 1.55 }}>
+                  Send this to your client. No login needed. The page is read-only and covers {buildingName} only.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input className="dv-input" readOnly value={_portalUrl(done)}
+                  onFocus={(e) => e.target.select()}
+                  style={{ flex: 1, fontFamily: "var(--mono)", fontSize: 12 }} />
+                <button className="btn" onClick={copyLink}><Icon name="link" size={14} />{copied ? "Copied" : "Copy"}</button>
+              </div>
+              <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+                <Icon name="info" size={11} /> You can revoke the link any time from this page. It stops working straight away.
+              </p>
             </div>
-            <div className="ai-field">
-              <label>Where on site?</label>
-              <input className="dv-input" value={where} onChange={(e) => setWhere(e.target.value)}
-                placeholder="e.g. Level 3 east, near lifts" />
-            </div>
-            <div className="ai-field">
-              <label>Priority</label>
-              <select className="dv-input" value={pri} onChange={(e) => setPri(e.target.value)}>
-                <option>Low — when convenient</option>
-                <option>Medium</option>
-                <option>High — same day</option>
-                <option>Critical — now</option>
-              </select>
-            </div>
-            <div className="ai-field">
-              <label>Reference (optional)</label>
-              <input className="dv-input" placeholder="PO number, ticket, etc." />
-            </div>
-            <div className="ai-field" style={{ gridColumn: "span 2" }}>
-              <label>Anything else we should know?</label>
-              <textarea className="dv-input" rows="3" value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                placeholder="Times to avoid, who to contact, photos to follow…" />
-            </div>
-          </div>
-          <p style={{ marginTop: 14, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
-            <Icon name="checkCircle" size={11} /> You'll get an email when this is triaged, scheduled and closed.
-            All requests are SLA-tracked under your contract.
-          </p>
+          )}
         </div>
         <div className="modal-foot">
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={!canSubmit}
-            style={{ opacity: canSubmit ? 1 : .5 }} onClick={submit}>
-            <Icon name="send" size={15} />Submit request
-          </button>
+          {!done ? (
+            <React.Fragment>
+              <button className="btn" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" disabled={!canSubmit}
+                style={{ opacity: canSubmit ? 1 : .5 }} onClick={submit}>
+                <Icon name="link" size={15} />{busy ? "Creating…" : "Create link"}
+              </button>
+            </React.Fragment>
+          ) : (
+            <button className="btn btn-primary" onClick={onClose}>Done</button>
+          )}
         </div>
       </div>
     </div>
@@ -14440,56 +15056,39 @@ function LogRequestModal({ onClose, onSubmit }) {
 }
 
 /* ============================================================
-   Quote actions modal — confirm Approve / Decline
+   Revoke confirmation modal (repurposed from QuoteDecisionModal)
    ============================================================ */
-function QuoteDecisionModal({ quote, action, onClose, onConfirm }) {
-  const isApprove = action === "approve";
-  const [note, setNote] = React.useState("");
+function QuoteDecisionModal({ portal, busy, onClose, onConfirm }) {
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
         <div className="modal-head">
-          <div className="mh-ico" style={{ background: isApprove ? "var(--ok)" : "var(--crit)" }}>
-            <Icon name={isApprove ? "check" : "x"} size={18} />
+          <div className="mh-ico" style={{ background: "var(--crit)" }}>
+            <Icon name="trash" size={18} />
           </div>
           <div>
-            <h3>{isApprove ? "Approve quote" : "Decline quote"}</h3>
-            <p>{quote.contractor} · {quote.amount}</p>
+            <h3>Revoke this portal link</h3>
+            <p>{portal.clientName} · {portal.buildingName}</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="modal-body">
           <div className="cp-quote-summary">
-            <div className="cp-quote-line"><span>Job</span><b>{quote.title}</b></div>
-            <div className="cp-quote-line"><span>Site</span><b>{quote.site}</b></div>
-            <div className="cp-quote-line"><span>Contractor</span><b>{quote.contractor}</b></div>
-            <div className="cp-quote-line"><span>Lead time</span><b>{quote.lead}</b></div>
-            <div className="cp-quote-line"><span>Total (ex-VAT)</span>
-              <b style={{ fontFamily: "var(--mono)", fontSize: 16, color: isApprove ? "var(--ok)" : "var(--crit)" }}>{quote.amount}</b>
-            </div>
+            <div className="cp-quote-line"><span>Client</span><b>{portal.clientName}</b></div>
+            <div className="cp-quote-line"><span>Building</span><b>{portal.buildingName}</b></div>
+            <div className="cp-quote-line"><span>Created</span><b>{_portalDate(portal.createdAt)}</b></div>
           </div>
-          <div className="ai-field" style={{ marginTop: 14 }}>
-            <label>{isApprove ? "Approval note (optional)" : "Reason for declining"}</label>
-            <textarea className="dv-input" rows="3" value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={isApprove
-                ? "Anything the contractor should know before they attend"
-                : "Why is this being declined? Helps us re-tender well."} />
-          </div>
-          {isApprove && (
-            <p style={{ marginTop: 12, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
-              <Icon name="checkCircle" size={11} /> Approving instructs {quote.contractor} to proceed.
-              A PO will be raised against your contract and you'll receive an invoice when complete.
-            </p>
-          )}
+          <p style={{ marginTop: 14, marginBottom: 0, fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55 }}>
+            <Icon name="alertCircle" size={12} /> The client's link stops working immediately. The row stays
+            here for your records, and you can create a fresh link for the same client any time.
+          </p>
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className={"btn " + (isApprove ? "btn-primary" : "")}
-            style={{ background: isApprove ? "" : "var(--crit)", color: isApprove ? "" : "#fff" }}
-            onClick={() => onConfirm(note)}>
-            <Icon name={isApprove ? "check" : "x"} size={15} />
-            {isApprove ? "Approve and instruct" : "Decline quote"}
+          <button className="btn" disabled={busy}
+            style={{ background: "var(--crit)", color: "#fff", borderColor: "var(--crit)", opacity: busy ? .6 : 1 }}
+            onClick={onConfirm}>
+            <Icon name="trash" size={15} />{busy ? "Revoking…" : "Revoke link"}
           </button>
         </div>
       </div>
@@ -14498,265 +15097,244 @@ function QuoteDecisionModal({ quote, action, onClose, onConfirm }) {
 }
 
 /* ============================================================
-   Top-level Client portal view
+   One portal link row
+   ============================================================ */
+function PortalRow({ p, showToast, onRevoke }) {
+  const url = _portalUrl(p);
+  return (
+    <div className={"cp-site" + (p.active ? " cp-site-ok" : "")}>
+      <div className="cp-site-ico"><Icon name="link" size={15} /></div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="cp-site-name">{p.clientName}</div>
+        <div className="cp-site-meta">
+          {p.buildingName} · created {_portalDate(p.createdAt)}{p.email ? " · " + p.email : ""}
+        </div>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--ink-3)", marginTop: 4,
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {url}
+        </div>
+      </div>
+      <div style={{ textAlign: "right", flex: "none" }}>
+        <Pill tone={p.active ? "ok" : "muted"} dot>{p.active ? "Active" : "Revoked"}</Pill>
+        {p.active ? (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
+            <button className="btn" onClick={() => _portalCopy(url, showToast)}>
+              <Icon name="link" size={13} />Copy
+            </button>
+            <a className="btn" href={url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+              <Icon name="eye" size={13} />Open
+            </a>
+            <button className="btn"
+              style={{ background: "var(--crit-soft)", color: "var(--crit)", borderColor: "color-mix(in oklch, var(--crit) 30%, var(--line))" }}
+              onClick={() => onRevoke(p)}>
+              <Icon name="trash" size={13} />Revoke
+            </button>
+          </div>
+        ) : (
+          <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>
+            revoked {_portalDate(p.revokedAt)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Top-level Client portals view (staff-facing)
    ============================================================ */
 function ClientPortalView({ go }) {
-  const [requests, setRequests] = React.useState(CP_REQUESTS);
-  const [quotes, setQuotes]     = React.useState(CP_QUOTES);
-  const [logOpen, setLogOpen]   = React.useState(false);
-  const [decision, setDecision] = React.useState(null); // { quote, action }
+  const [portals, setPortals]       = React.useState(null); // null loading | false error | "forbidden" | [rows]
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [revoking, setRevoking]     = React.useState(null); // portal row awaiting confirm
+  const [busy, setBusy]             = React.useState(false);
   const { showToast, toastNode } = useViewToast();
 
-  const openCount    = requests.filter((r) => r.status !== "Completed").length;
-  const pendingQuote = quotes.filter((q) => q.status === "pending").length;
-  const openInvoices = CP_INVOICES.filter((i) => i.status === "Unpaid").length;
-  const owedAmount   = CP_INVOICES.filter((i) => i.status === "Unpaid")
-    .reduce((s, i) => s + Number(i.amount.replace(/[^\d.]/g, "")), 0);
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
 
-  const decide = (note) => {
-    const { quote, action } = decision;
-    setQuotes((qs) => qs.filter((q) => q.id !== quote.id));
-    if (action === "approve") {
-      setRequests((rs) => rs.map((r) => r.id === "CR-1037" && quote.id === "Q-4188"
-        ? { ...r, status: "Approved — scheduled", tone: "ok", note: `${quote.contractor} · ${quote.amount} approved` }
-        : r));
-      showToast(`Quote ${quote.id} approved · ${quote.contractor} instructed`);
-    } else {
-      showToast(`Quote ${quote.id} declined · re-tendering`);
-    }
-    setDecision(null);
+  const refresh = React.useCallback(() => {
+    return hlApi("/portals").then(({ ok, status, b }) => {
+      if (!ok) { setPortals(status === 403 ? "forbidden" : false); return; }
+      setPortals((b && b.portals) || []);
+    }).catch(() => setPortals(false));
+  }, []);
+  React.useEffect(() => {
+    if (me.role === "cleaner") return; // staff-only endpoint, no point calling it
+    refresh();
+  }, [refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const confirmRevoke = () => {
+    if (!revoking || busy) return;
+    setBusy(true);
+    hlApi("/portals/" + revoking.id, { method: "DELETE" }).then(({ ok, status }) => {
+      setBusy(false);
+      if (!ok) {
+        showToast(status === 403
+          ? "Only admins and supervisors can revoke links."
+          : "Could not revoke the link. Try again.");
+        return;
+      }
+      setRevoking(null);
+      showToast("Portal link revoked. It no longer works.");
+      refresh();
+    }).catch(() => { setBusy(false); showToast("No connection. Try again."); });
   };
 
-  const onLogged = (req) => {
-    setRequests((rs) => [req, ...rs]);
-    setLogOpen(false);
-    showToast(`Request ${req.id} logged · FM team notified`);
-  };
+  /* Field staff never manage these links. Honest screen, nothing pretend. */
+  if (me.role === "cleaner" || portals === "forbidden") {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>
+          Admins and supervisors manage client portal links.
+        </div>
+      </div>
+    );
+  }
+
+  const list = Array.isArray(portals) ? portals : [];
+  const active = list.filter((p) => p.active);
+  const revoked = list.filter((p) => !p.active);
+  const buildingsCovered = new Set(active.map((p) => p.buildingId)).size;
+  const siteCount = ((typeof HL !== "undefined" && HL.sites) || []).length;
 
   return (
     <div className="cp-shell">
-      {/* Branded client header */}
+      {/* Branded header */}
       <div className="cp-brand">
         <div className="cp-brand-logo">
-          <span>—</span>
+          <Icon name="link" size={20} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="cp-brand-name">Client portal</div>
-          <div className="cp-brand-sub">Limited view · facilities self-service for your properties</div>
+          <div className="cp-brand-name">Client portals</div>
+          <div className="cp-brand-sub">Shareable read-only links, one per building's client</div>
         </div>
-        <button className="btn btn-primary cp-cta" onClick={() => setLogOpen(true)}>
-          <Icon name="plus" size={15} />Log a request
+        <button className="btn btn-primary cp-cta" onClick={() => setCreateOpen(true)}>
+          <Icon name="plus" size={15} />Create portal link
         </button>
       </div>
 
       <div className="cp-banner">
-        <Icon name="user" size={14} />
-        <b>Viewing as client</b>
-        <span>Read-mostly view shown to your customer — only their own sites, requests, quotes and invoices are visible. Internal screens (work orders, contractor accreditation, automations…) are hidden.</span>
+        <Icon name="info" size={14} />
+        <b>How it works</b>
+        <span>Each link opens a public page for one building. No login and no account. Anyone with the link can
+        see that site's status and raise a request, so share it with the client only.</span>
       </div>
 
       <div className="content-inner" style={{ paddingTop: 0 }}>
-        {/* KPI strip */}
-        <div className="kpi-row" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
-          <div className="kpi">
-            <div className="kpi-top">
-              <div className="kpi-ico" style={{ background: softBg("accent"), color: solid("accent") }}><Icon name="mapPin" size={16} /></div>
-              <span className="kpi-label">Sites</span>
-            </div>
-            <div className="kpi-val">{CLIENT_SITES.length}</div>
-            <div className="kpi-foot">{CLIENT_SITES.filter((s) => s.health === "ok").length} all clear · {CLIENT_SITES.filter((s) => s.health !== "ok").length} need attention</div>
+        {portals === null ? (
+          <div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Loading portal links…</div>
+        ) : portals === false ? (
+          <div className="card card-pad" style={{ fontSize: 13.5, display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ color: "var(--warn)", flex: 1 }}>Could not load portal links.</span>
+            <button className="btn" onClick={() => { setPortals(null); refresh(); }}>
+              <Icon name="rotateCw" size={14} />Try again
+            </button>
           </div>
-          <div className="kpi">
-            <div className="kpi-top">
-              <div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="alertCircle" size={16} /></div>
-              <span className="kpi-label">Open requests</span>
-            </div>
-            <div className="kpi-val">{openCount}</div>
-            <div className="kpi-foot">raised by your team</div>
-          </div>
-          <div className="kpi" style={{ borderColor: pendingQuote ? "var(--warn)" : "" }}>
-            <div className="kpi-top">
-              <div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="file" size={16} /></div>
-              <span className="kpi-label">Quotes to approve</span>
-            </div>
-            <div className="kpi-val" style={{ color: pendingQuote ? "var(--warn)" : "" }}>{pendingQuote}</div>
-            <div className="kpi-foot">awaiting your sign-off</div>
-          </div>
-          <div className="kpi">
-            <div className="kpi-top">
-              <div className="kpi-ico" style={{ background: softBg("crit"), color: solid("crit") }}><Icon name="creditCard" size={16} /></div>
-              <span className="kpi-label">Invoices outstanding</span>
-            </div>
-            <div className="kpi-val">{openInvoices}<small style={{ marginLeft: 6, color: "var(--ink-3)" }}>· €{owedAmount.toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small></div>
-            <div className="kpi-foot">on standard 30-day terms</div>
-          </div>
-        </div>
-
-        <div className="cp-grid">
-          {/* Sites */}
-          <div className="card" style={{ gridColumn: "span 2" }}>
-            <div className="card-head">
-              <h3>Your sites</h3>
-              <span className="sub">live status across the portfolio</span>
-              <span className="head-act"><Pill tone="ok" dot>{CLIENT_SITES.filter((s) => s.health === "ok").length} healthy</Pill></span>
-            </div>
-            <div className="cp-sites">
-              {CLIENT_SITES.map((s) => (
-                <div key={s.name} className={"cp-site cp-site-" + s.health}>
-                  <div className="cp-site-ico">
-                    <Icon name="mapPin" size={15} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="cp-site-name">{s.name}</div>
-                    <div className="cp-site-meta">{s.role} · {s.loc}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <Pill tone={s.health === "ok" ? "ok" : s.health === "warn" ? "warn" : "crit"} dot>
-                      {s.health === "ok" ? "All clear" : s.health === "warn" ? "Needs attention" : "Issues"}
-                    </Pill>
-                    <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 }}>{s.note}</div>
-                  </div>
+        ) : (
+          <React.Fragment>
+            {/* KPI strip, all counted from the real list */}
+            <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
+              <div className="kpi">
+                <div className="kpi-top">
+                  <div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}><Icon name="link" size={16} /></div>
+                  <span className="kpi-label">Active links</span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Upcoming PPM */}
-          <div className="card">
-            <div className="card-head">
-              <h3>Upcoming visits</h3>
-              <span className="sub">planned maintenance</span>
-            </div>
-            <div className="cp-ppm-list">
-              {CP_VISITS.map((v) => (
-                <div key={v.id} className="cp-ppm-row">
-                  <div className="cp-ppm-date">
-                    <div className="cp-ppm-day">{v.when.split("·")[0].trim()}</div>
-                    <div className="cp-ppm-time">{v.when.split("·")[1].trim()}</div>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="cp-ppm-what">{v.what}</div>
-                    <div className="cp-ppm-meta">{v.site} · {v.who} · {v.dur}</div>
-                    {v.access && <div className="cp-ppm-access"><Icon name="info" size={11} />{v.access}</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Quotes awaiting approval */}
-          <div className="card" style={{ gridColumn: "span 3" }}>
-            <div className="card-head">
-              <h3>Quotes awaiting your approval</h3>
-              <span className="sub">approve to instruct · decline to re-tender</span>
-              <span className="head-act"><Pill tone={pendingQuote ? "warn" : "ok"} dot>{pendingQuote ? pendingQuote + " pending" : "All caught up"}</Pill></span>
-            </div>
-            {quotes.length === 0 ? (
-              <div className="empty" style={{ padding: "44px 20px" }}>
-                <div className="empty-ico"><Icon name="checkCircle" size={26} /></div>
-                <h3>No quotes need your sign-off</h3>
-                <p>We'll email you the moment a new one lands.</p>
+                <div className="kpi-val">{active.length}</div>
+                <div className="kpi-foot">live right now</div>
               </div>
-            ) : (
-              <div className="cp-quote-list">
-                {quotes.map((q) => (
-                  <div key={q.id} className="cp-quote">
-                    <div className="cp-quote-head">
-                      <div>
-                        <div className="cp-quote-title">{q.title}</div>
-                        <div className="cp-quote-sub">{q.site} · ref {q.wo} · quote {q.id}</div>
-                      </div>
-                      <div className="cp-quote-amt">{q.amount}<small>ex-VAT</small></div>
-                    </div>
-                    <div className="cp-quote-body">
-                      <div className="cp-quote-meta">
-                        <span><Icon name="user" size={11} />{q.contractor}</span>
-                        <span><Icon name="clock" size={11} />Lead time {q.lead}</span>
-                        <span><Icon name="award" size={11} />Rating {q.rating}</span>
-                        <span><Icon name="alertCircle" size={11} />{q.expires}</span>
-                      </div>
-                      <div className="cp-quote-price">{q.priceLine}</div>
-                    </div>
-                    <div className="cp-quote-actions">
-                      <button className="btn" style={{ background: "var(--crit-soft)", color: "var(--crit)", borderColor: "color-mix(in oklch, var(--crit) 30%, var(--line))" }}
-                        onClick={() => setDecision({ quote: q, action: "decline" })}>
-                        <Icon name="x" size={14} />Decline
-                      </button>
-                      <button className="btn btn-primary"
-                        style={{ background: "var(--ok)" }}
-                        onClick={() => setDecision({ quote: q, action: "approve" })}>
-                        <Icon name="check" size={14} />Approve &amp; instruct
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Open requests */}
-          <div className="card" style={{ gridColumn: "span 2" }}>
-            <div className="card-head">
-              <h3>Your open requests</h3>
-              <span className="sub">jobs you raised with HazardLink</span>
-              <span className="head-act"><Pill tone="accent" dot>{openCount} open</Pill></span>
-            </div>
-            <div className="wo-head" style={{ gridTemplateColumns: "100px 1.6fr 1fr 150px 150px" }}>
-              <div>Ref</div><div>Issue</div><div>Site</div><div>Status</div><div>Raised</div>
-            </div>
-            {requests.map((r) => (
-              <div key={r.id} className="wo-row" style={{ gridTemplateColumns: "100px 1.6fr 1fr 150px 150px" }}>
-                <div className="wo-id">{r.id}</div>
-                <div>
-                  <div style={{ fontWeight: 650, fontSize: 13.5 }}>{r.title}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>{r.note}</div>
+              <div className="kpi">
+                <div className="kpi-top">
+                  <div className="kpi-ico" style={{ background: softBg("accent"), color: solid("accent") }}><Icon name="mapPin" size={16} /></div>
+                  <span className="kpi-label">Buildings covered</span>
                 </div>
-                <div className="wo-site">{r.site}</div>
-                <div><Pill tone={r.tone} dot>{r.status}</Pill></div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
-                  {r.raised}
-                  <div style={{ fontSize: 11, color: "var(--ink-3)" }}>by {r.raisedBy}</div>
+                <div className="kpi-val">{buildingsCovered}</div>
+                <div className="kpi-foot">of {siteCount} site{siteCount === 1 ? "" : "s"} on the account</div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-top">
+                  <div className="kpi-ico" style={{ background: softBg("muted"), color: solid("muted") }}><Icon name="trash" size={16} /></div>
+                  <span className="kpi-label">Revoked</span>
+                </div>
+                <div className="kpi-val">{revoked.length}</div>
+                <div className="kpi-foot">kept for the record</div>
+              </div>
+            </div>
+
+            <div className="cp-grid">
+              {/* Portal links list */}
+              <div className="card" style={{ gridColumn: "span 2" }}>
+                <div className="card-head">
+                  <h3>Portal links</h3>
+                  <span className="sub">copy, open or revoke</span>
+                  <span className="head-act">
+                    <Pill tone={active.length ? "ok" : "muted"} dot>{active.length} active</Pill>
+                  </span>
+                </div>
+                {list.length === 0 ? (
+                  <div className="empty" style={{ padding: "44px 20px" }}>
+                    <div className="empty-ico"><Icon name="link" size={26} /></div>
+                    <h3>No portal links yet</h3>
+                    <p>Create one to give a client a live window into their site.</p>
+                    <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+                      <Icon name="plus" size={15} />Create portal link
+                    </button>
+                  </div>
+                ) : (
+                  <div className="cp-sites">
+                    {list.map((p) => (
+                      <PortalRow key={p.id} p={p} showToast={showToast} onRevoke={setRevoking} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* What the client sees */}
+              <div className="card">
+                <div className="card-head">
+                  <h3>What the client sees</h3>
+                  <span className="sub">on their portal page</span>
+                </div>
+                <div style={{ padding: "6px 18px 14px" }}>
+                  {[
+                    "Open jobs at their building, with status and priority",
+                    "Recently completed work",
+                    "Compliance counts: OK, due soon and overdue",
+                    "Planned maintenance due in the next 30 days",
+                    "A raise-a-request form. It logs a real job here and notifies your admins",
+                  ].map((line, i) => (
+                    <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start",
+                      padding: "8px 0", borderBottom: "1px solid var(--line)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                      <span style={{ color: "var(--ok)", flex: "none", marginTop: 2 }}><Icon name="checkCircle" size={13} /></span>
+                      <span>{line}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: 9, alignItems: "flex-start",
+                    padding: "8px 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+                    <span style={{ flex: "none", marginTop: 2 }}><Icon name="clock" size={13} /></span>
+                    <span>Planned for a later release: approving quotes from the portal. That is not built yet.</span>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-
-          {/* Invoices */}
-          <div className="card">
-            <div className="card-head">
-              <h3>Invoices</h3>
-              <span className="sub">last 30 days</span>
             </div>
-            <div className="cp-inv-list">
-              {CP_INVOICES.map((i) => (
-                <div key={i.id} className="cp-inv-row">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="cp-inv-id">{i.id}</div>
-                    <div className="cp-inv-desc">{i.desc}</div>
-                    <div className="cp-inv-meta">{i.site} · issued {i.date} · due {i.due}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div className="cp-inv-amt">{i.amount}</div>
-                    <Pill tone={i.tone} dot>{i.status}</Pill>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        <div className="cp-foot">
-          <Icon name="shield" size={13} />
-          Powered by HazardLink · This view is provided to your organisation under your FM contract. All requests are SLA-tracked.
-        </div>
+            <div className="cp-foot">
+              <Icon name="shield" size={13} />
+              Portal pages are read-only and scoped to one building. Revoking a link stops it working straight away.
+            </div>
+          </React.Fragment>
+        )}
       </div>
 
-      {logOpen && <LogRequestModal onClose={() => setLogOpen(false)} onSubmit={onLogged} />}
-      {decision && (
+      {createOpen && (
+        <LogRequestModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={refresh} />
+      )}
+      {revoking && (
         <QuoteDecisionModal
-          quote={decision.quote} action={decision.action}
-          onClose={() => setDecision(null)}
-          onConfirm={decide} />
+          portal={revoking} busy={busy}
+          onClose={() => setRevoking(null)}
+          onConfirm={confirmRevoke} />
       )}
       {toastNode}
     </div>
@@ -14768,36 +15346,86 @@ Object.assign(window, { ClientPortalView });
 /* ════════════════════ asset_09_686d9fda.js ════════════════════ */
 ;
 /* HazardLink — Forms
-   Library of digital forms / checklists + a simple drag-to-reorder
-   form builder with a live preview pane. */
+   Live forms & checklists against the real backend:
+   templates are built here (POST/PATCH /forms), anyone signed in fills them
+   in (POST /forms/:id/submissions), and every submission is listed per form
+   with a staff CSV export. No demo data. */
 
+/* Field types mirror the backend contract exactly:
+   text | textarea | number | select | checkbox | date */
 const FIELD_TYPES = [
-  { id: "text",      label: "Short text",      icon: "file",       hint: "single-line answer" },
-  { id: "longtext",  label: "Long text",       icon: "file",       hint: "multi-line answer / notes" },
-  { id: "number",    label: "Number",          icon: "activity",   hint: "numeric value with units" },
-  { id: "yesno",     label: "Yes / No",        icon: "checkCircle", hint: "two-option toggle" },
-  { id: "choice",    label: "Multiple choice", icon: "grid",       hint: "pick one from a list" },
-  { id: "rating",    label: "Rating 1–5",      icon: "award",      hint: "score with 5 stars" },
-  { id: "photo",     label: "Photo",           icon: "camera",     hint: "operative uploads a picture" },
-  { id: "signature", label: "Signature",       icon: "edit",       hint: "captured on glass" },
+  { id: "text",     label: "Short text",      icon: "file",        hint: "single-line answer" },
+  { id: "textarea", label: "Long text",       icon: "file",        hint: "multi-line answer / notes" },
+  { id: "number",   label: "Number",          icon: "activity",    hint: "numeric value" },
+  { id: "checkbox", label: "Yes / No",        icon: "checkCircle", hint: "Yes / No toggle" },
+  { id: "select",   label: "Multiple choice", icon: "grid",        hint: "pick one from a list" },
+  { id: "date",     label: "Date",            icon: "calendar",    hint: "calendar day" },
 ];
 
 const FIELD_LABELS = Object.fromEntries(FIELD_TYPES.map((f) => [f.id, f.label]));
 
-/* Seeded forms library */
-const SEED_FORMS = [];
-
 const DEFAULT_FIELD = (type) => {
-  const base = { id: "fd" + Math.random().toString(36).slice(2, 8),
+  /* fresh:true marks a field created in this session; it gets a slug id at
+     save time. Loaded fields keep their backend id so old answers stay keyed. */
+  const base = { id: "fd" + Math.random().toString(36).slice(2, 8), fresh: true,
     type, label: FIELD_LABELS[type] + " question", required: false, options: [] };
-  if (type === "choice") base.options = ["Option 1", "Option 2", "Option 3"];
+  if (type === "select") base.options = ["Option 1", "Option 2", "Option 3"];
   return base;
 };
+
+function formsSlug(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+
+function formsAgo(iso) {
+  if (!iso) return "never";
+  const t = new Date(iso).getTime();
+  if (!isFinite(t)) return "never";
+  const s = Math.floor((Date.now() - t) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  if (s < 86400 * 14) return Math.floor(s / 86400) + "d ago";
+  return new Date(t).toLocaleDateString();
+}
+
+function formsFmtAnswer(v) {
+  if (v === true) return "Yes";
+  if (v === false) return "No";
+  if (v == null || v === "") return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+/* Authed CSV download (bearer token + blob → <a download>). */
+function formsDownloadCsv(path, filename, onErr) {
+  fetch((window.HL_API_BASE || "/api") + path, {
+    headers: { Authorization: "Bearer " + (localStorage.getItem("bor.token") || "") },
+  })
+    .then((r) => { if (!r.ok) throw new Error("http " + r.status); return r.blob(); })
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    })
+    .catch(() => onErr && onErr());
+}
 
 /* ============================================================
    Form library
    ============================================================ */
-function FormLibrary({ forms, onOpen, onNew, onDelete }) {
+function FormLibrary({ forms, onOpen, onNew, canBuild }) {
+  const active = forms.filter((f) => f.active);
+  const archivedCount = forms.length - active.length;
+  const totalSubs = forms.reduce((s, f) => s + (f.submissionCount || 0), 0);
+  const mostUsed = [...forms].sort((a, b) => (b.submissionCount || 0) - (a.submissionCount || 0))[0];
+  const ordered = [...forms].sort((a, b) => (a.active === b.active ? 0 : a.active ? -1 : 1));
+
   return (
     <div className="content-inner">
       <div className="page-head">
@@ -14808,81 +15436,102 @@ function FormLibrary({ forms, onOpen, onNew, onDelete }) {
             Built once here, filled in on mobile by the team in the field.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={onNew}>
-          <Icon name="plus" size={15} />New form
-        </button>
+        {canBuild && (
+          <button className="btn btn-primary" onClick={onNew}>
+            <Icon name="plus" size={15} />New form
+          </button>
+        )}
       </div>
 
       <div className="kpi-row" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("accent"), color: solid("accent") }}><Icon name="file" size={16} /></div><span className="kpi-label">Forms in library</span></div>
-          <div className="kpi-val">{forms.length}</div>
-          <div className="kpi-foot">across cleaning, security and maintenance</div>
+          <div className="kpi-val">{active.length}</div>
+          <div className="kpi-foot">{archivedCount > 0 ? "+ " + archivedCount + " archived, kept for the records" : "across cleaning, security and maintenance"}</div>
         </div>
         <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">Submissions today</span></div>
-          <div className="kpi-val">{forms.reduce((s, f) => s + (f.usedToday || 0), 0)}</div>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">Submissions recorded</span></div>
+          <div className="kpi-val">{totalSubs}</div>
           <div className="kpi-foot">filled in by field staff</div>
         </div>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("clean"), color: solid("clean") }}><Icon name="droplet" size={16} /></div><span className="kpi-label">Most used</span></div>
-          <div className="kpi-val" style={{ fontSize: 18, lineHeight: 1.2 }}>{[...forms].sort((a, b) => (b.usedToday || 0) - (a.usedToday || 0))[0]?.name || "—"}</div>
-          <div className="kpi-foot">{[...forms].sort((a, b) => (b.usedToday || 0) - (a.usedToday || 0))[0]?.usedToday || 0} submissions today</div>
+          <div className="kpi-val" style={{ fontSize: 18, lineHeight: 1.2 }}>{mostUsed && (mostUsed.submissionCount || 0) > 0 ? mostUsed.name : "—"}</div>
+          <div className="kpi-foot">{mostUsed && (mostUsed.submissionCount || 0) > 0 ? mostUsed.submissionCount + " submission" + (mostUsed.submissionCount === 1 ? "" : "s") + " so far" : "no submissions yet"}</div>
         </div>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="clock" size={16} /></div><span className="kpi-label">Fields available</span></div>
           <div className="kpi-val">{FIELD_TYPES.length}</div>
-          <div className="kpi-foot">text · number · y/n · choice · photo · signature…</div>
+          <div className="kpi-foot">text · number · yes/no · choice · date…</div>
         </div>
       </div>
 
-      <div className="forms-grid">
-        {forms.map((f) => {
-          const meta = discMeta[f.disc] || discMeta.maint;
-          const tone = f.disc === "clean" ? "clean" : f.disc === "secure" ? "secure" : "maint";
-          return (
-            <button key={f.id} className="form-card" onClick={() => onOpen(f.id)}>
-              <div className="form-card-head">
-                <div className="form-card-ico" style={{ background: softBg(tone), color: solid(tone) }}>
-                  <Icon name={f.icon} size={18} />
+      {forms.length === 0 ? (
+        <div className="card">
+          <div className="empty" style={{ padding: "56px 20px" }}>
+            <div className="empty-ico"><Icon name="file" size={22} /></div>
+            <h3>No forms yet</h3>
+            <p>
+              {canBuild
+                ? "Build your first checklist or audit form — the team fills it in on mobile or right here, and every submission is recorded."
+                : "An admin or supervisor builds the forms here. Once one exists, you can open it and fill it in."}
+            </p>
+            {canBuild && (
+              <button className="btn btn-primary" onClick={onNew}>
+                <Icon name="plus" size={15} />Build your first form
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="forms-grid">
+          {ordered.map((f) => {
+            const tone = f.active ? "accent" : "muted";
+            const fields = f.fields || [];
+            return (
+              <button key={f.id} className="form-card" style={f.active ? undefined : { opacity: 0.6 }} onClick={() => onOpen(f.id)}>
+                <div className="form-card-head">
+                  <div className="form-card-ico" style={{ background: softBg(tone), color: solid(tone) }}>
+                    <Icon name={f.active ? "file" : "lock"} size={18} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="form-card-name">{f.name}</div>
+                    <div className="form-card-disc">{f.active ? "Active" : "Archived"}</div>
+                  </div>
+                  <Icon name="chevronRight" size={16} />
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="form-card-name">{f.name}</div>
-                  <div className="form-card-disc">{meta.label}</div>
+                <div className="form-card-desc">{f.description || "No description."}</div>
+                <div className="form-card-fields">
+                  {fields.slice(0, 5).map((fd) => (
+                    <span key={fd.id} className="form-chip">
+                      <Icon name={FIELD_TYPES.find((t) => t.id === fd.type)?.icon || "file"} size={10} />
+                      {fd.label.length > 22 ? fd.label.slice(0, 20) + "…" : fd.label}
+                    </span>
+                  ))}
+                  {fields.length > 5 && (
+                    <span className="form-chip muted">+{fields.length - 5} more</span>
+                  )}
                 </div>
-                <Icon name="chevronRight" size={16} />
-              </div>
-              <div className="form-card-desc">{f.description}</div>
-              <div className="form-card-fields">
-                {f.fields.slice(0, 5).map((fd) => (
-                  <span key={fd.id} className="form-chip">
-                    <Icon name={FIELD_TYPES.find((t) => t.id === fd.type)?.icon || "file"} size={10} />
-                    {fd.label.length > 22 ? fd.label.slice(0, 20) + "…" : fd.label}
-                  </span>
-                ))}
-                {f.fields.length > 5 && (
-                  <span className="form-chip muted">+{f.fields.length - 5} more</span>
-                )}
-              </div>
-              <div className="form-card-foot">
-                <div className="form-card-stat">
-                  <b>{f.fields.length}</b>
-                  <span>field{f.fields.length === 1 ? "" : "s"}</span>
+                <div className="form-card-foot">
+                  <div className="form-card-stat">
+                    <b>{fields.length}</b>
+                    <span>field{fields.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <div className="form-card-stat">
+                    <b>{f.submissionCount || 0}</b>
+                    <span>submissions</span>
+                  </div>
+                  <div className="form-card-stat">
+                    <b>{formsAgo(f.lastSubmissionAt)}</b>
+                    <span>last submission</span>
+                  </div>
+                  <span className="form-card-owner">added {f.createdAt ? new Date(f.createdAt).toLocaleDateString() : "—"}</span>
                 </div>
-                <div className="form-card-stat">
-                  <b>{f.usedToday}</b>
-                  <span>used today</span>
-                </div>
-                <div className="form-card-stat">
-                  <b>{f.lastUsed}</b>
-                  <span>last submission</span>
-                </div>
-                <span className="form-card-owner">by {f.owner}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -14921,24 +15570,24 @@ function FieldEditor({ field, idx, total, onChange, onDelete, onMove, isSelected
               onChange={(e) => onChange({ ...field, required: e.target.checked })} />
             Required field
           </label>
-          {field.type === "choice" && (
+          {field.type === "select" && (
             <div className="fb-options">
               <div className="fb-options-l">Options</div>
-              {field.options.map((opt, i) => (
+              {(field.options || []).map((opt, i) => (
                 <div key={i} className="fb-opt-row">
                   <input className="dv-input" value={opt}
                     onChange={(e) => {
-                      const next = [...field.options];
+                      const next = [...(field.options || [])];
                       next[i] = e.target.value;
                       onChange({ ...field, options: next });
                     }} />
                   <button className="fb-tool danger" onClick={() => {
-                    const next = field.options.filter((_, j) => j !== i);
+                    const next = (field.options || []).filter((_, j) => j !== i);
                     onChange({ ...field, options: next });
                   }}><Icon name="x" size={12} /></button>
                 </div>
               ))}
-              <button className="btn btn-sm" onClick={() => onChange({ ...field, options: [...field.options, "New option"] })}>
+              <button className="btn btn-sm" onClick={() => onChange({ ...field, options: [...(field.options || []), "New option"] })}>
                 <Icon name="plus" size={12} />Add option
               </button>
             </div>
@@ -14950,7 +15599,7 @@ function FieldEditor({ field, idx, total, onChange, onDelete, onMove, isSelected
 }
 
 /* ============================================================
-   Live preview pane (right column)
+   Live preview pane (right column of the builder) — static
    ============================================================ */
 function PreviewField({ field }) {
   const required = field.required ? <span className="fp-req">*</span> : null;
@@ -14959,76 +15608,51 @@ function PreviewField({ field }) {
       return (
         <div className="fp-field">
           <label className="fp-label">{field.label} {required}</label>
-          <input className="dv-input" placeholder="Type your answer…" />
+          <input className="dv-input" placeholder="Type your answer…" readOnly />
         </div>
       );
-    case "longtext":
+    case "textarea":
       return (
         <div className="fp-field">
           <label className="fp-label">{field.label} {required}</label>
-          <textarea className="dv-input" rows="3" placeholder="Type your answer…" />
+          <textarea className="dv-input" rows="3" placeholder="Type your answer…" readOnly />
         </div>
       );
     case "number":
       return (
         <div className="fp-field">
           <label className="fp-label">{field.label} {required}</label>
-          <input className="dv-input" type="number" placeholder="0" />
+          <input className="dv-input" type="number" placeholder="0" readOnly />
         </div>
       );
-    case "yesno":
+    case "checkbox":
       return (
         <div className="fp-field">
           <label className="fp-label">{field.label} {required}</label>
           <div className="fp-yesno">
-            <button className="fp-yn"><Icon name="check" size={13} />Yes</button>
-            <button className="fp-yn"><Icon name="x" size={13} />No</button>
+            <button type="button" className="fp-yn"><Icon name="check" size={13} />Yes</button>
+            <button type="button" className="fp-yn"><Icon name="x" size={13} />No</button>
           </div>
         </div>
       );
-    case "choice":
+    case "select":
       return (
         <div className="fp-field">
           <label className="fp-label">{field.label} {required}</label>
           <div className="fp-choice">
             {(field.options || []).map((o, i) => (
-              <button key={i} className="fp-choice-opt">
+              <button key={i} type="button" className="fp-choice-opt">
                 <span className="fp-radio" />{o}
               </button>
             ))}
           </div>
         </div>
       );
-    case "rating":
+    case "date":
       return (
         <div className="fp-field">
           <label className="fp-label">{field.label} {required}</label>
-          <div className="fp-rating">
-            {[1, 2, 3, 4, 5].map((n) => <span key={n} className="fp-star">★</span>)}
-          </div>
-        </div>
-      );
-    case "photo":
-      return (
-        <div className="fp-field">
-          <label className="fp-label">{field.label} {required}</label>
-          <div className="fp-photo">
-            <Icon name="camera" size={22} />
-            <div>
-              <div style={{ fontWeight: 650, fontSize: 13 }}>Tap to take a photo</div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>Camera or gallery</div>
-            </div>
-          </div>
-        </div>
-      );
-    case "signature":
-      return (
-        <div className="fp-field">
-          <label className="fp-label">{field.label} {required}</label>
-          <div className="fp-sig">
-            <div className="fp-sig-line" />
-            <div className="fp-sig-hint">Sign here</div>
-          </div>
+          <input className="dv-input" type="date" readOnly />
         </div>
       );
     default:
@@ -15046,7 +15670,7 @@ function FormPreview({ form }) {
           <Icon name="bell" size={14} />
         </div>
         <div className="fp-phone-body">
-          <h2 className="fp-title">{form.name}</h2>
+          <h2 className="fp-title">{form.name || "Untitled form"}</h2>
           <p className="fp-desc">{form.description}</p>
           {form.fields.length === 0 && (
             <div className="empty" style={{ padding: "40px 20px", margin: "20px 0" }}>
@@ -15068,9 +15692,9 @@ function FormPreview({ form }) {
 }
 
 /* ============================================================
-   Form builder
+   Form builder — saves to the real backend via onSave
    ============================================================ */
-function FormBuilder({ formIn, onBack, onSave }) {
+function FormBuilder({ formIn, onBack, onSave, saving }) {
   const [form, setForm]         = React.useState(formIn);
   const [selected, setSelected] = React.useState(formIn.fields[0]?.id || null);
 
@@ -15117,9 +15741,9 @@ function FormBuilder({ formIn, onBack, onSave }) {
             placeholder="Short description shown above the form on mobile…" />
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn" onClick={onBack}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave(form)}>
-            <Icon name="check" size={15} />Save form
+          <button className="btn" onClick={onBack} disabled={saving}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave(form)} disabled={saving}>
+            <Icon name="check" size={15} />{saving ? "Saving…" : "Save form"}
           </button>
         </div>
       </div>
@@ -15185,35 +15809,482 @@ function FormBuilder({ formIn, onBack, onSave }) {
 }
 
 /* ============================================================
-   Top-level Forms view — switches between library and builder
+   Fill-in — the real, interactive form. Answers POST to the org.
    ============================================================ */
-function FormsView({ go }) {
-  const [forms, setForms] = React.useState(SEED_FORMS);
-  const [editing, setEditing] = React.useState(null); // form id or "new"
-  const { showToast, toastNode } = useViewToast();
+function FillField({ field, value, onChange, error }) {
+  const required = field.required ? <span className="fp-req">*</span> : null;
+  const err = error ? (
+    <div style={{ color: "var(--crit)", fontSize: 11.5, fontWeight: 600, marginTop: 5 }}>
+      {field.type === "checkbox" ? "Required — this needs a Yes." : "Required — fill this in before submitting."}
+    </div>
+  ) : null;
+  const errBorder = error ? { borderColor: "var(--crit)" } : undefined;
 
-  const openForm = (id) => setEditing(id);
-  const newForm = () => setEditing("new");
+  switch (field.type) {
+    case "text":
+      return (
+        <div className="fp-field">
+          <label className="fp-label">{field.label} {required}</label>
+          <input className="dv-input" style={errBorder} placeholder="Type your answer…"
+            value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+          {err}
+        </div>
+      );
+    case "textarea":
+      return (
+        <div className="fp-field">
+          <label className="fp-label">{field.label} {required}</label>
+          <textarea className="dv-input" style={errBorder} rows="3" placeholder="Type your answer…"
+            value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+          {err}
+        </div>
+      );
+    case "number":
+      return (
+        <div className="fp-field">
+          <label className="fp-label">{field.label} {required}</label>
+          <input className="dv-input" style={errBorder} type="number" placeholder="0"
+            value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+          {err}
+        </div>
+      );
+    case "checkbox": {
+      const yesOn = value === true;
+      const noOn = value === false;
+      return (
+        <div className="fp-field">
+          <label className="fp-label">{field.label} {required}</label>
+          <div className="fp-yesno">
+            <button type="button" className="fp-yn"
+              style={yesOn ? { borderColor: "var(--ok)", background: "var(--ok-soft)", color: "var(--ok)", fontWeight: 700 } : errBorder}
+              onClick={() => onChange(yesOn ? undefined : true)}>
+              <Icon name="check" size={13} />Yes
+            </button>
+            <button type="button" className="fp-yn"
+              style={noOn ? { borderColor: "var(--ink-3)", background: "var(--surface-3)", fontWeight: 700 } : errBorder}
+              onClick={() => onChange(noOn ? undefined : false)}>
+              <Icon name="x" size={13} />No
+            </button>
+          </div>
+          {err}
+        </div>
+      );
+    }
+    case "select":
+      return (
+        <div className="fp-field">
+          <label className="fp-label">{field.label} {required}</label>
+          <div className="fp-choice">
+            {(field.options || []).map((o, i) => {
+              const on = value === o;
+              return (
+                <button key={i} type="button" className="fp-choice-opt"
+                  style={on ? { borderColor: "var(--accent)", background: "var(--accent-soft)", fontWeight: 650 } : errBorder}
+                  onClick={() => onChange(on ? undefined : o)}>
+                  <span className="fp-radio"
+                    style={on ? { borderColor: "var(--accent)", background: "var(--accent)", boxShadow: "inset 0 0 0 3px var(--surface)" } : undefined} />
+                  {o}
+                </button>
+              );
+            })}
+          </div>
+          {err}
+        </div>
+      );
+    case "date":
+      return (
+        <div className="fp-field">
+          <label className="fp-label">{field.label} {required}</label>
+          <input className="dv-input" style={errBorder} type="date"
+            value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+          {err}
+        </div>
+      );
+    default:
+      return <div className="fp-field">{field.label}</div>;
+  }
+}
 
-  const current = editing === "new"
-    ? { id: "f" + Date.now(), name: "Untitled form", description: "", disc: "maint", icon: "file",
-        lastUsed: "never", usedToday: 0, owner: "You", fields: [] }
-    : forms.find((f) => f.id === editing);
+function FormFill({ form, showToast, onSubmitted }) {
+  const [answers, setAnswers] = React.useState({});
+  const [siteId, setSiteId]   = React.useState("");
+  const [errs, setErrs]       = React.useState({});
+  const [busy, setBusy]       = React.useState(false);
+  const sites = (typeof HL !== "undefined" && HL.sites) || [];
+  const fields = form.fields || [];
 
-  const saveForm = (next) => {
-    setForms((fs) => {
-      const exists = fs.some((f) => f.id === next.id);
-      if (exists) return fs.map((f) => f.id === next.id ? { ...f, ...next, lastUsed: "just edited" } : f);
-      return [...fs, { ...next, lastUsed: "just created" }];
-    });
-    setEditing(null);
-    showToast(editing === "new" ? `Form "${next.name}" created` : `Form "${next.name}" saved`);
+  const setAnswer = (id, v) => {
+    setAnswers((a) => ({ ...a, [id]: v }));
+    setErrs((e) => (e[id] ? { ...e, [id]: false } : e));
   };
 
-  if (editing && current) {
+  const submit = () => {
+    const missing = {};
+    for (const f of fields) {
+      const v = answers[f.id];
+      if (f.required && (v == null || v === "" || v === false)) missing[f.id] = true;
+    }
+    if (Object.keys(missing).length > 0) {
+      setErrs(missing);
+      showToast("Fill in the required fields first — they're marked in red.");
+      return;
+    }
+    const out = {};
+    for (const f of fields) {
+      let v = answers[f.id];
+      if (v == null || v === "") continue;
+      if (f.type === "number") { const n = Number(v); if (isFinite(n)) v = n; }
+      out[f.id] = v;
+    }
+    setBusy(true);
+    hlApi("/forms/" + form.id + "/submissions", { method: "POST", body: { answers: out, buildingId: siteId || undefined } })
+      .then(({ ok, status, b }) => {
+        setBusy(false);
+        if (ok) {
+          setAnswers({}); setErrs({}); setSiteId("");
+          showToast("Submitted — it's on the record under this form now.");
+          onSubmitted && onSubmitted();
+          return;
+        }
+        if (status === 400 && b && b.error === "missing_required") {
+          if (b.fieldId) setErrs({ [b.fieldId]: true });
+          showToast('"' + (b.fieldLabel || "A required field") + '" still needs an answer.');
+        } else if (status === 409) {
+          showToast("This form is archived — it can't take new submissions.");
+        } else {
+          showToast("Could not submit — check your connection and try again.");
+        }
+      })
+      .catch(() => { setBusy(false); showToast("Could not submit — check your connection and try again."); });
+  };
+
+  return (
+    <div className="fb-preview-col" style={{ position: "static" }}>
+      <div className="fb-preview-cap">
+        <Icon name="phone" size={13} />Live form — submitting here records it for the whole org, same as mobile
+      </div>
+      <div className="fp-shell">
+        <div className="fp-phone">
+          <div className="fp-phone-head">
+            <Icon name="chevronLeft" size={14} />
+            <div style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 700 }}>HazardLink Mobile</div>
+            <Icon name="bell" size={14} />
+          </div>
+          <div className="fp-phone-body">
+            <h2 className="fp-title">{form.name}</h2>
+            {form.description ? <p className="fp-desc">{form.description}</p> : null}
+            {!form.active ? (
+              <div className="empty" style={{ padding: "40px 20px", margin: "20px 0" }}>
+                <div className="empty-ico"><Icon name="lock" size={22} /></div>
+                <h3>Archived</h3>
+                <p>This form is closed to new submissions. Its history stays on the Submissions tab.</p>
+              </div>
+            ) : (
+              <React.Fragment>
+                {sites.length > 0 && (
+                  <div className="fp-field">
+                    <label className="fp-label">Site <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>(optional)</span></label>
+                    <select className="dv-input" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+                      <option value="">No site</option>
+                      {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                )}
+                {fields.map((f) => (
+                  <FillField key={f.id} field={f} value={answers[f.id]}
+                    onChange={(v) => setAnswer(f.id, v)} error={!!errs[f.id]} />
+                ))}
+                <button className="btn btn-primary" disabled={busy}
+                  style={{ width: "100%", marginTop: 18, justifyContent: "center" }} onClick={submit}>
+                  <Icon name="check" size={15} />{busy ? "Submitting…" : "Submit form"}
+                </button>
+              </React.Fragment>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Submissions — real rows for one form, plus staff CSV export
+   ============================================================ */
+function FormSubmissions({ form, canExport, showToast }) {
+  const [data, setData] = React.useState(null); // null loading | false error | { form, submissions }
+  const load = React.useCallback(() => {
+    setData(null);
+    hlApi("/forms/" + form.id + "/submissions")
+      .then(({ ok, b }) => setData(ok && b ? b : false))
+      .catch(() => setData(false));
+  }, [form.id]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const exportCsv = () => {
+    formsDownloadCsv(
+      "/forms/" + form.id + "/submissions.csv",
+      (formsSlug(form.name) || "form") + "-submissions.csv",
+      () => showToast("Could not export the CSV — check your access and try again.")
+    );
+  };
+
+  if (data === null) {
+    return <div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Loading submissions…</div>;
+  }
+  if (data === false) {
+    return (
+      <div className="card card-pad" style={{ fontSize: 13.5 }}>
+        <div style={{ color: "var(--warn)", marginBottom: 10 }}>Could not load the submissions.</div>
+        <button className="btn btn-sm" onClick={load}><Icon name="rotateCw" size={13} />Try again</button>
+      </div>
+    );
+  }
+
+  const fields = (data.form && data.form.fields) || form.fields || [];
+  const subs = data.submissions || [];
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h3>Submissions</h3>
+        <span className="sub">{subs.length} recorded · newest first</span>
+        {canExport && subs.length > 0 && (
+          <button className="btn btn-sm head-act" onClick={exportCsv}>
+            <Icon name="file" size={13} />Export CSV
+          </button>
+        )}
+      </div>
+      {subs.length === 0 ? (
+        <div className="empty" style={{ padding: "40px 20px" }}>
+          <div className="empty-ico"><Icon name="checkCircle" size={22} /></div>
+          <h3>No submissions yet</h3>
+          <p>Fill the form in on the Fill in tab, or on mobile, and every answer lands here.</p>
+        </div>
+      ) : (
+        subs.map((s) => (
+          <div key={s.id} style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <div className="req-ico"><Icon name="user" size={15} /></div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 650, fontSize: 13.5 }}>{s.submitterName || "Unknown"}</div>
+                <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                  {s.buildingName ? s.buildingName + " · " : ""}{formsAgo(s.createdAt)}
+                </div>
+              </div>
+            </div>
+            <div>
+              {fields.map((f) => (
+                <div className="info-row" key={f.id}>
+                  <span className="k">{f.label}</span>
+                  <span className="v">{formsFmtAnswer((s.answers || {})[f.id])}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Form detail — Fill in + Submissions tabs, staff actions
+   ============================================================ */
+function FormDetail({ form, onBack, onEdit, onDelete, onRestore, canManage, showToast, onSubmitted }) {
+  const [tab, setTab] = React.useState(form.active ? "fill" : "subs");
+  const hasSubs = (form.submissionCount || 0) > 0;
+
+  return (
+    <div className="content-inner">
+      <button className="back-link" onClick={onBack}>
+        <Icon name="arrowLeft" size={16} />Back to forms
+      </button>
+
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">{form.name}</h1>
+          <p className="page-desc">
+            {form.active
+              ? (form.description || "Fill it in below — the team can do the same from mobile, and every submission is recorded.")
+              : "Archived — closed to new submissions, kept for its history."}
+          </p>
+        </div>
+        {canManage && (
+          <div style={{ display: "flex", gap: 8 }}>
+            {!form.active && (
+              <button className="btn" onClick={onRestore}>
+                <Icon name="rotateCw" size={14} />Restore
+              </button>
+            )}
+            <button className="btn" onClick={onEdit}>
+              <Icon name="edit" size={14} />Edit form
+            </button>
+            {/* An archived form with submissions can't be deleted (the backend
+                keeps the history), so no Delete button in that state. */}
+            {(form.active || !hasSubs) && (
+              <button className="btn" onClick={onDelete}>
+                <Icon name="trash" size={14} />{hasSubs ? "Archive" : "Delete"}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="tabs">
+        <button className={"tab-btn" + (tab === "fill" ? " on" : "")} onClick={() => setTab("fill")}>Fill in</button>
+        <button className={"tab-btn" + (tab === "subs" ? " on" : "")} onClick={() => setTab("subs")}>
+          Submissions{form.submissionCount ? " (" + form.submissionCount + ")" : ""}
+        </button>
+      </div>
+
+      {tab === "fill" && <FormFill form={form} showToast={showToast} onSubmitted={onSubmitted} />}
+      {tab === "subs" && <FormSubmissions form={form} canExport={canManage} showToast={showToast} />}
+    </div>
+  );
+}
+
+/* ============================================================
+   Top-level Forms view — library / detail / builder, live data
+   ============================================================ */
+function FormsView({ go }) {
+  const [forms, setForms]   = React.useState(null); // null loading | false error | [forms]
+  const [view, setView]     = React.useState(null); // null | {mode:"new"} | {mode:"edit",id} | {mode:"detail",id}
+  const [saving, setSaving] = React.useState(false);
+  const { showToast, toastNode } = useViewToast();
+
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canManage = me.role === "admin" || me.role === "supervisor";
+
+  const refresh = React.useCallback(() => {
+    return hlApi("/forms")
+      .then(({ ok, b }) => setForms(ok && b && Array.isArray(b.forms) ? b.forms : false))
+      .catch(() => setForms(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const list = Array.isArray(forms) ? forms : [];
+  const detailForm = view && view.mode === "detail" ? list.find((f) => f.id === view.id) : null;
+  const editForm   = view && view.mode === "edit"   ? list.find((f) => f.id === view.id) : null;
+
+  const builderDraft = view && view.mode === "new"
+    ? { name: "", description: "", fields: [] }
+    : editForm
+      ? { ...editForm, description: editForm.description || "", fields: (editForm.fields || []).map((f) => ({ ...f, options: f.options || [] })) }
+      : null;
+
+  const saveForm = (draft) => {
+    const isNew = view && view.mode === "new";
+    const name = String(draft.name || "").trim().slice(0, 200);
+    if (!name) { showToast("Give the form a name first."); return; }
+    if (draft.fields.length === 0) { showToast("Add at least one field before saving."); return; }
+    if (draft.fields.length > 60) { showToast("Forms are capped at 60 fields."); return; }
+    for (const f of draft.fields) {
+      if (!String(f.label || "").trim()) { showToast("Every field needs a label."); return; }
+      if (f.type === "select" && !(f.options || []).some((o) => String(o).trim())) {
+        showToast('"' + f.label + '" needs at least one option.'); return;
+      }
+    }
+    /* Backend field ids: loaded fields keep theirs; new ones get a unique slug. */
+    const taken = new Set(draft.fields.filter((f) => !f.fresh).map((f) => f.id));
+    const outFields = draft.fields.map((f) => {
+      const clean = { label: String(f.label).trim().slice(0, 200), type: f.type, required: !!f.required };
+      if (f.type === "select") clean.options = (f.options || []).map((o) => String(o).trim()).filter(Boolean).slice(0, 30);
+      if (!f.fresh) return { id: f.id, ...clean };
+      const base = formsSlug(clean.label) || "field";
+      let id = base, n = 2;
+      while (taken.has(id)) { id = base + "-" + n; n += 1; }
+      taken.add(id);
+      return { id, ...clean };
+    });
+    const body = { name, description: String(draft.description || "").trim().slice(0, 1000) || null, fields: outFields };
+    setSaving(true);
+    (isNew
+      ? hlApi("/forms", { method: "POST", body })
+      : hlApi("/forms/" + draft.id, { method: "PATCH", body })
+    )
+      .then(({ ok, status, b }) => {
+        setSaving(false);
+        if (!ok) {
+          showToast(status === 403
+            ? "Only admins and supervisors can build forms."
+            : b && b.error === "duplicate_field_ids"
+              ? "Two fields ended up with the same id — rename one of them."
+              : "Could not save the form — check the fields and try again.");
+          return;
+        }
+        setView(null);
+        refresh();
+        showToast(isNew
+          ? 'Form "' + name + '" created — the team can fill it in now'
+          : 'Form "' + name + '" saved');
+      })
+      .catch(() => { setSaving(false); showToast("Could not save the form — check your connection."); });
+  };
+
+  const deleteForm = (form) => {
+    const n = form.submissionCount || 0;
+    const q = n > 0
+      ? 'Archive "' + form.name + '"? It has ' + n + " submission" + (n === 1 ? "" : "s") + ", so it's archived (history kept) rather than deleted."
+      : 'Delete "' + form.name + '"? It has no submissions, so it will be removed for good.';
+    if (!window.confirm(q)) return;
+    hlApi("/forms/" + form.id, { method: "DELETE" }).then(({ ok, b }) => {
+      if (!ok) { showToast("Could not delete the form — check your access."); return; }
+      showToast(b && b.archived
+        ? "Archived — it already has submissions, so the history is kept and it's closed to new fill-ins."
+        : 'Form "' + form.name + '" deleted.');
+      setView(null);
+      refresh();
+    }).catch(() => showToast("Could not delete the form — check your connection."));
+  };
+
+  const restoreForm = (form) => {
+    hlApi("/forms/" + form.id, { method: "PATCH", body: { active: true } }).then(({ ok }) => {
+      if (!ok) { showToast("Could not restore the form — check your access."); return; }
+      showToast('"' + form.name + '" is live again — open for submissions.');
+      refresh();
+    }).catch(() => showToast("Could not restore the form — check your connection."));
+  };
+
+  if (forms === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Loading forms…</div></div>;
+  }
+  if (forms === false) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ fontSize: 13.5 }}>
+          <div style={{ color: "var(--warn)", marginBottom: 10 }}>Could not load forms. Check your connection and try again.</div>
+          <button className="btn" onClick={() => { setForms(null); refresh(); }}>
+            <Icon name="rotateCw" size={14} />Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view && (view.mode === "new" || view.mode === "edit") && builderDraft) {
     return (
       <React.Fragment>
-        <FormBuilder formIn={current} onBack={() => setEditing(null)} onSave={saveForm} />
+        <FormBuilder key={view.mode === "edit" ? view.id : "new"}
+          formIn={builderDraft}
+          onBack={() => setView(view.mode === "edit" ? { mode: "detail", id: view.id } : null)}
+          onSave={saveForm}
+          saving={saving} />
+        {toastNode}
+      </React.Fragment>
+    );
+  }
+
+  if (view && view.mode === "detail" && detailForm) {
+    return (
+      <React.Fragment>
+        <FormDetail form={detailForm}
+          onBack={() => setView(null)}
+          onEdit={() => setView({ mode: "edit", id: detailForm.id })}
+          onDelete={() => deleteForm(detailForm)}
+          onRestore={() => restoreForm(detailForm)}
+          canManage={canManage}
+          showToast={showToast}
+          onSubmitted={refresh} />
         {toastNode}
       </React.Fragment>
     );
@@ -15221,7 +16292,10 @@ function FormsView({ go }) {
 
   return (
     <React.Fragment>
-      <FormLibrary forms={forms} onOpen={openForm} onNew={newForm} />
+      <FormLibrary forms={list}
+        onOpen={(id) => setView({ mode: "detail", id })}
+        onNew={() => setView({ mode: "new" })}
+        canBuild={canManage} />
       {toastNode}
     </React.Fragment>
   );
@@ -19358,257 +20432,352 @@ Object.assign(window, { AutomationsView });
 
 /* ════════════════════ asset_47_247d981f.js ════════════════════ */
 ;
-/* HazardLink — Competency (cert health grouped by company, with chase actions) */
+/* HazardLink — Competency: your own staff's certifications, live from the backend.
+   SafePass, Manual Handling, First Aid and the rest, grouped by person, with
+   expiry tracking. Contractor company documents live in Contractors. */
 
-const _COMP_STATUS = {
-  compliant: { tone:"ok",   label:"All current",     icon:"checkCircle" },
-  expiring:  { tone:"warn", label:"Expiring soon",    icon:"clock" },
-  blocked:   { tone:"crit", label:"Action required",  icon:"alertTri" },
+const _CMP_STATUS = {
+  expired:   { tone:"crit",  label:"Expired" },
+  expiring:  { tone:"warn",  label:"Expiring soon" },
+  valid:     { tone:"ok",    label:"Valid" },
+  no_expiry: { tone:"muted", label:"No expiry" },
 };
 
-function _chaseKey(personId, certName) {
-  return personId + "::" + certName;
+/* Person-level rollup, same pills the prototype used for companies. */
+const _CMP_PERSON_STATUS = {
+  blocked:   { tone:"crit", label:"Action required", icon:"alertTri" },
+  expiring:  { tone:"warn", label:"Expiring soon",   icon:"clock" },
+  compliant: { tone:"ok",   label:"All current",     icon:"checkCircle" },
+};
+
+const CMP_CERT_SUGGEST = ["SafePass", "Manual Handling", "First Aid", "Working at Height", "MEWP", "Fire Warden"];
+const _CMP_ROLE_LABEL  = { admin:"Admin", supervisor:"Supervisor", cleaner:"Field staff" };
+
+function _cmpInitials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 }
 
-function _peopleNeedingUpdate(co) {
-  return co.staff
-    .map((p) => {
-      const badCerts = p.certs.filter((c) => c.status === "expired" || c.status === "expiring");
-      return badCerts.length ? { person: p, badCerts } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const ax = a.badCerts.some((c) => c.status === "expired") ? 0 : 1;
-      const bx = b.badCerts.some((c) => c.status === "expired") ? 0 : 1;
-      return ax - bx;
-    });
+function _cmpDay(iso) {
+  if (!iso) return "";
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const p = String(iso).slice(0, 10).split("-");
+  if (p.length < 3) return iso;
+  return parseInt(p[2], 10) + " " + m[parseInt(p[1], 10) - 1] + " " + p[0];
 }
 
-function _enrichCompany(co) {
-  const all = co.staff.flatMap((p) => p.certs);
-  const expiredCount  = all.filter((c) => c.status === "expired").length;
-  const expiringCount = all.filter((c) => c.status === "expiring").length;
-  const needing = _peopleNeedingUpdate(co);
-  const status = expiredCount > 0 ? "blocked" : expiringCount > 0 ? "expiring" : "compliant";
-  return { ...co, expiredCount, expiringCount, needing, status };
+function _cmpDaysUntil(iso) {
+  if (!iso) return null;
+  const p = String(iso).slice(0, 10).split("-").map(Number);
+  if (p.length < 3 || p.some(isNaN)) return null;
+  const t = new Date();
+  const target = new Date(p[0], p[1] - 1, p[2], 12);
+  const today  = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12);
+  return Math.round((target - today) / 86400000);
 }
 
-/* ---------- Cert chase row (in detail view) ---------- */
-function ChaseCertRow({ person, cert, chased, onChase }) {
-  const tone   = cert.status === "expired" ? "crit" : "warn";
-  const label  = cert.status === "expired" ? "Expired" : "Expiring";
-  let dateLine = cert.status === "expired"
-    ? "Expired " + cert.expires
-    : cert.inDays != null
-      ? (cert.inDays < 0 ? "Expired " + Math.abs(cert.inDays) + " day" + (Math.abs(cert.inDays) !== 1 ? "s" : "") + " ago" : "Expires in " + cert.inDays + " day" + (cert.inDays !== 1 ? "s" : "") + " (" + cert.expires + ")")
-      : "Expires " + cert.expires;
+function _cmpExpiryLine(c) {
+  if (c.status === "no_expiry") return "No expiry date";
+  const d = _cmpDaysUntil(c.expiresOn);
+  const day = _cmpDay(c.expiresOn);
+  if (c.status === "expired") {
+    const ago = d == null ? null : Math.abs(d);
+    return "Expired " + day + (ago != null ? " (" + ago + " day" + (ago === 1 ? "" : "s") + " ago)" : "");
+  }
+  if (c.status === "expiring") {
+    if (d === 0) return "Expires today (" + day + ")";
+    return d != null ? "Expires in " + d + " day" + (d === 1 ? "" : "s") + " (" + day + ")" : "Expires " + day;
+  }
+  return "Expires " + day;
+}
 
+function _cmpCertSort(a, b) {
+  const rank = { expired:0, expiring:1, valid:2, no_expiry:3 };
+  const r = (rank[a.status] ?? 4) - (rank[b.status] ?? 4);
+  if (r) return r;
+  const da = a.expiresOn || "9999-12-31", db = b.expiresOn || "9999-12-31";
+  if (da !== db) return da < db ? -1 : 1;
+  return (a.name || "").localeCompare(b.name || "");
+}
+
+/* Real certs from GET /certs, grouped into one entry per person. */
+function _cmpGroupPeople(certs) {
+  const by = {};
+  for (const c of certs || []) {
+    if (!by[c.userId]) {
+      by[c.userId] = {
+        id: c.userId,
+        name: c.userName || "Unknown",
+        role: _CMP_ROLE_LABEL[c.userRole] || c.userRole || "",
+        initials: _cmpInitials(c.userName),
+        certs: [],
+      };
+    }
+    by[c.userId].certs.push(c);
+  }
+  return Object.values(by).map((p) => {
+    p.certs.sort(_cmpCertSort);
+    p.expiredCount  = p.certs.filter((c) => c.status === "expired").length;
+    p.expiringCount = p.certs.filter((c) => c.status === "expiring").length;
+    p.status = p.expiredCount > 0 ? "blocked" : p.expiringCount > 0 ? "expiring" : "compliant";
+    return p;
+  }).sort((a, b) => {
+    const rank = { blocked:0, expiring:1, compliant:2 };
+    const r = rank[a.status] - rank[b.status];
+    if (r) return r;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/* ---------- Cert row (in the person detail) ---------- */
+function CompCertRow({ cert, canManage, busy, onEdit, onDelete, onUpload }) {
+  const m = _CMP_STATUS[cert.status] || _CMP_STATUS.no_expiry;
+  const mod = cert.status === "expired" ? " chase-cert-expired" : cert.status === "expiring" ? " chase-cert-expiring" : "";
   return (
-    <div className={"chase-cert chase-cert-" + cert.status}>
+    <div className={"chase-cert" + mod} style={cert.status === "valid" ? { borderLeftColor:"var(--ok)" } : undefined}>
       <div className="chase-cert-info">
         <div className="chase-cert-name">{cert.name}</div>
         <div className="chase-cert-meta">
-          <Pill tone={tone} dot>{label}</Pill>
-          <span>{dateLine}</span>
+          <Pill tone={m.tone} dot>{m.label}</Pill>
+          <span>{_cmpExpiryLine(cert)}</span>
         </div>
+        {(cert.issuer || cert.certNo || cert.issuedOn) && (
+          <div className="chase-cert-meta">
+            {cert.issuer && <span>{cert.issuer}</span>}
+            {cert.certNo && <span>{"No. " + cert.certNo}</span>}
+            {cert.issuedOn && <span>{"Issued " + _cmpDay(cert.issuedOn)}</span>}
+          </div>
+        )}
       </div>
-      {chased ? (
-        <span className="chase-done"><Icon name="check" size={14} />Chased just now</span>
-      ) : (
-        <button className="btn btn-sm" onClick={() => onChase(person, cert)}>
-          <Icon name="send" size={13} />Chase
-        </button>
-      )}
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"flex-end" }}>
+        {cert.documentUrl && (
+          <a className="btn btn-sm" href={cert.documentUrl} target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
+            <Icon name="eye" size={13} />View document
+          </a>
+        )}
+        {canManage && (
+          <button className="btn btn-sm" onClick={onUpload} disabled={busy}>
+            <Icon name="file" size={13} />
+            {busy ? "Uploading…" : cert.documentUrl ? "Replace document" : "Upload document"}
+          </button>
+        )}
+        {canManage && (
+          <button className="btn btn-sm" onClick={onEdit}><Icon name="edit" size={13} />Edit</button>
+        )}
+        {canManage && (
+          <button className="btn btn-sm" onClick={onDelete}><Icon name="trash" size={13} />Delete</button>
+        )}
+      </div>
     </div>
   );
 }
 
-function ChasePersonBlock({ entry, chasedSet, onChase, onChaseAll }) {
-  const { person, badCerts } = entry;
-  const expired = badCerts.filter((c) => c.status === "expired").length;
-  const pillTone = expired > 0 ? "crit" : "warn";
-  const pillLabel = expired > 0
-    ? `${expired} expired`
-    : `${badCerts.length} expiring`;
-
-  const allChased = badCerts.every((c) => chasedSet.has(_chaseKey(person.id, c.name)));
-
+/* ---------- Person detail (drill-in) ---------- */
+function CompPersonDetail({ p, canManage, uploadingId, onBack, onAdd, onEdit, onDelete, onUpload }) {
+  const m = _CMP_PERSON_STATUS[p.status];
   return (
-    <div className={"staff-block" + (expired > 0 ? " blocked" : "")}>
-      <div className="staff-head">
-        <div className="staff-av">{person.initials}</div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div className="staff-name">{person.name}</div>
-          <div className="staff-role">{person.role}{person.sites ? " · " + person.sites : ""}</div>
+    <div className="content-inner">
+      <button className="back-link" onClick={onBack}>
+        <Icon name="arrowLeft" size={16} />Back to people
+      </button>
+
+      <div className="wo-detail-head">
+        <div className="ct-av-lg">{p.initials}</div>
+        <div style={{ flex:1 }}>
+          <div className="wo-num">{p.role || "Staff member"}</div>
+          <h1 style={{ margin:"4px 0 8px" }}>{p.name}</h1>
+          <div className="tags">
+            <Pill tone={m.tone} dot icon={m.icon}>{m.label}</Pill>
+            <Pill tone="muted" icon="award">{`${p.certs.length} certification${p.certs.length === 1 ? "" : "s"}`}</Pill>
+          </div>
         </div>
-        <Pill tone={pillTone} dot>{pillLabel}</Pill>
-        {!allChased && badCerts.length > 1 && (
-          <button className="btn btn-sm" style={{ marginLeft:8 }} onClick={() => onChaseAll(person, badCerts)}>
-            <Icon name="send" size={13} />Chase all
+        {canManage && (
+          <button className="btn btn-primary" onClick={() => onAdd(p.id)}>
+            <Icon name="plus" size={15} />Add certification
           </button>
         )}
       </div>
-      <div className="chase-cert-list">
-        {badCerts.map((c, i) => (
-          <ChaseCertRow person={person} cert={c}
-            chased={chasedSet.has(_chaseKey(person.id, c.name))}
-            onChase={onChase} key={i} />
+
+      {p.expiredCount > 0 && (
+        <div className="block-banner">
+          <Icon name="alertTri" size={22} />
+          <div>
+            <b>{`${p.expiredCount} expired ticket${p.expiredCount === 1 ? "" : "s"} on file`}</b>
+            <p>Renew below, or delete anything that no longer applies. Admins and supervisors keep getting the daily expiry alert until nothing is out of date.</p>
+          </div>
+        </div>
+      )}
+      {p.expiredCount === 0 && p.expiringCount > 0 && (
+        <div className="comp-detail-sub">
+          <Icon name="clock" size={15} />
+          <span>{`${p.expiringCount} ticket${p.expiringCount === 1 ? "" : "s"} expire${p.expiringCount === 1 ? "s" : ""} within 60 days`}</span>
+          <span className="ar-sep" />
+          <span>Update the expiry date once it is renewed and the alerts stop.</span>
+        </div>
+      )}
+
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {p.certs.map((c) => (
+          <CompCertRow key={c.id} cert={c} canManage={canManage} busy={uploadingId === c.id}
+            onEdit={() => onEdit(c)} onDelete={() => onDelete(c)} onUpload={() => onUpload(c)} />
         ))}
       </div>
     </div>
   );
 }
 
-/* ---------- Company detail (drill-in) ---------- */
-function CompanyDetail({ co, chasedSet, onBack, onChase, onChaseAll }) {
-  const m = _COMP_STATUS[co.status];
-  const totalBad = co.expiredCount + co.expiringCount;
-
+/* ---------- Person card (list view) ---------- */
+function CompPersonCard({ p, onOpen }) {
+  const m = _CMP_PERSON_STATUS[p.status];
+  const bad = p.expiredCount + p.expiringCount;
   return (
-    <div className="content-inner">
-      <button className="back-link" onClick={onBack}>
-        <Icon name="arrowLeft" size={16} />Back to companies
-      </button>
-
-      <div className="wo-detail-head">
-        <div className="ct-av-lg">{co.initials}</div>
-        <div style={{ flex:1 }}>
-          <div className="wo-num">{co.isInternal ? "In-house team" : "Contractor"}</div>
-          <h1 style={{ margin:"4px 0 8px" }}>{co.name}</h1>
-          <div className="tags">
-            <Pill tone={m.tone} dot icon={m.icon}>{m.label}</Pill>
-            <Pill tone="muted">{co.type}</Pill>
-            <Pill tone="muted" icon="user">{`${co.staff.length} staff`}</Pill>
-          </div>
-        </div>
-        {co.needing.length > 0 && (
-          <button className="btn btn-primary" onClick={() => onChaseAll(co, "company")}>
-            <Icon name="send" size={15} />{`Chase all (${totalBad})`}
-          </button>
-        )}
-      </div>
-
-      {co.status === "blocked" && !co.isInternal && (
-        <div className="block-banner">
-          <Icon name="alertTri" size={22} />
-          <div>
-            <b>Not permitted on site</b>
-            <p>At least one ticket is expired. Until everyone listed below is back in date, {co.name} cannot be assigned a new work order.</p>
-          </div>
-        </div>
-      )}
-      {co.status === "blocked" && co.isInternal && (
-        <div className="block-banner">
-          <Icon name="alertTri" size={22} />
-          <div>
-            <b>Action required on our own team</b>
-            <p>Tickets below are out of date. Get them renewed before the next attend.</p>
-          </div>
-        </div>
-      )}
-
-      {co.needing.length === 0 ? (
-        <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
-          <div className="empty-ico" style={{ background:"var(--ok-soft)", color:"var(--ok)" }}><Icon name="checkCircle" size={28} /></div>
-          <h3>Everyone is current</h3>
-          <p>No expired or expiring tickets across {co.staff.length} {co.staff.length === 1 ? "person" : "people"} at {co.name}.</p>
-        </div>
-      ) : (
-        <React.Fragment>
-          <div className="comp-detail-sub">
-            <Icon name="alertTri" size={15} />
-            <span>{`${co.needing.length} of ${co.staff.length} ${co.staff.length === 1 ? "person needs" : "people need"} their tickets up to date`}</span>
-            <span className="ar-sep" />
-            <span>Chase emails are sent to {co.contact} ({co.email})</span>
-          </div>
-          {co.needing.map((entry) => (
-            <ChasePersonBlock entry={entry} key={entry.person.id}
-              chasedSet={chasedSet} onChase={onChase} onChaseAll={onChaseAll} />
-          ))}
-        </React.Fragment>
-      )}
-    </div>
-  );
-}
-
-/* ---------- Company card (list view) ---------- */
-function CompanyCard({ co, chasedSet, onOpen, onChaseAll }) {
-  const m = _COMP_STATUS[co.status];
-  const total = co.staff.length;
-  const needing = co.needing.length;
-  const totalBad = co.expiredCount + co.expiringCount;
-
-  // are all bad certs already chased?
-  const allChased = co.needing.every((e) =>
-    e.badCerts.every((c) => chasedSet.has(_chaseKey(e.person.id, c.name)))
-  );
-
-  return (
-    <div className={"ct-card comp-card" + (co.status === "blocked" ? " blocked" : "")}>
-      {co.status === "blocked" && !co.isInternal && (
+    <div className={"ct-card comp-card" + (p.status === "blocked" ? " blocked" : "")}>
+      {p.status === "blocked" && (
         <div className="block-strip">
           <Icon name="alertTri" size={14} />
-          Not permitted on site until tickets are renewed
+          {`${p.expiredCount} expired ticket${p.expiredCount === 1 ? "" : "s"} to renew`}
         </div>
       )}
 
       <div className="ct-card-body">
         <div className="ct-card-head">
-          <div className="ct-av">{co.initials}</div>
+          <div className="ct-av">{p.initials}</div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="ct-name">{co.name}</div>
-            <div className="ct-type">
-              {co.isInternal ? "In-house team · " : "Contractor · "}{co.type}
-            </div>
+            <div className="ct-name">{p.name}</div>
+            <div className="ct-type">{p.role || "Staff member"}</div>
           </div>
           <Pill tone={m.tone} dot>{m.label}</Pill>
         </div>
 
         <div className="comp-stats">
           <div className="comp-stat">
-            <div className="comp-stat-n">{total}</div>
-            <div className="comp-stat-l">staff on file</div>
+            <div className="comp-stat-n">{p.certs.length}</div>
+            <div className="comp-stat-l">certs on file</div>
           </div>
           <div className="comp-stat-divider" />
           <div className="comp-stat">
-            <div className="comp-stat-n" style={{ color: needing ? (co.expiredCount ? "var(--crit)" : "var(--warn)") : "var(--ok)" }}>
-              {needing}<small>/{total}</small>
+            <div className="comp-stat-n" style={{ color: bad ? (p.expiredCount ? "var(--crit)" : "var(--warn)") : "var(--ok)" }}>
+              {bad}<small>/{p.certs.length}</small>
             </div>
-            <div className="comp-stat-l">need certs updated</div>
+            <div className="comp-stat-l">need renewing</div>
           </div>
         </div>
 
-        {needing > 0 && (
+        {bad > 0 && (
           <div className="comp-breakdown">
-            {co.expiredCount > 0 && (
+            {p.expiredCount > 0 && (
               <span className="comp-bd comp-bd-crit">
-                <span className="dot" />{`${co.expiredCount} expired`}
+                <span className="dot" />{`${p.expiredCount} expired`}
               </span>
             )}
-            {co.expiringCount > 0 && (
+            {p.expiringCount > 0 && (
               <span className="comp-bd comp-bd-warn">
-                <span className="dot" />{`${co.expiringCount} expiring soon`}
+                <span className="dot" />{`${p.expiringCount} expiring soon`}
               </span>
             )}
           </div>
         )}
 
         <div className="ct-actions">
-          <button className="btn btn-primary" onClick={() => onOpen(co.id)}>
-            {needing > 0 ? "Open and chase" : "Open"}
+          <button className="btn btn-primary" onClick={() => onOpen(p.id)}>
+            {bad > 0 ? "Open and renew" : "Open"}
             <Icon name="chevronRight" size={14} />
           </button>
-          {needing > 0 && (
-            allChased ? (
-              <span className="chase-done" style={{ flex:1, justifyContent:"center" }}>
-                <Icon name="check" size={14} />Reminders sent
-              </span>
-            ) : (
-              <button className="btn" onClick={() => onChaseAll(co, "company")}>
-                <Icon name="send" size={14} />{`Chase all (${totalBad})`}
-              </button>
-            )
-          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Add / edit modal (free-text name with common Irish tickets) ---------- */
+function CompCertModal({ mode, cert, people, peopleState, presetUserId, onClose, onSubmit }) {
+  const editing = mode === "edit";
+  const [vals, setVals] = React.useState(() => editing
+    ? { userId: cert.userId, name: cert.name || "", issuer: cert.issuer || "", certNo: cert.certNo || "",
+        issuedOn: cert.issuedOn || "", expiresOn: cert.expiresOn || "" }
+    : { userId: presetUserId || "", name:"", issuer:"", certNo:"", issuedOn:"", expiresOn:"" });
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr]   = React.useState(null);
+  const set = (k, v) => setVals((s) => ({ ...s, [k]: v }));
+  const ready = (editing || vals.userId) && vals.name.trim() !== "";
+
+  const submit = () => {
+    if (!ready || busy) return;
+    setBusy(true); setErr(null);
+    Promise.resolve(onSubmit(vals)).then((res) => {
+      if (res && res.ok) { onClose(); return; }
+      setBusy(false);
+      const code = res && res.status;
+      setErr(code === 403 ? "Only supervisors and admins can change certifications."
+           : code === 400 ? "Check the fields. The name cannot be empty and dates must be real dates."
+           : "Could not save. Check your connection and try again.");
+    }).catch(() => { setBusy(false); setErr("Could not save. Check your connection and try again."); });
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="award" size={18} /></div>
+          <div>
+            <h3>{editing ? "Edit " + (cert.name || "certification") : "Add a certification"}</h3>
+            <p>{editing
+              ? "Changes save straight to " + (cert.userName || "this person") + "'s file."
+              : "Tracked per person. Give it an expiry date and the chasing is automatic."}</p>
+          </div>
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="ai-fields">
+            {!editing && (
+              <div className="ai-field">
+                <label>Who is it for</label>
+                <select className="dv-input" value={vals.userId} onChange={(e) => set("userId", e.target.value)}>
+                  <option value="">{peopleState === null ? "Loading people…" : "Select a person…"}</option>
+                  {(people || []).map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {(u.name || u.email) + (u.role ? " · " + (_CMP_ROLE_LABEL[u.role] || u.role) : "")}
+                    </option>
+                  ))}
+                </select>
+                {peopleState === false && <div className="ai-hint">Could not load your people. Close this and try again.</div>}
+              </div>
+            )}
+            <div className="ai-field">
+              <label>Certification</label>
+              <input className="dv-input" list="cmp-cert-names" value={vals.name}
+                onChange={(e) => set("name", e.target.value)} placeholder="e.g. SafePass" />
+              <datalist id="cmp-cert-names">
+                {CMP_CERT_SUGGEST.map((n) => <option key={n} value={n} />)}
+              </datalist>
+            </div>
+            <div className="ai-field">
+              <label>Issuer (optional)</label>
+              <input className="dv-input" value={vals.issuer} onChange={(e) => set("issuer", e.target.value)}
+                placeholder="e.g. SOLAS" />
+            </div>
+            <div className="ai-field">
+              <label>Certificate number (optional)</label>
+              <input className="dv-input" value={vals.certNo} onChange={(e) => set("certNo", e.target.value)}
+                placeholder="As printed on the card" />
+            </div>
+            <div className="ai-field">
+              <label>Issued on (optional)</label>
+              <input className="dv-input" type="date" value={vals.issuedOn} onChange={(e) => set("issuedOn", e.target.value)} />
+            </div>
+            <div className="ai-field">
+              <label>Expires on</label>
+              <input className="dv-input" type="date" value={vals.expiresOn} onChange={(e) => set("expiresOn", e.target.value)} />
+              <div className="ai-hint">Leave empty only if it never expires. Without a date there is nothing to chase.</div>
+            </div>
+          </div>
+          {err && <div style={{ marginTop:12, fontSize:13, color:"var(--crit)" }}>{err}</div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!ready || busy}
+            style={{ opacity: ready && !busy ? 1 : .5 }} onClick={submit}>
+            <Icon name="check" size={15} />{busy ? "Saving…" : editing ? "Save changes" : "Add certification"}
+          </button>
         </div>
       </div>
     </div>
@@ -19617,183 +20786,289 @@ function CompanyCard({ co, chasedSet, onOpen, onChaseAll }) {
 
 /* ---------- Top-level view ---------- */
 function CompetencyView({ go }) {
-  const { site } = React.useContext(SiteContext);
-  const [openId, setOpenId]   = React.useState(null);
-  const [filter, setFilter]   = React.useState("All");
-  const [chased, setChased]   = React.useState(() => new Set());
-  const [toast, setToast]     = React.useState(null);
-  const toastTimer = React.useRef(null);
+  const [data, setData]           = React.useState(null);  // null loading | false error | certs[]
+  const [users, setUsers]         = React.useState(null);  // null loading | false error | users[] (staff only)
+  const [openId, setOpenId]       = React.useState(null);
+  const [filter, setFilter]       = React.useState("All");
+  const [modal, setModal]         = React.useState(null);  // { mode:"add", presetUserId? } | { mode:"edit", cert }
+  const [uploadingId, setUploadingId] = React.useState(null);
+  const { showToast, toastNode }  = useViewToast();
+  const fileRef   = React.useRef(null);
+  const uploadFor = React.useRef(null);
 
-  const showToast = (msg) => {
-    setToast(msg);
-    clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 3200);
-  };
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canManage = me.role === "admin" || me.role === "supervisor";
 
-  /* Companies: in-house team + every contractor (site-scoped if globalSite set) */
-  const companies = React.useMemo(() => {
-    const siteName = site ? site.name : null;
-    const matchesSite = (staff) => {
-      if (!siteName) return true;
-      const s = (staff.sites || "").toString();
-      return s === "All sites" || s.includes(siteName);
-    };
-    const inHouseStaff = HL.ownStaff.filter(matchesSite);
-    const inHouse = {
-      id:"hl", initials:"HL", isInternal:true,
-      name:"HazardLink in-house team",
-      type:"Facilities, cleaning, security and maintenance",
-      contact:"Aoife Kelly", email:"aoife@hazardlink.ie",
-      staff: inHouseStaff,
-    };
-    const fromContractors = HL.contractors.map((c) => ({
-      id:c.id, initials:c.initials, isInternal:false,
-      name:c.name, type:c.type,
-      contact:c.contact, email:c.email,
-      staff:c.staff.filter(matchesSite),
-    })).filter((c) => c.staff.length > 0);
-    const out = [inHouse, ...fromContractors].filter((c) => c.staff.length > 0);
-    return out.map(_enrichCompany);
-  }, [site && site.name]);
+  const refresh = React.useCallback(() => {
+    return hlApi("/certs")
+      .then(({ ok, b }) => { setData(ok && b && Array.isArray(b.certs) ? b.certs : false); })
+      .catch(() => setData(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
 
-  /* Chase actions */
-  const chaseOne = (person, cert) => {
-    setChased((prev) => {
-      const next = new Set(prev);
-      next.add(_chaseKey(person.id, cert.name));
-      return next;
-    });
-    showToast(`Reminder sent — ${person.name}, ${cert.name}`);
-  };
+  /* People for the add picker. /users is staff-only, so field staff skip it. */
+  React.useEffect(() => {
+    if (!canManage) { setUsers([]); return; }
+    hlApi("/users")
+      .then(({ ok, b }) => setUsers(ok && b && Array.isArray(b.users) ? b.users.filter((u) => !u.deactivatedAt) : false))
+      .catch(() => setUsers(false));
+  }, [canManage]);
 
-  const chaseAll = (target, scope) => {
-    // target is either a company (scope === "company") or a person object
-    setChased((prev) => {
-      const next = new Set(prev);
-      let count = 0;
-      if (scope === "company") {
-        target.needing.forEach((e) => e.badCerts.forEach((c) => {
-          next.add(_chaseKey(e.person.id, c.name)); count++;
-        }));
-        showToast(`${count} reminder${count !== 1 ? "s" : ""} sent to ${target.contact}`);
-      } else {
-        // chase one person's bag of bad certs
-        const personArg = target; // person object
-        const certs = scope;       // bad-certs array
-        certs.forEach((c) => {
-          next.add(_chaseKey(personArg.id, c.name)); count++;
-        });
-        showToast(`${count} reminder${count !== 1 ? "s" : ""} sent to ${personArg.name}`);
+  const certs  = Array.isArray(data) ? data : [];
+  const people = React.useMemo(() => _cmpGroupPeople(certs), [data]);
+
+  /* If the open person's last cert was deleted, fall back to the list. */
+  React.useEffect(() => {
+    if (openId && Array.isArray(data) && !people.some((p) => p.id === openId)) setOpenId(null);
+  }, [openId, data, people]);
+
+  /* ---- Real actions against the backend ---- */
+  const submitAdd = (vals) => {
+    const body = { userId: vals.userId, name: vals.name.trim() };
+    if (vals.issuer.trim())  body.issuer  = vals.issuer.trim();
+    if (vals.certNo.trim())  body.certNo  = vals.certNo.trim();
+    if (vals.issuedOn)       body.issuedOn  = vals.issuedOn;
+    if (vals.expiresOn)      body.expiresOn = vals.expiresOn;
+    return hlApi("/certs", { method:"POST", body }).then((res) => {
+      if (res.ok) {
+        const who = (Array.isArray(users) && (users.find((u) => u.id === vals.userId) || {}).name) || "them";
+        showToast(body.expiresOn
+          ? body.name + " added for " + who + ". Expiry tracking is on."
+          : body.name + " added for " + who + ". No expiry date, so nothing to chase.");
+        refresh();
       }
-      return next;
+      return res;
     });
   };
 
-  /* Top-level metrics across all companies */
-  const totalPeople    = companies.reduce((s, c) => s + c.staff.length, 0);
-  const peopleNeeding  = companies.reduce((s, c) => s + c.needing.length, 0);
-  const totalExpired   = companies.reduce((s, c) => s + c.expiredCount, 0);
-  const totalExpiring  = companies.reduce((s, c) => s + c.expiringCount, 0);
+  const submitEdit = (cert, vals) => {
+    const body = {
+      name: vals.name.trim(),
+      issuer: vals.issuer.trim() || null,
+      certNo: vals.certNo.trim() || null,
+      issuedOn: vals.issuedOn || null,
+      expiresOn: vals.expiresOn || null,
+    };
+    return hlApi("/certs/" + cert.id, { method:"PATCH", body }).then((res) => {
+      if (res.ok) { showToast(body.name + " updated for " + (cert.userName || "them")); refresh(); }
+      return res;
+    });
+  };
 
-  const detail = openId ? companies.find((c) => c.id === openId) : null;
+  const handleDelete = (cert) => {
+    if (!window.confirm("Delete " + cert.name + " for " + (cert.userName || "this person") + "? This cannot be undone.")) return;
+    hlApi("/certs/" + cert.id, { method:"DELETE" }).then(({ ok }) => {
+      if (!ok) { showToast("Could not delete that certification. Check your access."); return; }
+      showToast(cert.name + " removed for " + (cert.userName || "them"));
+      refresh();
+    });
+  };
 
-  /* Detail view */
-  if (detail) {
+  const startUpload = (cert) => {
+    uploadFor.current = cert;
+    if (fileRef.current) fileRef.current.click();
+  };
+  const onFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    const cert = uploadFor.current;
+    uploadFor.current = null;
+    if (!file || !cert) return;
+    setUploadingId(cert.id);
+    const fd = new FormData();
+    fd.append("file", file, file.name || "certificate");
+    fetch((window.HL_API_BASE || "/api") + "/certs/" + cert.id + "/document", {
+      method: "POST",
+      headers: { authorization: "Bearer " + (localStorage.getItem("bor.token") || "") },
+      body: fd,
+    }).then((r) => r.json().then((b) => ({ ok: r.ok, b })).catch(() => ({ ok: r.ok, b: null })))
+      .then(({ ok, b }) => {
+        if (!ok) {
+          showToast(b && b.error === "unsupported_type"
+            ? "That file type is not supported. Use a PDF or a photo."
+            : "Upload failed. Try again.");
+          return;
+        }
+        showToast("Document attached to " + cert.name + ".");
+        return refresh();
+      })
+      .catch(() => showToast("Upload failed. Check your connection."))
+      .finally(() => setUploadingId(null));
+  };
+
+  /* ---- Loading / error ---- */
+  if (data === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading certifications…</div></div>;
+  }
+  if (data === false) {
     return (
-      <React.Fragment>
-        <CompanyDetail co={detail}
-          chasedSet={chased}
-          onBack={() => setOpenId(null)}
-          onChase={chaseOne}
-          onChaseAll={chaseAll} />
-        {toast && (
-          <div className="toast">
-            <Icon name="send" size={16} />{toast}
-          </div>
-        )}
-      </React.Fragment>
+      <div className="content-inner">
+        <div className="card card-pad" style={{ fontSize:13.5 }}>
+          <div style={{ color:"var(--warn)", marginBottom:10 }}>Could not load certifications. Check your connection.</div>
+          <button className="btn" onClick={() => { setData(null); refresh(); }}>
+            <Icon name="rotateCw" size={14} />Try again
+          </button>
+        </div>
+      </div>
     );
   }
 
-  /* List view */
+  /* ---- Metrics, straight off the real list ---- */
+  const totalExpired  = certs.filter((c) => c.status === "expired").length;
+  const totalExpiring = certs.filter((c) => c.status === "expiring").length;
+
+  const detail = openId ? people.find((p) => p.id === openId) : null;
+
   const tabs = ["All", "Action needed", "All current"];
-  const shown = companies.filter((c) => {
-    if (filter === "All")           return true;
-    if (filter === "Action needed") return c.needing.length > 0;
-    if (filter === "All current")   return c.needing.length === 0;
+  const effFilter = people.length > 1 ? filter : "All"; // toolbar hides for one person, so no stale filter
+  const shown = people.filter((p) => {
+    if (effFilter === "Action needed") return p.status !== "compliant";
+    if (effFilter === "All current")   return p.status === "compliant";
     return true;
   });
 
   return (
-    <div className="content-inner">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Competency</h1>
-          <p className="page-desc">Every team and contractor with site access, grouped by company. Open one to see exactly who needs their tickets renewed and chase them by email.</p>
-        </div>
-        <button className="btn"><Icon name="plus" size={15} />Add staff member</button>
-      </div>
-
-      <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
-        <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("muted"), color:solid("muted") }}><Icon name="user" size={16} /></div><span className="kpi-label">Companies</span></div>
-          <div className="kpi-val">{companies.length}</div>
-          <div className="kpi-foot">in-house team plus contractors</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="user" size={16} /></div><span className="kpi-label">People with site access</span></div>
-          <div className="kpi-val">{totalPeople}</div>
-          <div className="kpi-foot">{`${totalPeople - peopleNeeding} fully in date`}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div><span className="kpi-label">Tickets expiring soon</span></div>
-          <div className="kpi-val" style={{ color: totalExpiring ? "var(--warn)" : "var(--ok)" }}>{totalExpiring}</div>
-          <div className="kpi-foot">within 90 days</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertTri" size={16} /></div><span className="kpi-label">Tickets expired</span></div>
-          <div className="kpi-val" style={{ color: totalExpired ? "var(--crit)" : "var(--ok)" }}>{totalExpired}</div>
-          <div className="kpi-foot">renew before next attend</div>
-        </div>
-      </div>
-
-      <div className="card auto-rem-card" style={{ marginBottom:16 }}>
-        <div className="card-head">
-          <div className="ar-ico"><Icon name="bell" size={15} /></div>
-          <div>
-            <h3>Auto reminders are running</h3>
-            <div className="sub">Every company is emailed automatically 30, 14 and 3 days before each ticket expires, and again the day it lapses. Chase manually below for anything that's already overdue.</div>
+    <React.Fragment>
+      {detail ? (
+        <CompPersonDetail p={detail} canManage={canManage} uploadingId={uploadingId}
+          onBack={() => setOpenId(null)}
+          onAdd={(personId) => setModal({ mode:"add", presetUserId: personId })}
+          onEdit={(c) => setModal({ mode:"edit", cert: c })}
+          onDelete={handleDelete}
+          onUpload={startUpload} />
+      ) : (
+        <div className="content-inner">
+          <div className="page-head">
+            <div>
+              <h1 className="page-title">Competency</h1>
+              <p className="page-desc">{canManage
+                ? "Your own staff's tickets, grouped by person: SafePass, manual handling, first aid and the rest. Expiry dates are tracked and chased automatically."
+                : "Your certifications and their expiry dates. Your supervisor keeps these up to date."}</p>
+            </div>
+            {canManage && (
+              <button className="btn btn-primary" onClick={() => setModal({ mode:"add" })}>
+                <Icon name="plus" size={15} />Add certification
+              </button>
+            )}
           </div>
-          <span className="head-act"><Pill tone="ok" dot>Active</Pill></span>
-        </div>
-      </div>
 
-      <div className="toolbar">
-        <div className="seg">
-          {tabs.map((t) => (
-            <button key={t} className={filter === t ? "on" : ""} onClick={() => setFilter(t)}>{t}</button>
-          ))}
-        </div>
-        <div style={{ marginLeft:"auto", fontSize:12.5, color:"var(--ink-3)" }}>
-          {`${shown.length} of ${companies.length} companies`}
-        </div>
-      </div>
+          <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="user" size={16} /></div><span className="kpi-label">People tracked</span></div>
+              <div className="kpi-val">{people.length}</div>
+              <div className="kpi-foot">with a certification on file</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("muted"), color:solid("muted") }}><Icon name="award" size={16} /></div><span className="kpi-label">Certifications</span></div>
+              <div className="kpi-val">{certs.length}</div>
+              <div className="kpi-foot">across everyone listed below</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div><span className="kpi-label">Expiring soon</span></div>
+              <div className="kpi-val" style={{ color: totalExpiring ? "var(--warn)" : "var(--ok)" }}>{totalExpiring}</div>
+              <div className="kpi-foot">within the next 60 days</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertTri" size={16} /></div><span className="kpi-label">Expired</span></div>
+              <div className="kpi-val" style={{ color: totalExpired ? "var(--crit)" : "var(--ok)" }}>{totalExpired}</div>
+              <div className="kpi-foot">renew before their next attend</div>
+            </div>
+          </div>
 
-      <div className="comp-grid">
-        {shown.map((co) => (
-          <CompanyCard co={co} key={co.id}
-            chasedSet={chased}
-            onOpen={setOpenId}
-            onChaseAll={chaseAll} />
-        ))}
-      </div>
+          <div className="card auto-rem-card" style={{ marginBottom:16 }}>
+            <div className="card-head">
+              <div className="ar-ico"><Icon name="bell" size={15} /></div>
+              <div>
+                <h3>Expiry chasing is automatic</h3>
+                <div className="sub">Once a certification is expired or inside 60 days of expiry, admins and supervisors get an in-app alert and a daily summary email until it is renewed. Add the expiry date and the rest takes care of itself.</div>
+              </div>
+              <span className="head-act"><Pill tone="ok" dot>Active</Pill></span>
+            </div>
+          </div>
 
-      {toast && (
-        <div className="toast">
-          <Icon name="send" size={16} />{toast}
+          {canManage && (
+            <div className="card auto-rem-card" style={{ marginBottom:16 }}>
+              <div className="card-head">
+                <div className="ar-ico"><Icon name="users" size={15} /></div>
+                <div>
+                  <h3>Looking for contractor documents?</h3>
+                  <div className="sub">This page tracks your own staff. Contractor insurance and company documents live in Contractors, under Directory. Each contractor keeps their own vault up to date through their claim link.</div>
+                </div>
+                <span className="head-act">
+                  <button className="btn btn-sm" onClick={() => go && go("contractors")}>
+                    Open Contractors<Icon name="chevronRight" size={13} />
+                  </button>
+                </span>
+              </div>
+            </div>
+          )}
+
+          {people.length === 0 ? (
+            <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
+              <div className="empty-ico" style={{ background:"var(--accent-soft)", color:"var(--accent)" }}><Icon name="award" size={28} /></div>
+              <h3>No certifications tracked yet</h3>
+              <p>{canManage
+                ? "Add SafePass, manual handling and first aid records for your staff and expiry chasing is automatic."
+                : "Nothing is on your file yet. Your supervisor or an admin adds these, and they will appear here with their expiry dates."}</p>
+              {canManage && (
+                <button className="btn btn-primary" style={{ marginTop:14 }} onClick={() => setModal({ mode:"add" })}>
+                  <Icon name="plus" size={15} />Add the first certification
+                </button>
+              )}
+            </div>
+          ) : (
+            <React.Fragment>
+              {people.length > 1 && (
+                <div className="toolbar">
+                  <div className="seg">
+                    {tabs.map((t) => (
+                      <button key={t} className={filter === t ? "on" : ""} onClick={() => setFilter(t)}>{t}</button>
+                    ))}
+                  </div>
+                  <div style={{ marginLeft:"auto", fontSize:12.5, color:"var(--ink-3)" }}>
+                    {`${shown.length} of ${people.length} people`}
+                  </div>
+                </div>
+              )}
+
+              {shown.length === 0 ? (
+                <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>
+                  {effFilter === "Action needed"
+                    ? "No one needs anything renewed. Every tracked ticket is in date."
+                    : "No one is fully in date yet. Renew what is listed under Action needed."}
+                </div>
+              ) : (
+                <div className="comp-grid">
+                  {shown.map((p) => (
+                    <CompPersonCard p={p} key={p.id} onOpen={setOpenId} />
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
+          )}
         </div>
       )}
-    </div>
+
+      <input ref={fileRef} type="file" style={{ display:"none" }}
+        accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
+        onChange={onFile} />
+
+      {modal && modal.mode === "add" && (
+        <CompCertModal mode="add"
+          people={Array.isArray(users) ? users : []}
+          peopleState={users}
+          presetUserId={modal.presetUserId}
+          onClose={() => setModal(null)}
+          onSubmit={submitAdd} />
+      )}
+      {modal && modal.mode === "edit" && (
+        <CompCertModal mode="edit" cert={modal.cert}
+          onClose={() => setModal(null)}
+          onSubmit={(vals) => submitEdit(modal.cert, vals)} />
+      )}
+
+      {toastNode}
+    </React.Fragment>
   );
 }
 
@@ -19801,43 +21076,79 @@ Object.assign(window, { CompetencyView });
 
 /* ════════════════════ asset_34_e0db4836.js ════════════════════ */
 ;
-/* HazardLink — Statutory compliance & SFG20 register */
+/* HazardLink — Statutory compliance register, wired to the live backend.
+   GET/POST/PATCH/DELETE /compliance (+ /complete, /document) — no demo data. */
 
 const CMP_CATEGORIES = [
   { id:"fire",       label:"Fire safety",                icon:"alertTri", tone:"crit"   },
   { id:"electrical", label:"Electrical",                 icon:"activity", tone:"warn"   },
   { id:"gas",        label:"Gas",                        icon:"beaker",   tone:"warn"   },
   { id:"water",      label:"Water hygiene · Legionella", icon:"droplet",  tone:"clean"  },
-  { id:"lift",       label:"Lifts",                      icon:"layers",   tone:"secure" },
+  { id:"lifts",      label:"Lifts",                      icon:"layers",   tone:"secure" },
   { id:"hvac",       label:"HVAC",                       icon:"monitor",  tone:"maint"  },
-  { id:"emlight",    label:"Emergency lighting",         icon:"sun",      tone:"warn"   },
+  { id:"other",      label:"Other statutory",            icon:"file",     tone:"muted"  },
 ];
 
+/* Backend-derived statuses (from next_due_on). */
 const CMP_STATUS_META = {
-  compliant:  { label:"Compliant",  tone:"ok"    },
-  "due-soon": { label:"Due soon",    tone:"warn"  },
-  overdue:    { label:"Overdue",     tone:"crit"  },
-  expired:    { label:"Expired",     tone:"crit"  },
+  ok:          { label:"OK",          tone:"ok"    },
+  due_soon:    { label:"Due soon",    tone:"warn"  },
+  overdue:     { label:"Overdue",     tone:"crit"  },
+  unscheduled: { label:"Unscheduled", tone:"muted" },
 };
 
-const CMP_TASKS = [];
+function cmpCatMeta(id) {
+  return CMP_CATEGORIES.find((c) => c.id === id) || CMP_CATEGORIES[CMP_CATEGORIES.length - 1];
+}
+
+function cmpDate(iso) {
+  if (!iso) return "—";
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const parts = String(iso).slice(0, 10).split("-");
+  if (parts.length !== 3) return "—";
+  return parseInt(parts[2], 10) + " " + (m[parseInt(parts[1], 10) - 1] || "") + " " + parts[0];
+}
+
+function cmpFreqLabel(months) {
+  const n = parseInt(months, 10);
+  if (!n) return "—";
+  if (n === 1)  return "Monthly";
+  if (n === 3)  return "Quarterly";
+  if (n === 6)  return "6-monthly";
+  if (n === 12) return "Annual";
+  if (n % 12 === 0) return (n / 12) + "-yearly";
+  return n + "-monthly";
+}
+
+function cmpTodayISO() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
 
 /* ============================================================
-   Site scoring
+   Site scoring — % of that site's real items in date
+   (status ok or due_soon; overdue and unscheduled count against).
    ============================================================ */
-function cmpSiteScore(siteName, tasks) {
-  const siteTasks = tasks.filter((t) => t.site === siteName);
-  if (siteTasks.length === 0) return null;
-  const ok = siteTasks.filter((t) => t.status === "compliant").length;
-  return Math.round((ok / siteTasks.length) * 100);
+function cmpSiteScore(siteId, items) {
+  const siteItems = items.filter((t) => t.buildingId === siteId);
+  if (siteItems.length === 0) return null;
+  const inDate = siteItems.filter((t) => t.status === "ok" || t.status === "due_soon").length;
+  return Math.round((inDate / siteItems.length) * 100);
 }
 
 /* ============================================================
    Detail panel
    ============================================================ */
-function CmpTaskPanel({ task, onClose, onUpload }) {
-  const cat = CMP_CATEGORIES.find((c) => c.id === task.category);
-  const sm = CMP_STATUS_META[task.status];
+function CmpTaskPanel({ item, canManage, onClose, onUpload, onMarkDone, onEdit, onDelete, onRaiseWO }) {
+  const cat = cmpCatMeta(item.category);
+  const sm = CMP_STATUS_META[item.status] || CMP_STATUS_META.unscheduled;
+  const [doneOn, setDoneOn] = React.useState(cmpTodayISO());
+  const [busy, setBusy]     = React.useState(null); // "done" | "wo" | "del"
+  const run = (kind, fn) => {
+    if (busy) return;
+    setBusy(kind);
+    Promise.resolve(fn()).finally(() => setBusy(null));
+  };
   return (
     <React.Fragment>
       <div className="panel-overlay" onClick={onClose} />
@@ -19847,8 +21158,8 @@ function CmpTaskPanel({ task, onClose, onUpload }) {
             <Icon name={cat.icon} size={17} />
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="panel-title">{task.title}</div>
-            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2, fontFamily:"var(--mono)" }}>{task.id} · {task.sfg}</div>
+            <div className="panel-title">{item.name}</div>
+            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2, fontFamily:"var(--mono)" }}>{cmpFreqLabel(item.frequencyMonths)} · {item.buildingName || "Portfolio-wide"}</div>
           </div>
           <Pill tone={sm.tone} dot>{sm.label}</Pill>
           <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
@@ -19857,57 +21168,122 @@ function CmpTaskPanel({ task, onClose, onUpload }) {
           <div className="panel-section">
             <div className="auto-detail-box">
               <div className="auto-detail-row"><span className="k">Category</span><span className="v">{cat.label}</span></div>
-              <div className="auto-detail-row"><span className="k">SFG20 schedule</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{task.sfg}</span></div>
-              <div className="auto-detail-row"><span className="k">Frequency</span><span className="v">{task.freq}</span></div>
-              <div className="auto-detail-row"><span className="k">Site</span><span className="v">{task.site}</span></div>
-              <div className="auto-detail-row"><span className="k">Last completed</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{task.lastDone}</span></div>
-              <div className="auto-detail-row"><span className="k">Next due</span><span className="v" style={{ fontFamily:"var(--mono)", color: task.status === "overdue" || task.status === "expired" ? "var(--crit)" : task.status === "due-soon" ? "var(--warn)" : undefined }}>{task.nextDue}</span></div>
+              <div className="auto-detail-row"><span className="k">Contractor</span><span className="v">{item.contractorName || "—"}</span></div>
+              <div className="auto-detail-row"><span className="k">Frequency</span><span className="v">{cmpFreqLabel(item.frequencyMonths)}</span></div>
+              <div className="auto-detail-row"><span className="k">Site</span><span className="v">{item.buildingName || "Portfolio-wide"}</span></div>
+              <div className="auto-detail-row"><span className="k">Last completed</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{cmpDate(item.lastDoneOn)}</span></div>
+              <div className="auto-detail-row"><span className="k">Next due</span><span className="v" style={{ fontFamily:"var(--mono)", color: item.status === "overdue" ? "var(--crit)" : item.status === "due_soon" ? "var(--warn)" : undefined }}>{cmpDate(item.nextDueOn)}</span></div>
+              {item.note && <div className="auto-detail-row"><span className="k">Note</span><span className="v">{item.note}</span></div>}
             </div>
           </div>
 
           <div className="panel-section">
             <div className="panel-label">Certificate</div>
-            {task.cert ? (
+            {item.documentUrl ? (
               <div className="cmp-cert">
                 <div className="cmp-cert-ico"><Icon name="file" size={16} /></div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div className="cmp-cert-name">{task.cert}</div>
-                  <div className="cmp-cert-meta">Signed by competent person · stamped {task.lastDone}</div>
+                  <div className="cmp-cert-name">Certificate on file</div>
+                  <div className="cmp-cert-meta">Attached to this item · opens in a new tab</div>
                 </div>
-                <button className="btn btn-sm"><Icon name="file" size={12} />Download</button>
+                <a className="btn btn-sm" href={item.documentUrl} target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}><Icon name="file" size={12} />View certificate</a>
               </div>
             ) : (
               <div className="cmp-cert cmp-cert-missing">
                 <div className="cmp-cert-ico cmp-cert-ico-missing"><Icon name="alertTri" size={16} /></div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div className="cmp-cert-name">No certificate on file</div>
-                  <div className="cmp-cert-meta">Upload a signed PDF to bring this task back into compliance.</div>
+                  <div className="cmp-cert-meta">{canManage ? "Upload the signed PDF or a photo of the certificate." : "A supervisor or admin can upload the certificate."}</div>
                 </div>
-                <button className="btn btn-sm btn-primary" onClick={() => onUpload(task)}>
-                  <Icon name="plus" size={12} />Upload
-                </button>
+                {canManage && (
+                  <button className="btn btn-sm btn-primary" onClick={() => onUpload(item)}>
+                    <Icon name="plus" size={12} />Upload
+                  </button>
+                )}
               </div>
             )}
           </div>
 
-          <div className="panel-section panel-actions">
-            <button className="btn"><Icon name="wrench" size={14} />Raise work order</button>
-            <button className="btn btn-primary" onClick={() => onUpload(task)}>
-              <Icon name="plus" size={14} />Upload certificate
-            </button>
-          </div>
+          {canManage && (
+            <div className="panel-section">
+              <div className="panel-label">Record a completed service</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <input type="date" className="dv-input" value={doneOn} onChange={(e) => setDoneOn(e.target.value)} style={{ flex:1 }} />
+                <button className="btn btn-primary" disabled={!!busy} style={{ opacity: busy ? .6 : 1 }}
+                  onClick={() => run("done", () => onMarkDone(item, doneOn))}>
+                  <Icon name="check" size={14} />{busy === "done" ? "Saving…" : "Mark as done"}
+                </button>
+              </div>
+              <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:7 }}>
+                Saves the date and rolls the next due date forward by {item.frequencyMonths} month{item.frequencyMonths === 1 ? "" : "s"}.
+              </div>
+            </div>
+          )}
+
+          {canManage && (
+            <div className="panel-section panel-actions">
+              <button className="btn" disabled={!!busy} onClick={() => run("wo", () => onRaiseWO(item))}>
+                <Icon name="wrench" size={14} />{busy === "wo" ? "Raising…" : "Raise work order"}
+              </button>
+              <button className="btn" disabled={!!busy} onClick={() => onEdit(item)}>
+                <Icon name="edit" size={14} />Edit
+              </button>
+              <button className="btn auto-btn-danger" disabled={!!busy} onClick={() => run("del", () => onDelete(item))}>
+                <Icon name="trash" size={14} />{busy === "del" ? "Removing…" : "Delete"}
+              </button>
+              <button className="btn btn-primary" disabled={!!busy} onClick={() => onUpload(item)}>
+                <Icon name="plus" size={14} />Upload certificate
+              </button>
+            </div>
+          )}
         </div>
       </aside>
     </React.Fragment>
   );
 }
 
-function CmpUploadModal({ task, onClose, onSubmit }) {
-  const [signedBy,  setSignedBy]  = React.useState("");
-  const [dateDone,  setDateDone]  = React.useState("20 Jun 2026");
-  const [nextDue,   setNextDue]   = React.useState("");
-  const [filename,  setFilename]  = React.useState("");
-  const canSave = signedBy && filename;
+/* ============================================================
+   Certificate upload — real multipart POST /compliance/:id/document
+   ============================================================ */
+function CmpUploadModal({ item, onClose, onDone }) {
+  const [file, setFile] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [err,  setErr]  = React.useState("");
+  const fileRef = React.useRef(null);
+
+  const pick = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) { setFile(f); setErr(""); }
+  };
+
+  const save = () => {
+    if (!file || busy) return;
+    setBusy(true);
+    setErr("");
+    const fd = new FormData();
+    fd.append("file", file);
+    fetch((window.HL_API_BASE || "/api") + "/compliance/" + item.id + "/document", {
+      method: "POST",
+      headers: { authorization: "Bearer " + (localStorage.getItem("bor.token") || "") },
+      body: fd,
+    }).then((r) =>
+      r.json().then((b) => ({ ok: r.ok, status: r.status, b })).catch(() => ({ ok: r.ok, status: r.status, b: null }))
+    ).then(({ ok, status, b }) => {
+      if (!ok) {
+        setBusy(false);
+        setErr(status === 403
+          ? "Only admins and supervisors can upload certificates."
+          : (b && b.error === "unsupported_type") || status === 400
+            ? "That file type isn't supported. Use a PDF or a photo (JPEG, PNG, WebP, HEIC)."
+            : "The upload failed. Try again.");
+        return;
+      }
+      onDone();
+    }).catch(() => {
+      setBusy(false);
+      setErr("The upload failed. Check your connection and try again.");
+    });
+  };
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -19916,54 +21292,40 @@ function CmpUploadModal({ task, onClose, onSubmit }) {
           <div className="mh-ico"><Icon name="file" size={18} /></div>
           <div>
             <h3>Upload certificate</h3>
-            <p>{task ? task.title : "Statutory record"} · {task ? task.sfg : ""}</p>
+            <p>{item.name}{item.buildingName ? " · " + item.buildingName : ""}</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="modal-body">
           <div className="ai-field">
             <label>Certificate file</label>
-            <div className="cmp-upload-zone"
-              onClick={() => {
-                const name = "CMP-" + Math.floor(Math.random() * 9000 + 1000) + ".pdf";
-                setFilename(name);
-              }}>
-              {filename ? (
+            <input ref={fileRef} type="file" style={{ display:"none" }}
+              accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif"
+              onChange={pick} />
+            <div className="cmp-upload-zone" onClick={() => fileRef.current && fileRef.current.click()}>
+              {file ? (
                 <React.Fragment>
                   <Icon name="checkCircle" size={20} />
-                  <div className="cmp-upload-name">{filename}</div>
+                  <div className="cmp-upload-name">{file.name}</div>
                   <div className="cmp-upload-sub">Click to choose a different file</div>
                 </React.Fragment>
               ) : (
                 <React.Fragment>
                   <Icon name="file" size={22} />
-                  <div className="cmp-upload-name">Drop the signed PDF here</div>
-                  <div className="cmp-upload-sub">Click to choose · accepts PDF stamped by competent person</div>
+                  <div className="cmp-upload-name">Drop the certificate here</div>
+                  <div className="cmp-upload-sub">Click to choose · PDF, JPEG, PNG, WebP or HEIC</div>
                 </React.Fragment>
               )}
             </div>
-          </div>
-          <div className="ai-field">
-            <label>Signed by (competent person)</label>
-            <input className="dv-input" value={signedBy} onChange={(e) => setSignedBy(e.target.value)} placeholder="Name · qualification · company" />
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            <div className="ai-field">
-              <label>Date completed</label>
-              <input className="dv-input" value={dateDone} onChange={(e) => setDateDone(e.target.value)} />
-            </div>
-            <div className="ai-field">
-              <label>Next due (optional override)</label>
-              <input className="dv-input" value={nextDue} onChange={(e) => setNextDue(e.target.value)} placeholder="auto from frequency" />
-            </div>
+            {err && <div style={{ fontSize:12.5, color:"var(--crit)", marginTop:8 }}>{err}</div>}
           </div>
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={!canSave}
-            style={{ opacity: canSave ? 1 : .5 }}
-            onClick={() => onSubmit({ taskId: task?.id, signedBy, dateDone, nextDue, filename })}>
-            <Icon name="check" size={15} />Save certificate
+          <button className="btn btn-primary" disabled={!file || busy}
+            style={{ opacity: file && !busy ? 1 : .5 }}
+            onClick={save}>
+            <Icon name="check" size={15} />{busy ? "Uploading…" : "Save certificate"}
           </button>
         </div>
       </div>
@@ -19972,27 +21334,91 @@ function CmpUploadModal({ task, onClose, onSubmit }) {
 }
 
 /* ============================================================
+   Add / edit fields (SimpleAddModal), shared by both modals
+   ============================================================ */
+function cmpItemFields(contractors, cur) {
+  const curCat = cur ? cmpCatMeta(cur.category).label : "";
+  return [
+    { id:"name", label:"What is checked", type:"text", default: cur ? cur.name : "",
+      placeholder:"e.g. Fire alarm service, EICR, Gas safety certificate" },
+    { id:"category", label:"Category", type:"select",
+      options: CMP_CATEGORIES.map((c) => c.label), default: curCat || "Fire safety" },
+    ...((HL.sites || []).length ? [{
+      id:"building", label:"Building (optional)", type:"select", required:false,
+      placeholder:"No building, portfolio-wide",
+      options:(HL.sites || []).map((s) => s.name), default: cur ? (cur.buildingName || "") : "",
+    }] : []),
+    { id:"freq", label:"Frequency (months)", type:"number",
+      default: cur ? String(cur.frequencyMonths) : "12",
+      hint:"Annual service is 12. A five-year EICR is 60." },
+    { id:"lastDone", label:"Last done (optional)", type:"date", required:false,
+      default: cur ? (cur.lastDoneOn || "") : "" },
+    { id:"nextDue", label:"Next due (optional)", type:"date", required:false,
+      default: cur ? (cur.nextDueOn || "") : "",
+      hint: cur
+        ? "Clear both dates and the item sits as unscheduled until a completion is recorded."
+        : "Given a last-done date, the next due date is worked out from the frequency. Leave both empty and the item sits as unscheduled." },
+    ...(contractors.length ? [{
+      id:"contractor", label:"Contractor (optional)", type:"select", required:false,
+      placeholder:"No contractor",
+      options: contractors.map((c) => c.name), default: cur ? (cur.contractorName || "") : "",
+    }] : []),
+    { id:"note", label:"Note (optional)", type:"textarea", rows:2, required:false,
+      default: cur ? (cur.note || "") : "",
+      placeholder:"e.g. Panel is in the ground-floor plant room" },
+  ];
+}
+
+/* ============================================================
    Main view
    ============================================================ */
 function ComplianceView({ go }) {
   const { site: globalSite } = React.useContext(SiteContext);
-  const [tasks,    setTasks]    = React.useState(CMP_TASKS);
-  const [siteF,    setSiteF]    = React.useState(globalSite ? globalSite.name : "All sites");
-  const [catF,     setCatF]     = React.useState("all");
-  const [statusF,  setStatusF]  = React.useState("all");
-  const [openTask, setOpenTask] = React.useState(null);
-  const [uploadFor,setUploadFor]= React.useState(null);
+  const [items,   setItems]  = React.useState(null); // null loading | false error | rows
+  const [contractors, setContractors] = React.useState([]);
+  const [siteF,   setSiteF]  = React.useState(globalSite ? globalSite.name : "All sites");
+  const [catF,    setCatF]   = React.useState("all");
+  const [statusF, setStatusF]= React.useState("all");
+  const [openId,  setOpenId] = React.useState(null);
+  const [uploadForId, setUploadForId] = React.useState(null);
+  const [modal,   setModal]  = React.useState(null); // {add:true} | {edit:item}
   const { showToast, toastNode } = useViewToast();
+
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canManage = me.role === "admin" || me.role === "supervisor";
+
+  const refresh = React.useCallback(() => {
+    return hlApi("/compliance")
+      .then(({ ok, b }) => {
+        if (!ok || !b) { setItems(false); return; }
+        setItems((b.items || []).map((i) => ({
+          ...i,
+          category: CMP_CATEGORIES.some((c) => c.id === i.category) ? i.category : "other",
+        })));
+      })
+      .catch(() => setItems(false));
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+    if (canManage) {
+      hlApi("/contractors")
+        .then(({ ok, b }) => { if (ok && b) setContractors(b.contractors || []); })
+        .catch(() => {});
+    }
+  }, [refresh, canManage]);
 
   /* When the global site filter changes (top-bar picker), sync the local one. */
   React.useEffect(() => {
     setSiteF(globalSite ? globalSite.name : "All sites");
   }, [globalSite && globalSite.name]);
 
-  const sites = HL.sites.map((s) => s.name);
+  const sites = (HL.sites || []).map((s) => s.name);
+  const all = Array.isArray(items) ? items : [];
 
-  const filtered = tasks.filter((t) => {
-    if (siteF !== "All sites" && t.site !== siteF) return false;
+  const siteRowF = (HL.sites || []).find((s) => s.name === siteF);
+  const filtered = all.filter((t) => {
+    if (siteF !== "All sites" && (!siteRowF || t.buildingId !== siteRowF.id)) return false;
     if (catF !== "all" && t.category !== catF) return false;
     if (statusF !== "all" && t.status !== statusF) return false;
     return true;
@@ -20003,183 +21429,346 @@ function ComplianceView({ go }) {
     .map((c) => ({ cat: c, rows: filtered.filter((t) => t.category === c.id) }))
     .filter((g) => g.rows.length > 0);
 
-  /* Site-scoped task pool — used by KPIs and the per-site chart so both
-     mirror the global scope, not just the list below. */
-  const scopedTasks = globalSite ? tasks.filter((t) => t.site === globalSite.name) : tasks;
+  /* Site-scoped pool — KPIs and the per-site chart mirror the global scope. */
+  const scopedItems = globalSite ? all.filter((t) => t.buildingId === globalSite.id) : all;
 
-  /* Top KPIs */
-  const total      = scopedTasks.length;
-  const compliant  = scopedTasks.filter((t) => t.status === "compliant").length;
-  const dueSoon    = scopedTasks.filter((t) => t.status === "due-soon").length;
-  const overdue    = scopedTasks.filter((t) => t.status === "overdue").length;
-  const expired    = scopedTasks.filter((t) => t.status === "expired").length;
-  const pct        = total ? Math.round((compliant / total) * 100) : 0;
+  /* Top KPIs — real derived statuses from the register */
+  const total       = scopedItems.length;
+  const okCount     = scopedItems.filter((t) => t.status === "ok").length;
+  const dueSoon     = scopedItems.filter((t) => t.status === "due_soon").length;
+  const overdue     = scopedItems.filter((t) => t.status === "overdue").length;
+  const unscheduled = scopedItems.filter((t) => t.status === "unscheduled").length;
+  const inDate      = okCount + dueSoon;
+  const pct         = total ? Math.round((inDate / total) * 100) : 0;
 
-  const saveCertificate = ({ taskId, dateDone, filename }) => {
-    setTasks((ts) => ts.map((t) => t.id === taskId
-      ? { ...t, lastDone: dateDone, status:"compliant", cert: filename }
-      : t));
-    setUploadFor(null);
-    setOpenTask(null);
-    showToast("Certificate uploaded — task back in compliance");
+  /* ---------- actions (all real; staff only) ---------- */
+
+  const catIdByLabel = (label) => (CMP_CATEGORIES.find((c) => c.id === label || c.label === label) || {}).id || "other";
+  const siteIdByName = (name) => { const s = (HL.sites || []).find((x) => x.name === name); return s ? s.id : null; };
+  const contractorIdByName = (name) => { const c = contractors.find((x) => x.name === name); return c ? c.id : null; };
+
+  const failToast = (status, verb) => {
+    showToast(status === 403 || status === 401
+      ? "Only admins and supervisors can " + verb + "."
+      : "Could not " + verb + ". Check the fields and try again.");
   };
+
+  const handleAdd = (vals) => {
+    const freq = parseInt(vals.freq, 10);
+    if (!freq || freq < 1 || freq > 120) { showToast("Frequency must be between 1 and 120 months."); return; }
+    hlApi("/compliance", { method:"POST", body:{
+      name: (vals.name || "").trim(),
+      category: catIdByLabel(vals.category),
+      frequencyMonths: freq,
+      buildingId: siteIdByName(vals.building) || undefined,
+      lastDoneOn: vals.lastDone || undefined,
+      nextDueOn: vals.nextDue || undefined,
+      contractorId: contractorIdByName(vals.contractor) || undefined,
+      note: (vals.note || "").trim() || undefined,
+    }}).then(({ ok, status }) => {
+      if (!ok) { failToast(status, "add compliance items"); return; }
+      showToast("Added to the compliance register");
+      refresh();
+    });
+  };
+
+  const handleEdit = (vals) => {
+    const cur = modal && modal.edit;
+    if (!cur) return;
+    const freq = parseInt(vals.freq, 10);
+    if (!freq || freq < 1 || freq > 120) { showToast("Frequency must be between 1 and 120 months."); return; }
+    hlApi("/compliance/" + cur.id, { method:"PATCH", body:{
+      name: (vals.name || "").trim(),
+      category: catIdByLabel(vals.category),
+      frequencyMonths: freq,
+      ...((HL.sites || []).length ? { buildingId: siteIdByName(vals.building) } : {}),
+      lastDoneOn: vals.lastDone || null,
+      nextDueOn: vals.nextDue || null,
+      ...(contractors.length ? { contractorId: contractorIdByName(vals.contractor) } : {}),
+      note: (vals.note || "").trim() || null,
+    }}).then(({ ok, status }) => {
+      if (!ok) { failToast(status, "edit the register"); return; }
+      showToast("Item updated");
+      refresh();
+    });
+  };
+
+  const handleMarkDone = (item, doneOn) =>
+    hlApi("/compliance/" + item.id + "/complete", { method:"POST", body:{ doneOn: doneOn || cmpTodayISO() } })
+      .then(({ ok, status, b }) => {
+        if (!ok) { failToast(status, "mark items done"); return; }
+        const next = b && b.item && b.item.nextDueOn;
+        showToast("Marked done" + (next ? " — next due " + cmpDate(next) : ""));
+        return refresh();
+      });
+
+  const handleDelete = (item) => {
+    if (!window.confirm('Remove "' + item.name + '" from the register? Its due dates and certificate link go with it.')) return;
+    return hlApi("/compliance/" + item.id, { method:"DELETE" }).then(({ ok, status }) => {
+      if (!ok) { failToast(status, "delete compliance items"); return; }
+      setOpenId(null);
+      showToast("Removed from the register");
+      return refresh();
+    });
+  };
+
+  const handleRaiseWO = (item) => {
+    const suffix = item.status === "overdue" ? " overdue" : item.status === "due_soon" ? " due" : "";
+    const title = item.name + suffix + (item.buildingName ? " — " + item.buildingName : "");
+    const desc = "Raised from the compliance register."
+      + (item.nextDueOn ? " Next due " + cmpDate(item.nextDueOn) + "." : "")
+      + (item.contractorName ? " Usual contractor: " + item.contractorName + "." : "");
+    return hlApi("/jobs", { method:"POST", body:{
+      title,
+      description: desc,
+      priority: item.status === "overdue" ? "urgent" : "routine",
+      buildingId: item.buildingId || undefined,
+    }}).then(({ ok, status, b }) => {
+      if (!ok || !b || !b.id) { failToast(status, "raise work orders"); return; }
+      showToast("Work order raised — it's in Work orders");
+    });
+  };
+
+  const handleUploaded = () => {
+    setUploadForId(null);
+    showToast("Certificate attached");
+    refresh();
+  };
+
+  /* ---------- loading / error ---------- */
+  if (items === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the compliance register…</div></div>;
+  }
+  if (items === false) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ fontSize:13.5 }}>
+          <div style={{ color:"var(--warn)", marginBottom:10 }}>Couldn't load the compliance register.</div>
+          <button className="btn" onClick={() => { setItems(null); refresh(); }}>
+            <Icon name="rotateCw" size={14} />Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const openItem = openId ? all.find((t) => t.id === openId) : null;
+  const uploadItem = uploadForId ? all.find((t) => t.id === uploadForId) : null;
 
   return (
     <div className="content-inner">
       <div className="page-head">
         <div>
           <h1 className="page-title">Statutory compliance</h1>
-          <p className="page-desc">Every legal-duty task across the estate, indexed to SFG20 — fire safety, electrical, gas, water hygiene, lifts, HVAC and emergency lighting. Certificates are signed-off by a competent person.</p>
+          <p className="page-desc">Every statutory check across the estate: fire alarm service, EICR, gas safety, water hygiene, lifts and HVAC. Due dates roll forward when work is marked done, and each item carries its own certificate.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setUploadFor({})}>
-          <Icon name="plus" size={15} />Upload certificate
-        </button>
+        {canManage && (
+          <button className="btn btn-primary" onClick={() => setModal({ add:true })}>
+            <Icon name="plus" size={15} />Add item
+          </button>
+        )}
       </div>
 
-      {openTask && (
-        <CmpTaskPanel task={openTask} onClose={() => setOpenTask(null)} onUpload={setUploadFor} />
+      {openItem && (
+        <CmpTaskPanel item={openItem} canManage={canManage}
+          onClose={() => setOpenId(null)}
+          onUpload={(t) => setUploadForId(t.id)}
+          onMarkDone={handleMarkDone}
+          onEdit={(t) => setModal({ edit: t })}
+          onDelete={handleDelete}
+          onRaiseWO={handleRaiseWO} />
       )}
-      {uploadFor && (
-        <CmpUploadModal task={uploadFor.id ? uploadFor : null}
-          onClose={() => setUploadFor(null)} onSubmit={saveCertificate} />
+      {uploadItem && (
+        <CmpUploadModal item={uploadItem}
+          onClose={() => setUploadForId(null)} onDone={handleUploaded} />
+      )}
+      {modal && modal.add && (
+        <SimpleAddModal
+          title="Add a compliance item"
+          subtitle="A statutory check the estate must keep in date. The due date rolls forward each time it's marked done."
+          icon="shield"
+          submitLabel="Add to register" submitIcon="check"
+          successTitle="Item added"
+          successCopy="It's on the register. Open it to upload the latest certificate."
+          fields={cmpItemFields(contractors, null)}
+          onSubmit={handleAdd}
+          onClose={() => setModal(null)} />
+      )}
+      {modal && modal.edit && (
+        <SimpleAddModal
+          title={"Edit — " + modal.edit.name}
+          subtitle="Changes apply to the register straight away."
+          icon="edit"
+          submitLabel="Save changes" submitIcon="check"
+          successTitle="Saved"
+          successCopy="The register has been updated."
+          fields={cmpItemFields(contractors, modal.edit)}
+          onSubmit={handleEdit}
+          onClose={() => setModal(null)} />
       )}
 
-      {/* KPIs */}
-      <div className="kpi-row" style={{ gridTemplateColumns:"repeat(5,1fr)" }}>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div>
-            <span className="kpi-label">Compliance</span>
-          </div>
-          <div className="kpi-val">{pct}<small>%</small></div>
-          <div className="kpi-foot">{compliant} of {total} tasks compliant</div>
+      {all.length === 0 ? (
+        <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
+          <div className="empty-ico"><Icon name="shield" size={28} /></div>
+          <h3>No compliance items yet</h3>
+          <p>{canManage
+            ? "Add your statutory checks — fire alarm service, EICR, gas cert, legionella, lift LOLER — and track their due dates and certificates here."
+            : "A supervisor or admin adds the statutory checks, then this register tracks their due dates and certificates."}</p>
+          {canManage && (
+            <button className="btn btn-primary" style={{ marginTop:14 }} onClick={() => setModal({ add:true })}>
+              <Icon name="plus" size={15} />Add your first item
+            </button>
+          )}
         </div>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="check" size={16} /></div>
-            <span className="kpi-label">Compliant</span>
+      ) : (
+        <React.Fragment>
+          {/* KPIs — real counts from the register */}
+          <div className="kpi-row" style={{ gridTemplateColumns:"repeat(5,1fr)" }}>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div>
+                <span className="kpi-label">Compliance</span>
+              </div>
+              <div className="kpi-val">{pct}<small>%</small></div>
+              <div className="kpi-foot">{inDate} of {total} items in date</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="check" size={16} /></div>
+                <span className="kpi-label">OK</span>
+              </div>
+              <div className="kpi-val">{okCount}</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div>
+                <span className="kpi-label">Due soon</span>
+              </div>
+              <div className="kpi-val">{dueSoon}</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertTri" size={16} /></div>
+                <span className="kpi-label">Overdue</span>
+              </div>
+              <div className="kpi-val">{overdue}</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("muted"), color:solid("muted") }}><Icon name="calendar" size={16} /></div>
+                <span className="kpi-label">Unscheduled</span>
+              </div>
+              <div className="kpi-val">{unscheduled}</div>
+            </div>
           </div>
-          <div className="kpi-val">{compliant}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div>
-            <span className="kpi-label">Due soon</span>
-          </div>
-          <div className="kpi-val">{dueSoon}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertTri" size={16} /></div>
-            <span className="kpi-label">Overdue</span>
-          </div>
-          <div className="kpi-val">{overdue}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="x" size={16} /></div>
-            <span className="kpi-label">Expired</span>
-          </div>
-          <div className="kpi-val">{expired}</div>
-        </div>
-      </div>
 
-      {/* Per-site scores */}
-      <div className="card" style={{ marginBottom:18 }}>
-        <div className="card-head">
-          <h3>{globalSite ? "Compliance score — " + globalSite.name : "Compliance score by site"}</h3>
-          <span className="sub">% of statutory tasks compliant</span>
-        </div>
-        <div className="cmp-sites">
-          {(globalSite ? [globalSite.name] : sites).map((sName) => {
-            const score = cmpSiteScore(sName, tasks);
-            if (score === null) return null;
-            const tone = score >= 95 ? "ok" : score >= 80 ? "warn" : "crit";
+          {/* Per-site scores — computed from the register, only for sites with items */}
+          {(() => {
+            const rows = (globalSite ? [globalSite] : (HL.sites || []))
+              .map((s) => ({ s, score: cmpSiteScore(s.id, all) }))
+              .filter((r) => r.score !== null);
+            if (rows.length === 0) return null;
             return (
-              <div key={sName} className="cmp-site-row">
-                <div className="cmp-site-name">{sName}</div>
-                <div className="cmp-site-bar">
-                  <i style={{ width: score + "%", background: solid(tone) }} />
+              <div className="card" style={{ marginBottom:18 }}>
+                <div className="card-head">
+                  <h3>{globalSite ? "Compliance score — " + globalSite.name : "Compliance score by site"}</h3>
+                  <span className="sub">% of statutory items in date</span>
                 </div>
-                <div className="cmp-site-pct" style={{ color: solid(tone) }}>{score}<small>%</small></div>
+                <div className="cmp-sites">
+                  {rows.map(({ s, score }) => {
+                    const tone = score >= 95 ? "ok" : score >= 80 ? "warn" : "crit";
+                    return (
+                      <div key={s.id} className="cmp-site-row">
+                        <div className="cmp-site-name">{s.name}</div>
+                        <div className="cmp-site-bar">
+                          <i style={{ width: score + "%", background: solid(tone) }} />
+                        </div>
+                        <div className="cmp-site-pct" style={{ color: solid(tone) }}>{score}<small>%</small></div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
-          })}
-        </div>
-      </div>
+          })()}
 
-      {/* Filters */}
-      <div className="toolbar" style={{ marginBottom:14 }}>
-        <div className="cmp-filter">
-          <label>Site</label>
-          <select className="dv-input" value={siteF} onChange={(e) => setSiteF(e.target.value)}>
-            <option>All sites</option>
-            {sites.map((s) => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-        <div className="cmp-filter">
-          <label>Category</label>
-          <select className="dv-input" value={catF} onChange={(e) => setCatF(e.target.value)}>
-            <option value="all">All categories</option>
-            {CMP_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </div>
-        <div className="cmp-filter">
-          <label>Status</label>
-          <select className="dv-input" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
-            <option value="all">All statuses</option>
-            {Object.keys(CMP_STATUS_META).map((s) => <option key={s} value={s}>{CMP_STATUS_META[s].label}</option>)}
-          </select>
-        </div>
-        <div style={{ marginLeft:"auto", fontSize:13, color:"var(--ink-3)" }}>
-          {filtered.length} of {total} tasks
-        </div>
-      </div>
-
-      {/* Grouped table */}
-      {grouped.length === 0 && (
-        <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
-          <div className="empty-ico"><Icon name="checkCircle" size={28} /></div>
-          <h3>No matching compliance tasks</h3>
-          <p>Loosen the filters or pick a different category.</p>
-        </div>
-      )}
-
-      {grouped.map((g) => (
-        <div key={g.cat.id} className="card" style={{ marginBottom:14 }}>
-          <div className="card-head">
-            <div style={{ width:28, height:28, borderRadius:7, background:softBg(g.cat.tone), color:solid(g.cat.tone), display:"grid", placeItems:"center", flex:"none" }}>
-              <Icon name={g.cat.icon} size={13} />
+          {/* Filters */}
+          <div className="toolbar" style={{ marginBottom:14 }}>
+            <div className="cmp-filter">
+              <label>Site</label>
+              <select className="dv-input" value={siteF} onChange={(e) => setSiteF(e.target.value)}>
+                <option>All sites</option>
+                {sites.map((s) => <option key={s}>{s}</option>)}
+              </select>
             </div>
-            <h3 style={{ margin:0 }}>{g.cat.label}</h3>
-            <span className="sub">{g.rows.length} task{g.rows.length === 1 ? "" : "s"}</span>
+            <div className="cmp-filter">
+              <label>Category</label>
+              <select className="dv-input" value={catF} onChange={(e) => setCatF(e.target.value)}>
+                <option value="all">All categories</option>
+                {CMP_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+            <div className="cmp-filter">
+              <label>Status</label>
+              <select className="dv-input" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
+                <option value="all">All statuses</option>
+                {Object.keys(CMP_STATUS_META).map((s) => <option key={s} value={s}>{CMP_STATUS_META[s].label}</option>)}
+              </select>
+            </div>
+            <div style={{ marginLeft:"auto", fontSize:13, color:"var(--ink-3)" }}>
+              {filtered.length} of {total} items
+            </div>
           </div>
-          <div className="cmp-table-head">
-            <div>Task</div><div>SFG20</div><div>Site</div><div>Freq</div><div>Last done</div><div>Next due</div><div>Status</div><div>Cert</div>
-          </div>
-          {g.rows.map((t) => (
-            <div key={t.id} className="cmp-row" onClick={() => setOpenTask(t)}>
-              <div>
-                <div className="cmp-title">{t.title}</div>
-                <div className="cmp-id">{t.id}</div>
+
+          {/* Grouped table */}
+          {grouped.length === 0 && (
+            <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
+              <div className="empty-ico"><Icon name="checkCircle" size={28} /></div>
+              <h3>No matching compliance items</h3>
+              <p>Loosen the filters or pick a different category.</p>
+            </div>
+          )}
+
+          {grouped.map((g) => (
+            <div key={g.cat.id} className="card" style={{ marginBottom:14 }}>
+              <div className="card-head">
+                <div style={{ width:28, height:28, borderRadius:7, background:softBg(g.cat.tone), color:solid(g.cat.tone), display:"grid", placeItems:"center", flex:"none" }}>
+                  <Icon name={g.cat.icon} size={13} />
+                </div>
+                <h3 style={{ margin:0 }}>{g.cat.label}</h3>
+                <span className="sub">{g.rows.length} item{g.rows.length === 1 ? "" : "s"}</span>
               </div>
-              <div className="cmp-sfg">{t.sfg}</div>
-              <div className="cmp-site-cell">{t.site}</div>
-              <div className="cmp-freq">{t.freq}</div>
-              <div className="cmp-date">{t.lastDone}</div>
-              <div className={"cmp-date" + (t.status === "overdue" || t.status === "expired" ? " crit" : t.status === "due-soon" ? " warn" : "")}>{t.nextDue}</div>
-              <div><Pill tone={CMP_STATUS_META[t.status].tone} dot>{CMP_STATUS_META[t.status].label}</Pill></div>
-              <div>
-                {t.cert
-                  ? <span className="cmp-has-cert"><Icon name="file" size={11} /></span>
-                  : <button className="cmp-no-cert" onClick={(e) => { e.stopPropagation(); setUploadFor(t); }}>
-                      <Icon name="plus" size={11} />Upload
-                    </button>}
+              <div className="cmp-table-head">
+                <div>Item</div><div>Contractor</div><div>Site</div><div>Freq</div><div>Last done</div><div>Next due</div><div>Status</div><div>Cert</div>
               </div>
+              {g.rows.map((t) => (
+                <div key={t.id} className="cmp-row" onClick={() => setOpenId(t.id)}>
+                  <div style={{ minWidth:0 }}>
+                    <div className="cmp-title">{t.name}</div>
+                    {t.note && <div className="cmp-id" style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.note}</div>}
+                  </div>
+                  <div className="cmp-sfg" style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.contractorName || "—"}</div>
+                  <div className="cmp-site-cell">{t.buildingName || "—"}</div>
+                  <div className="cmp-freq">{cmpFreqLabel(t.frequencyMonths)}</div>
+                  <div className="cmp-date">{cmpDate(t.lastDoneOn)}</div>
+                  <div className={"cmp-date" + (t.status === "overdue" ? " crit" : t.status === "due_soon" ? " warn" : "")}>{cmpDate(t.nextDueOn)}</div>
+                  <div><Pill tone={(CMP_STATUS_META[t.status] || CMP_STATUS_META.unscheduled).tone} dot>{(CMP_STATUS_META[t.status] || CMP_STATUS_META.unscheduled).label}</Pill></div>
+                  <div>
+                    {t.documentUrl
+                      ? <a className="cmp-has-cert" href={t.documentUrl} target="_blank" rel="noreferrer" title="View certificate"
+                          style={{ textDecoration:"none" }} onClick={(e) => e.stopPropagation()}><Icon name="file" size={11} /></a>
+                      : canManage
+                        ? <button className="cmp-no-cert" onClick={(e) => { e.stopPropagation(); setUploadForId(t.id); }}>
+                            <Icon name="plus" size={11} />Upload
+                          </button>
+                        : <span style={{ fontSize:11, color:"var(--ink-3)", fontFamily:"var(--mono)" }}>—</span>}
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
-        </div>
-      ))}
+        </React.Fragment>
+      )}
 
       {toastNode}
     </div>
@@ -20190,30 +21779,22 @@ Object.assign(window, { ComplianceView });
 
 /* ════════════════════ asset_16_3aee4028.js ════════════════════ */
 ;
-/* HazardLink — SLA engine for work orders */
+/* HazardLink — SLAs: org-configurable response/resolution targets per
+   priority, with hit rates and breaches computed from real work orders.
 
-/* ============================================================
-   SLA targets per priority (in minutes for response / resolution)
-   ============================================================ */
-// Blank for a new org — the SLA tier cards appear once SLA targets are defined.
-const SLA_TARGETS = {};
+   GET /slas?days=N → { policies, stats:{ windowDays, perPriority, breaches } }
+   PUT /slas { policies } — admins and supervisors only.
 
-/* ============================================================
-   Performance — current month (computed locally so the numbers
-   match the breaches list below). Each priority has on-target %
-   for response and resolution.
-   ============================================================ */
-const SLA_PERFORMANCE = {
-  High:   { responsePct: 0, resolutionPct: 0, total: 0,  responseBreaches: 0, resolutionBreaches: 0 },
-  Medium: { responsePct: 0, resolutionPct: 0, total: 0,  responseBreaches: 0, resolutionBreaches: 0 },
-  Low:    { responsePct: 0, resolutionPct: 0, total: 0,  responseBreaches: 0, resolutionBreaches: 0 },
-};
+   "Response" is the first real action on a job after logging; "resolution"
+   is completion. Percentages come straight from the backend and are null
+   when nothing was measured, so this view says "No data yet" rather than
+   inventing a number. */
 
-/* ============================================================
-   Active SLA tracked jobs — at-risk + breached
-   `etaMin` is minutes remaining; negative means past target.
-   ============================================================ */
-const SLA_TRACKED = [];
+const SLA_PRIORITIES = [
+  { id: "emergency", label: "Emergency", tone: "crit" },
+  { id: "urgent",    label: "Urgent",    tone: "warn" },
+  { id: "routine",   label: "Routine",   tone: "muted" },
+];
 
 /* ============================================================
    Helpers
@@ -20236,6 +21817,18 @@ function slaToneFor(etaMin) {
   return "accent";
 }
 
+/* minutes ↔ value + unit, for the target editor */
+function slaSplitMin(min) {
+  if (min >= 1440 && min % 1440 === 0) return { v: min / 1440, u: "d" };
+  if (min >= 60 && min % 60 === 0)     return { v: min / 60,   u: "h" };
+  return { v: min, u: "m" };
+}
+function slaJoinMin(v, u) {
+  const n = parseInt(v, 10);
+  if (!n || n < 1) return null;
+  return n * (u === "d" ? 1440 : u === "h" ? 60 : 1);
+}
+
 function SlaCountdown({ etaMin }) {
   const tone = slaToneFor(etaMin);
   const breached = etaMin < 0;
@@ -20252,27 +21845,138 @@ function SlaCountdown({ etaMin }) {
    Main view
    ============================================================ */
 function SLAsView({ go }) {
-  const { site } = React.useContext(SiteContext);
+  const [data, setData]     = React.useState(null);   // null loading | false error | { policies, stats }
+  const [days, setDays]     = React.useState(30);
   const [filter, setFilter] = React.useState("All");
+  const [edit, setEdit]     = React.useState(null);   // { emergency:{rv,ru,sv,su}, … } while editing targets
+  const [saving, setSaving] = React.useState(false);
+  const { showToast, toastNode } = useViewToast();
 
-  const ALL = site ? SLA_TRACKED.filter((s) => s.site === site.name) : SLA_TRACKED;
-  const breachedCt = ALL.filter((j) => j.etaMin < 0).length;
-  const atRiskCt   = ALL.filter((j) => j.etaMin >= 0 && j.etaMin < 60).length;
-  const inFlightCt = ALL.length;
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canEdit = me.role === "admin" || me.role === "supervisor";
 
-  const filtered = ALL.filter((j) => {
-    if (filter === "All")      return true;
-    if (filter === "Breached") return j.etaMin < 0;
-    if (filter === "At risk")  return j.etaMin >= 0 && j.etaMin < 60;
-    return j.priority === filter;
+  const reqRef = React.useRef(0);
+  const refresh = React.useCallback(() => {
+    const id = ++reqRef.current;
+    return hlApi("/slas?days=" + days)
+      .then(({ ok, b }) => { if (reqRef.current === id) setData(ok && b && b.stats ? b : false); })
+      .catch(() => { if (reqRef.current === id) setData(false); });
+  }, [days]);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  if (data === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading SLA performance…</div></div>;
+  }
+  if (data === false) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ display:"flex", alignItems:"center", gap:14 }}>
+          <span style={{ color:"var(--warn)", fontSize:13.5 }}>Could not load your SLAs.</span>
+          <button className="btn btn-sm" onClick={() => { setData(null); refresh(); }}>Try again</button>
+        </div>
+      </div>
+    );
+  }
+
+  const stats = data.stats;
+  const per = SLA_PRIORITIES.map((m) => ({
+    ...m,
+    ...((stats.perPriority || []).find((r) => r.priority === m.id) || {
+      responseMinutes: 0, resolveMinutes: 0, jobs: 0,
+      responded: 0, respondedInTarget: 0, resolved: 0, resolvedInTarget: 0,
+      responsePct: null, resolvePct: null,
+    }),
+  }));
+
+  const totalJobs   = per.reduce((n, r) => n + r.jobs, 0);
+  const measured    = per.reduce((n, r) => n + r.responded + r.resolved, 0);
+  const inTarget    = per.reduce((n, r) => n + r.respondedInTarget + r.resolvedInTarget, 0);
+  const onTargetPct = measured ? Math.round((inTarget / measured) * 100) : null;
+  const breaches    = stats.breaches || [];
+  const openCt      = breaches.filter((b) => b.open).length;
+  const capped      = breaches.length >= 50;
+
+  const rows = breaches.filter((b) => {
+    if (filter === "Response")   return b.kind === "response";
+    if (filter === "Resolution") return b.kind === "resolve";
+    if (filter === "Still open") return b.open;
+    return true;
   });
+
+  /* ---- target editing (admins & supervisors) ---- */
+  const startEdit = () => {
+    const draft = {};
+    per.forEach((r) => {
+      const a = slaSplitMin(r.responseMinutes), b = slaSplitMin(r.resolveMinutes);
+      draft[r.id] = { rv: String(a.v), ru: a.u, sv: String(b.v), su: b.u };
+    });
+    setEdit(draft);
+  };
+  const setDraft = (prio, patch) => setEdit((e) => ({ ...e, [prio]: { ...e[prio], ...patch } }));
+
+  const save = () => {
+    const policies = [];
+    for (const m of SLA_PRIORITIES) {
+      const d = edit[m.id];
+      const response = slaJoinMin(d.rv, d.ru);
+      const resolve  = slaJoinMin(d.sv, d.su);
+      if (!response || !resolve || response < 5 || resolve < 5) {
+        showToast("Every target needs a whole number, 5 minutes or more."); return;
+      }
+      if (response > 43200 || resolve > 129600) {
+        showToast("Keep response targets inside 30 days and resolution inside 90 days."); return;
+      }
+      if (resolve < response) {
+        showToast("Resolution must be at least the response time for " + m.label.toLowerCase() + " jobs."); return;
+      }
+      policies.push({ priority: m.id, responseMinutes: response, resolveMinutes: resolve });
+    }
+    setSaving(true);
+    hlApi("/slas", { method: "PUT", body: { policies } }).then(({ ok, status }) => {
+      setSaving(false);
+      if (!ok) {
+        showToast(status === 403 || status === 401
+          ? "Only admins and supervisors can change SLA targets."
+          : "Could not save the targets. Try again.");
+        return;
+      }
+      setEdit(null);
+      showToast("SLA targets saved");
+      refresh();
+    });
+  };
+
+  const openJob = (jobId) => {
+    window.__woJobId = jobId;
+    if (go) go("wo");
+  };
 
   return (
     <div className="content-inner">
       <div className="page-head">
         <div>
           <h1 className="page-title">SLAs</h1>
-          <p className="page-desc">Every work order is on a priority-based response and resolution clock. The board flips a job to <b>Breached</b> when either clock runs past target, and rolls compliance into a monthly performance score.</p>
+          <p className="page-desc">Each work order runs two clocks set by its priority: response, from logging to the first real action, and resolution, from logging to completion. Everything below is measured from your real work orders in the window you pick.</p>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:10, flex:"none" }}>
+          <div className="seg">
+            {[7, 30, 90].map((d) => (
+              <button key={d} className={days === d ? "on" : ""} onClick={() => setDays(d)}>{d} days</button>
+            ))}
+          </div>
+          {canEdit && !edit && (
+            <button className="btn" onClick={startEdit}>
+              <Icon name="edit" size={14} />Edit targets
+            </button>
+          )}
+          {canEdit && edit && (
+            <React.Fragment>
+              <button className="btn btn-ghost" disabled={saving} onClick={() => setEdit(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={saving} onClick={save}>
+                <Icon name="check" size={14} />{saving ? "Saving…" : "Save targets"}
+              </button>
+            </React.Fragment>
+          )}
         </div>
       </div>
 
@@ -20281,67 +21985,99 @@ function SLAsView({ go }) {
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertTri" size={16} /></div>
-            <span className="kpi-label">Currently breached</span>
+            <span className="kpi-label">Breached, still open</span>
           </div>
-          <div className="kpi-val">{breachedCt}</div>
-          <div className="kpi-foot">across response &amp; resolution clocks</div>
+          <div className="kpi-val">{openCt}</div>
+          <div className="kpi-foot">past target right now</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div>
-            <span className="kpi-label">At risk (&lt; 1h left)</span>
+            <span className="kpi-label">Breaches in window</span>
           </div>
-          <div className="kpi-val">{atRiskCt}</div>
+          <div className="kpi-val">{breaches.length}{capped && <small>+</small>}</div>
+          <div className="kpi-foot">response and resolution clocks</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="activity" size={16} /></div>
-            <span className="kpi-label">Live jobs on the clock</span>
+            <span className="kpi-label">Jobs raised</span>
           </div>
-          <div className="kpi-val">{inFlightCt}</div>
+          <div className="kpi-val">{totalJobs}</div>
+          <div className="kpi-foot">last {stats.windowDays} days</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div>
-            <span className="kpi-label">On-target this month</span>
+            <span className="kpi-label">On target</span>
           </div>
-          <div className="kpi-val">0<small>%</small></div>
-          <div className="kpi-foot">weighted across priorities</div>
+          {onTargetPct === null
+            ? <div className="kpi-val" style={{ fontSize:17, color:"var(--ink-3)" }}>No data yet</div>
+            : <div className="kpi-val">{onTargetPct}<small>%</small></div>}
+          <div className="kpi-foot">{onTargetPct === null ? "appears once a job is measured" : "both clocks, all priorities"}</div>
         </div>
       </div>
 
       {/* Targets + performance cards */}
       <div className="sla-tier-grid">
-        {Object.entries(SLA_TARGETS).map(([prio, t]) => {
-          const p = SLA_PERFORMANCE[prio];
+        {per.map((p) => {
+          const d = edit && edit[p.id];
+          const missed = (p.responded - p.respondedInTarget) + (p.resolved - p.resolvedInTarget)
+            + breaches.filter((b) => b.priority === p.id && b.open).length;
           return (
-            <div key={prio} className={"sla-tier sla-tier-" + t.tone}>
+            <div key={p.id} className={"sla-tier sla-tier-" + p.tone}>
               <div className="sla-tier-head">
-                <div className={"sla-tier-pill sla-tier-pill-" + t.tone}>
-                  <Icon name="flag" size={11} />{t.label}
+                <div className={"sla-tier-pill sla-tier-pill-" + p.tone}>
+                  <Icon name="flag" size={11} />{p.label}
                 </div>
-                <span className="sla-tier-prio">{prio} priority</span>
+                <span className="sla-tier-prio">last {stats.windowDays} days</span>
               </div>
 
               <div className="sla-tier-targets">
                 <div className="sla-tgt">
                   <div className="sla-tgt-l">Response</div>
-                  <div className="sla-tgt-v">{slaFmtETA(t.response)}</div>
-                  <div className="sla-tgt-perf">{p.responsePct}<small>% on target</small></div>
-                  <div className="sla-tgt-bar"><i style={{ width: p.responsePct + "%", background: t.color }} /></div>
+                  {d ? (
+                    <div style={{ display:"flex", gap:5 }}>
+                      <input className="dv-input" type="number" min={1} value={d.rv}
+                        onChange={(e) => setDraft(p.id, { rv: e.target.value })} style={{ width:58 }} />
+                      <select className="dv-input" value={d.ru} onChange={(e) => setDraft(p.id, { ru: e.target.value })}>
+                        <option value="m">min</option><option value="h">hours</option><option value="d">days</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="sla-tgt-v">{slaFmtETA(p.responseMinutes)}</div>
+                  )}
+                  {p.responsePct === null
+                    ? <div className="sla-tgt-perf"><small style={{ marginLeft:0 }}>No data yet</small></div>
+                    : <div className="sla-tgt-perf">{p.responsePct}<small>% on target · {p.respondedInTarget} of {p.responded}</small></div>}
+                  <div className="sla-tgt-bar"><i style={{ width:(p.responsePct || 0) + "%", background:solid(p.tone) }} /></div>
                 </div>
                 <div className="sla-tgt">
                   <div className="sla-tgt-l">Resolution</div>
-                  <div className="sla-tgt-v">{slaFmtETA(t.resolution)}</div>
-                  <div className="sla-tgt-perf">{p.resolutionPct}<small>% on target</small></div>
-                  <div className="sla-tgt-bar"><i style={{ width: p.resolutionPct + "%", background: t.color }} /></div>
+                  {d ? (
+                    <div style={{ display:"flex", gap:5 }}>
+                      <input className="dv-input" type="number" min={1} value={d.sv}
+                        onChange={(e) => setDraft(p.id, { sv: e.target.value })} style={{ width:58 }} />
+                      <select className="dv-input" value={d.su} onChange={(e) => setDraft(p.id, { su: e.target.value })}>
+                        <option value="m">min</option><option value="h">hours</option><option value="d">days</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="sla-tgt-v">{slaFmtETA(p.resolveMinutes)}</div>
+                  )}
+                  {p.resolvePct === null
+                    ? <div className="sla-tgt-perf"><small style={{ marginLeft:0 }}>No data yet</small></div>
+                    : <div className="sla-tgt-perf">{p.resolvePct}<small>% on target · {p.resolvedInTarget} of {p.resolved}</small></div>}
+                  <div className="sla-tgt-bar"><i style={{ width:(p.resolvePct || 0) + "%", background:solid(p.tone) }} /></div>
                 </div>
               </div>
 
               <div className="sla-tier-foot">
                 <div className="sla-tier-foot-row">
-                  <span>{p.total} jobs this month</span>
-                  <span className="sla-tier-foot-breach">{p.responseBreaches + p.resolutionBreaches} breaches</span>
+                  <span>{p.jobs} job{p.jobs === 1 ? "" : "s"} in window</span>
+                  {missed > 0
+                    ? <span className="sla-tier-foot-breach">{missed} breach{missed === 1 ? "" : "es"}</span>
+                    : <span>{p.jobs > 0 ? "no breaches" : "—"}</span>}
                 </div>
               </div>
             </div>
@@ -20349,113 +22085,120 @@ function SLAsView({ go }) {
         })}
       </div>
 
-      {/* Breach + at-risk table */}
+      {/* Breach table */}
       <div className="toolbar" style={{ marginTop:18, marginBottom:14 }}>
         <div className="seg">
-          {["All","Breached","At risk","High","Medium","Low"].map((t) => (
+          {["All", "Response", "Resolution", "Still open"].map((t) => (
             <button key={t} className={filter === t ? "on" : ""} onClick={() => setFilter(t)}>{t}</button>
           ))}
         </div>
         <div style={{ marginLeft:"auto", fontSize:13, color:"var(--ink-3)" }}>
-          {filtered.length} job{filtered.length === 1 ? "" : "s"} on the clock
+          {rows.length} breach{rows.length === 1 ? "" : "es"}{capped ? " · worst 50 shown" : ""}
         </div>
       </div>
 
-      <div className="card">
-        <div className="sla-row sla-head">
-          <div>ID</div><div>Job</div><div>Site</div><div>Priority</div><div>Clock</div><div>Status</div><div>Assignee</div>
+      {totalJobs === 0 ? (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No maintenance jobs in this window yet</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)" }}>
+            SLA performance appears once jobs start flowing. Log a work order and its clocks start on their own.
+          </div>
         </div>
-        {filtered.map((j) => {
-          const t = SLA_TARGETS[j.priority];
-          return (
-            <div key={j.id} className={"sla-row" + (j.etaMin < 0 ? " sla-row-breach" : "")} onClick={() => go && go("maintenance")}>
-              <div className="wo-id">{j.id}</div>
-              <div>
-                <div className="sla-job-title">{j.title}</div>
-                <div className="sla-job-stage">{j.stage} clock · target {slaFmtETA(t[j.stage.toLowerCase()])}</div>
+      ) : rows.length === 0 ? (
+        <div className="card" style={{ textAlign:"center", padding:"40px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>
+            {filter === "All" ? "No breaches in the last " + stats.windowDays + " days" : "Nothing in this view"}
+          </div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)" }}>
+            {filter === "All"
+              ? "Every job measured in this window hit its response and resolution targets."
+              : filter === "Still open"
+                ? "No breached jobs are still open in this window."
+                : "No " + filter.toLowerCase() + " breaches in this window."}
+          </div>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="sla-row sla-head">
+            <div>ID</div><div>Job</div><div>Clock</div><div>Priority</div><div>Over by</div><div>Status</div><div></div>
+          </div>
+          {rows.map((b) => {
+            const meta = SLA_PRIORITIES.find((m) => m.id === b.priority) || SLA_PRIORITIES[2];
+            const over = Math.max(1, b.minutes - b.targetMinutes);
+            const kindLabel = b.kind === "response" ? "Response" : "Resolution";
+            return (
+              <div key={b.jobId + "-" + b.kind} className={"sla-row" + (b.open ? " sla-row-breach" : "")}
+                onClick={() => openJob(b.jobId)}>
+                <div className="wo-id">{woShortId(b.jobId)}</div>
+                <div>
+                  <div className="sla-job-title">{b.title || "Untitled job"}</div>
+                  <div className="sla-job-stage">{kindLabel} clock · {slaFmtETA(over)} over the {slaFmtETA(b.targetMinutes)} target</div>
+                </div>
+                <div><Pill tone={b.kind === "response" ? "accent" : "secure"} dot>{kindLabel}</Pill></div>
+                <div><Pill tone={meta.tone} dot>{meta.label}</Pill></div>
+                <div><SlaCountdown etaMin={-over} /></div>
+                <div><Pill tone={b.open ? "crit" : "muted"} dot>{b.open ? "Still open" : "Closed"}</Pill></div>
+                <div className="sla-assignee" style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:4 }}>
+                  View job<Icon name="chevronRight" size={13} />
+                </div>
               </div>
-              <div className="wo-site">{j.site}</div>
-              <div><Pill tone={t.tone} dot>{j.priority}</Pill></div>
-              <div><SlaCountdown etaMin={j.etaMin} /></div>
-              <div><Pill tone={j.etaMin < 0 ? "crit" : "muted"} dot>{j.etaMin < 0 ? "Breached" : j.status}</Pill></div>
-              <div className="sla-assignee">{j.assignee}</div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {toastNode}
     </div>
   );
 }
 
-Object.assign(window, { SLAsView, SLA_TARGETS, SLA_PERFORMANCE, SLA_TRACKED, SlaCountdown, slaFmtETA });
+Object.assign(window, { SLAsView, SlaCountdown, slaFmtETA, slaToneFor });
 
 /* ════════════════════ asset_45_856423b8.js ════════════════════ */
 ;
-/* HazardLink — Permits to work */
+/* HazardLink — Permits to work (live, wired to the backend)
+   GET  /permits            → the org's permits, newest first
+   POST /permits            → request one (any signed-in user; admins notified)
+   PATCH /permits/:id       → approve | reject | activate | close | cancel
+   Lifecycle: requested → approved → active → closed, plus rejected/cancelled. */
 
-/* Permit types — grouped by category for the request picker and the
-   register filter. Each carries an icon, severity tone, and the checks
-   that MUST be ticked before it can be approved. */
-const PTW_CATEGORIES = [
-  { id:"hot",        label:"Hot & fire",            icon:"alertTri"  },
-  { id:"electrical", label:"Electrical",             icon:"activity"  },
-  { id:"height",     label:"Height & access",        icon:"layers"    },
-  { id:"confined",   label:"Confined & ground",      icon:"box"        },
-  { id:"mech",       label:"Mechanical & pressure",  icon:"settings"  },
-  { id:"hazmat",     label:"Hazardous materials",     icon:"shield"   },
-  { id:"other",      label:"Other",                   icon:"clipboard"},
-];
-
+/* The permit types the backend supports. Labels match the backend's
+   pre-humanised typeLabel exactly; icon + tone drive the visuals. */
 const PTW_TYPES = [
-  /* Hot & fire */
-  { id:"hot",          cat:"hot",        label:"Hot work",                                icon:"alertTri", tone:"crit"  },
-  { id:"fire-impair",  cat:"hot",        label:"Fire system impairment",                  icon:"alertCircle", tone:"crit" },
-
-  /* Electrical */
-  { id:"electrical",   cat:"electrical", label:"Electrical isolation (LOTO)",             icon:"activity", tone:"warn"  },
-  { id:"elec-live",    cat:"electrical", label:"Live electrical work (energised)",        icon:"alertTri", tone:"crit"  },
-
-  /* Height & access */
-  { id:"high",         cat:"height",     label:"Working at height",                       icon:"layers",   tone:"warn"  },
-  { id:"roof",         cat:"height",     label:"Roof access / fragile surfaces",          icon:"layers",   tone:"crit"  },
-  { id:"scaffold",     cat:"height",     label:"Scaffolding",                             icon:"box",      tone:"warn"  },
-
-  /* Confined & ground */
-  { id:"confined",     cat:"confined",   label:"Confined space entry",                    icon:"box",      tone:"crit"  },
-  { id:"excavation",   cat:"confined",   label:"Excavation / ground works",               icon:"layers",   tone:"warn"  },
-
-  /* Mechanical & pressure */
-  { id:"loto-mech",    cat:"mech",       label:"Energy isolation / LOTO (mechanical)",    icon:"settings", tone:"warn"  },
-  { id:"pressure",     cat:"mech",       label:"Pressure systems / pressure testing",     icon:"activity", tone:"crit"  },
-  { id:"line-break",   cat:"mech",       label:"Line breaking / breaking containment",    icon:"droplet",  tone:"crit"  },
-  { id:"lifting",      cat:"mech",       label:"Lifting operations (crane / hoist)",      icon:"package",  tone:"warn"  },
-
-  /* Hazardous materials */
-  { id:"asbestos",     cat:"hazmat",     label:"Asbestos work",                           icon:"alertTri", tone:"crit"  },
-  { id:"coshh",        cat:"hazmat",     label:"Hazardous substances (COSHH)",            icon:"droplet",  tone:"warn"  },
-  { id:"gas",          cat:"hazmat",     label:"Gas work",                                icon:"activity", tone:"crit"  },
-  { id:"radiation",    cat:"hazmat",     label:"Radiation / radiography",                 icon:"alertCircle", tone:"crit" },
-
-  /* Other */
-  { id:"cold",         cat:"other",      label:"Cold work / general work",                icon:"check",    tone:"muted" },
-  { id:"demolition",   cat:"other",      label:"Demolition",                              icon:"alertTri", tone:"crit"  },
-  { id:"water",        cat:"other",      label:"Working near or over water",              icon:"droplet",  tone:"warn"  },
-  { id:"lone",         cat:"other",      label:"Lone working",                            icon:"user",     tone:"warn"  },
-  { id:"occupied",     cat:"other",      label:"Work in occupied / public areas",         icon:"users",    tone:"warn"  },
-  { id:"traffic",      cat:"other",      label:"Traffic / vehicle movement areas",        icon:"truck",    tone:"warn"  },
+  { id:"hot_works",         cat:"hot",        label:"Hot works",         icon:"alertTri", tone:"crit"  },
+  { id:"electrical",        cat:"electrical", label:"Electrical",        icon:"activity", tone:"warn"  },
+  { id:"working_at_height", cat:"height",     label:"Working at height", icon:"layers",   tone:"warn"  },
+  { id:"confined_space",    cat:"confined",   label:"Confined space",    icon:"box",      tone:"crit"  },
+  { id:"excavation",        cat:"confined",   label:"Excavation",        icon:"layers",   tone:"warn"  },
+  { id:"asbestos",          cat:"hazmat",     label:"Asbestos",          icon:"alertTri", tone:"crit"  },
+  { id:"general",           cat:"other",      label:"General",           icon:"check",    tone:"muted" },
 ];
 
+const PTW_CATEGORIES = [
+  { id:"hot",        label:"Hot & fire",           icon:"alertTri" },
+  { id:"electrical", label:"Electrical",           icon:"activity" },
+  { id:"height",     label:"Height & access",      icon:"layers"   },
+  { id:"confined",   label:"Confined & ground",    icon:"box"      },
+  { id:"hazmat",     label:"Hazardous materials",  icon:"shield"   },
+  { id:"other",      label:"Other",                icon:"file"     },
+];
+
+/* Full lifecycle, keyed by the backend's lowercase status values. */
 const PTW_STATUS_META = {
-  Requested: { tone:"warn",   icon:"clock"        },
-  Approved:  { tone:"accent", icon:"check"        },
-  Active:    { tone:"ok",     icon:"checkCircle"  },
-  Closed:    { tone:"muted",  icon:"file"         },
+  requested: { label:"Requested", tone:"warn",   icon:"clock"       },
+  approved:  { label:"Approved",  tone:"secure", icon:"check"       },
+  active:    { label:"Active",    tone:"ok",     icon:"checkCircle" },
+  closed:    { label:"Closed",    tone:"muted",  icon:"file"        },
+  rejected:  { label:"Rejected",  tone:"crit",   icon:"x"           },
+  cancelled: { label:"Cancelled", tone:"muted",  icon:"x"           },
 };
 
-/* Each permit type's required checks. These are what must be ticked
-   before a manager can approve the permit. Specific to the hazard. */
+/* Standard requirement lines per permit type. They pre-fill the request as
+   ticked suggestions; whatever stays ticked is sent as the permit's
+   requirements array. Nothing here is tracked as done/not-done later —
+   they are the conditions attached to the permit. */
 const PTW_CHECKS = {
-  "hot": [
+  hot_works: [
     "Fire extinguisher present and serviceable",
     "Combustibles cleared from 1.5m radius",
     "Fire watch assigned for duration of work",
@@ -20463,15 +22206,7 @@ const PTW_CHECKS = {
     "Gas / welding equipment certified in date",
     "Hot work permit form signed and posted at site",
   ],
-  "fire-impair": [
-    "Alternative fire watch arranged for impaired zone",
-    "Alarm receiving centre (ARC) notified before isolation",
-    "Insurer notified where required by policy",
-    "Restore-by time agreed and documented",
-    "Affected zone signage in place",
-    "Isolation tagged at fire panel / sprinkler valve",
-  ],
-  "electrical": [
+  electrical: [
     "Lock-out tag-out (LOTO) applied at source",
     "Isolation verified by a competent person",
     "Test-for-dead with proving unit completed",
@@ -20479,15 +22214,7 @@ const PTW_CHECKS = {
     "Stored energy (capacitors / springs) discharged",
     "Safe-to-work statement signed by both parties",
   ],
-  "elec-live": [
-    "Justification for live work documented (no alternative)",
-    "Competent person + certified standby person present",
-    "Insulated tools and PPE inspected, in date",
-    "Arc-flash boundary defined and barriered",
-    "Risk assessment signed off by HV / electrical authority",
-    "Fire-blanket and CO2 extinguisher to hand",
-  ],
-  "high": [
+  working_at_height: [
     "Access equipment inspected (MEWP / ladder / scaffold)",
     "Harness and anchor points checked, in date",
     "Exclusion zone barriered below the work area",
@@ -20495,23 +22222,7 @@ const PTW_CHECKS = {
     "Weather conditions reviewed (wind < 15 m/s)",
     "Toolbox talk completed with all on the lift",
   ],
-  "roof": [
-    "Roof load-bearing / fragility survey reviewed",
-    "Walkway boards and crawl boards in place over fragile areas",
-    "Edge protection or fall-arrest rigged on all sides",
-    "Anchor points tested and tagged within last 12 months",
-    "Rescue plan from roof documented",
-    "Permit posted at roof access point",
-  ],
-  "scaffold": [
-    "Scafftag inspected and signed within last 7 days",
-    "Erection / dismantle by competent (CISRS) scaffolders only",
-    "Base plates and sole boards confirmed on solid ground",
-    "Toe boards, mid-rail and guard-rail on all working lifts",
-    "Public exclusion below the lift in place",
-    "Loading limit posted on the structure",
-  ],
-  "confined": [
+  confined_space: [
     "Atmosphere test completed (O2, LEL, CO, H2S)",
     "Continuous atmospheric monitoring in place",
     "Forced ventilation running before and during entry",
@@ -20519,7 +22230,7 @@ const PTW_CHECKS = {
     "Rescue plan documented; tripod and winch rigged",
     "Communication method confirmed (radio / line)",
   ],
-  "excavation": [
+  excavation: [
     "Underground services located and CAT-scanned",
     "Service drawings reviewed against the dig area",
     "Shoring / battering / benching plan in place",
@@ -20527,39 +22238,7 @@ const PTW_CHECKS = {
     "Edge protection / barriers around the excavation",
     "Access ladder secured and projecting 1m above edge",
   ],
-  "loto-mech": [
-    "All energy sources identified (mech, hydraulic, pneumatic)",
-    "Each source isolated and locked at source",
-    "Stored energy (springs, gravity, pressure) bled / blocked",
-    "Try-out test confirms zero motion",
-    "LOTO tag fixed with name, date and reason",
-    "Re-energisation steps written and held by isolator",
-  ],
-  "pressure": [
-    "System depressurised and locked off before work",
-    "Pressure-test pressure agreed and documented",
-    "Test medium (water / nitrogen / air) specified",
-    "Exclusion zone in place during the test",
-    "Pressure-relief device verified and in date",
-    "Calibrated test gauge in date and recorded",
-  ],
-  "line-break": [
-    "Line drained, vented and depressurised",
-    "Double block & bleed or equivalent isolation confirmed",
-    "Contents identified on SDS, PPE selected accordingly",
-    "Drip tray / containment in place under the joint",
-    "Spill kit and eye-wash within reach",
-    "Receiving container ready before breaking the line",
-  ],
-  "lifting": [
-    "Lift plan signed by appointed person",
-    "Crane / hoist within statutory examination (LOLER) date",
-    "Lifting accessories tagged and within proof-load date",
-    "Slinger / banksman appointed and identified",
-    "Exclusion zone barriered around the lift radius",
-    "Wind / ground conditions reviewed against limits",
-  ],
-  "asbestos": [
+  asbestos: [
     "Asbestos register / refurbishment survey reviewed",
     "Licensed contractor confirmed (HSA / HSE notification)",
     "Enclosure or controlled area established (NPU running)",
@@ -20567,87 +22246,69 @@ const PTW_CHECKS = {
     "Personal air-monitoring arranged for the shift",
     "Clearance certificate to be issued before reoccupation",
   ],
-  "coshh": [
-    "Safety Data Sheet (SDS) reviewed for every substance",
-    "COSHH assessment in place for the task",
-    "Correct PPE selected (gloves, RPE, eye protection)",
-    "Spill kit suitable for the substance to hand",
-    "Local exhaust ventilation (LEV) running where required",
-    "Waste route and container labelled and ready",
-  ],
-  "gas": [
-    "Gas Safe / RGI registered operative confirmed",
-    "Supply isolated at meter / cylinder and locked",
-    "Gas tightness test completed and recorded",
-    "Purge procedure documented and followed",
-    "Gas detector in date and on continuous read",
-    "No ignition sources within the work area",
-  ],
-  "radiation": [
-    "RPA (Radiation Protection Adviser) consulted",
-    "Controlled area set up with signage and barriers",
-    "Source / X-ray equipment registered and in date",
-    "Personal dosimeters issued to all operatives",
-    "Pre-shoot survey and post-shoot survey scheduled",
-    "Emergency procedure for source recovery posted",
-  ],
-  "cold": [
+  general: [
     "Task risk assessment reviewed and signed",
     "Correct PPE confirmed for the activity",
     "Tools and equipment inspected before use",
     "Housekeeping plan agreed (waste, walkways)",
     "Toolbox talk completed with all operatives",
   ],
-  "demolition": [
-    "Pre-demolition survey reviewed (incl. asbestos)",
-    "Structural engineer sequence of demolition signed",
-    "Exclusion zone barriered (>1.5x structure height)",
-    "Services proven isolated upstream of the structure",
-    "Dust suppression (water / damping) in place",
-    "Plant operators CPCS / CSCS certified",
-  ],
-  "water": [
-    "Buoyancy aids worn by all near or over water",
-    "Throw-line and life-ring at the work position",
-    "Rescue craft / standby boat arrangements confirmed",
-    "Banksman watching the water side",
-    "Tides / currents / weather reviewed before start",
-    "Lone working prohibited for this activity",
-  ],
-  "lone": [
-    "Hazard assessment confirms task suitable for lone work",
-    "Check-in / check-out times agreed with supervisor",
-    "Lone-worker device or phone signal confirmed",
-    "Escalation contact briefed and reachable",
-    "Emergency procedure understood by the worker",
-  ],
-  "occupied": [
-    "Work scheduled outside core occupancy hours",
-    "Affected zones barriered with public signage",
-    "Building user / FM notified of the activity",
-    "Noise / dust controls in place during operation",
-    "Tools and materials secured against public access",
-    "Site security / reception briefed on the work",
-  ],
-  "traffic": [
-    "Traffic management plan (TMP) signed off",
-    "Banksman / traffic marshal appointed and identified",
-    "Hi-vis worn by all on foot in the area",
-    "Vehicle exclusion zone barriered around the work",
-    "Speed limit and route diversion signage posted",
-    "Reversing alarms / cameras confirmed working",
-  ],
 };
 
-const SEED_PERMITS = [];
+/* ── Small helpers over the real permit shape ────────────────────────── */
+function ptwTypeMeta(type) {
+  return PTW_TYPES.find((x) => x.id === type) ||
+    { id: type, cat: "other", label: type || "Permit", icon: "shield", tone: "muted" };
+}
+function ptwStatusMeta(status) {
+  return PTW_STATUS_META[status] || { label: status || "—", tone: "muted", icon: "file" };
+}
+function ptwShortId(id)  { return "PTW-" + String(id || "").slice(0, 6).toUpperCase(); }
+function ptwShortWo(id)  { return "WO-"  + String(id || "").slice(0, 6).toUpperCase(); }
+const PTW_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function ptwFmtDT(v) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return d.getDate() + " " + PTW_MONTHS[d.getMonth()] + ", " + hh + ":" + mm;
+}
+function ptwPastEnd(p) {
+  return p.status === "active" && p.endsAt && new Date(p.endsAt).getTime() < Date.now();
+}
+/* Date → value for an <input type="datetime-local"> in local time. */
+function ptwLocalInput(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+    "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
 
 /* ============================================================
    Permit detail panel
    ============================================================ */
-function PtwPanel({ permit, onClose, onApprove, onActivate, onClose: _close, onCloseOut }) {
-  const t = PTW_TYPES.find((x) => x.id === permit.type);
-  const sm = PTW_STATUS_META[permit.status];
-  const allChecked = permit.checks.every((c) => c.done);
+function PtwPanel({ permit, isStaff, meName, busy, onClose, onAction }) {
+  const t  = ptwTypeMeta(permit.type);
+  const sm = ptwStatusMeta(permit.status);
+  const [note, setNote] = React.useState("");
+
+  const reqs    = Array.isArray(permit.requirements) ? permit.requirements : [];
+  const mine    = !!meName && permit.requestedByName === meName;
+  const pastEnd = ptwPastEnd(permit);
+
+  const canDecide   = isStaff && permit.status === "requested";
+  const canActivate = permit.status === "approved";
+  const canCloseOut = (permit.status === "active" || permit.status === "approved") && (isStaff || mine);
+  const canCancel   = (permit.status === "requested" || permit.status === "approved") && (isStaff || mine);
+  const takesNote   = canDecide || canCloseOut;
+
+  const act = (action) => { if (!busy) onAction(action, note.trim() || undefined); };
+
+  const decision =
+    permit.status === "requested" ? "Awaiting an admin or supervisor" :
+    permit.status === "rejected"  ? "Rejected" + (permit.approvedAt ? " · " + ptwFmtDT(permit.approvedAt) : "") :
+    permit.status === "cancelled" ? "Cancelled" + (permit.closedAt ? " · " + ptwFmtDT(permit.closedAt) : "") :
+    permit.approvedAt             ? "Approved · " + ptwFmtDT(permit.approvedAt) : "—";
 
   return (
     <React.Fragment>
@@ -20658,65 +22319,108 @@ function PtwPanel({ permit, onClose, onApprove, onActivate, onClose: _close, onC
             <Icon name={t.icon} size={17} />
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="panel-title">{permit.title}</div>
+            <div className="panel-title">{permit.description}</div>
             <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2, fontFamily:"var(--mono)" }}>
-              {permit.id} · {t.label}
+              {ptwShortId(permit.id)} · {permit.typeLabel || t.label}
             </div>
           </div>
-          <Pill tone={sm.tone} icon={sm.icon}>{permit.status}</Pill>
+          <Pill tone={sm.tone} icon={sm.icon}>{sm.label}</Pill>
           <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="panel-body">
           <div className="panel-section">
             <div className="auto-detail-box">
-              <div className="auto-detail-row"><span className="k">Site</span><span className="v"><Icon name="mapPin" size={11} />{permit.site}</span></div>
-              <div className="auto-detail-row"><span className="k">Contractor</span><span className="v">{permit.contractor}</span></div>
-              <div className="auto-detail-row"><span className="k">Linked work order</span><span className="v" style={{ fontFamily:"var(--mono)", color:"var(--accent-ink)" }}>{permit.workOrder}</span></div>
-              <div className="auto-detail-row"><span className="k">Valid from</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{permit.validFrom}</span></div>
-              <div className="auto-detail-row"><span className="k">Valid to</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{permit.validTo}</span></div>
-              <div className="auto-detail-row"><span className="k">Approver</span><span className="v">{permit.approver}{permit.approvedAt ? " · " + permit.approvedAt : ""}</span></div>
+              <div className="auto-detail-row"><span className="k">Site</span><span className="v"><Icon name="mapPin" size={11} />{permit.buildingId ? (permit.buildingName || "—") : "Portfolio-wide"}</span></div>
+              <div className="auto-detail-row"><span className="k">Contractor</span><span className="v">{permit.contractorName || "—"}</span></div>
+              <div className="auto-detail-row"><span className="k">Requested by</span><span className="v">{permit.requestedByName || "—"}{permit.createdAt ? " · " + ptwFmtDT(permit.createdAt) : ""}</span></div>
+              <div className="auto-detail-row"><span className="k">Linked work order</span><span className="v" style={{ fontFamily:"var(--mono)", color:"var(--accent-ink)" }}>{permit.jobId ? ptwShortWo(permit.jobId) : "—"}</span></div>
+              <div className="auto-detail-row"><span className="k">Valid from</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{ptwFmtDT(permit.startsAt)}</span></div>
+              <div className="auto-detail-row"><span className="k">Valid to</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{ptwFmtDT(permit.endsAt)}</span></div>
+              <div className="auto-detail-row"><span className="k">Decision</span><span className="v">{decision}</span></div>
+              {permit.closedAt && permit.status === "closed" && (
+                <div className="auto-detail-row"><span className="k">Closed</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{ptwFmtDT(permit.closedAt)}</span></div>
+              )}
             </div>
           </div>
 
-          {permit.notes && (
+          {pastEnd && (
             <div className="panel-section">
-              <div className="panel-label">Notes</div>
-              <div className="bill-notes">{permit.notes}</div>
+              <div style={{ display:"flex", alignItems:"flex-start", gap:9, padding:"10px 12px", borderRadius:10,
+                            background:"var(--warn-soft)", border:"1px solid var(--warn)", fontSize:12.5, color:"var(--ink)" }}>
+                <Icon name="alertTri" size={15} />
+                <span>This permit is past its end time ({ptwFmtDT(permit.endsAt)}) but still active. Close it out if the work is finished.</span>
+              </div>
+            </div>
+          )}
+
+          {permit.closedNote && (
+            <div className="panel-section">
+              <div className="panel-label">Note</div>
+              <div className="bill-notes">{permit.closedNote}</div>
             </div>
           )}
 
           <div className="panel-section">
-            <div className="panel-label">Required checks ({permit.checks.filter((c) => c.done).length}/{permit.checks.length})</div>
-            <div className="ptw-checks">
-              {permit.checks.map((c, i) => (
-                <div key={i} className={"ptw-check" + (c.done ? " on" : "")}>
-                  <div className="ptw-check-box">
-                    {c.done ? <Icon name="check" size={11} /> : <span />}
+            <div className="panel-label">Requirements ({reqs.length})</div>
+            {reqs.length === 0 ? (
+              <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>No specific requirements were attached to this permit.</div>
+            ) : (
+              <div className="ptw-checks">
+                {reqs.map((r, i) => (
+                  <div key={i} className="ptw-check">
+                    <div className="ptw-check-box"><span /></div>
+                    <span>{r}</span>
                   </div>
-                  <span>{c.label}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="panel-section panel-actions">
-            {permit.status === "Requested" && (
-              <button className="btn btn-primary" disabled={!allChecked}
-                style={{ opacity: allChecked ? 1 : .5 }} onClick={onApprove}>
-                <Icon name="check" size={14} />Approve permit
-              </button>
+            {takesNote && (
+              <textarea className="dv-input" rows={2} value={note} maxLength={1000}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Optional note for the record…" style={{ width:"100%" }} />
             )}
-            {permit.status === "Approved" && (
-              <button className="btn btn-primary" onClick={onActivate}>
+            {canDecide && (
+              <React.Fragment>
+                <button className="btn btn-primary" disabled={busy} onClick={() => act("approve")}>
+                  <Icon name="check" size={14} />Approve permit
+                </button>
+                <button className="btn" disabled={busy} onClick={() => act("reject")}>
+                  <Icon name="x" size={14} />Reject
+                </button>
+              </React.Fragment>
+            )}
+            {permit.status === "requested" && !isStaff && (
+              <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>
+                An admin or supervisor approves permits. The requester is notified when it's decided.
+              </div>
+            )}
+            {canActivate && (
+              <button className="btn btn-primary" disabled={busy} onClick={() => act("activate")}>
                 <Icon name="checkCircle" size={14} />Mark active on site
               </button>
             )}
-            {permit.status === "Active" && (
-              <button className="btn btn-primary" onClick={onCloseOut}>
+            {canCloseOut && (
+              <button className={"btn" + (permit.status === "active" ? " btn-primary" : "")} disabled={busy} onClick={() => act("close")}>
                 <Icon name="check" size={14} />Close out permit
               </button>
             )}
-            <button className="btn"><Icon name="file" size={14} />Download form (PDF)</button>
+            {permit.status === "active" && !(isStaff || mine) && (
+              <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>
+                Only staff or whoever requested the permit can close it out.
+              </div>
+            )}
+            {canCancel && (
+              <button className="btn" disabled={busy} onClick={() => act("cancel")}>
+                <Icon name="x" size={14} />{permit.status === "requested" ? "Cancel request" : "Cancel permit"}
+              </button>
+            )}
+            <button className="btn" disabled style={{ opacity:.5, cursor:"default" }}
+              title="PDF export isn't built yet">
+              <Icon name="file" size={14} />Download form (PDF)
+            </button>
           </div>
         </div>
       </aside>
@@ -20727,24 +22431,53 @@ function PtwPanel({ permit, onClose, onApprove, onActivate, onClose: _close, onC
 /* ============================================================
    Request modal
    ============================================================ */
-function PtwRequestModal({ onClose, onSubmit }) {
-  const [type, setType]         = React.useState("");
+function PtwRequestModal({ onClose, onSubmit, busy }) {
+  const [type, setType]           = React.useState("");
   const [catFilter, setCatFilter] = React.useState("all");
   const [search, setSearch]       = React.useState("");
-  const [site, setSite]         = React.useState("");
-  const [contractor, setCtr]    = React.useState("");
-  const [workOrder, setWO]      = React.useState("");
-  const [validFrom, setVf]      = React.useState("21 Jun 08:00");
-  const [validTo,   setVt]      = React.useState("21 Jun 16:00");
-  const [notes, setNotes]       = React.useState("");
+  const [siteId, setSiteId]       = React.useState("");
+  const [contractor, setCtr]      = React.useState("");
+  const [validFrom, setVf]        = React.useState(() => {
+    const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1);
+    return ptwLocalInput(d);
+  });
+  const [validTo, setVt]          = React.useState(() => {
+    const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 5);
+    return ptwLocalInput(d);
+  });
+  const [desc, setDesc]           = React.useState("");
+  const [reqs, setReqs]           = React.useState([]);   // [{ label, on }]
+  const [customReq, setCustomReq] = React.useState("");
 
-  const canSave = type && site && contractor && validFrom && validTo;
+  const pickType = (id) => {
+    if (id === type) return; // re-clicking the chip keeps your edits
+    setType(id);
+    setReqs((PTW_CHECKS[id] || []).map((l) => ({ label: l, on: true })));
+  };
+  const toggleReq = (i) => setReqs((rs) => rs.map((r, j) => j === i ? { ...r, on: !r.on } : r));
+  const addCustom = () => {
+    const v = customReq.trim().slice(0, 300);
+    if (!v || reqs.length >= 30) return;
+    setReqs((rs) => [...rs, { label: v, on: true }]);
+    setCustomReq("");
+  };
+
+  const start = validFrom ? new Date(validFrom) : null;
+  const end   = validTo   ? new Date(validTo)   : null;
+  const datesOk  = start && end && !isNaN(start.getTime()) && !isNaN(end.getTime());
+  const rangeOk  = datesOk && end > start;
+  const canSave  = !!type && desc.trim().length > 0 && rangeOk && !busy;
 
   const save = () => {
     if (!canSave) return;
     onSubmit({
-      type, site, contractor, workOrder, validFrom, validTo, notes,
-      title: PTW_TYPES.find((x) => x.id === type).label + " — " + (notes.split(/[\.\,\n]/)[0] || "new permit"),
+      type,
+      description: desc.trim(),
+      buildingId: siteId || undefined,
+      contractorName: contractor.trim() || undefined,
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      requirements: reqs.filter((r) => r.on).map((r) => r.label).slice(0, 30),
     });
   };
 
@@ -20757,7 +22490,7 @@ function PtwRequestModal({ onClose, onSubmit }) {
           <div className="mh-ico"><Icon name="shield" size={18} /></div>
           <div>
             <h3>Request permit to work</h3>
-            <p>Submit a permit request. A manager must approve before the work can start.</p>
+            <p>Submit a permit request. An admin or supervisor must approve it before the work can start.</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
@@ -20768,7 +22501,7 @@ function PtwRequestModal({ onClose, onSubmit }) {
             <div className="ptw-type-search">
               <Icon name="search" size={13} />
               <input className="dv-input" value={search} onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search permit types… (e.g. asbestos, height, gas)" />
+                placeholder="Search permit types… (e.g. asbestos, height, hot works)" />
             </div>
             <div className="ptw-cat-tabs">
               <button className={"ptw-cat-tab" + (catFilter === "all" ? " on" : "")}
@@ -20796,7 +22529,7 @@ function PtwRequestModal({ onClose, onSubmit }) {
                       {types.map((p) => (
                         <button key={p.id}
                           className={"ptw-type-chip" + (type === p.id ? " on" : "")}
-                          onClick={() => setType(p.id)}>
+                          onClick={() => pickType(p.id)}>
                           <div className={"ptw-type-ico ptw-type-ico-" + p.tone}><Icon name={p.icon} size={14} /></div>
                           <span>{p.label}</span>
                         </button>
@@ -20810,40 +22543,65 @@ function PtwRequestModal({ onClose, onSubmit }) {
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             <div className="ai-field">
-              <label>Site</label>
-              <select className="dv-input" value={site} onChange={(e) => setSite(e.target.value)}>
-                <option value="">Pick a site…</option>
-                {HL.sites.map((s) => <option key={s.name}>{s.name}</option>)}
+              <label>Site (optional)</label>
+              <select className="dv-input" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+                <option value="">No site, portfolio-wide</option>
+                {((typeof HL !== "undefined" && HL.sites) || []).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
               </select>
             </div>
             <div className="ai-field">
-              <label>Contractor</label>
-              <input className="dv-input" value={contractor} onChange={(e) => setCtr(e.target.value)} placeholder="e.g. AquaFix Plumbing" />
+              <label>Contractor (optional)</label>
+              <input className="dv-input" value={contractor} maxLength={200}
+                onChange={(e) => setCtr(e.target.value)} placeholder="e.g. AquaFix Plumbing" />
             </div>
-            <div className="ai-field">
-              <label>Linked work order (optional)</label>
-              <input className="dv-input" value={workOrder} onChange={(e) => setWO(e.target.value)} placeholder="e.g. WO-2041" />
-            </div>
-            <div className="ai-field"><label>&nbsp;</label></div>
             <div className="ai-field">
               <label>Valid from</label>
-              <input className="dv-input" value={validFrom} onChange={(e) => setVf(e.target.value)} />
+              <input className="dv-input" type="datetime-local" value={validFrom} onChange={(e) => setVf(e.target.value)} />
             </div>
             <div className="ai-field">
               <label>Valid to</label>
-              <input className="dv-input" value={validTo} onChange={(e) => setVt(e.target.value)} />
+              <input className="dv-input" type="datetime-local" value={validTo} onChange={(e) => setVt(e.target.value)} />
             </div>
             <div className="ai-field" style={{ gridColumn:"1 / -1" }}>
-              <label>Notes for the approver</label>
-              <textarea className="dv-input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}
+              <label>Describe the work</label>
+              <textarea className="dv-input" rows={3} value={desc} maxLength={2000}
+                onChange={(e) => setDesc(e.target.value)}
                 placeholder="Scope, hazards, controls and any context the approver needs to know…" />
             </div>
           </div>
 
+          {datesOk && !rangeOk && (
+            <div style={{ marginTop:10, fontSize:12.5, color:"var(--crit)" }}>
+              The end time must be after the start time.
+            </div>
+          )}
+
           {meta && (
             <div className="ptw-preview">
-              <div className="ptw-preview-cap"><Icon name="shield" size={12} />Required checks for {meta.label.toLowerCase()}</div>
-              <ul>{PTW_CHECKS[type].map((c, i) => <li key={i}>{c}</li>)}</ul>
+              <div className="ptw-preview-cap"><Icon name="shield" size={12} />Requirements for {meta.label.toLowerCase()}</div>
+              <div style={{ fontSize:12, color:"var(--ink-3)", marginBottom:8 }}>
+                Pre-filled from the standard checklist. Untick anything that doesn't apply, or add your own. Ticked lines are attached to the request.
+              </div>
+              <div className="ptw-checks" style={{ background:"transparent", border:"none", padding:0 }}>
+                {reqs.map((r, i) => (
+                  <div key={i} className={"ptw-check" + (r.on ? " on" : "")}
+                    onClick={() => toggleReq(i)} style={{ cursor:"pointer" }}>
+                    <div className="ptw-check-box">{r.on ? <Icon name="check" size={11} /> : <span />}</div>
+                    <span>{r.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                <input className="dv-input" value={customReq} maxLength={300} style={{ flex:1 }}
+                  onChange={(e) => setCustomReq(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
+                  placeholder="Add your own requirement…" />
+                <button className="btn" onClick={addCustom} disabled={!customReq.trim() || reqs.length >= 30}>
+                  <Icon name="plus" size={13} />Add
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -20852,7 +22610,7 @@ function PtwRequestModal({ onClose, onSubmit }) {
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" disabled={!canSave}
             style={{ opacity: canSave ? 1 : .5 }} onClick={save}>
-            <Icon name="send" size={15} />Submit request
+            <Icon name="send" size={15} />{busy ? "Submitting…" : "Submit request"}
           </button>
         </div>
       </div>
@@ -20865,170 +22623,256 @@ function PtwRequestModal({ onClose, onSubmit }) {
    ============================================================ */
 function PermitsView({ go }) {
   const { site } = React.useContext(SiteContext);
-  const [permits,   setPermits]   = React.useState(SEED_PERMITS);
-  const [filter,    setFilter]    = React.useState("All");
+  const [permits, setPermits]       = React.useState(null);  // null loading | false error | [rows]
+  const [filter, setFilter]         = React.useState("all");
   const [typeFilter, setTypeFilter] = React.useState("all");
-  const [openId,    setOpenId]    = React.useState(null);
+  const [openId, setOpenId]         = React.useState(null);
   const [requestOpen, setRequestOpen] = React.useState(false);
+  const [busy, setBusy]             = React.useState(false);
   const { showToast, toastNode } = useViewToast();
 
-  const tabs = ["All", "Requested", "Approved", "Active", "Closed"];
-  const scoped = site ? permits.filter((p) => p.site === site.name) : permits;
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const isStaff = me.role === "admin" || me.role === "supervisor";
+
+  const refresh = React.useCallback(() => {
+    return hlApi("/permits")
+      .then(({ ok, b }) => {
+        if (!ok || !b || !Array.isArray(b.permits)) { setPermits(false); return; }
+        setPermits(b.permits);
+      })
+      .catch(() => setPermits(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const rows = Array.isArray(permits) ? permits : [];
+  const scoped = site ? rows.filter((p) => p.buildingId === site.id) : rows;
+
+  const tabs = [
+    { id:"all",       label:"All" },
+    { id:"requested", label:"Requested" },
+    { id:"approved",  label:"Approved" },
+    { id:"active",    label:"Active" },
+    { id:"closed",    label:"Closed" },
+    ...(scoped.some((p) => p.status === "rejected")  ? [{ id:"rejected",  label:"Rejected"  }] : []),
+    ...(scoped.some((p) => p.status === "cancelled") ? [{ id:"cancelled", label:"Cancelled" }] : []),
+  ];
+  // A tab can disappear (last rejected/cancelled permit gone) — fall back to All.
+  const activeFilter = tabs.some((t) => t.id === filter) ? filter : "all";
+
   const filtered = scoped
-    .filter((p) => filter === "All" ? true : p.status === filter)
-    .filter((p) => {
-      if (typeFilter === "all") return true;
-      const t = PTW_TYPES.find((x) => x.id === p.type);
-      return t && t.cat === typeFilter;
-    });
+    .filter((p) => activeFilter === "all" ? true : p.status === activeFilter)
+    .filter((p) => typeFilter === "all" ? true : p.type === typeFilter)
+    .slice()
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
   const counts = {
-    Requested: scoped.filter((p) => p.status === "Requested").length,
-    Approved:  scoped.filter((p) => p.status === "Approved").length,
-    Active:    scoped.filter((p) => p.status === "Active").length,
-    Closed:    scoped.filter((p) => p.status === "Closed").length,
+    requested: scoped.filter((p) => p.status === "requested").length,
+    approved:  scoped.filter((p) => p.status === "approved").length,
+    active:    scoped.filter((p) => p.status === "active").length,
+    closed:    scoped.filter((p) => p.status === "closed").length,
   };
 
-  const update = (id, patch) => setPermits((ps) => ps.map((p) => p.id === id ? { ...p, ...patch } : p));
+  const doAction = (id, action, note) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/permits/" + id, { method:"PATCH", body: note ? { action, note } : { action } })
+      .then(({ ok, status }) => {
+        if (!ok) {
+          if (status === 403) {
+            showToast(action === "approve" || action === "reject"
+              ? "Only admins and supervisors can approve or reject permits."
+              : "Only staff or the person who requested it can do that.");
+          } else if (status === 409) {
+            showToast("That permit has moved on since you loaded it. Refreshing.");
+            refresh();
+          } else {
+            showToast("Could not update the permit. Try again.");
+          }
+          return;
+        }
+        showToast({
+          approve:  "Permit approved.",
+          reject:   "Permit rejected.",
+          activate: "Permit marked active on site.",
+          close:    "Permit closed out.",
+          cancel:   "Permit cancelled.",
+        }[action] || "Permit updated.");
+        refresh();
+      })
+      .finally(() => setBusy(false));
+  };
 
-  const approve = (id) => {
-    update(id, { status:"Approved", approvedAt:"just now" });
-    showToast("Permit approved · site access linked");
-  };
-  const activate = (id) => {
-    update(id, { status:"Active" });
-    showToast("Permit marked active on site");
-  };
-  const closeOut = (id) => {
-    update(id, { status:"Closed" });
-    showToast("Permit closed out");
-  };
-
-  const submitNew = (payload) => {
-    const id = "PTW-" + (2015 + permits.length - SEED_PERMITS.length);
-    setPermits((ps) => [{
-      id, status:"Requested",
-      checks: PTW_CHECKS[payload.type].map((c) => ({ label: c, done: false })),
-      ...payload,
-    }, ...ps]);
-    setRequestOpen(false);
-    showToast("Permit " + id + " requested · awaiting approval");
+  const submitNew = (body) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/permits", { method:"POST", body })
+      .then(({ ok, status, b }) => {
+        if (!ok || !b || !b.permit) {
+          const err = b && b.error;
+          showToast(err === "end_before_start"
+            ? "The end time must be after the start time."
+            : status === 401 ? "Sign in again to request a permit."
+            : "Could not submit the permit request. Try again.");
+          return;
+        }
+        setRequestOpen(false);
+        showToast("Permit " + ptwShortId(b.permit.id) + " requested. Admins and supervisors have been notified.");
+        refresh();
+      })
+      .finally(() => setBusy(false));
   };
 
-  const open = permits.find((p) => p.id === openId);
+  const open = Array.isArray(permits) ? permits.find((p) => p.id === openId) : null;
+
+  if (permits === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading permits…</div></div>;
+  }
+  if (permits === false) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ fontSize:13.5 }}>
+          <div style={{ color:"var(--warn)", marginBottom:10 }}>Could not load permits.</div>
+          <button className="btn" onClick={() => { setPermits(null); refresh(); }}>
+            <Icon name="rotateCw" size={14} />Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-inner">
       <div className="page-head">
         <div>
           <h1 className="page-title">Permits to work</h1>
-          <p className="page-desc">The full set of permit types used across facilities and maintenance — from hot work and electrical isolation to confined space, asbestos, lifting and radiation. Contractor requests a permit, a manager approves, the system unlocks site access for the validity window.</p>
+          <p className="page-desc">Hot works, working at height, confined space and other higher-risk jobs need a permit before they start. Anyone signed in can request one, an admin or supervisor approves it, then it's marked active while the work runs and closed out at the end.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setRequestOpen(true)}>
           <Icon name="plus" size={15} />Request permit
         </button>
       </div>
 
-      {requestOpen && <PtwRequestModal onClose={() => setRequestOpen(false)} onSubmit={submitNew} />}
+      {requestOpen && <PtwRequestModal busy={busy} onClose={() => setRequestOpen(false)} onSubmit={submitNew} />}
       {open && (
-        <PtwPanel permit={open}
+        <PtwPanel key={open.id} permit={open} isStaff={isStaff} meName={me.name} busy={busy}
           onClose={() => setOpenId(null)}
-          onApprove={() => approve(open.id)}
-          onActivate={() => activate(open.id)}
-          onCloseOut={() => closeOut(open.id)} />
+          onAction={(action, note) => doAction(open.id, action, note)} />
       )}
 
-      {/* KPIs */}
-      <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div>
-            <span className="kpi-label">Awaiting approval</span>
+      {scoped.length === 0 ? (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>
+            {site ? "No permits at " + site.name + " yet" : "No permits yet"}
           </div>
-          <div className="kpi-val">{counts.Requested}</div>
-          <div className="kpi-foot">manager action needed</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="check" size={16} /></div>
-            <span className="kpi-label">Approved</span>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", marginBottom:14 }}>
+            Request one when contractors need hot works, roof access or confined-space entry.
           </div>
-          <div className="kpi-val">{counts.Approved}</div>
-          <div className="kpi-foot">ready to go active</div>
+          <button className="btn btn-primary" onClick={() => setRequestOpen(true)}>
+            <Icon name="plus" size={15} />Request permit
+          </button>
         </div>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div>
-            <span className="kpi-label">Active on site</span>
+      ) : (
+        <React.Fragment>
+          {/* KPIs */}
+          <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div>
+                <span className="kpi-label">Awaiting approval</span>
+              </div>
+              <div className="kpi-val">{counts.requested}</div>
+              <div className="kpi-foot">needs an admin or supervisor</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("secure"), color:solid("secure") }}><Icon name="check" size={16} /></div>
+                <span className="kpi-label">Approved</span>
+              </div>
+              <div className="kpi-val">{counts.approved}</div>
+              <div className="kpi-foot">ready to go active</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div>
+                <span className="kpi-label">Active on site</span>
+              </div>
+              <div className="kpi-val">{counts.active}</div>
+              <div className="kpi-foot">work under way</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top">
+                <div className="kpi-ico" style={{ background:softBg("muted"), color:solid("muted") }}><Icon name="file" size={16} /></div>
+                <span className="kpi-label">Closed</span>
+              </div>
+              <div className="kpi-val">{counts.closed}</div>
+            </div>
           </div>
-          <div className="kpi-val">{counts.Active}</div>
-          <div className="kpi-foot">site access live</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("muted"), color:solid("muted") }}><Icon name="file" size={16} /></div>
-            <span className="kpi-label">Closed today</span>
-          </div>
-          <div className="kpi-val">{counts.Closed}</div>
-        </div>
-      </div>
 
-      {/* Filter strip */}
-      <div className="toolbar" style={{ marginBottom:12 }}>
-        <div className="seg">
-          {tabs.map((t) => (
-            <button key={t} className={filter === t ? "on" : ""} onClick={() => setFilter(t)}>{t}</button>
-          ))}
-        </div>
-        <div className="ptw-type-filter">
-          <Icon name="shield" size={12} />
-          <select className="dv-input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-            <option value="all">All permit types</option>
-            {PTW_CATEGORIES.map((c) => (
-              <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-          </select>
-        </div>
-        <div style={{ marginLeft:"auto", fontSize:13, color:"var(--ink-3)" }}>
-          {filtered.length} permit{filtered.length === 1 ? "" : "s"}
-        </div>
-      </div>
+          {/* Filter strip */}
+          <div className="toolbar" style={{ marginBottom:12 }}>
+            <div className="seg">
+              {tabs.map((t) => (
+                <button key={t.id} className={activeFilter === t.id ? "on" : ""} onClick={() => setFilter(t.id)}>{t.label}</button>
+              ))}
+            </div>
+            <div className="ptw-type-filter">
+              <Icon name="shield" size={12} />
+              <select className="dv-input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="all">All permit types</option>
+                {PTW_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ marginLeft:"auto", fontSize:13, color:"var(--ink-3)" }}>
+              {filtered.length} permit{filtered.length === 1 ? "" : "s"}
+            </div>
+          </div>
 
-      {/* Permit cards */}
-      <div className="ptw-grid">
-        {filtered.map((p) => {
-          const meta = PTW_TYPES.find((x) => x.id === p.type);
-          const sm = PTW_STATUS_META[p.status];
-          const checks = p.checks.filter((c) => c.done).length;
-          return (
-            <button key={p.id} className={"ptw-card ptw-card-" + meta.tone} onClick={() => setOpenId(p.id)}>
-              <div className="ptw-card-top">
-                <div className={"ptw-type-ico ptw-type-ico-" + meta.tone}><Icon name={meta.icon} size={14} /></div>
-                <span className="ptw-card-type">{meta.label}</span>
-                <span className="ptw-card-id">{p.id}</span>
-              </div>
-              <div className="ptw-card-title">{p.title}</div>
-              <div className="ptw-card-meta">
-                <span><Icon name="mapPin" size={11} />{p.site}</span>
-                <span className="ptw-card-sep" />
-                <span><Icon name="user" size={11} />{p.contractor}</span>
-              </div>
-              <div className="ptw-card-validity">
-                <div className="ptw-validity-row"><span className="k">Valid</span><span className="v">{p.validFrom} → {p.validTo}</span></div>
-                <div className="ptw-validity-row"><span className="k">Linked WO</span><span className="v" style={{ color:"var(--accent-ink)", fontFamily:"var(--mono)" }}>{p.workOrder}</span></div>
-                <div className="ptw-validity-row"><span className="k">Approver</span><span className="v">{p.approver}</span></div>
-                <div className="ptw-validity-row"><span className="k">Checks</span><span className="v">{checks}/{p.checks.length}</span></div>
-              </div>
-              <div className="ptw-card-foot">
-                <Pill tone={sm.tone} icon={sm.icon}>{p.status}</Pill>
-                {p.status === "Requested" && <span className="ptw-card-action">Tap to review &amp; approve →</span>}
-                {p.status === "Approved"  && <span className="ptw-card-action">Awaiting activation →</span>}
-                {p.status === "Active"    && <span className="ptw-card-action">Live · access unlocked →</span>}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+          {/* Permit cards */}
+          {filtered.length === 0 ? (
+            <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>
+              No permits match this filter.
+            </div>
+          ) : (
+            <div className="ptw-grid">
+              {filtered.map((p) => {
+                const meta = ptwTypeMeta(p.type);
+                const sm = ptwStatusMeta(p.status);
+                const nReqs = Array.isArray(p.requirements) ? p.requirements.length : 0;
+                const pastEnd = ptwPastEnd(p);
+                return (
+                  <button key={p.id} className={"ptw-card ptw-card-" + meta.tone} onClick={() => setOpenId(p.id)}>
+                    <div className="ptw-card-top">
+                      <div className={"ptw-type-ico ptw-type-ico-" + meta.tone}><Icon name={meta.icon} size={14} /></div>
+                      <span className="ptw-card-type">{p.typeLabel || meta.label}</span>
+                      <span className="ptw-card-id">{ptwShortId(p.id)}</span>
+                    </div>
+                    <div className="ptw-card-title">{p.description}</div>
+                    <div className="ptw-card-meta">
+                      <span><Icon name="mapPin" size={11} />{p.buildingId ? (p.buildingName || "—") : "Portfolio-wide"}</span>
+                      <span className="ptw-card-sep" />
+                      <span><Icon name="user" size={11} />{p.contractorName || "No contractor named"}</span>
+                    </div>
+                    <div className="ptw-card-validity">
+                      <div className="ptw-validity-row"><span className="k">Valid</span><span className="v">{ptwFmtDT(p.startsAt)} → {ptwFmtDT(p.endsAt)}</span></div>
+                      <div className="ptw-validity-row"><span className="k">Requested by</span><span className="v">{p.requestedByName || "—"}</span></div>
+                      <div className="ptw-validity-row"><span className="k">Linked WO</span><span className="v" style={{ color:"var(--accent-ink)", fontFamily:"var(--mono)" }}>{p.jobId ? ptwShortWo(p.jobId) : "—"}</span></div>
+                      <div className="ptw-validity-row"><span className="k">Requirements</span><span className="v">{nReqs}</span></div>
+                    </div>
+                    <div className="ptw-card-foot">
+                      <Pill tone={sm.tone} icon={sm.icon}>{sm.label}</Pill>
+                      {p.status === "requested" && <span className="ptw-card-action">{isStaff ? "Tap to review & approve →" : "Awaiting approval →"}</span>}
+                      {p.status === "approved"  && <span className="ptw-card-action">Awaiting activation →</span>}
+                      {p.status === "active"    && <span className="ptw-card-action">{pastEnd ? "Past its end time →" : "Work under way →"}</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </React.Fragment>
+      )}
 
       {toastNode}
     </div>
