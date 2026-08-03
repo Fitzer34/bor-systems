@@ -190,9 +190,15 @@ export function PrototypeAppLive() {
     refetchInterval: 20_000,
   });
 
-  // Mutate HL synchronously before <App/> renders. Idempotent, so it is safe to
-  // run on every render (incl. StrictMode double-invoke).
-  resetHLEmpty();
+  // Empty the demo store ONCE per session, then only merge fresh data over it.
+  // Resetting on every render was a data-loss amplifier: loadOrg omits a key
+  // when that one sub-fetch fails, so reset + partial hydrate silently blanked
+  // that section (e.g. the sites list) until the next successful refetch.
+  const didReset = React.useRef(false);
+  if (!didReset.current) {
+    resetHLEmpty();
+    didReset.current = true;
+  }
   if (user) {
     setCurrentUser({
       id: user.id,
