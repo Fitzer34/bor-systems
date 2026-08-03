@@ -22896,10 +22896,12 @@ function UserDetail({ user, me, onBack, onChanged, showToast }) {
   const isAdmin = me.role === "admin";
   const isSelf  = !!me.email && me.email === user.email;
 
-  const [busy, setBusy]             = React.useState(null); // "resend" | "deactivate"
+  const [busy, setBusy]             = React.useState(null); // "resend" | "deactivate" | "reactivate" | "role"
   const [inviteLink, setInviteLink] = React.useState(null);
   const [copied, setCopied]         = React.useState(false);
   const [mfa, setMfa]               = React.useState(null); // self only: null loading | false error | { enrolled }
+  const [roleDraft, setRoleDraft]   = React.useState(user.role);
+  React.useEffect(() => { setRoleDraft(user.role); }, [user.id, user.role]);
 
   React.useEffect(() => {
     if (!isSelf) return;
@@ -22948,6 +22950,41 @@ function UserDetail({ user, me, onBack, onChanged, showToast }) {
       .catch(() => { setBusy(null); showToast("Could not reach the server. Try again."); });
   };
 
+  const handleReactivate = () => {
+    setBusy("reactivate");
+    hlApi("/users/" + user.id + "/reactivate", { method:"POST" })
+      .then(({ ok, status, b }) => {
+        setBusy(null);
+        if (!ok) {
+          if (status === 409 && b && b.error === "not_deactivated") { showToast("This account is already active."); onChanged(); return; }
+          showToast(status === 403 ? "You do not have permission to reactivate users." : "Could not reactivate. Try again.");
+          return;
+        }
+        showToast(user.name + " can sign in again");
+        onChanged();
+      })
+      .catch(() => { setBusy(null); showToast("Could not reach the server. Try again."); });
+  };
+
+  const canEditRole = isAdmin && !isSelf;
+  const roleDirty   = roleDraft !== user.role;
+  const handleSaveRole = () => {
+    if (!roleDirty || busy) return;
+    setBusy("role");
+    hlApi("/users/" + user.id + "/role", { method:"PATCH", body:{ role: roleDraft } })
+      .then(({ ok, status, b }) => {
+        setBusy(null);
+        if (!ok) {
+          if (status === 400 && b && b.error === "cannot_change_own_role") { showToast("You cannot change your own role."); return; }
+          showToast(status === 403 ? "Only admins can change roles." : "Could not save the role. Try again.");
+          return;
+        }
+        showToast(user.name + " is now " + (roleDraft === "cleaner" ? "field staff" : roleDraft));
+        onChanged();
+      })
+      .catch(() => { setBusy(null); showToast("Could not reach the server. Try again."); });
+  };
+
   const copyInviteLink = () => {
     if (!inviteLink) return;
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -22990,10 +23027,8 @@ function UserDetail({ user, me, onBack, onChanged, showToast }) {
           </button>
         )}
         {user.status === "deactivated"
-          ? <button className="btn" disabled
-              title="Reactivation is not available yet. There is no backend endpoint to restore a deactivated account."
-              style={{ opacity:.55, cursor:"not-allowed" }}>
-              <Icon name="check" size={14} />Reactivate
+          ? <button className="btn btn-approve" onClick={handleReactivate} disabled={busy === "reactivate"}>
+              <Icon name="check" size={14} />{busy === "reactivate" ? "Working…" : "Reactivate"}
             </button>
           : <button className="btn btn-decline" onClick={handleDeactivate} disabled={busy === "deactivate"}>
               <Icon name="x" size={14} />{busy === "deactivate" ? "Working…" : "Deactivate"}
@@ -23020,12 +23055,19 @@ function UserDetail({ user, me, onBack, onChanged, showToast }) {
           <div className="panel-label">Access</div>
           <div className="ai-field">
             <label>Role</label>
-            <select className="dv-input" value={user.role} disabled>
+            <select className="dv-input" value={roleDraft} disabled={!canEditRole}
+              onChange={(e) => setRoleDraft(e.target.value)}>
               <option value="admin">Admin (full system access)</option>
               <option value="supervisor">Supervisor (site-level access)</option>
               <option value="cleaner">Field staff (mobile-first)</option>
             </select>
-            <div className="ai-hint">Changing another user's role is not available yet. The backend has no endpoint for it.</div>
+            <div className="ai-hint">
+              {isSelf
+                ? "You cannot change your own role — another admin has to."
+                : canEditRole
+                  ? "Pick a role and press Save changes. It applies at their next request."
+                  : "Only admins can change roles."}
+            </div>
           </div>
           <div className="ai-field" style={{ marginTop:12 }}>
             <label>Sites</label>
@@ -23053,17 +23095,13 @@ function UserDetail({ user, me, onBack, onChanged, showToast }) {
                 : <span style={{ color:"var(--ink-3)", fontSize:12.5 }}>Only visible to the account owner</span>}
             </span>
           </div>
-          {user.status === "deactivated" && (
-            <div className="ai-hint" style={{ marginTop:10 }}>
-              Reactivating an account is not available yet. The backend has no endpoint to restore a deactivated user.
-            </div>
-          )}
           <div style={{ display:"flex", gap:10, marginTop:18 }}>
             <button className="btn" style={{ flex:1 }} onClick={onBack}>Cancel</button>
-            <button className="btn btn-primary" disabled
-              style={{ flex:1, opacity:.55, cursor:"not-allowed" }}
-              title="Nothing here is editable yet. Role and site changes need backend endpoints that do not exist.">
-              <Icon name="check" size={14} />Save changes
+            <button className="btn btn-primary" onClick={handleSaveRole}
+              disabled={!roleDirty || busy === "role"}
+              style={{ flex:1, ...(roleDirty ? {} : { opacity:.55 }) }}
+              title={roleDirty ? "Save the new role" : "Change the role above first"}>
+              <Icon name="check" size={14} />{busy === "role" ? "Saving…" : "Save changes"}
             </button>
           </div>
         </div>
