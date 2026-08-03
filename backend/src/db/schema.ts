@@ -869,7 +869,7 @@ export const signTags = pgTable(
 // docs/MAINTENANCE_PLATFORM_SPEC.md.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const jobSource = pgEnum("job_source", ["manual", "sensor", "ppm", "tenant_request"]);
+export const jobSource = pgEnum("job_source", ["manual", "sensor", "ppm", "tenant_request", "portal"]);
 export const jobPriority = pgEnum("job_priority", ["emergency", "urgent", "routine"]);
 export const jobStatus = pgEnum("job_status", [
   "logged",      // just raised
@@ -1268,5 +1268,170 @@ export const invoices = pgTable(
   (t) => ({
     orgStatusIdx: index("invoices_org_status_idx").on(t.organisationId, t.status),
     orgDueIdx: index("invoices_org_due_idx").on(t.organisationId, t.dueAt),
+  }),
+);
+
+/// ── The seven previously-backend-less sections (migration 0041) ──────────
+
+/// Time & attendance: one row per clock-in. status open (clocked in) →
+/// pending (clocked out, awaiting approval) → approved.
+export const timeEntries = pgTable(
+  "time_entries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    clockInAt: timestamp("clock_in_at", { withTimezone: true }).notNull(),
+    clockOutAt: timestamp("clock_out_at", { withTimezone: true }),
+    breakMinutes: integer("break_minutes").notNull().default(0),
+    source: text("source").notNull().default("web"), // web|mobile|kiosk|manual
+    status: text("status").notNull().default("open"), // open|pending|approved
+    note: text("note"),
+    editedBy: uuid("edited_by").references(() => users.id, { onDelete: "set null" }),
+    approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    orgInIdx: index("time_entries_org_in_idx").on(t.organisationId, t.clockInAt),
+    userIdx: index("time_entries_user_idx").on(t.userId),
+  }),
+);
+
+/// Statutory compliance register (fire alarm service, EICR, gas cert, …).
+/// Status derived from nextDueOn at read time.
+export const complianceItems = pgTable(
+  "compliance_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    category: text("category").notNull().default("other"), // fire|electrical|gas|water|lifts|hvac|other
+    frequencyMonths: integer("frequency_months").notNull().default(12),
+    lastDoneOn: date("last_done_on"),
+    nextDueOn: date("next_due_on"),
+    contractorId: uuid("contractor_id").references(() => contractors.id, { onDelete: "set null" }),
+    documentUrl: text("document_url"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgDueIdx: index("compliance_org_due_idx").on(t.organisationId, t.nextDueOn) }),
+);
+
+/// Permits to work (hot works, working at height, …).
+export const permits = pgTable(
+  "permits",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    jobId: uuid("job_id").references(() => maintenanceJobs.id, { onDelete: "set null" }),
+    type: text("type").notNull().default("general"),
+    contractorId: uuid("contractor_id").references(() => contractors.id, { onDelete: "set null" }),
+    contractorName: text("contractor_name"),
+    description: text("description").notNull(),
+    requirements: jsonb("requirements").notNull().default([]),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull().default("requested"), // requested|approved|active|closed|rejected|cancelled
+    requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+    approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedNote: text("closed_note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgStatusIdx: index("permits_org_status_idx").on(t.organisationId, t.status) }),
+);
+
+/// SLA targets per job priority; compliance computed from jobs/events at read.
+export const slaPolicies = pgTable(
+  "sla_policies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    priority: text("priority").notNull(), // emergency|urgent|routine
+    responseMinutes: integer("response_minutes").notNull(),
+    resolveMinutes: integer("resolve_minutes").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgPriorityIdx: uniqueIndex("sla_org_priority_idx").on(t.organisationId, t.priority) }),
+);
+
+/// Form templates: fields is [{id,label,type,required,options}].
+export const formTemplates = pgTable(
+  "form_templates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    fields: jsonb("fields").notNull().default([]),
+    active: boolean("active").notNull().default(true),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ orgIdx: index("form_templates_org_idx").on(t.organisationId) }),
+);
+
+export const formSubmissions = pgTable(
+  "form_submissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    templateId: uuid("template_id").references(() => formTemplates.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "set null" }),
+    submittedBy: uuid("submitted_by").references(() => users.id, { onDelete: "set null" }),
+    answers: jsonb("answers").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ tplIdx: index("form_submissions_tpl_idx").on(t.templateId, t.createdAt) }),
+);
+
+/// Client portals: unguessable token behind a client's no-login read-only
+/// site view + "raise a request" form. Revoke = set revokedAt.
+export const clientPortals = pgTable(
+  "client_portals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "cascade" }).notNull(),
+    clientName: text("client_name").notNull(),
+    email: text("email"),
+    token: text("token").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex("client_portals_token_idx").on(t.token),
+    orgIdx: index("client_portals_org_idx").on(t.organisationId),
+  }),
+);
+
+/// Staff certifications (SafePass, Manual Handling, First Aid, …).
+/// Status derived from expiresOn at read time.
+export const staffCerts = pgTable(
+  "staff_certs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    name: text("name").notNull(),
+    issuer: text("issuer"),
+    certNo: text("cert_no"),
+    issuedOn: date("issued_on"),
+    expiresOn: date("expires_on"),
+    documentUrl: text("document_url"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    userIdx: index("staff_certs_user_idx").on(t.userId),
+    orgExpIdx: index("staff_certs_org_exp_idx").on(t.organisationId, t.expiresOn),
   }),
 );

@@ -87,6 +87,22 @@ export async function uploadContractorDoc(input: UploadInput): Promise<UploadRes
   return uploadInternal(input, "contractor-docs");
 }
 
+/**
+ * Compliance certificates (fire alarm service cert, EICR, gas cert, …)
+ * attached to compliance register items. PDF or image.
+ */
+export async function uploadComplianceDoc(input: UploadInput): Promise<UploadResult> {
+  return uploadInternal(input, "compliance-docs");
+}
+
+/**
+ * Staff certification documents (SafePass, Manual Handling, First Aid, …)
+ * attached to competency records. PDF or image.
+ */
+export async function uploadCertDoc(input: UploadInput): Promise<UploadResult> {
+  return uploadInternal(input, "staff-certs");
+}
+
 async function uploadInternal(input: UploadInput, prefix: string): Promise<UploadResult> {
   const ext =
     extname(input.filename) ||

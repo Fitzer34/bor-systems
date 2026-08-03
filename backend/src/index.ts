@@ -40,6 +40,13 @@ import notificationsRoutes from "./routes/notifications.js";
 import invoiceRoutes from "./routes/invoices.js";
 import growthRoutes from "./routes/growth.js";
 import leaveRoutes from "./routes/leave.js";
+import timesheetRoutes from "./routes/timesheets.js";
+import complianceRoutes from "./routes/compliance.js";
+import permitRoutes from "./routes/permits.js";
+import slaRoutes from "./routes/slas.js";
+import formRoutes from "./routes/forms.js";
+import portalRoutes from "./routes/portal.js";
+import certRoutes from "./routes/certs.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
@@ -191,7 +198,7 @@ async function main(): Promise<void> {
     reply.code(status).send({ error: err.message || "internal_error" });
   });
 
-  app.get("/health", async () => ({ ok: true, version: "0.5.0-growth" }));
+  app.get("/health", async () => ({ ok: true, version: "0.6.0-sections" }));
 
   await app.register(authRoutes);
   await app.register(twoFactorRoutes);
@@ -225,6 +232,13 @@ async function main(): Promise<void> {
   await app.register(invoiceRoutes);
   await app.register(growthRoutes);
   await app.register(leaveRoutes);
+  await app.register(timesheetRoutes);
+  await app.register(complianceRoutes);
+  await app.register(permitRoutes);
+  await app.register(slaRoutes);
+  await app.register(formRoutes);
+  await app.register(portalRoutes);
+  await app.register(certRoutes);
 
   startEscalationTimer();
   startAntiTheftWatcher();
