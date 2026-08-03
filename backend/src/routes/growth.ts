@@ -30,7 +30,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
-import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import { requirePermission } from "../services/permissions.js";
@@ -398,10 +398,17 @@ export default async function growthRoutes(app: FastifyInstance): Promise<void> 
     const day = q.data.day ?? new Date().toISOString().slice(0, 10);
     const from = new Date(`${day}T00:00:00.000Z`);
     const to = new Date(`${day}T23:59:59.999Z`);
+    // A visitor belongs to a day if they were EXPECTED that day, SIGNED IN that
+    // day, or (walk-ins with no other anchor) created that day — so a booking
+    // made today for Thursday shows on Thursday's sheet, not today's.
+    const inRange = (col: any) => and(gte(col, from), lte(col, to));
     const conds = [
       eq(schema.visitors.organisationId, c.orgId),
-      gte(schema.visitors.createdAt, from),
-      lte(schema.visitors.createdAt, to),
+      or(
+        inRange(schema.visitors.expectedAt),
+        inRange(schema.visitors.signedInAt),
+        inRange(schema.visitors.createdAt),
+      )!,
     ];
     if (q.data.buildingId) conds.push(eq(schema.visitors.buildingId, q.data.buildingId));
     const rows = await db.select().from(schema.visitors).where(and(...conds)).orderBy(desc(schema.visitors.createdAt)).limit(500);

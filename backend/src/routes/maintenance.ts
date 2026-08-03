@@ -803,6 +803,20 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     return { meters: rows.map((m) => ({ ...m, ...withMeterStatus(m) })) };
   });
 
+  // Reading history for one meter — the audit trail behind its current value.
+  app.get("/meters/:id/readings", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const c = ctx(req);
+    const [meter] = await db.select({ id: schema.assetMeters.id }).from(schema.assetMeters)
+      .where(and(eq(schema.assetMeters.id, id), eq(schema.assetMeters.organisationId, c.orgId))).limit(1);
+    if (!meter) return reply.code(404).send({ error: "not_found" });
+    const rows = await db.select().from(schema.meterReadings)
+      .where(eq(schema.meterReadings.meterId, id))
+      .orderBy(desc(schema.meterReadings.recordedAt))
+      .limit(200);
+    return { readings: rows };
+  });
+
   const meterBody = z.object({
     assetId: z.string().uuid(),
     name: z.string().min(1).max(120),

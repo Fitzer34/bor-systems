@@ -273,9 +273,11 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/users/:id/deactivate",
     { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.delete_records")] },
-    async (req) => {
+    async (req, reply) => {
       const { id } = req.params as { id: string };
       const c = ctx(req);
+      // You can't lock yourself out — someone else has to deactivate you.
+      if (id === c.sub) return reply.code(400).send({ error: "cannot_deactivate_self" });
       await db.update(schema.users)
         .set({ deactivatedAt: new Date(), onDuty: false })
         .where(and(eq(schema.users.id, id), eq(schema.users.organisationId, c.orgId)));
@@ -287,6 +289,63 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
         targetId: id,
       });
       return { ok: true };
+    },
+  );
+
+  // Reactivate a deactivated account — clears the flag so they can sign in
+  // again with their existing credentials.
+  app.post("/users/:id/reactivate",
+    { preHandler: [app.authenticate, requireRole(["admin", "supervisor"]), requirePermission("action.manage_users")] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const c = ctx(req);
+      const [u] = await db.select({ id: schema.users.id, deactivatedAt: schema.users.deactivatedAt })
+        .from(schema.users)
+        .where(and(eq(schema.users.id, id), eq(schema.users.organisationId, c.orgId)))
+        .limit(1);
+      if (!u) return reply.code(404).send({ error: "not_found" });
+      if (!u.deactivatedAt) return reply.code(409).send({ error: "not_deactivated" });
+      await db.update(schema.users)
+        .set({ deactivatedAt: null })
+        .where(eq(schema.users.id, id));
+      await db.insert(schema.auditLog).values({
+        organisationId: c.orgId,
+        actorUserId: c.sub,
+        action: "user.reactivated",
+        targetType: "user",
+        targetId: id,
+      });
+      return { ok: true };
+    },
+  );
+
+  // Change another user's role. Admin-only; you can't change your own role
+  // (prevents the last admin demoting themselves into a locked-out org).
+  app.patch("/users/:id/role",
+    { preHandler: [app.authenticate, requireRole(["admin"]), requirePermission("action.manage_users")] },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const parsed = z.object({ role: z.enum(["admin", "supervisor", "cleaner"]) }).safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+      const c = ctx(req);
+      if (id === c.sub) return reply.code(400).send({ error: "cannot_change_own_role" });
+      const [u] = await db.select({ id: schema.users.id, role: schema.users.role })
+        .from(schema.users)
+        .where(and(eq(schema.users.id, id), eq(schema.users.organisationId, c.orgId)))
+        .limit(1);
+      if (!u) return reply.code(404).send({ error: "not_found" });
+      await db.update(schema.users)
+        .set({ role: parsed.data.role })
+        .where(eq(schema.users.id, id));
+      await db.insert(schema.auditLog).values({
+        organisationId: c.orgId,
+        actorUserId: c.sub,
+        action: "user.role_changed",
+        targetType: "user",
+        targetId: id,
+        metadata: { from: u.role, to: parsed.data.role },
+      });
+      return { ok: true, role: parsed.data.role };
     },
   );
 

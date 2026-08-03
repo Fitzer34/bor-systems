@@ -1406,8 +1406,16 @@ Object.assign(window, {
 
 /* ════════════════════ asset_21_08c7d203.js ════════════════════ */
 ;
-/* HazardLink — notifications data, types and storage hook.
-   Loaded before chrome.jsx so the bell can use useNotifs(). */
+/* HazardLink — notifications data + the live useNotifs hook.
+   Loaded before chrome.jsx so the bell can use useNotifs().
+
+   Feed, unread count and read state all come from the real backend:
+     GET  /notifications?limit=50        the signed-in user's feed
+     GET  /notifications/unread-count    badge count across the whole feed
+     POST /notifications/:id/read        mark one read
+     POST /notifications/read-all        mark everything read
+   The bell (chrome.jsx) and the Notifications page share one store, so a
+   single ~20s poll keeps both in sync. */
 
 const NOTIF_TYPES = {
   spills:      { label:"Spills",      icon:"droplet",     tone:"crit",   color:"var(--crit)",   soft:"var(--crit-soft)"   },
@@ -1418,117 +1426,208 @@ const NOTIF_TYPES = {
   system:      { label:"System",      icon:"cog",         tone:"muted",  color:"var(--ink-3)",  soft:"var(--surface-3)"   },
 };
 
-/* Items are written in newest-first order. Each has:
-     id, type (key of NOTIF_TYPES), severity (crit|warn|muted|accent),
-     title, context, time (relative string), bucket (today|earlier),
-     view  — the page the row links to,
-     action — optional { label, icon, tone } used on the full page */
-const NOTIF_ITEMS = [];
-
 const NOTIF_TYPE_ORDER = ["spills","maintenance","compliance","security","billing","system"];
 
-/* localStorage keys */
-const NOTIF_READ_KEY  = "hl.notifs.read.v1";
-const NOTIF_PREFS_KEY = "hl.notifs.prefs.v1";
-
-const DEFAULT_NOTIF_PREFS = {
-  spills:      { inapp:true, email:true,  sms:true  },
-  maintenance: { inapp:true, email:true,  sms:false },
-  compliance:  { inapp:true, email:true,  sms:false },
-  security:    { inapp:true, email:true,  sms:true  },
-  billing:     { inapp:true, email:true,  sms:false },
-  system:      { inapp:true, email:false, sms:false },
-};
-
-const NOTIF_CHANNELS = [
-  { id:"inapp", label:"In-app",  sub:"Bell + page",   icon:"bell" },
-  { id:"email", label:"Email",   sub:"via Brevo",     icon:"send" },
-  { id:"sms",   label:"SMS",     sub:"via Twilio",    icon:"phone" },
+/* The real event types the backend generates (see notification-centre.ts).
+   Used by the preferences matrix on the Notifications page. */
+const NOTIF_EVENT_TYPES = [
+  { id:"spill.open",              label:"Spill reported",          cat:"spills" },
+  { id:"spill.escalated",         label:"Spill escalated",         cat:"spills" },
+  { id:"wo.overdue",              label:"Work order overdue",      cat:"maintenance" },
+  { id:"ppm.overdue",             label:"PPM visit overdue",       cat:"maintenance" },
+  { id:"part.low_stock",          label:"Part low on stock",       cat:"maintenance" },
+  { id:"quote.awaiting_approval", label:"Quote awaiting approval", cat:"maintenance" },
+  { id:"cert.expiring",           label:"Certificate expiring",    cat:"compliance" },
+  { id:"patrol.missed",           label:"Patrol missed",           cat:"security" },
+  { id:"lone_worker.overdue",     label:"Lone worker overdue",     cat:"security" },
+  { id:"invoice.overdue",         label:"Invoice overdue",         cat:"billing" },
+  { id:"leave.requested",         label:"Leave requested",         cat:"system" },
+  { id:"leave.decided",           label:"Leave request decided",   cat:"system" },
 ];
 
-function readNotifRead() {
-  try {
-    const raw = localStorage.getItem(NOTIF_READ_KEY);
-    if (!raw) return new Set();
-    return new Set(JSON.parse(raw));
-  } catch(e) { return new Set(); }
-}
-function writeNotifRead(set) {
-  try { localStorage.setItem(NOTIF_READ_KEY, JSON.stringify([...set])); } catch(e) {}
-  window.dispatchEvent(new CustomEvent("notifs:changed"));
-}
-function readNotifPrefs() {
-  try {
-    const raw = localStorage.getItem(NOTIF_PREFS_KEY);
-    if (!raw) return { ...DEFAULT_NOTIF_PREFS };
-    const parsed = JSON.parse(raw);
-    // merge so newly added types fall back to defaults
-    const out = { ...DEFAULT_NOTIF_PREFS };
-    for (const k of Object.keys(DEFAULT_NOTIF_PREFS)) {
-      out[k] = { ...DEFAULT_NOTIF_PREFS[k], ...(parsed[k] || {}) };
-    }
-    return out;
-  } catch(e) { return { ...DEFAULT_NOTIF_PREFS }; }
-}
-function writeNotifPrefs(prefs) {
-  try { localStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(prefs)); } catch(e) {}
-  window.dispatchEvent(new CustomEvent("notifs:changed"));
+/* Delivery channels the backend stores per event type. `locked` columns are
+   shown but not editable here:
+     - inApp: the backend always writes the in-app row, the flag has no effect
+     - whatsapp: the PUT endpoint does not accept the field yet */
+const NOTIF_CHANNELS = [
+  { id:"inApp",    label:"In-app",   sub:"Always on",              icon:"bell",  locked:true },
+  { id:"email",    label:"Email",    sub:"via Brevo",              icon:"send" },
+  { id:"sms",      label:"SMS",      sub:"via Twilio",             icon:"phone" },
+  { id:"whatsapp", label:"WhatsApp", sub:"On once SMS is set up",  icon:"phone" },
+];
+
+/* ── Mapping helpers: backend row → the item shape the bell renders ──────── */
+
+function notifCategory(eventType) {
+  const t = String(eventType || "");
+  if (t.startsWith("spill."))        return "spills";
+  if (t.startsWith("wo.") || t.startsWith("ppm.") || t.startsWith("part.") || t.startsWith("quote.")) return "maintenance";
+  if (t.startsWith("cert."))         return "compliance";
+  if (t.startsWith("lone_worker.") || t.startsWith("patrol.")) return "security";
+  if (t.startsWith("invoice."))      return "billing";
+  return "system";
 }
 
-/* Hook — both the topbar bell and the full page subscribe to the same
-   storage-backed state via a custom event so they stay in sync. */
+function notifSeverity(eventType) {
+  const t = String(eventType || "");
+  if (t === "spill.escalated" || t === "lone_worker.overdue") return "crit";
+  if (t.endsWith(".overdue") || t === "spill.open" || t === "patrol.missed" ||
+      t === "cert.expiring" || t === "part.low_stock") return "warn";
+  if (t === "quote.awaiting_approval" || t === "leave.requested") return "accent";
+  return "muted";
+}
+
+/* Which page a notification links through to, by the backend's entityType. */
+const NOTIF_ENTITY_VIEW = {
+  alert: "spills",
+  ppm: "ppm",
+  job: "maintenance",
+  part: "parts",
+  invoice: "billing",
+  checkpoint: "security",
+  certification: "compliance",
+  lone_worker_session: "security",
+  leave: "team",
+};
+
+function notifTimeLabel(iso) {
+  const t = new Date(iso).getTime();
+  if (!isFinite(t)) return "";
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return mins + "m ago";
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + "h ago";
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return days + "d ago";
+  const d = new Date(t);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return d.getDate() + " " + months[d.getMonth()];
+}
+
+function notifBucket(iso) {
+  const d = new Date(iso), now = new Date();
+  return (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate())
+    ? "today" : "earlier";
+}
+
+function mapNotifRow(r) {
+  return {
+    id: r.id,
+    type: notifCategory(r.type),          // UI category (NOTIF_TYPES key)
+    eventType: r.type,                    // raw backend event type
+    severity: notifSeverity(r.type),
+    title: r.title || "",
+    context: r.body || "",
+    time: notifTimeLabel(r.createdAt),
+    ts: r.createdAt,
+    bucket: notifBucket(r.createdAt),
+    view: r.entityType ? NOTIF_ENTITY_VIEW[r.entityType] : undefined,
+    entityType: r.entityType || null,
+    entityId: r.entityId || null,
+  };
+}
+
+/* ── Shared store: one fetch + one poll feeds every subscriber ───────────── */
+
+const _notifStore = {
+  items: [],
+  readSet: new Set(),
+  unreadCount: 0,
+  loading: true,
+  error: null,
+  _subs: new Set(),
+  _timer: null,
+  _inflight: false,
+};
+
+function _notifEmit() {
+  _notifStore._subs.forEach((fn) => { try { fn(); } catch (e) {} });
+}
+
+function _notifRefresh() {
+  if (_notifStore._inflight) return Promise.resolve();
+  _notifStore._inflight = true;
+  return Promise.all([
+    hlApi("/notifications?limit=50"),
+    hlApi("/notifications/unread-count"),
+  ]).then(([list, cnt]) => {
+    _notifStore._inflight = false;
+    if (list.ok && list.b && Array.isArray(list.b.notifications)) {
+      const rows = list.b.notifications;
+      _notifStore.items = rows.map(mapNotifRow);
+      _notifStore.readSet = new Set(rows.filter((r) => r.readAt).map((r) => r.id));
+      _notifStore.unreadCount = (cnt.ok && cnt.b && typeof cnt.b.count === "number")
+        ? cnt.b.count
+        : rows.filter((r) => !r.readAt).length;
+      _notifStore.error = null;
+    } else if (list.status === 401) {
+      _notifStore.error = "Sign in to see your notifications.";
+    } else {
+      _notifStore.error = "Could not load notifications (HTTP " + list.status + ").";
+    }
+    _notifStore.loading = false;
+    _notifEmit();
+  }).catch(() => {
+    _notifStore._inflight = false;
+    _notifStore.loading = false;
+    _notifStore.error = "Network error while loading notifications.";
+    _notifEmit();
+  });
+}
+
+/* Hook — the topbar bell and the full page both subscribe to the shared
+   store. First subscriber starts the poll, last one stops it. */
 function useNotifs() {
-  const [readSet, setReadSet]   = React.useState(() => readNotifRead());
-  const [prefs,   setPrefsState] = React.useState(() => readNotifPrefs());
+  const [, force] = React.useReducer((n) => n + 1, 0);
 
   React.useEffect(() => {
-    const sync = () => {
-      setReadSet(readNotifRead());
-      setPrefsState(readNotifPrefs());
-    };
-    window.addEventListener("notifs:changed", sync);
-    window.addEventListener("storage",         sync);
+    _notifStore._subs.add(force);
+    if (!_notifStore._timer) {
+      _notifRefresh();
+      _notifStore._timer = setInterval(_notifRefresh, 20000);
+    }
     return () => {
-      window.removeEventListener("notifs:changed", sync);
-      window.removeEventListener("storage",         sync);
+      _notifStore._subs.delete(force);
+      if (_notifStore._subs.size === 0 && _notifStore._timer) {
+        clearInterval(_notifStore._timer);
+        _notifStore._timer = null;
+      }
     };
   }, []);
 
   const markRead = React.useCallback((id) => {
-    const s = new Set(readNotifRead());
+    if (_notifStore.readSet.has(id)) return;
+    const s = new Set(_notifStore.readSet);
     s.add(id);
-    writeNotifRead(s);
-    setReadSet(s);
-  }, []);
-  const markUnread = React.useCallback((id) => {
-    const s = new Set(readNotifRead());
-    s.delete(id);
-    writeNotifRead(s);
-    setReadSet(s);
-  }, []);
-  const markAllRead = React.useCallback(() => {
-    const s = new Set(NOTIF_ITEMS.map((n) => n.id));
-    writeNotifRead(s);
-    setReadSet(s);
-  }, []);
-  const setPref = React.useCallback((type, channel, val) => {
-    const cur  = readNotifPrefs();
-    const next = { ...cur, [type]: { ...cur[type], [channel]: !!val } };
-    writeNotifPrefs(next);
-    setPrefsState(next);
-  }, []);
-  const resetPrefs = React.useCallback(() => {
-    writeNotifPrefs({ ...DEFAULT_NOTIF_PREFS });
-    setPrefsState({ ...DEFAULT_NOTIF_PREFS });
+    _notifStore.readSet = s;
+    _notifStore.unreadCount = Math.max(0, _notifStore.unreadCount - 1);
+    _notifEmit();
+    hlApi("/notifications/" + id + "/read", { method: "POST" })
+      .then(({ ok, status }) => { if (!ok && status !== 404) _notifRefresh(); })
+      .catch(() => _notifRefresh());
   }, []);
 
-  const items       = NOTIF_ITEMS;
-  const unreadCount = items.filter((n) => !readSet.has(n.id)).length;
+  const markAllRead = React.useCallback(() => {
+    _notifStore.readSet = new Set(_notifStore.items.map((n) => n.id));
+    _notifStore.unreadCount = 0;
+    _notifEmit();
+    hlApi("/notifications/read-all", { method: "POST" })
+      .then(({ ok }) => { if (!ok) _notifRefresh(); })
+      .catch(() => _notifRefresh());
+  }, []);
+
+  const refresh = React.useCallback(() => { _notifRefresh(); }, []);
 
   return {
-    items, readSet, prefs, unreadCount,
-    markRead, markUnread, markAllRead,
-    setPref, resetPrefs,
+    items: _notifStore.items,
+    readSet: _notifStore.readSet,
+    unreadCount: _notifStore.unreadCount,
+    markRead,
+    markAllRead,
+    loading: _notifStore.loading,
+    error: _notifStore.error,
+    refresh,
   };
 }
 
@@ -1557,8 +1656,7 @@ function NotifRow({ item, unread, onClick, trailing }) {
 }
 
 Object.assign(window, {
-  NOTIF_TYPES, NOTIF_ITEMS, NOTIF_TYPE_ORDER,
-  DEFAULT_NOTIF_PREFS, NOTIF_CHANNELS,
+  NOTIF_TYPES, NOTIF_TYPE_ORDER, NOTIF_EVENT_TYPES, NOTIF_CHANNELS,
   useNotifs, NotifRow,
 });
 
@@ -3885,174 +3983,160 @@ Object.assign(window, { SiteView, PortfolioView, SITE_INFO });
 
 /* ════════════════════ asset_10_c5c6d183.js ════════════════════ */
 ;
-/* HazardLink — Scheduling & Dispatch board (WorkPal-style) */
+/* HazardLink — Scheduling & dispatch, wired to the live backend.
+   The week grid reads real shifts (GET /shifts), creating and moving shifts is
+   a real POST/PATCH, removing one is a real DELETE, and the dispatch board
+   below sends real push-notified dispatches (POST /dispatches). */
 
 /* ============================================================
-   Resources (people + contractors) and seed jobs
-   ============================================================ */
-const SCHED_SITES = [];
-const SITE_SHORT = {};
-
-const SCHED_RESOURCES = [];
-
-/* Seed jobs — d is the weekday index (0=Mon … 6=Sun), week is 0=this/1=next. */
-let JOB_ID = 3000;
-const J = (week, resId, d, start, dur, disc, title, site, status="Scheduled") => ({
-  id: "JOB-" + (++JOB_ID), week, resId, d, start, dur, disc, title, site, status,
-  driveMin: resId && resId.startsWith("r") ? 12 + Math.floor(Math.random() * 26) : 28,
-});
-const U = (week, d, start, dur, disc, title, site) => ({
-  id: "JOB-" + (++JOB_ID), week, resId:null, d, start, dur, disc, title, site,
-  status:"Unassigned", driveMin:null,
-});
-
-const SEED_JOBS = [];
-
-/* ============================================================
-   Helpers
+   Helpers — the REAL current week, Monday-anchored
    ============================================================ */
 const DOW_LONG  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const DOW_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
-/* Today is Sat Jun 20 2026; "this week" Mon=15..Sun=21; next = 22..28 */
-const WEEK_DATES = {
-  0: [15, 16, 17, 18, 19, 20, 21],
-  1: [22, 23, 24, 25, 26, 27, 28],
-};
-const TODAY_WEEK = 0, TODAY_DOW = 5; // Saturday Jun 20
-
-function schAddMinutesHM(hm, mins) {
-  const [h, m] = hm.split(":").map(Number);
-  const total = h * 60 + m + mins;
-  const hh = String(Math.floor(total / 60) % 24).padStart(2, "0");
-  const mm = String(total % 60).padStart(2, "0");
-  return hh + ":" + mm;
+function schWeekMonday(offsetWeeks) {
+  const x = new Date();
+  x.setHours(12, 0, 0, 0); // noon dodges DST edges
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7) + (offsetWeeks || 0) * 7);
+  return x;
 }
-function schFmtRange(start, dur) { return start + "–" + schAddMinutesHM(start, dur); }
+function schCellDate(weekStart, dayIdx, hm) {
+  const d = new Date(weekStart);
+  d.setDate(d.getDate() + (dayIdx || 0));
+  const parts = (hm || "12:00").split(":");
+  d.setHours(parseInt(parts[0], 10) || 0, parseInt(parts[1], 10) || 0, 0, 0);
+  return d;
+}
+function schShiftDayIndex(weekStart, iso) {
+  const d = new Date(iso); d.setHours(12, 0, 0, 0);
+  const w = new Date(weekStart); w.setHours(12, 0, 0, 0);
+  return Math.round((d - w) / 86400000);
+}
+function schSameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+function schTimeHM(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "--:--";
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+function schWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return d.getDate() + " " + m[d.getMonth()] + ", " + schTimeHM(iso);
+}
+function schWeekLabel(weekStart) {
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const a = new Date(weekStart);
+  const b = new Date(weekStart); b.setDate(b.getDate() + 6);
+  const left = "Mon " + a.getDate() + (a.getMonth() !== b.getMonth() ? " " + m[a.getMonth()] : "");
+  return left + " – Sun " + b.getDate() + " " + m[b.getMonth()] + " " + b.getFullYear();
+}
 function schFmtDur(mins) {
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return (h ? h + "h" : "") + (m ? " " + m + "m" : "");
+  const h = Math.floor(mins / 60), mm = mins % 60;
+  return (h ? h + "h" : "") + (mm ? (h ? " " : "") + mm + "m" : (h ? "" : "0m"));
 }
+function schInitials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+
+/* Row colours mean ROLES here (the backend has no per-shift discipline). */
+const SCH_ROLE_META = {
+  cleaner:    { label:"Field staff", tone:"clean" },
+  supervisor: { label:"Supervisor",  tone:"maint" },
+  admin:      { label:"Admin",       tone:"secure" },
+};
+const SCH_ROLE_ORDER = { cleaner:0, supervisor:1, admin:2 };
 
 /* ============================================================
-   SchBlock card (a job on the grid)
+   SchBlock — one real shift on the grid
    ============================================================ */
-function SchBlock({ job, onClick, onDragStart, draggable, compact }) {
-  const meta = discMeta[job.disc];
-  const siteShort = SITE_SHORT[job.site] || job.site;
+function SchBlock({ shift, tone, onClick, onDragStart, draggable }) {
   return (
     <div
-      className={"sb-block sb-block-" + job.disc + (compact ? " sb-block-compact" : "")
-        + (job.status === "Complete" ? " sb-block-done" : "")}
+      className={"sb-block sb-block-" + (tone || "clean")}
       draggable={!!draggable}
       onDragStart={onDragStart}
-      onClick={(e) => { e.stopPropagation(); onClick(job, e); }}
+      onClick={(e) => { e.stopPropagation(); onClick(shift, e); }}
     >
       <div className="sb-block-top">
-        <span className="sb-block-time">{schFmtRange(job.start, job.dur)}</span>
-        <Icon name={meta.icon} size={11} />
+        <span className="sb-block-time">{schTimeHM(shift.startsAt)}–{schTimeHM(shift.endsAt)}</span>
+        <Icon name="clock" size={11} />
       </div>
-      <div className="sb-block-title">{job.title}</div>
+      <div className="sb-block-title">{shift.notes || "Shift"}</div>
       <div className="sb-block-foot">
-        <Icon name="mapPin" size={10} />{siteShort}
+        <Icon name="mapPin" size={10} />{shift.buildingName || "No site set"}
       </div>
     </div>
   );
 }
 
 /* ============================================================
-   Dispatch modal
+   Add-shift modal — a real POST /shifts
    ============================================================ */
-function SchDispatchModal({ onClose, onDispatch, defaults }) {
-  const [type, setType]         = React.useState(defaults?.type || "");
-  const [site, setSite]         = React.useState(defaults?.site || "");
-  const [resId, setResId]       = React.useState(defaults?.resId || "");
-  const [day, setDay]           = React.useState(defaults?.day != null ? String(defaults.day) : "0");
-  const [start, setStart]       = React.useState(defaults?.start || "09:00");
-  const [duration, setDuration] = React.useState(defaults?.duration || "90");
+function SchShiftModal({ users, buildings, defaults, onClose, onSaved, showToast }) {
+  const [userId, setUserId]     = React.useState((defaults && defaults.userId) || "");
+  const [buildingId, setBId]    = React.useState((defaults && defaults.buildingId) || "");
+  const [week, setWeek]         = React.useState(defaults && defaults.week != null ? String(defaults.week) : "0");
+  const [day, setDay]           = React.useState(defaults && defaults.day != null ? String(defaults.day) : "0");
+  const [start, setStart]       = React.useState("09:00");
+  const [duration, setDuration] = React.useState("480");
   const [notes, setNotes]       = React.useState("");
-  const [week, setWeek]         = React.useState(defaults?.week != null ? String(defaults.week) : "0");
+  const [busy, setBusy]         = React.useState(false);
 
-  const JOB_TYPES = {
-    clean:  ["Daily clean","Deep clean","Reactive spill","Carpet shampoo","Weekend clean"],
-    maint:  ["PPM task","Reactive repair","Lighting check","Air filter swap","Pump service","Quarterly fire test","Lift inspection"],
-    secure: ["Day patrol","Night patrol","Lone-worker audit","Lock-down patrol","Incident response"],
-  };
-
-  /* Infer discipline from selected resource or type */
-  const inferDisc = () => {
-    const r = SCHED_RESOURCES.find((x) => x.id === resId);
-    if (r) return r.disc;
-    for (const k of Object.keys(JOB_TYPES)) if (JOB_TYPES[k].includes(type)) return k;
-    return "maint";
-  };
-  const disc = inferDisc();
-  const allTypes = [].concat(...Object.values(JOB_TYPES));
-
-  const canSave = type && site && start && Number(duration) > 0;
+  const weekStart = schWeekMonday(Number(week));
+  const canSave = userId && start && Number(duration) >= 15 && !busy;
 
   const save = () => {
     if (!canSave) return;
-    onDispatch({
-      id: "JOB-" + (++JOB_ID),
-      week: Number(week),
-      d: Number(day),
-      resId: resId || null,
-      start,
-      dur: Number(duration),
-      disc,
-      title: type,
-      site,
-      status: resId ? "Scheduled" : "Unassigned",
-      driveMin: resId ? 14 : null,
-      notes,
-    });
+    setBusy(true);
+    const startsAt = schCellDate(weekStart, Number(day), start);
+    const endsAt = new Date(startsAt.getTime() + Number(duration) * 60000);
+    hlApi("/shifts", { method:"POST", body:{
+      userId,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      buildingId: buildingId || null,
+      notes: notes.trim() || null,
+    }}).then(({ ok, status }) => {
+      if (!ok) {
+        showToast(status === 403 ? "Only supervisors and admins can add shifts." : "Could not save the shift. Check the times and try again.");
+        return;
+      }
+      onSaved(Number(week));
+    }).finally(() => setBusy(false));
   };
 
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal dispatch-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <div className="mh-ico"><Icon name="send" size={18} /></div>
+          <div className="mh-ico"><Icon name="calendar" size={18} /></div>
           <div>
-            <h3>Dispatch a job</h3>
-            <p>Send a job out to one of your team or a contractor.</p>
+            <h3>Add a shift</h3>
+            <p>It saves to the live rota and shows on the person's profile.</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
 
         <div className="modal-body dispatch-body">
           <div className="dispatch-grid">
-            <div className="ai-field">
-              <label>Job type</label>
-              <select className="dv-input" value={type} onChange={(e) => setType(e.target.value)}>
-                <option value="">Pick a job type…</option>
-                <optgroup label="Cleaning">{JOB_TYPES.clean.map((t) => <option key={t}>{t}</option>)}</optgroup>
-                <optgroup label="Maintenance">{JOB_TYPES.maint.map((t) => <option key={t}>{t}</option>)}</optgroup>
-                <optgroup label="Security">{JOB_TYPES.secure.map((t) => <option key={t}>{t}</option>)}</optgroup>
-              </select>
-            </div>
-            <div className="ai-field">
-              <label>Site</label>
-              <select className="dv-input" value={site} onChange={(e) => setSite(e.target.value)}>
-                <option value="">Pick a site…</option>
-                {SCHED_SITES.map((s) => <option key={s}>{s}</option>)}
+            <div className="ai-field dispatch-full">
+              <label>Who is on</label>
+              <select className="dv-input" value={userId} onChange={(e) => setUserId(e.target.value)}>
+                <option value="">Pick a person…</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name || u.email} · {(SCH_ROLE_META[u.role] || {}).label || u.role}</option>
+                ))}
               </select>
             </div>
             <div className="ai-field dispatch-full">
-              <label>Assignee</label>
-              <select className="dv-input" value={resId} onChange={(e) => setResId(e.target.value)}>
-                <option value="">Leave unassigned (drop into board later)</option>
-                <optgroup label="Own staff">
-                  {SCHED_RESOURCES.filter((r) => r.kind === "staff").map((r) => (
-                    <option key={r.id} value={r.id}>{r.name} · {r.role}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="Contractors">
-                  {SCHED_RESOURCES.filter((r) => r.kind === "contractor").map((r) => (
-                    <option key={r.id} value={r.id}>{r.name} · {r.role}</option>
-                  ))}
-                </optgroup>
+              <label>Site</label>
+              <select className="dv-input" value={buildingId} onChange={(e) => setBId(e.target.value)}>
+                <option value="">No site</option>
+                {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
             <div className="ai-field">
@@ -4065,9 +4149,11 @@ function SchDispatchModal({ onClose, onDispatch, defaults }) {
             <div className="ai-field">
               <label>Day</label>
               <select className="dv-input" value={day} onChange={(e) => setDay(e.target.value)}>
-                {DOW_LONG.map((d, i) => (
-                  <option key={d} value={i}>{d} {WEEK_DATES[Number(week)][i]} Jun</option>
-                ))}
+                {DOW_LONG.map((d, i) => {
+                  const dt = schCellDate(weekStart, i, "12:00");
+                  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][dt.getMonth()];
+                  return <option key={d} value={i}>{d} {dt.getDate()} {m}</option>;
+                })}
               </select>
             </div>
             <div className="ai-field">
@@ -4075,13 +4161,13 @@ function SchDispatchModal({ onClose, onDispatch, defaults }) {
               <input className="dv-input" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
             </div>
             <div className="ai-field">
-              <label>Duration (min)</label>
+              <label>Length (minutes)</label>
               <input className="dv-input" type="number" min="15" step="15" value={duration} onChange={(e) => setDuration(e.target.value)} />
             </div>
             <div className="ai-field dispatch-full">
               <label>Notes</label>
               <textarea className="dv-input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}
-                placeholder="Brief site instructions or context for the team…" />
+                placeholder="e.g. Cover the front desk, keys in the office" />
             </div>
           </div>
         </div>
@@ -4090,7 +4176,7 @@ function SchDispatchModal({ onClose, onDispatch, defaults }) {
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" disabled={!canSave}
             style={{ opacity: canSave ? 1 : .5 }} onClick={save}>
-            <Icon name="send" size={15} />Dispatch
+            <Icon name="check" size={15} />{busy ? "Saving…" : "Save shift"}
           </button>
         </div>
       </div>
@@ -4099,17 +4185,25 @@ function SchDispatchModal({ onClose, onDispatch, defaults }) {
 }
 
 /* ============================================================
-   SchBlock detail popover
+   Shift popover — reassign (PATCH), change times (PATCH), remove (DELETE)
    ============================================================ */
-function SchBlockPopover({ job, anchor, onClose, onReassign, onComplete }) {
-  const res = SCHED_RESOURCES.find((r) => r.id === job.resId);
-  const meta = discMeta[job.disc];
+function SchBlockPopover({ shift, users, anchor, onClose, showToast, refresh, week }) {
   const [reassignOpen, setReassignOpen] = React.useState(false);
+  const [timeOpen, setTimeOpen]         = React.useState(false);
+  const [startV, setStartV]             = React.useState(schTimeHM(shift.startsAt));
+  const [endV, setEndV]                 = React.useState(schTimeHM(shift.endsAt));
+  const [confirmDel, setConfirmDel]     = React.useState(false);
+  const [busy, setBusy]                 = React.useState(false);
 
-  /* Position the popover next to its anchor inside the viewport. */
+  const durMins = Math.max(0, Math.round((new Date(shift.endsAt) - new Date(shift.startsAt)) / 60000));
+  const startD = new Date(shift.startsAt);
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const dayLabel = DOW_LONG[(startD.getDay() + 6) % 7] + " " + startD.getDate() + " " + m[startD.getMonth()];
+  const overnight = !schSameDay(startD, new Date(shift.endsAt));
+
   const style = React.useMemo(() => {
     if (!anchor) return { left: 80, top: 80 };
-    const margin = 8, W = 340, H = 360;
+    const margin = 8, W = 340, H = 380;
     let x = anchor.right + margin, y = anchor.top;
     if (x + W > window.innerWidth - 12)  x = anchor.left - margin - W;
     if (x < 12)                          x = Math.max(12, Math.min(anchor.left, window.innerWidth - W - 12));
@@ -4117,68 +4211,239 @@ function SchBlockPopover({ job, anchor, onClose, onReassign, onComplete }) {
     return { left: x, top: y };
   }, [anchor]);
 
+  const patch = (body, okMsg) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/shifts/" + shift.id, { method:"PATCH", body })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not update the shift. Check your access."); return; }
+        showToast(okMsg);
+        refresh(week);
+        onClose();
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const reassign = (userId) => {
+    if (!userId || userId === shift.userId) { setReassignOpen(false); return; }
+    const u = users.find((x) => x.id === userId);
+    patch({ userId }, "Shift moved to " + ((u && u.name) || "them"));
+  };
+
+  const saveTimes = () => {
+    if (!startV || !endV) return;
+    const base = new Date(shift.startsAt);
+    const hm = (v) => v.split(":").map((n) => parseInt(n, 10) || 0);
+    const [sh, sm] = hm(startV);
+    const [eh, em] = hm(endV);
+    const ns = new Date(base); ns.setHours(sh, sm, 0, 0);
+    const ne = new Date(base); ne.setHours(eh, em, 0, 0);
+    if (ne <= ns) ne.setDate(ne.getDate() + 1); // runs past midnight
+    patch({ startsAt: ns.toISOString(), endsAt: ne.toISOString() }, "Shift times updated");
+  };
+
+  const remove = () => {
+    if (!confirmDel) { setConfirmDel(true); return; }
+    if (busy) return;
+    setBusy(true);
+    hlApi("/shifts/" + shift.id, { method:"DELETE" })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not remove the shift. Check your access."); return; }
+        showToast("Shift removed from the rota");
+        refresh(week);
+        onClose();
+      })
+      .finally(() => setBusy(false));
+  };
+
   return (
     <React.Fragment>
       <div className="bp-backdrop" onClick={onClose} />
       <div className="block-popover" style={style} onClick={(e) => e.stopPropagation()}>
         <div className="bp-head">
-          <span className={"pill " + meta.pill}><Icon name={meta.icon} size={12} />{meta.label}</span>
-          <span className="bp-id">{job.id}</span>
+          <span className="pill pill-clean"><Icon name="calendar" size={12} />Shift</span>
+          <span className="bp-id">{String(shift.id).slice(0, 8)}</span>
           <button className="icon-btn bp-close" onClick={onClose}><Icon name="x" size={16} /></button>
         </div>
-        <div className="bp-title">{job.title}</div>
+        <div className="bp-title">{shift.notes || "Shift"}</div>
 
         <div className="bp-rows">
-          <div className="bp-row"><span className="k">Site</span><span className="v"><Icon name="mapPin" size={12} />{job.site}</span></div>
-          <div className="bp-row"><span className="k">Assignee</span>
-            <span className="v">
-              {res
-                ? <React.Fragment><span className="bp-av">{res.initials}</span>{res.name}</React.Fragment>
-                : <span className="bp-unassigned">Unassigned</span>}
-            </span>
+          <div className="bp-row"><span className="k">Person</span>
+            <span className="v"><span className="bp-av">{schInitials(shift.userName)}</span>{shift.userName || "Unknown"}</span>
           </div>
-          <div className="bp-row"><span className="k">Day &amp; time</span><span className="v">
-            {DOW_LONG[job.d]} {WEEK_DATES[job.week][job.d]} Jun · {schFmtRange(job.start, job.dur)}
-          </span></div>
-          <div className="bp-row"><span className="k">Duration</span><span className="v">{schFmtDur(job.dur)}</span></div>
-          <div className="bp-row"><span className="k">Status</span>
-            <span className="v">
-              <Pill tone={job.status === "Complete" ? "ok" : job.status === "Unassigned" ? "warn" : "accent"} dot>{job.status}</Pill>
-            </span>
+          <div className="bp-row"><span className="k">Site</span>
+            <span className="v"><Icon name="mapPin" size={12} />{shift.buildingName || "No site set"}</span>
           </div>
-          {job.driveMin && (
-            <div className="bp-row"><span className="k">Drive time</span><span className="v">~{job.driveMin} min from previous job</span></div>
+          {(shift.floorName || shift.zoneName) && (
+            <div className="bp-row"><span className="k">Where</span>
+              <span className="v">{[shift.floorName, shift.zoneName].filter(Boolean).join(" · ")}</span>
+            </div>
           )}
+          <div className="bp-row"><span className="k">Day &amp; time</span>
+            <span className="v">{dayLabel} · {schTimeHM(shift.startsAt)}–{schTimeHM(shift.endsAt)}{overnight ? " (next day)" : ""}</span>
+          </div>
+          <div className="bp-row"><span className="k">Length</span><span className="v">{schFmtDur(durMins)}</span></div>
         </div>
 
         {reassignOpen && (
           <div className="bp-reassign">
-            <label>Reassign to</label>
-            <select className="dv-input" defaultValue={job.resId || ""}
-              onChange={(e) => onReassign(e.target.value)}>
-              <option value="">Unassigned</option>
-              <optgroup label="Own staff">
-                {SCHED_RESOURCES.filter((r) => r.kind === "staff").map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </optgroup>
-              <optgroup label="Contractors">
-                {SCHED_RESOURCES.filter((r) => r.kind === "contractor").map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </optgroup>
+            <label>Move this shift to</label>
+            <select className="dv-input" defaultValue={shift.userId || ""}
+              onChange={(e) => reassign(e.target.value)}>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name || u.email}</option>
+              ))}
             </select>
+          </div>
+        )}
+        {timeOpen && (
+          <div className="bp-reassign">
+            <label>Change the times</label>
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              <input className="dv-input" type="time" value={startV} onChange={(e) => setStartV(e.target.value)} />
+              <span style={{ color:"var(--ink-3)" }}>to</span>
+              <input className="dv-input" type="time" value={endV} onChange={(e) => setEndV(e.target.value)} />
+              <button className="btn btn-primary" disabled={busy} onClick={saveTimes}>
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
+            <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:6 }}>
+              An end time before the start rolls into the next day.
+            </div>
           </div>
         )}
 
         <div className="bp-foot">
-          <button className="btn" onClick={() => setReassignOpen((o) => !o)}>
+          <button className="btn" onClick={() => { setReassignOpen((o) => !o); setTimeOpen(false); }}>
             <Icon name="users" size={14} />Reassign
           </button>
-          <button className="btn btn-primary" onClick={onComplete} disabled={job.status === "Complete"}>
-            <Icon name="check" size={14} />{job.status === "Complete" ? "Completed" : "Mark complete"}
+          <button className="btn" onClick={() => { setTimeOpen((o) => !o); setReassignOpen(false); }}>
+            <Icon name="clock" size={14} />Times
+          </button>
+          <button className="btn" disabled={busy} onClick={remove}
+            style={{ color:"var(--crit)", borderColor:"var(--crit)" }}>
+            <Icon name="trash" size={14} />{confirmDel ? "Really remove?" : "Remove"}
           </button>
         </div>
+      </div>
+    </React.Fragment>
+  );
+}
+
+/* ============================================================
+   Dispatch board — real POST /dispatches + live status list
+   ============================================================ */
+function SchDispatchPanel({ users, showToast }) {
+  const [list, setList]       = React.useState(null); // null loading | false error | []
+  const [sendOpen, setSendOpen] = React.useState(false);
+  const [busyId, setBusyId]   = React.useState(null);
+
+  const refresh = React.useCallback(() => {
+    hlApi("/dispatches")
+      .then(({ ok, b }) => setList(ok ? ((b && b.dispatches) || []) : false))
+      .catch(() => setList(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const STATUS = {
+    sent:         { tone:"accent", label:"Sent" },
+    acknowledged: { tone:"warn",   label:"Accepted" },
+    completed:    { tone:"ok",     label:"Done" },
+  };
+
+  const markDone = (d) => {
+    if (busyId) return;
+    setBusyId(d.id);
+    hlApi("/dispatches/" + d.id + "/complete", { method:"POST" })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not mark that dispatch done."); return; }
+        showToast("Dispatch marked done");
+        refresh();
+      })
+      .finally(() => setBusyId(null));
+  };
+
+  const handleSend = (vals) => {
+    const u = users.find((x) => (x.name || x.email) === vals.person);
+    if (!u) { showToast("Pick who to send it to first."); return; }
+    hlApi("/dispatches", { method:"POST", body:{
+      recipientUserId: u.id,
+      message: vals.message,
+      alsoSms: vals.sms === "Yes, text them as well",
+    }}).then(({ ok }) => {
+      if (!ok) { showToast("Could not send the dispatch. Check your access."); return; }
+      showToast("Dispatch sent to " + (u.name || u.email) + ". It lands as a push notification.");
+      refresh();
+    });
+  };
+
+  return (
+    <React.Fragment>
+      {sendOpen && (
+        <SimpleAddModal
+          title="Send a dispatch"
+          subtitle="A direct job message to one of your team. It goes to their phone as a push notification, and they accept and complete it from there."
+          icon="send"
+          submitLabel="Send dispatch" submitIcon="send"
+          successTitle="Dispatch sent"
+          successCopy="It is on their phone now. You will see it move to Accepted, then Done, on this board."
+          fields={[
+            { id:"person", label:"Send to", type:"select", options: users.map((u) => u.name || u.email) },
+            { id:"message", label:"What needs doing", type:"textarea", rows:3,
+              placeholder:"e.g. Spill at the main entrance, bring the wet floor signs" },
+            { id:"sms", label:"Also send a text?", type:"select", options:["No, push only", "Yes, text them as well"], default:"No, push only" },
+          ]}
+          onSubmit={handleSend}
+          onClose={() => setSendOpen(false)} />
+      )}
+
+      <div className="card" style={{ marginTop:18 }}>
+        <div className="card-head">
+          <h3>Dispatches</h3>
+          <span className="sub">Direct job messages, tracked from sent to done.</span>
+          <div className="head-act">
+            <button className="btn" onClick={() => setSendOpen(true)}>
+              <Icon name="send" size={14} />Send dispatch
+            </button>
+          </div>
+        </div>
+
+        {list === null && (
+          <div style={{ padding:"24px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>Loading dispatches…</div>
+        )}
+        {list === false && (
+          <div style={{ padding:"24px", textAlign:"center", color:"var(--warn)", fontSize:13.5 }}>
+            Could not load dispatches. <button className="btn" style={{ marginLeft:8 }} onClick={refresh}>Try again</button>
+          </div>
+        )}
+        {Array.isArray(list) && list.length === 0 && (
+          <div style={{ padding:"28px 24px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>
+            No dispatches yet. Send one and it lands on the person's phone straight away.
+          </div>
+        )}
+        {Array.isArray(list) && list.slice(0, 8).map((d) => {
+          const s = STATUS[d.status] || STATUS.sent;
+          return (
+            <div key={d.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"11px 16px", borderTop:"1px solid var(--line)" }}>
+              <span className="wo-mini-av">{schInitials(d.recipientName)}</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {d.recipientName || "Team member"}{d.zoneName ? " · " + d.zoneName : ""}
+                </div>
+                <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {d.message} · {schWhen(d.sentAt)}
+                </div>
+              </div>
+              <Pill tone={s.tone} dot>{s.label}</Pill>
+              {d.status !== "completed" && (
+                <button className="btn" style={{ padding:"4px 10px", fontSize:12 }}
+                  disabled={busyId === d.id} onClick={() => markDone(d)}>
+                  {busyId === d.id ? "Saving…" : "Mark done"}
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </React.Fragment>
   );
@@ -4189,110 +4454,140 @@ function SchBlockPopover({ job, anchor, onClose, onReassign, onComplete }) {
    ============================================================ */
 function SchedulingView({ go }) {
   const { site: globalSite } = React.useContext(SiteContext);
-  const [jobs,   setJobs]   = React.useState(SEED_JOBS);
-  const [week,   setWeek]   = React.useState(0);
-  const [siteF,  setSiteF]  = React.useState(globalSite ? globalSite.name : "All sites");
-  const [discF,  setDiscF]  = React.useState("All");
-  const [dispatchOpen, setDispatchOpen] = React.useState(false);
+  const [users, setUsers]           = React.useState(null); // null loading | false error | []
+  const [buildings, setBuildings]   = React.useState([]);
+  const [shiftsByWeek, setShiftsByWeek] = React.useState({}); // weekIdx -> null|false|rows
+  const [week, setWeek]             = React.useState(0);
+  const [siteF, setSiteF]           = React.useState(globalSite ? globalSite.id : "");
+  const [roleF, setRoleF]           = React.useState("All");
+  const [shiftModal, setShiftModal] = React.useState(null);   // { defaults } | null
+  const [popover, setPopover]       = React.useState(null);   // { id, anchor } | null
+  const [dragId, setDragId]         = React.useState(null);
+  const [hoverCell, setHoverCell]   = React.useState(null);
+  const { showToast, toastNode } = useViewToast();
+
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canManage = me.role === "admin" || me.role === "supervisor";
 
   /* Re-sync the local site filter when the global picker changes. */
   React.useEffect(() => {
-    setSiteF(globalSite ? globalSite.name : "All sites");
-  }, [globalSite && globalSite.name]);
-  const [dispatchDefaults, setDispatchDefaults] = React.useState(null);
-  const [popoverJob, setPopoverJob]   = React.useState(null);
-  const [popoverAnchor, setPopoverAnchor] = React.useState(null);
-  const [dragJobId, setDragJobId] = React.useState(null);
-  const [hoverCell, setHoverCell] = React.useState(null);
-  const { showToast, toastNode } = useViewToast();
+    setSiteF(globalSite ? globalSite.id : "");
+  }, [globalSite && globalSite.id]);
 
-  const matchesFilter = (j) => {
-    if (siteF !== "All sites" && j.site !== siteF) return false;
-    if (discF !== "All" && j.disc !== discF) return false;
+  React.useEffect(() => {
+    if (!canManage) return;
+    hlApi("/users").then(({ ok, b }) => setUsers(ok ? ((b && b.users) || []) : false)).catch(() => setUsers(false));
+    hlApi("/buildings").then(({ ok, b }) => { if (ok) setBuildings((b && b.buildings) || []); });
+  }, [canManage]);
+
+  const refreshShifts = React.useCallback((w) => {
+    const ws = schWeekMonday(w);
+    const from = new Date(ws); from.setHours(0, 0, 0, 0);
+    const to = new Date(ws); to.setDate(to.getDate() + 6); to.setHours(23, 59, 59, 999);
+    hlApi("/shifts?from=" + encodeURIComponent(from.toISOString()) + "&to=" + encodeURIComponent(to.toISOString()))
+      .then(({ ok, b }) => setShiftsByWeek((p) => ({ ...p, [w]: ok ? ((b && b.shifts) || []) : false })))
+      .catch(() => setShiftsByWeek((p) => ({ ...p, [w]: false })));
+  }, []);
+
+  React.useEffect(() => {
+    if (!canManage) return;
+    if (shiftsByWeek[week] === undefined) refreshShifts(week);
+  }, [canManage, week, refreshShifts]); // eslint-disable-line
+
+  const weekStart = schWeekMonday(week);
+  const dayDates = Array.from({ length: 7 }, (_, i) => schCellDate(weekStart, i, "12:00"));
+  const today = new Date();
+
+  if (!canManage) {
+    return (
+      <div className="content-inner content-inner-wide">
+        <div className="page-head">
+          <div>
+            <h1 className="page-title">Scheduling &amp; dispatch</h1>
+            <p className="page-desc">The weekly rota and dispatch board.</p>
+          </div>
+        </div>
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>
+          Rotas and dispatches are managed by supervisors and admins. Your own shifts show on your profile in Team.
+        </div>
+      </div>
+    );
+  }
+
+  const staff = Array.isArray(users)
+    ? users
+        .filter((u) => !u.deactivatedAt)
+        .sort((a, b) => (SCH_ROLE_ORDER[a.role] - SCH_ROLE_ORDER[b.role]) || String(a.name || a.email).localeCompare(String(b.name || b.email)))
+    : [];
+  const visibleStaff = staff.filter((u) => roleF === "All" || u.role === roleF);
+
+  const rawShifts = Array.isArray(shiftsByWeek[week]) ? shiftsByWeek[week] : [];
+  const weekShifts = rawShifts.filter((s) => {
+    const d = schShiftDayIndex(weekStart, s.startsAt);
+    if (d < 0 || d > 6) return false;
+    if (siteF && s.buildingId !== siteF) return false;
     return true;
-  };
-  const inWeek = (j) => j.week === week && matchesFilter(j);
-  const weekJobs = jobs.filter(inWeek);
-  const unassigned = weekJobs.filter((j) => j.resId == null);
+  });
+  const cellShifts = (userId, d) => weekShifts
+    .filter((s) => s.userId === userId && schShiftDayIndex(weekStart, s.startsAt) === d)
+    .sort((a, b) => String(a.startsAt).localeCompare(String(b.startsAt)));
 
-  /* Drag handlers */
-  const onDragStart = (job) => (e) => {
-    setDragJobId(job.id);
+  /* Drag a shift onto another person or day → a real PATCH. */
+  const onDragStart = (shift) => (e) => {
+    setDragId(shift.id);
     e.dataTransfer.effectAllowed = "move";
-    try { e.dataTransfer.setData("text/plain", job.id); } catch (err) {}
+    try { e.dataTransfer.setData("text/plain", shift.id); } catch (err) {}
   };
-  const onDragEnd = () => { setDragJobId(null); setHoverCell(null); };
-
-  const onCellDragOver = (resId, d) => (e) => {
-    if (!dragJobId) return;
+  const onDragEnd = () => { setDragId(null); setHoverCell(null); };
+  const onCellDragOver = (uid, d) => (e) => {
+    if (!dragId) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setHoverCell(resId + ":" + d);
+    setHoverCell(uid + ":" + d);
   };
-  const onCellDrop = (resId, d) => (e) => {
+  const onCellDrop = (uid, d) => (e) => {
     e.preventDefault();
-    const id = dragJobId;
+    const id = dragId;
+    setDragId(null); setHoverCell(null);
     if (!id) return;
-    setJobs((js) => js.map((j) => {
-      if (j.id !== id) return j;
-      return { ...j, resId, d, status: "Scheduled", driveMin: j.driveMin || 14 };
-    }));
-    const j = jobs.find((x) => x.id === id);
-    const r = SCHED_RESOURCES.find((x) => x.id === resId);
-    showToast(`Assigned “${j?.title || "job"}” to ${r?.name} on ${DOW_LONG[d]}`);
-    setDragJobId(null);
-    setHoverCell(null);
+    const sh = rawShifts.find((x) => x.id === id);
+    if (!sh) return;
+    const src = new Date(sh.startsAt);
+    const hm = String(src.getHours()).padStart(2, "0") + ":" + String(src.getMinutes()).padStart(2, "0");
+    const ns = schCellDate(weekStart, d, hm);
+    const ne = new Date(ns.getTime() + (new Date(sh.endsAt) - src));
+    hlApi("/shifts/" + id, { method:"PATCH", body:{ userId: uid, startsAt: ns.toISOString(), endsAt: ne.toISOString() } })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not move that shift. Check your access."); return; }
+        const u = staff.find((x) => x.id === uid);
+        showToast("Shift moved to " + ((u && (u.name || u.email)) || "them") + " on " + DOW_LONG[d]);
+        refreshShifts(week);
+      });
   };
 
-  const openPopover = (job, e) => {
+  const openPopover = (shift, e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    setPopoverJob(job.id);
-    setPopoverAnchor({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom });
+    setPopover({ id: shift.id, anchor: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } });
   };
-  const closePopover = () => { setPopoverJob(null); setPopoverAnchor(null); };
+  const popShift = popover ? rawShifts.find((s) => s.id === popover.id) : null;
 
-  const dispatchJob = (newJob) => {
-    setJobs((js) => [...js, newJob]);
-    setDispatchOpen(false);
-    setDispatchDefaults(null);
-    showToast("Dispatched — " + newJob.id);
-  };
+  /* Header stats — all from the real week. */
+  const totalShifts = weekShifts.length;
+  const peopleOn = new Set(weekShifts.map((s) => s.userId)).size;
+  const totalHours = Math.round(weekShifts.reduce((n, s) => n + Math.max(0, (new Date(s.endsAt) - new Date(s.startsAt)) / 3600000), 0));
 
-  const reassignJob = (jobId, resId) => {
-    setJobs((js) => js.map((j) => j.id === jobId
-      ? { ...j, resId: resId || null, status: resId ? "Scheduled" : "Unassigned" }
-      : j));
-    const r = SCHED_RESOURCES.find((x) => x.id === resId);
-    showToast(resId ? `Reassigned to ${r.name}` : "Moved to Unassigned");
-  };
-  const markComplete = (jobId) => {
-    setJobs((js) => js.map((j) => j.id === jobId ? { ...j, status: "Complete" } : j));
-    showToast("Marked complete");
-    closePopover();
-  };
-
-  const dates = WEEK_DATES[week];
-  const popJobObj = jobs.find((j) => j.id === popoverJob);
-
-  /* Helper to list visible resources (filter when discipline picked) */
-  const visibleResources = SCHED_RESOURCES.filter((r) => discF === "All" || r.disc === discF);
-
-  /* Count stats for header */
-  const totalJobs = weekJobs.length;
-  const assignedJobs = weekJobs.filter((j) => j.resId).length;
-  const utilisation = visibleResources.length
-    ? Math.round((weekJobs.filter((j) => j.resId).length / Math.max(1, visibleResources.length * 5)) * 100)
-    : 0;
+  const shiftsState = shiftsByWeek[week]; // undefined/null-ish = loading, false = error, [] = loaded
 
   return (
     <div className="content-inner content-inner-wide">
       <div className="page-head">
         <div>
           <h1 className="page-title">Scheduling &amp; dispatch</h1>
-          <p className="page-desc">One calendar for every cleaner, technician, guard and contractor. Drag from the Unassigned lane onto a person to dispatch.</p>
+          <p className="page-desc">The live rota for your whole team. Click an empty cell to add a shift, drag a shift to move it, and click one to change or remove it.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setDispatchDefaults(null); setDispatchOpen(true); }}>
-          <Icon name="plus" size={15} />Dispatch job
+        <button className="btn btn-primary" onClick={() => setShiftModal({ defaults: { week } })}
+          disabled={!Array.isArray(users) || staff.length === 0}>
+          <Icon name="plus" size={15} />Add shift
         </button>
       </div>
 
@@ -4304,27 +4599,27 @@ function SchedulingView({ go }) {
         </div>
         <div className="sched-week-label">
           <Icon name="calendar" size={14} />
-          Mon {dates[0]} – Sun {dates[6]} Jun 2026
+          {schWeekLabel(weekStart)}
         </div>
 
         <div className="sched-filter">
           <label>Site</label>
           <select className="dv-input" value={siteF} onChange={(e) => setSiteF(e.target.value)}>
-            <option>All sites</option>
-            {SCHED_SITES.map((s) => <option key={s}>{s}</option>)}
+            <option value="">All sites</option>
+            {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
 
         <div className="sched-disc-seg">
           {[
-            { id:"All",    label:"All",         tone:"muted"  },
-            { id:"clean",  label:"Cleaning",    tone:"clean"  },
-            { id:"maint",  label:"Maintenance", tone:"maint"  },
-            { id:"secure", label:"Security",    tone:"secure" },
+            { id:"All",        label:"All",         tone:"muted"  },
+            { id:"cleaner",    label:"Field staff", tone:"clean"  },
+            { id:"supervisor", label:"Supervisors", tone:"maint"  },
+            { id:"admin",      label:"Admins",      tone:"secure" },
           ].map((d) => (
             <button key={d.id}
-              className={"sched-disc-chip sched-disc-" + d.tone + (discF === d.id ? " on" : "")}
-              onClick={() => setDiscF(d.id)}>
+              className={"sched-disc-chip sched-disc-" + d.tone + (roleF === d.id ? " on" : "")}
+              onClick={() => setRoleF(d.id)}>
               {d.id !== "All" && <span className="sched-disc-dot" />}
               {d.label}
             </button>
@@ -4332,115 +4627,133 @@ function SchedulingView({ go }) {
         </div>
 
         <div className="sched-stats">
-          <div><b>{totalJobs}</b> jobs</div>
+          <div><b>{totalShifts}</b> shift{totalShifts === 1 ? "" : "s"}</div>
           <div className="sched-stats-sep" />
-          <div><b>{assignedJobs}</b> assigned</div>
+          <div><b>{peopleOn}</b> rostered</div>
           <div className="sched-stats-sep" />
-          <div><b>{unassigned.length}</b> unassigned</div>
+          <div><b>{totalHours}</b> hours</div>
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="sched-grid-wrap">
-        <div className="sched-grid">
-          {/* Header row */}
-          <div className="sched-corner">Team</div>
-          {DOW_SHORT.map((d, i) => (
-            <div key={d} className={"sched-day-head" + (week === TODAY_WEEK && i === TODAY_DOW ? " today" : "")}>
-              <div className="sched-day-dow">{d}</div>
-              <div className="sched-day-date">{dates[i]}</div>
-            </div>
-          ))}
-
-          {/* Unassigned row */}
-          <div className="sched-res sched-res-unassigned">
-            <div className="sched-res-ico"><Icon name="alertCircle" size={15} /></div>
-            <div>
-              <div className="sched-res-nm">Unassigned</div>
-              <div className="sched-res-rl">Drag onto a person</div>
-            </div>
-            <span className="sched-res-count">{unassigned.length}</span>
+      {users === null && (
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading your team and this week's rota…</div>
+      )}
+      {users === false && (
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>Could not load the team. Refresh to try again.</div>
+      )}
+      {Array.isArray(users) && staff.length === 0 && (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No staff to roster yet</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", marginBottom:14 }}>
+            Invite your team and they each get a row on this rota.
           </div>
-          {DOW_SHORT.map((_, d) => {
-            const cell = unassigned.filter((j) => j.d === d);
-            return (
-              <div key={d} className={"sched-cell sched-cell-unassigned" + (week === TODAY_WEEK && d === TODAY_DOW ? " today" : "")}>
-                {cell.map((j) => (
-                  <SchBlock key={j.id} job={j} draggable
-                    onDragStart={onDragStart(j)}
-                    onClick={openPopover} />
-                ))}
-                {cell.length === 0 && <div className="sched-empty">—</div>}
-              </div>
-            );
-          })}
+          <button className="btn btn-primary" onClick={() => go && go("users")}>
+            <Icon name="users" size={15} />Invite people in Users
+          </button>
+        </div>
+      )}
 
-          {/* Resource rows */}
-          {visibleResources.map((r) => (
-            <React.Fragment key={r.id}>
-              <div className={"sched-res sched-res-" + r.kind}>
-                <div className={"sched-res-av sched-disc-" + r.disc}>{r.initials}</div>
-                <div className="sched-res-body">
-                  <div className="sched-res-nm">{r.name}</div>
-                  <div className="sched-res-rl">{r.role}</div>
+      {Array.isArray(users) && staff.length > 0 && (
+        <React.Fragment>
+          {shiftsState === false && (
+            <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5, marginBottom:12 }}>
+              Could not load this week's shifts.
+              <button className="btn" style={{ marginLeft:10 }} onClick={() => refreshShifts(week)}>Try again</button>
+            </div>
+          )}
+          {(shiftsState === undefined || shiftsState === null) && (
+            <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5, marginBottom:12 }}>
+              Loading this week's shifts…
+            </div>
+          )}
+
+          {/* Grid */}
+          <div className="sched-grid-wrap">
+            <div className="sched-grid">
+              {/* Header row */}
+              <div className="sched-corner">Team</div>
+              {DOW_SHORT.map((d, i) => (
+                <div key={d} className={"sched-day-head" + (schSameDay(dayDates[i], today) ? " today" : "")}>
+                  <div className="sched-day-dow">{d}</div>
+                  <div className="sched-day-date">{dayDates[i].getDate()}</div>
                 </div>
-                {r.kind === "contractor" && <span className="sched-contractor-flag">Contractor</span>}
-              </div>
-              {DOW_SHORT.map((_, d) => {
-                const cellJobs = weekJobs
-                  .filter((j) => j.resId === r.id && j.d === d)
-                  .sort((a, b) => a.start.localeCompare(b.start));
-                const key = r.id + ":" + d;
-                const isToday = week === TODAY_WEEK && d === TODAY_DOW;
+              ))}
+
+              {/* One row per real person */}
+              {visibleStaff.map((u) => {
+                const meta = SCH_ROLE_META[u.role] || SCH_ROLE_META.cleaner;
                 return (
-                  <div key={d}
-                    className={"sched-cell"
-                      + (isToday ? " today" : "")
-                      + (hoverCell === key ? " hover" : "")}
-                    onDragOver={onCellDragOver(r.id, d)}
-                    onDragLeave={() => hoverCell === key && setHoverCell(null)}
-                    onDrop={onCellDrop(r.id, d)}
-                    onDragEnd={onDragEnd}
-                    onClick={() => {
-                      setDispatchDefaults({ resId: r.id, day: d, week, site: r.base !== "Mobile" ? r.base : "" });
-                      setDispatchOpen(true);
-                    }}
-                  >
-                    {cellJobs.map((j) => (
-                      <SchBlock key={j.id} job={j} onClick={openPopover} />
-                    ))}
-                    {cellJobs.length === 0 && <div className="sched-empty-cell">+</div>}
-                  </div>
+                  <React.Fragment key={u.id}>
+                    <div className="sched-res sched-res-staff">
+                      <div className={"sched-res-av sched-disc-" + meta.tone}>{schInitials(u.name || u.email)}</div>
+                      <div className="sched-res-body">
+                        <div className="sched-res-nm">{u.name || u.email}</div>
+                        <div className="sched-res-rl">{meta.label}{u.invitedAt && !u.inviteAcceptedAt ? " · invite pending" : ""}</div>
+                      </div>
+                    </div>
+                    {DOW_SHORT.map((_, d) => {
+                      const cell = cellShifts(u.id, d);
+                      const key = u.id + ":" + d;
+                      const isToday = schSameDay(dayDates[d], today);
+                      return (
+                        <div key={d}
+                          className={"sched-cell" + (isToday ? " today" : "") + (hoverCell === key ? " hover" : "")}
+                          onDragOver={onCellDragOver(u.id, d)}
+                          onDragLeave={() => hoverCell === key && setHoverCell(null)}
+                          onDrop={onCellDrop(u.id, d)}
+                          onDragEnd={onDragEnd}
+                          onClick={() => setShiftModal({ defaults: { userId: u.id, day: d, week, buildingId: siteF || "" } })}
+                        >
+                          {cell.map((s) => (
+                            <SchBlock key={s.id} shift={s} tone={meta.tone} draggable
+                              onDragStart={onDragStart(s)} onClick={openPopover} />
+                          ))}
+                          {cell.length === 0 && <div className="sched-empty-cell">+</div>}
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
-            </React.Fragment>
-          ))}
-        </div>
-      </div>
+            </div>
+          </div>
 
-      {/* Discipline legend */}
-      <div className="sched-legend">
-        <div className="sched-legend-row"><span className="sched-legend-dot sched-disc-clean" />Cleaning</div>
-        <div className="sched-legend-row"><span className="sched-legend-dot sched-disc-maint" />Maintenance</div>
-        <div className="sched-legend-row"><span className="sched-legend-dot sched-disc-secure" />Security</div>
-        <div className="sched-legend-row sched-legend-spacer" />
-        <div className="sched-legend-row sched-legend-hint">
-          <Icon name="layers" size={12} />Click an empty cell to dispatch a job on that day to that person.
-        </div>
-      </div>
+          {/* Legend — colours mean roles */}
+          <div className="sched-legend">
+            <div className="sched-legend-row"><span className="sched-legend-dot sched-disc-clean" />Field staff</div>
+            <div className="sched-legend-row"><span className="sched-legend-dot sched-disc-maint" />Supervisors</div>
+            <div className="sched-legend-row"><span className="sched-legend-dot sched-disc-secure" />Admins</div>
+            <div className="sched-legend-row sched-legend-spacer" />
+            <div className="sched-legend-row sched-legend-hint">
+              <Icon name="layers" size={12} />Every shift belongs to a person. Open unassigned shifts are not in the system yet.
+            </div>
+          </div>
 
-      {dispatchOpen && (
-        <SchDispatchModal
-          onClose={() => { setDispatchOpen(false); setDispatchDefaults(null); }}
-          onDispatch={dispatchJob}
-          defaults={dispatchDefaults}
+          <SchDispatchPanel users={staff} showToast={showToast} />
+        </React.Fragment>
+      )}
+
+      {shiftModal && Array.isArray(users) && (
+        <SchShiftModal
+          users={staff}
+          buildings={buildings}
+          defaults={shiftModal.defaults}
+          onClose={() => setShiftModal(null)}
+          onSaved={(w) => {
+            setShiftModal(null);
+            showToast("Shift saved to the rota");
+            refreshShifts(w);
+            if (w !== week) setWeek(w);
+          }}
+          showToast={showToast}
         />
       )}
-      {popJobObj && (
-        <SchBlockPopover job={popJobObj} anchor={popoverAnchor}
-          onClose={closePopover}
-          onReassign={(resId) => { reassignJob(popJobObj.id, resId); closePopover(); }}
-          onComplete={() => markComplete(popJobObj.id)}
+      {popShift && (
+        <SchBlockPopover shift={popShift} users={staff} anchor={popover.anchor}
+          onClose={() => setPopover(null)}
+          showToast={showToast}
+          refresh={refreshShifts}
+          week={week}
         />
       )}
       {toastNode}
@@ -4452,13 +4765,69 @@ Object.assign(window, { SchedulingView });
 
 /* ════════════════════ asset_11_27dbf992.js ════════════════════ */
 ;
-/* HazardLink — Cleaning view (rounds + slide-over round panel) */
+/* HazardLink — Cleaning view: quality inspections + cleaning rounds, wired to the live backend */
 
+/* Ratings mirror the backend enum exactly (inspections.ts): meets = 100,
+   acceptable = 70, needs_improvement = 0. "na" items are left out of the score. */
 const GRADE_OPTS = [
-  { v:100, label:"Pass",  cls:"on-ok" },
-  { v:50,  label:"Minor", cls:"on-warn" },
-  { v:0,   label:"Fail",  cls:"on-crit" },
+  { v:"meets",             label:"Pass",       cls:"on-ok" },
+  { v:"acceptable",        label:"Acceptable", cls:"on-warn" },
+  { v:"needs_improvement", label:"Needs work", cls:"on-crit" },
 ];
+const CL_RATING_SCORE = { meets:100, acceptable:70, needs_improvement:0 };
+const CL_RATING_META = {
+  meets:             { label:"Pass",       tone:"ok" },
+  acceptable:        { label:"Acceptable", tone:"warn" },
+  needs_improvement: { label:"Needs work", tone:"crit" },
+  na:                { label:"N/A",        tone:"muted" },
+};
+
+/* Default walk-through checklist. Areas are a starting template, and the
+   inspector can add their own rows; only rated rows are submitted. */
+const CL_CHECKLIST = [
+  { id:"ca1", name:"Entrance lobby",            note:"Floors, mats, door glass and reception desk" },
+  { id:"ca2", name:"Public washrooms",          note:"Sinks, mirrors, floors, bins and consumable stock" },
+  { id:"ca3", name:"Staff kitchen",             note:"Surfaces, appliances, sink and floor" },
+  { id:"ca4", name:"Open-plan office",          note:"Desks, screens, floors and bins" },
+  { id:"ca5", name:"Meeting rooms",             note:"Tables, chairs, whiteboards and glass partitions" },
+  { id:"ca6", name:"Corridors and common areas",note:"Floors, skirting, noticeboards and signage" },
+  { id:"ca7", name:"Stairwells",                note:"Treads, handrails and landings" },
+  { id:"ca8", name:"External areas",            note:"Entrance path, car park and bin store" },
+];
+
+function clWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return d.getDate() + " " + m[d.getMonth()] + ", " +
+    String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+function clScoreBand(score) {
+  if (score == null) return { label:"Not scored", tone:"muted" };
+  if (score >= 90)   return { label:"Passed",       tone:"ok" };
+  if (score >= 70)   return { label:"Minor issues", tone:"warn" };
+  return { label:"Needs work", tone:"crit" };
+}
+
+function clInitials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+
+/* Real photo upload (multipart, so hlApi's JSON helper doesn't fit). Returns
+   { ok, url } from POST /uploads/photo. */
+function clUploadPhoto(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return fetch((window.HL_API_BASE || "/api") + "/uploads/photo", {
+    method: "POST",
+    headers: { authorization: "Bearer " + (localStorage.getItem("bor.token") || "") },
+    body: fd,
+  }).then((r) =>
+    r.json().then((b) => ({ ok: r.ok, url: b && b.url })).catch(() => ({ ok: false, url: null }))
+  ).catch(() => ({ ok: false, url: null }));
+}
 
 function ScoreRing({ score, size }) {
   size = size || 68;
@@ -4481,69 +4850,71 @@ function ScoreRing({ score, size }) {
   );
 }
 
-function RoundCard({ r, onOpen }) {
-  const statusMeta = {
-    done:          { tone:"ok",     label:"Complete" },
-    "in-progress": { tone:"accent", label:"In progress" },
-    pending:       { tone:"muted",  label:"Scheduled" },
-  };
-  const m = statusMeta[r.status] || statusMeta.pending;
+/* One inspection in the list — real row from GET /inspections. */
+function RoundCard({ insp, onOpen }) {
+  const band = clScoreBand(insp.score);
   return (
-    <div className="round-card" onClick={() => onOpen(r)}>
+    <div className="round-card" onClick={() => onOpen(insp)}>
       <div className="round-ico" style={{ background:softBg("clean"), color:solid("clean") }}>
         <Icon name="droplet" size={17} />
       </div>
       <div>
-        <div className="round-name">{r.site}</div>
-        <div className="round-meta">{r.type} · due {r.due}{r.cleaner ? " · " + r.cleaner : ""}</div>
+        <div className="round-name">
+          {(insp.building && insp.building.name) || "No site set"}{insp.area ? " · " + insp.area : ""}
+        </div>
+        <div className="round-meta">
+          {clWhen(insp.createdAt)}{insp.inspectorName ? " · " + insp.inspectorName : ""}
+        </div>
       </div>
-      <Pill tone={m.tone} dot>{m.label}</Pill>
-      {r.status === "done"
-        ? <ScoreRing score={r.score} size={52} />
-        : <div style={{ width:52, textAlign:"center", color:"var(--ink-3)", fontSize:11.5 }}>
-            {r.status === "in-progress" ? <Pill tone="crit"><span style={{ width:5, height:5, borderRadius:"50%", background:"currentColor", display:"inline-block", marginRight:4, animation:"blip 1.2s infinite" }} />Live</Pill> : ""}
-          </div>
-      }
+      <Pill tone={band.tone} dot>{band.label}</Pill>
+      <ScoreRing score={insp.score} size={52} />
     </div>
   );
 }
 
-/* ---------- Synthesize the round's checklist, photos and activity timeline ---------- */
-function _roundDetails(r) {
-  const areas = HL.inspectionAreas;
-  if (r.status === "done") {
-    const grades = areas.map(() => null);
-    return {
-      grades,
-      photoSlots: [],
-      timeline: [],
-    };
-  }
-  if (r.status === "in-progress") {
-    const grades = areas.map(() => null);
-    return {
-      grades,
-      photoSlots: [],
-      timeline: [],
-    };
-  }
-  return {
-    grades: areas.map(() => null),
-    photoSlots: [],
-    timeline: [],
+/* Slide-over detail — fetches GET /inspections/:id for the scored items and
+   photos. A "Needs work" item can be raised as a real maintenance job. */
+function RoundPanel({ insp, canManage, onClose, showToast, go }) {
+  const [d, setD] = React.useState(null);        // null loading | false error | { inspection, items }
+  const [raisingId, setRaisingId] = React.useState(null);
+  const [raised, setRaised] = React.useState({}); // itemId -> jobId (raised in this session)
+
+  React.useEffect(() => {
+    let alive = true;
+    hlApi("/inspections/" + insp.id)
+      .then(({ ok, b }) => { if (alive) setD(ok && b ? b : false); })
+      .catch(() => { if (alive) setD(false); });
+    return () => { alive = false; };
+  }, [insp.id]);
+
+  const items = (d && d.items) || [];
+  const scored = items.filter((i) => i.rating !== "na");
+  const passN = scored.filter((i) => i.rating === "meets").length;
+  const photos = items.filter((i) => i.photoUrl);
+  const band = clScoreBand(insp.score);
+  const jobRaised = (i) => i.raisedJobId || raised[i.id];
+
+  const raiseJob = (item) => {
+    if (raisingId) return;
+    setRaisingId(item.id);
+    hlApi("/inspection-items/" + item.id + "/raise-job", { method:"POST" })
+      .then(({ ok, b }) => {
+        if (!ok || !b || !b.jobId) { showToast("Could not raise the job. Check your access and try again."); return; }
+        setRaised((p) => ({ ...p, [item.id]: b.jobId }));
+        showToast("Maintenance job raised: " + item.label);
+      })
+      .finally(() => setRaisingId(null));
   };
-}
 
-const _GRADE_LABEL = { pass:"Pass", minor:"Minor", fail:"Fail" };
-const _GRADE_TONE  = { pass:"ok", minor:"warn", fail:"crit" };
-
-function RoundPanel({ round, onClose, onStartInspection }) {
-  const r = round;
-  const d = _roundDetails(r);
-  const areas = HL.inspectionAreas;
-  const ratedN = d.grades.filter(Boolean).length;
-  const tone = r.status === "done" ? "ok" : r.status === "in-progress" ? "accent" : "muted";
-  const label = r.status === "done" ? "Complete" : r.status === "in-progress" ? "In progress" : "Scheduled";
+  const anyRaised = items.some(jobRaised);
+  const steps = d && d.inspection ? [
+    { state:"done", title:"Inspection submitted",
+      by: (d.inspection.inspectorName || "A team member") + ((insp.building && insp.building.name) ? " at " + insp.building.name : ""),
+      time: clWhen(d.inspection.createdAt) },
+    ...items.filter(jobRaised).map((i) => ({
+      state:"done", title:"Maintenance job raised", by: i.label,
+    })),
+  ] : [];
 
   return (
     <React.Fragment>
@@ -4554,106 +4925,113 @@ function RoundPanel({ round, onClose, onStartInspection }) {
             <Icon name="droplet" size={17} />
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="panel-title">{r.type}</div>
-            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>{r.site} · scheduled {r.due}</div>
+            <div className="panel-title">{insp.area || "Cleaning inspection"}</div>
+            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>
+              {(insp.building && insp.building.name) || "No site set"} · {clWhen(insp.createdAt)}
+            </div>
           </div>
           <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="panel-body">
           <div className="rp-score-row">
-            <div className="rp-score">
-              {r.status === "done" ? <ScoreRing score={r.score} size={76} />
-               : r.status === "in-progress"
-                 ? <div className="rp-score-bubble" style={{ background:"var(--accent-soft)", color:"var(--accent)" }}>
-                     <Icon name="droplet" size={26} />
-                   </div>
-                 : <div className="rp-score-bubble" style={{ background:"var(--surface-3)", color:"var(--ink-3)" }}>
-                     <Icon name="clock" size={26} />
-                   </div>
-              }
-            </div>
+            <div className="rp-score"><ScoreRing score={insp.score} size={76} /></div>
             <div style={{ flex:1, minWidth:0 }}>
               <div className="rp-pills">
-                <Pill tone={tone} dot>{label}</Pill>
-                {r.status === "in-progress" && <Pill tone="crit"><span className="blip" />Live</Pill>}
-                {r.status === "done" && r.score >= 90 && <Pill tone="ok">Passed</Pill>}
-                {r.status === "done" && r.score < 90 && r.score >= 70 && <Pill tone="warn">Minor issues</Pill>}
+                <Pill tone={band.tone} dot>{band.label}</Pill>
+                {photos.length > 0 && <Pill tone="muted" icon="camera">{photos.length} photo{photos.length === 1 ? "" : "s"}</Pill>}
               </div>
               <div className="rp-summary">
-                {r.status === "done"  && `${ratedN} of ${areas.length} areas inspected and signed off.`}
-                {r.status === "in-progress" && `Cleaner on site — ${ratedN} of ${areas.length} areas done so far.`}
-                {r.status === "pending" && `Scheduled to start at ${r.due}. Cleaner is on the rota.`}
+                {d === null && "Loading the scored items…"}
+                {d === false && "Could not load the items for this inspection."}
+                {d && scored.length > 0 && `${passN} of ${scored.length} scored item${scored.length === 1 ? "" : "s"} met the standard.`}
+                {d && scored.length === 0 && items.length > 0 && "Every item was marked N/A, so there is no score."}
+                {d && items.length === 0 && "No items were recorded on this inspection."}
               </div>
             </div>
           </div>
 
-          <div className="info-row"><span className="k">Site</span><span className="v">{r.site}</span></div>
-          <div className="info-row"><span className="k">Cleaner</span>
+          <div className="info-row"><span className="k">Site</span><span className="v">{(insp.building && insp.building.name) || "Not set"}</span></div>
+          <div className="info-row"><span className="k">Inspector</span>
             <span className="v" style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span className="wo-mini-av">{r.initials}</span>{r.cleaner}
+              <span className="wo-mini-av">{clInitials(insp.inspectorName)}</span>{insp.inspectorName || "Not recorded"}
             </span>
           </div>
-          <div className="info-row"><span className="k">Scheduled</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{r.due}</span></div>
-          {r.done && <div className="info-row"><span className="k">Completed</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{r.done}</span></div>}
-          <div className="info-row" style={{ borderBottom:"none" }}><span className="k">Type</span><span className="v">{r.type}</span></div>
+          <div className="info-row"><span className="k">Submitted</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{clWhen(insp.createdAt)}</span></div>
+          {insp.area && <div className="info-row"><span className="k">Area</span><span className="v">{insp.area}</span></div>}
+          <div className="info-row" style={{ borderBottom:"none" }}><span className="k">Note</span><span className="v">{insp.note || "None"}</span></div>
 
           <div className="panel-label" style={{ marginTop:18 }}>Scored checklist</div>
-          <div className="rp-check">
-            {areas.map((a, i) => {
-              const g = d.grades[i];
-              return (
-                <div className="rp-check-row" key={a.id}>
-                  <div className="rp-check-tile">
-                    <div className="rp-check-name">{a.name}</div>
-                    <div className="rp-check-note">{a.note}</div>
+          {d === null && (
+            <div style={{ padding:"18px 0", color:"var(--ink-3)", fontSize:13 }}>Loading…</div>
+          )}
+          {d === false && (
+            <div style={{ padding:"18px 0", color:"var(--warn)", fontSize:13 }}>
+              Could not load this inspection. Close the panel and try again.
+            </div>
+          )}
+          {d && (
+            <div className="rp-check">
+              {items.length === 0 && <div style={{ padding:"14px 0", color:"var(--ink-3)", fontSize:13 }}>No items on this inspection.</div>}
+              {items.map((i) => {
+                const m = CL_RATING_META[i.rating] || CL_RATING_META.na;
+                return (
+                  <div className="rp-check-row" key={i.id}>
+                    <div className="rp-check-tile">
+                      <div className="rp-check-name">{i.label}</div>
+                      {i.note && <div className="rp-check-note">{i.note}</div>}
+                      {i.rating === "needs_improvement" && (
+                        jobRaised(i) ? (
+                          <div style={{ marginTop:6 }}><Pill tone="ok" icon="wrench">Maintenance job raised</Pill></div>
+                        ) : canManage ? (
+                          <button className="btn" style={{ marginTop:6, padding:"4px 10px", fontSize:12 }}
+                            disabled={raisingId === i.id} onClick={() => raiseJob(i)}>
+                            <Icon name="wrench" size={13} />{raisingId === i.id ? "Raising…" : "Raise maintenance job"}
+                          </button>
+                        ) : (
+                          <div style={{ marginTop:6, fontSize:11.5, color:"var(--ink-3)" }}>
+                            A supervisor can raise a maintenance job from this item.
+                          </div>
+                        )
+                      )}
+                    </div>
+                    <Pill tone={m.tone} dot>{m.label}</Pill>
                   </div>
-                  {g ? <Pill tone={_GRADE_TONE[g]} dot>{_GRADE_LABEL[g]}</Pill>
-                     : <span className="rp-pending">Pending</span>}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
-          {d.photoSlots.length > 0 && (
+          {photos.length > 0 && (
             <React.Fragment>
               <div className="panel-label" style={{ marginTop:18 }}>Photos</div>
               <div className="proof-grid rp-photos">
-                {d.photoSlots.map((p, i) => (
-                  <div className={"proof" + (p.taken ? " taken" : " pending")} key={i}>
-                    <span className="pcam">
-                      <Icon name={p.taken ? "camera" : "plus"} size={15} />
-                    </span>
-                    <span className="plabel">{p.taken ? p.l : "Pending"}</span>
-                  </div>
+                {photos.map((p) => (
+                  <a className="proof taken" key={p.id} href={p.photoUrl} target="_blank" rel="noreferrer"
+                    style={{ backgroundImage:"url(" + p.photoUrl + ")", backgroundSize:"cover", backgroundPosition:"center",
+                             minHeight:92, display:"flex", alignItems:"flex-end", padding:8, textDecoration:"none" }}>
+                    <span className="plabel">{p.label}</span>
+                  </a>
                 ))}
               </div>
             </React.Fragment>
           )}
 
-          <div className="panel-label" style={{ marginTop:18 }}>Activity</div>
-          <div className="stepper">
-            {d.timeline.map((s, i) => <Step s={s} key={i} />)}
-          </div>
+          {steps.length > 0 && (
+            <React.Fragment>
+              <div className="panel-label" style={{ marginTop:18 }}>Activity</div>
+              <div className="stepper">
+                {steps.map((s, i) => <Step s={s} key={i} />)}
+              </div>
+            </React.Fragment>
+          )}
 
           <div style={{ display:"flex", gap:10, marginTop:18 }}>
-            {r.status === "done" && (
-              <React.Fragment>
-                <button className="btn" style={{ flex:1 }} onClick={onClose}>
-                  <Icon name="file" size={15} />View PDF report
-                </button>
-                <button className="btn btn-primary" style={{ flex:1 }} onClick={onClose}>
-                  <Icon name="send" size={15} />Share with client
-                </button>
-              </React.Fragment>
-            )}
-            {r.status === "in-progress" && (
-              <button className="btn btn-primary" style={{ width:"100%" }} onClick={() => onStartInspection(r)}>
-                <Icon name="arrowRight" size={15} />Continue inspection
-              </button>
-            )}
-            {r.status === "pending" && (
-              <button className="btn btn-primary" style={{ width:"100%" }} onClick={() => onStartInspection(r)}>
-                <Icon name="check" size={15} />Start inspection
+            <button className="btn" style={{ flex:1 }} onClick={onClose}>
+              <Icon name="x" size={15} />Close
+            </button>
+            {anyRaised && (
+              <button className="btn btn-primary" style={{ flex:1 }} onClick={() => { onClose(); go && go("maintenance"); }}>
+                <Icon name="wrench" size={15} />Open Maintenance
               </button>
             )}
           </div>
@@ -4663,26 +5041,71 @@ function RoundPanel({ round, onClose, onStartInspection }) {
   );
 }
 
-function InspectionView({ round, onBack, onSubmit }) {
-  const areas = HL.inspectionAreas;
+/* Full-screen capture for a new inspection — a real POST /inspections. Rate the
+   areas you checked; unrated rows are simply left out. Photos upload for real. */
+function InspectionView({ buildings, defaultBuildingId, onBack, onDone, showToast }) {
+  const [buildingId, setBuildingId] = React.useState(defaultBuildingId || "");
+  const [area, setArea]         = React.useState("");
+  const [note, setNote]         = React.useState("");
   const [grades, setGrades]     = React.useState({});
-  const [photos, setPhotos]     = React.useState({});
-  const [submitted, setSubmitted] = React.useState(false);
+  const [photos, setPhotos]     = React.useState({});   // rowId -> { url, busy }
+  const [extras, setExtras]     = React.useState([]);
+  const [newArea, setNewArea]   = React.useState("");
+  const [saving, setSaving]     = React.useState(false);
+  const [saved, setSaved]       = React.useState(null); // the created inspection
 
-  const rated = Object.keys(grades).length;
-  const score = rated === 0 ? null : Math.round(
-    Object.values(grades).reduce((s, v) => s + v, 0) / rated
+  const rows = CL_CHECKLIST.concat(extras);
+  const ratedIds = rows.map((r) => r.id).filter((id) => grades[id]);
+  const score = ratedIds.length === 0 ? null : Math.round(
+    ratedIds.reduce((s, id) => s + CL_RATING_SCORE[grades[id]], 0) / ratedIds.length
   );
 
-  const setGrade    = (id, v) => setGrades((g) => ({ ...g, [id]: v }));
-  const togglePhoto = (id)    => setPhotos((p) => ({ ...p, [id]: !p[id] }));
+  const setGrade = (id, v) => setGrades((g) => ({ ...g, [id]: g[id] === v ? undefined : v }));
 
-  const handleSubmit = () => {
-    setSubmitted(true);
-    setTimeout(() => onSubmit(score || 0), 1600);
+  const pickPhoto = (id) => (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setPhotos((p) => ({ ...p, [id]: { url: (p[id] && p[id].url) || null, busy: true } }));
+    clUploadPhoto(file).then(({ ok, url }) => {
+      if (!ok || !url) {
+        showToast("Could not upload that photo. Try again.");
+        setPhotos((p) => ({ ...p, [id]: { url: (p[id] && p[id].url) || null, busy: false } }));
+        return;
+      }
+      setPhotos((p) => ({ ...p, [id]: { url, busy: false } }));
+    });
   };
 
-  if (submitted) {
+  const addExtra = () => {
+    const name = newArea.trim();
+    if (!name) return;
+    setExtras((x) => [...x, { id: "cx" + (x.length + 1) + "-" + Date.now(), name, note: "Added for this inspection" }]);
+    setNewArea("");
+  };
+
+  const submit = () => {
+    if (ratedIds.length === 0 || saving) return;
+    setSaving(true);
+    const items = rows
+      .filter((r) => grades[r.id])
+      .map((r) => ({
+        label: r.name,
+        rating: grades[r.id],
+        photoUrl: (photos[r.id] && photos[r.id].url) || undefined,
+      }));
+    hlApi("/inspections", { method:"POST", body: {
+      buildingId: buildingId || null,
+      area: area.trim() || undefined,
+      note: note.trim() || undefined,
+      items,
+    }}).then(({ ok, b }) => {
+      if (!ok || !b || !b.inspection) { showToast("Could not submit the inspection. Check your connection and try again."); return; }
+      setSaved(b.inspection);
+    }).finally(() => setSaving(false));
+  };
+
+  if (saved) {
     return (
       <div className="content-inner">
         <div style={{ maxWidth:560, margin:"60px auto", textAlign:"center" }}>
@@ -4690,8 +5113,10 @@ function InspectionView({ round, onBack, onSubmit }) {
             <Icon name="checkCircle" size={32} />
           </div>
           <h1 style={{ marginBottom:8 }}>Inspection submitted</h1>
-          <p style={{ color:"var(--ink-2)", fontSize:15, marginBottom:24 }}>Score: {score}% · PDF report generating</p>
-          <button className="btn btn-primary" onClick={onBack}><Icon name="arrowLeft" size={15} />Back to rounds</button>
+          <p style={{ color:"var(--ink-2)", fontSize:15, marginBottom:24 }}>
+            {saved.score != null ? "Score: " + saved.score + "%. " : ""}It is saved on the record and on the list now.
+          </p>
+          <button className="btn btn-primary" onClick={onDone}><Icon name="arrowLeft" size={15} />Back to inspections</button>
         </div>
       </div>
     );
@@ -4700,61 +5125,100 @@ function InspectionView({ round, onBack, onSubmit }) {
   return (
     <div className="content-inner">
       <button className="back-link" onClick={onBack}>
-        <Icon name="arrowLeft" size={16} />Back to rounds
+        <Icon name="arrowLeft" size={16} />Back to inspections
       </button>
 
       <div style={{ display:"flex", alignItems:"flex-start", gap:18, marginBottom:22, flexWrap:"wrap" }}>
         <div style={{ flex:1 }}>
-          <h1 className="page-title" style={{ marginBottom:4 }}>{round.type}</h1>
-          <p className="page-desc" style={{ margin:0 }}>{round.site} · {round.cleaner} · Started {round.due}</p>
+          <h1 className="page-title" style={{ marginBottom:4 }}>New inspection</h1>
+          <p className="page-desc" style={{ margin:0 }}>
+            Walk the site, rate each area and add photo proof. Only the areas you rate are submitted.
+          </p>
         </div>
         <div className="insp-score-badge">
           <div className="score-n" style={{ color: score == null ? "var(--ink-3)" : score >= 90 ? "var(--ok)" : score >= 70 ? "var(--warn)" : "var(--crit)" }}>
             {score == null ? "--" : score + "%"}
           </div>
-          <div className="score-l">{rated}/{areas.length} rated</div>
+          <div className="score-l">{ratedIds.length}/{rows.length} rated</div>
+        </div>
+      </div>
+
+      <div className="card card-pad" style={{ marginBottom:16 }}>
+        <div className="ai-fields">
+          <div className="ai-field">
+            <label>Site</label>
+            <select className="dv-input" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
+              <option value="">No site</option>
+              {(buildings || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+          <div className="ai-field">
+            <label>Area or floor (optional)</label>
+            <input className="dv-input" value={area} onChange={(e) => setArea(e.target.value)}
+              placeholder="e.g. Ground floor" />
+          </div>
+          <div className="ai-field">
+            <label>Note (optional)</label>
+            <textarea className="dv-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)}
+              placeholder="Anything worth recording about this walk-through" />
+          </div>
         </div>
       </div>
 
       <div className="card">
-        <div className="wo-head" style={{ gridTemplateColumns:"1fr 168px 60px", fontSize:11 }}>
+        <div className="wo-head" style={{ gridTemplateColumns:"1fr 258px 60px", fontSize:11 }}>
           <div>Area</div>
           <div style={{ textAlign:"center" }}>Grade</div>
           <div style={{ textAlign:"center" }}>Photo</div>
         </div>
-        {areas.map((area) => {
-          const g = grades[area.id];
+        {rows.map((row) => {
+          const g = grades[row.id];
+          const ph = photos[row.id];
           return (
-            <div className="check-row" key={area.id}>
+            <div className="check-row" key={row.id}>
               <div>
-                <div className="check-area">{area.name}</div>
-                <div className="check-note">{area.note}</div>
+                <div className="check-area">{row.name}</div>
+                <div className="check-note">{row.note}</div>
               </div>
               <div className="grade-sel">
                 {GRADE_OPTS.map((opt) => (
-                  <button key={opt.label}
+                  <button key={opt.v}
                     className={"grade-btn" + (g === opt.v ? " " + opt.cls : "")}
-                    onClick={() => setGrade(area.id, opt.v)}>
+                    onClick={() => setGrade(row.id, opt.v)}>
                     {opt.label}
                   </button>
                 ))}
               </div>
-              <div className={"photo-slot" + (photos[area.id] ? " filled" : "")}
-                onClick={() => togglePhoto(area.id)} title="Mark photo taken">
-                <Icon name={photos[area.id] ? "camera" : "plus"} size={17} />
-              </div>
+              <label className={"photo-slot" + (ph && ph.url ? " filled" : "")}
+                title={ph && ph.busy ? "Uploading…" : ph && ph.url ? "Photo attached. Click to replace it." : "Attach a photo"}>
+                <Icon name={ph && ph.busy ? "rotateCw" : ph && ph.url ? "camera" : "plus"} size={17} />
+                <input type="file" accept="image/*" style={{ display:"none" }} onChange={pickPhoto(row.id)} />
+              </label>
             </div>
           );
         })}
 
+        <div style={{ padding:"12px 18px", borderTop:"1px solid var(--line)", display:"flex", gap:10, alignItems:"center" }}>
+          <input className="dv-input" style={{ maxWidth:320 }} value={newArea}
+            placeholder="Add another area, e.g. Loading bay"
+            onChange={(e) => setNewArea(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") addExtra(); }} />
+          <button className="btn" onClick={addExtra} disabled={!newArea.trim()}>
+            <Icon name="plus" size={14} />Add area
+          </button>
+        </div>
+
         <div style={{ padding:"16px 18px", borderTop:"1px solid var(--line)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
           <div style={{ fontSize:13, color:"var(--ink-3)" }}>
-            {rated < areas.length ? `Rate at least ${areas.length - rated} more area${areas.length - rated !== 1 ? "s" : ""} to submit` : "All areas rated — ready to submit"}
+            {ratedIds.length === 0
+              ? "Rate at least one area to submit. Unrated areas are left out."
+              : ratedIds.length + " area" + (ratedIds.length === 1 ? "" : "s") + " rated and ready to submit."}
           </div>
           <div style={{ display:"flex", gap:10 }}>
-            <button className="btn" onClick={onBack}>Save draft</button>
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={rated < 3} style={{ opacity: rated < 3 ? .5 : 1 }}>
-              <Icon name="send" size={15} />Submit inspection
+            <button className="btn" onClick={onBack}>Cancel</button>
+            <button className="btn btn-primary" onClick={submit}
+              disabled={ratedIds.length === 0 || saving} style={{ opacity: ratedIds.length === 0 || saving ? .5 : 1 }}>
+              <Icon name="send" size={15} />{saving ? "Submitting…" : "Submit inspection"}
             </button>
           </div>
         </div>
@@ -4763,100 +5227,268 @@ function InspectionView({ round, onBack, onSubmit }) {
   );
 }
 
-function CleaningView({ go }) {
-  const D = useSiteData();
-  const { site } = React.useContext(SiteContext);
-  const [openRound, setOpenRound]     = React.useState(null);   // round shown in slide-over
-  const [inspectRound, setInspectRound] = React.useState(null); // round being inspected
-  const [scoreOverrides, setScoreOverrides] = React.useState({});
-  const [filter, setFilter]           = React.useState("All");
-  const [reactiveOpen, setReactiveOpen] = React.useState(false);
+/* Cleaning rounds — the checkpoint/QR system scoped to discipline=cleaning.
+   Staff only (the backend gates these routes to admins and supervisors). */
+function CleaningRounds({ site, buildings, showToast }) {
+  const [cps, setCps]       = React.useState(null);  // null loading | false error | []
+  const [scans, setScans]   = React.useState(null);
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [busyId, setBusyId] = React.useState(null);
 
-  const rounds = D.rounds.map((r) =>
-    scoreOverrides[r.id] != null
-      ? { ...r, status:"done", score:scoreOverrides[r.id] }
-      : r
-  );
+  const refresh = React.useCallback(() => {
+    hlApi("/checkpoints?discipline=cleaning")
+      .then(({ ok, b }) => setCps(ok ? ((b && b.checkpoints) || []) : false))
+      .catch(() => setCps(false));
+    hlApi("/checkpoint-scans?discipline=cleaning")
+      .then(({ ok, b }) => setScans(ok ? ((b && b.scans) || []) : false))
+      .catch(() => setScans(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
 
-  const tabs = ["All", "Done", "In progress", "Scheduled"];
-  const filtered = rounds.filter((r) => {
-    if (filter === "All")           return true;
-    if (filter === "Done")          return r.status === "done";
-    if (filter === "In progress")   return r.status === "in-progress";
-    if (filter === "Scheduled")     return r.status === "pending";
-    return true;
-  });
+  const cpList = Array.isArray(cps)
+    ? cps.filter((c) => (site ? c.building && c.building.id === site.id : true))
+    : [];
+  const scanList = Array.isArray(scans)
+    ? scans.filter((s) => (site ? s.buildingName === site.name : true)).slice(0, 6)
+    : [];
+  const lastScanFor = (cpId) => (Array.isArray(scans) ? scans.find((s) => s.checkpointId === cpId) : null);
 
-  const handleSubmit = (score) => {
-    setScoreOverrides((o) => ({ ...o, [inspectRound.id]: score }));
-    setInspectRound(null);
+  const toggleActive = (c) => {
+    if (busyId) return;
+    setBusyId(c.id);
+    hlApi("/checkpoints/" + c.id, { method:"PATCH", body:{ active: !c.active } })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not update that round point."); return; }
+        showToast(c.active ? "Round point paused. Scans stop counting until you resume it." : "Round point active again.");
+        refresh();
+      })
+      .finally(() => setBusyId(null));
   };
 
-  if (inspectRound) {
-    return <InspectionView round={inspectRound} onBack={() => setInspectRound(null)} onSubmit={handleSubmit} />;
+  const handleAdd = (vals) => {
+    const b = (buildings || []).find((x) => x.name === vals.site);
+    hlApi("/checkpoints", { method:"POST", body:{
+      name: vals.name,
+      buildingId: (b && b.id) || null,
+      locationNote: vals.locationNote || undefined,
+      instructions: vals.instructions || undefined,
+      discipline: "cleaning",
+    }}).then(({ ok }) => {
+      if (!ok) { showToast("Could not add the round point. Check your access."); return; }
+      showToast("Round point added. Print its QR from the scan page.");
+      refresh();
+    });
+  };
+
+  return (
+    <React.Fragment>
+      {addOpen && (
+        <SimpleAddModal
+          title="Add a cleaning round point"
+          subtitle="A QR point on the round. Cleaners scan it on site, no login needed, and every scan is logged here."
+          icon="mapPin"
+          submitLabel="Add round point" submitIcon="check"
+          successTitle="Round point added"
+          successCopy="Open its scan page to print the QR code and put it up on site."
+          fields={[
+            { id:"name", label:"Name", placeholder:"e.g. Ground floor washrooms" },
+            { id:"site", label:"Site", type:"select", options:(buildings || []).map((b) => b.name), required:false },
+            { id:"locationNote", label:"Where exactly (optional)", placeholder:"e.g. Beside the lift lobby door", required:false },
+            { id:"instructions", label:"Instructions for the cleaner (optional)", type:"textarea", rows:2,
+              placeholder:"e.g. Check stock, wipe sinks, mop floor", required:false },
+          ]}
+          onSubmit={handleAdd}
+          onClose={() => setAddOpen(false)} />
+      )}
+
+      <div className="card" style={{ marginTop:20 }}>
+        <div className="card-head">
+          <h3>Cleaning rounds</h3>
+          <span className="sub">QR points cleaners scan on their round. Scans log here as proof of presence.</span>
+          <div className="head-act">
+            <button className="btn" onClick={() => setAddOpen(true)}>
+              <Icon name="plus" size={14} />Add round point
+            </button>
+          </div>
+        </div>
+
+        {cps === null && (
+          <div style={{ padding:"26px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>Loading round points…</div>
+        )}
+        {cps === false && (
+          <div style={{ padding:"26px", textAlign:"center", color:"var(--warn)", fontSize:13.5 }}>
+            Could not load the round points. <button className="btn" style={{ marginLeft:8 }} onClick={refresh}>Try again</button>
+          </div>
+        )}
+        {Array.isArray(cps) && cpList.length === 0 && (
+          <div style={{ padding:"30px 24px", textAlign:"center" }}>
+            <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>
+              {site ? "No round points at " + site.name + " yet" : "No cleaning round points yet"}
+            </div>
+            <div style={{ fontSize:13.5, color:"var(--ink-3)", maxWidth:460, margin:"0 auto" }}>
+              Add one for each stop on the round, print its QR code and put it up on site. Scans start logging straight away.
+            </div>
+          </div>
+        )}
+        {cpList.map((c) => {
+          const last = lastScanFor(c.id);
+          return (
+            <div className="round-card" key={c.id} style={{ cursor:"default" }}>
+              <div className="round-ico" style={{ background:softBg("clean"), color:solid("clean") }}>
+                <Icon name="mapPin" size={17} />
+              </div>
+              <div>
+                <div className="round-name">{c.name}</div>
+                <div className="round-meta">
+                  {(c.building && c.building.name) || "No site set"}
+                  {c.locationNote ? " · " + c.locationNote : ""}
+                  {last ? " · last scanned " + clWhen(last.scannedAt) : " · not scanned yet"}
+                </div>
+              </div>
+              <Pill tone={c.active ? "ok" : "muted"} dot>{c.active ? "Active" : "Paused"}</Pill>
+              <div style={{ display:"flex", gap:8 }}>
+                <a className="btn" href={c.scanUrl} target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
+                  <Icon name="scan" size={14} />Scan page
+                </a>
+                <button className="btn" disabled={busyId === c.id} onClick={() => toggleActive(c)}>
+                  {busyId === c.id ? "Saving…" : c.active ? "Pause" : "Resume"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {Array.isArray(scans) && scanList.length > 0 && (
+          <React.Fragment>
+            <div style={{ padding:"12px 16px 4px", fontSize:10.5, fontWeight:800, textTransform:"uppercase", letterSpacing:".07em", color:"var(--ink-3)", borderTop:"1px solid var(--line)" }}>
+              Latest scans
+            </div>
+            {scanList.map((s) => (
+              <div key={s.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 16px", borderTop:"1px solid var(--line)" }}>
+                <span className="wo-mini-av">{clInitials(s.guardName)}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600 }}>
+                    {s.guardName || "Name not given"} · {s.checkpointName || "Round point"}
+                  </div>
+                  <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:1 }}>
+                    {(s.buildingName ? s.buildingName + " · " : "")}{clWhen(s.scannedAt)}{s.note ? " · " + s.note : ""}
+                  </div>
+                </div>
+                {s.flagged && <Pill tone="crit" dot>Flagged</Pill>}
+                {s.photoUrl && (
+                  <a className="btn" href={s.photoUrl} target="_blank" rel="noreferrer" style={{ padding:"4px 10px", fontSize:12, textDecoration:"none" }}>
+                    <Icon name="camera" size={13} />Photo
+                  </a>
+                )}
+              </div>
+            ))}
+          </React.Fragment>
+        )}
+        {scans === false && (
+          <div style={{ padding:"12px 16px", color:"var(--warn)", fontSize:12.5, borderTop:"1px solid var(--line)" }}>
+            Could not load the scan history.
+          </div>
+        )}
+      </div>
+    </React.Fragment>
+  );
+}
+
+function CleaningView({ go }) {
+  const { site } = React.useContext(SiteContext);
+  const [insps, setInsps]       = React.useState(null); // null loading | false error | []
+  const [buildings, setBuildings] = React.useState([]);
+  const [filter, setFilter]     = React.useState("All");
+  const [openInsp, setOpenInsp] = React.useState(null);
+  const [capture, setCapture]   = React.useState(false);
+  const { showToast, toastNode } = useViewToast();
+
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canManage = me.role === "admin" || me.role === "supervisor";
+
+  const refresh = React.useCallback(() => {
+    return hlApi("/inspections")
+      .then(({ ok, b }) => setInsps(ok ? ((b && b.inspections) || []) : false))
+      .catch(() => setInsps(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+  React.useEffect(() => {
+    hlApi("/buildings").then(({ ok, b }) => { if (ok) setBuildings((b && b.buildings) || []); });
+  }, []);
+
+  if (capture) {
+    return (
+      <React.Fragment>
+        <InspectionView
+          buildings={buildings}
+          defaultBuildingId={site ? site.id : ""}
+          onBack={() => setCapture(false)}
+          onDone={() => { setCapture(false); refresh(); }}
+          showToast={showToast} />
+        {toastNode}
+      </React.Fragment>
+    );
   }
 
-  const done       = rounds.filter((r) => r.status === "done").length;
-  const total      = rounds.length;
-  const scored     = rounds.filter((r) => r.score);
-  const avgScore   = scored.length ? Math.round(scored.reduce((s, r) => s + r.score, 0) / scored.length) : 0;
-  const liveSpills = D.spillAlerts.filter((a) => a.state === "new").length;
+  const all = Array.isArray(insps)
+    ? insps.filter((i) => (site ? i.buildingId === site.id : true))
+    : [];
+  const tabs = ["All", "Passed", "Minor issues", "Needs work"];
+  const inBand = (i, t) => {
+    if (t === "All") return true;
+    if (i.score == null) return false;
+    if (t === "Passed") return i.score >= 90;
+    if (t === "Minor issues") return i.score >= 70 && i.score < 90;
+    if (t === "Needs work") return i.score < 70;
+    return true;
+  };
+  const filtered = all.filter((i) => inBand(i, filter));
+
+  const scoredList = all.filter((i) => i.score != null);
+  const avgScore = scoredList.length ? Math.round(scoredList.reduce((s, i) => s + i.score, 0) / scoredList.length) : 0;
+  const needsWork = all.filter((i) => i.score != null && i.score < 70).length;
 
   return (
     <div className="content-inner">
-      {openRound && (
-        <RoundPanel round={openRound}
-          onClose={() => setOpenRound(null)}
-          onStartInspection={(r) => { setOpenRound(null); setInspectRound(r); }} />
-      )}
-      {reactiveOpen && (
-        <SimpleAddModal
-          title="Log reactive round"
-          subtitle="Send a cleaner to a hazard that didn't come from the rota."
-          icon="droplet"
-          submitLabel="Dispatch cleaner" submitIcon="send"
-          successTitle="Cleaner dispatched"
-          successCopy="The reactive round is on the live feed and will appear In progress below."
-          fields={[
-            { id:"site",    label:"Site",      type:"select", options:HL.sites.map((s) => s.name) },
-            { id:"area",    label:"Area",      placeholder:"e.g. Aisle 4 produce" },
-            { id:"reason",  label:"What's the hazard?", type:"textarea", rows:3, placeholder:"e.g. Spilled milk after stock-out" },
-            { id:"cleaner", label:"Send",      type:"select", options:["Nearest cleaner on site"] },
-          ]}
-          onClose={() => setReactiveOpen(false)} />
+      {openInsp && (
+        <RoundPanel insp={openInsp} canManage={canManage}
+          onClose={() => setOpenInsp(null)} showToast={showToast} go={go} />
       )}
 
       <div className="page-head">
         <div>
           <h1 className="page-title">Cleaning</h1>
-          <p className="page-desc">Today's rounds and inspections. Every area graded, photo-proven and scored.{site ? " Filtered to " + site.name + "." : ""}</p>
+          <p className="page-desc">
+            Quality inspections and cleaning rounds from the live record. Every score and scan here is real.
+            {site ? " Filtered to " + site.name + "." : ""}
+          </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setReactiveOpen(true)}>
-          <Icon name="plus" size={15} />Log reactive round
+        <button className="btn btn-primary" onClick={() => setCapture(true)}>
+          <Icon name="plus" size={15} />New inspection
         </button>
       </div>
 
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(3,1fr)" }}>
         <button className={"kpi kpi-clickable" + (filter === "All" ? " on" : "")} onClick={() => setFilter("All")}>
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("clean"), color:solid("clean") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">Rounds today</span></div>
-          <div className="kpi-val">{done}<small>/{total}</small></div>
-          <div className="kpi-foot">Show every round</div>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("clean"), color:solid("clean") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">Inspections</span></div>
+          <div className="kpi-val">{all.length}</div>
+          <div className="kpi-foot">Show every inspection</div>
         </button>
-        <button className={"kpi kpi-clickable" + (filter === "Done" ? " on" : "")} onClick={() => setFilter("Done")}>
+        <button className={"kpi kpi-clickable" + (filter === "Passed" ? " on" : "")} onClick={() => setFilter("Passed")}>
           <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("clean"), color:solid("clean") }}><Icon name="activity" size={16} /></div><span className="kpi-label">Avg. inspection score</span></div>
-          <div className="kpi-val">{avgScore}<small>%</small></div>
-          <div className="kpi-foot">Show {scored.length} completed round{scored.length !== 1 ? "s" : ""}</div>
+          <div className="kpi-val">{scoredList.length ? avgScore : "--"}<small>{scoredList.length ? "%" : ""}</small></div>
+          <div className="kpi-foot">Show inspections at 90% or better</div>
         </button>
-        <button className={"kpi kpi-clickable" + (filter === "In progress" ? " on" : "")} onClick={() => setFilter("In progress")}>
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertTri" size={16} /></div><span className="kpi-label">Active spills</span></div>
-          <div className="kpi-val" style={{ color: liveSpills ? "var(--crit)" : "var(--ok)" }}>{liveSpills}</div>
-          <div className="kpi-foot">Show in-progress rounds</div>
+        <button className={"kpi kpi-clickable" + (filter === "Needs work" ? " on" : "")} onClick={() => setFilter("Needs work")}>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertTri" size={16} /></div><span className="kpi-label">Under 70%</span></div>
+          <div className="kpi-val" style={{ color: needsWork ? "var(--crit)" : "var(--ok)" }}>{needsWork}</div>
+          <div className="kpi-foot">Show inspections needing work</div>
         </button>
       </div>
 
       <div className="card">
         <div className="card-head">
-          <h3>Today's rounds</h3>
+          <h3>Inspections</h3>
           <div className="head-act">
             <div className="seg">
               {tabs.map((t) => (
@@ -4865,13 +5497,44 @@ function CleaningView({ go }) {
             </div>
           </div>
         </div>
-        {filtered.length === 0 && (
-          <div style={{ padding:"30px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>No rounds match this filter.</div>
+        {insps === null && (
+          <div style={{ padding:"30px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>Loading inspections…</div>
         )}
-        {filtered.map((r) => (
-          <RoundCard r={r} key={r.id} onOpen={(r) => setOpenRound(r)} />
+        {insps === false && (
+          <div style={{ padding:"30px", textAlign:"center", color:"var(--warn)", fontSize:13.5 }}>
+            Could not load inspections. <button className="btn" style={{ marginLeft:8 }} onClick={refresh}>Try again</button>
+          </div>
+        )}
+        {Array.isArray(insps) && all.length === 0 && (
+          <div style={{ padding:"36px 24px", textAlign:"center" }}>
+            <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>
+              {site ? "No inspections at " + site.name + " yet" : "No inspections yet"}
+            </div>
+            <div style={{ fontSize:13.5, color:"var(--ink-3)", maxWidth:460, margin:"0 auto 14px" }}>
+              Run your first walk-through here, or capture one on the mobile app. Scores land on this list the moment they are submitted.
+            </div>
+            <button className="btn btn-primary" onClick={() => setCapture(true)}>
+              <Icon name="plus" size={15} />New inspection
+            </button>
+          </div>
+        )}
+        {Array.isArray(insps) && all.length > 0 && filtered.length === 0 && (
+          <div style={{ padding:"30px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>No inspections match this filter.</div>
+        )}
+        {filtered.map((i) => (
+          <RoundCard insp={i} key={i.id} onOpen={setOpenInsp} />
         ))}
       </div>
+
+      {canManage ? (
+        <CleaningRounds site={site} buildings={buildings} showToast={showToast} />
+      ) : (
+        <div className="card card-pad" style={{ marginTop:20, color:"var(--ink-3)", fontSize:13.5 }}>
+          Cleaning round points and their scan history are managed by supervisors and admins.
+        </div>
+      )}
+
+      {toastNode}
     </div>
   );
 }
@@ -4880,7 +5543,22 @@ Object.assign(window, { CleaningView });
 
 /* ════════════════════ asset_18_63efd111.js ════════════════════ */
 ;
-/* HazardLink — Spill alerts view (live spills + escalation timers) */
+/* HazardLink — Spill alerts view (live spills + escalation timers, wired to the backend)
+
+   Data sources (all real):
+   - GET  /alerts/active                     open + acknowledged alerts (spills only)
+   - GET  /reports/spills?from&to            closed alerts for "Resolved today" (admin/supervisor)
+   - GET  /hangers                           hanger names + location notes
+   - GET  /buildings, /buildings/:id/floors  floor -> building map for the site filter
+   - GET  /settings                          real escalation timers (admin/supervisor)
+   - GET  /users                             resolve acknowledgedBy ids to names (admin/supervisor)
+   - POST /alerts/:id/acknowledge
+   - POST /alerts/:id/close                  { reason: sign_damaged|sign_missing|manual, note? }
+   - PUT  /settings/ack-timer, /settings/resolution-timer
+
+   The backend has no per-alert severity, so the old severity pill is gone
+   rather than invented. Escalation is mirrored client-side from openedAt +
+   the org's ack timer; the server does the real escalating on a 30s tick. */
 
 function formatMMSS(seconds) {
   if (seconds <= 0) return "0:00";
@@ -4889,30 +5567,69 @@ function formatMMSS(seconds) {
   return m + ":" + s.toString().padStart(2, "0");
 }
 
+/* "14:31" for today, "Tue 14:31" for older, "—" for missing. */
+function spFmtClock(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  const hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  if (d.toDateString() === new Date().toDateString()) return hm;
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return days[d.getDay()] + " " + hm;
+}
+
+function spAgo(iso) {
+  const t = new Date(iso).getTime();
+  if (!t || isNaN(t)) return "";
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  return h + "h " + (m % 60) + "m ago";
+}
+
+/* The close reasons the backend accepts. sign_returned is reserved for the
+   hanger itself (the sensor fires it when the sign goes back on the rack). */
+const SPILL_CLOSE_REASONS = [
+  { id: "manual",       label: "Area is clean, close it off manually" },
+  { id: "sign_damaged", label: "Sign is damaged, take it out of service" },
+  { id: "sign_missing", label: "Sign is missing, take it out of service" },
+];
+const SPILL_REASON_DONE = {
+  sign_returned: "sign back on the rack",
+  manual:        "closed manually",
+  sign_damaged:  "sign damaged",
+  sign_missing:  "sign missing",
+};
+
 function SpillPipeline({ a, escalated }) {
-  // Lifecycle: Lifted → Alert raised → Acknowledged/Escalated → Sign back on rack
-  const liftedAt = a.raisedAt;
-  const alertAt  = a.raisedAt;
-  const ackedAt  = a.ackAt || null;
-  const resolvedAt = a.resolvedAt || null;
-  const isNew    = a.state === "new";
-  const isAck    = a.state === "acknowledged";
+  // Lifecycle from real timestamps: lifted -> alert raised -> acknowledged/escalated -> closed
+  const liftedAt   = spFmtClock(a.openedAt);
+  const ackedAt    = a.ackAt ? spFmtClock(a.ackAt) : null;
+  const isAck      = a.state === "acknowledged";
   const isResolved = a.state === "resolved";
 
   const step3 = isResolved
-    ? { tone:"done",   icon:"check",        label:"Cleaner attended",    t: ackedAt || "—" }
+    ? { tone: "done",   icon: "check", label: "Cleaner attended",              t: ackedAt || "—" }
     : isAck
-    ? { tone:"done",   icon:"check",        label:"Cleaner attending",   t: ackedAt }
+    ? { tone: "done",   icon: "check", label: "Cleaner attending",             t: ackedAt || "—" }
     : escalated
-    ? { tone:"active", icon:"flag",          label:"Escalated to manager", t:"now" }
-    : { tone:"active", icon:"clock",         label:"Awaiting cleaner",     t:"running" };
+    ? { tone: "active", icon: "flag",  label: "Escalated to supervisors",      t: "now" }
+    : { tone: "active", icon: "clock", label: "Awaiting cleaner",              t: "running" };
+
+  const doneLabel = a.closureReason === "sign_damaged" || a.closureReason === "sign_missing"
+    ? "Sign out of service"
+    : a.closureReason === "manual"
+    ? "Closed manually"
+    : "Sign back on rack";
   const step4 = isResolved
-    ? { tone:"done",   icon:"checkCircle",  label:"Sign back on rack",    t: resolvedAt }
-    : { tone:"pending", icon:"checkCircle", label:"Sign back on rack",    t:"—" };
+    ? { tone: "done",    icon: "checkCircle", label: doneLabel,           t: spFmtClock(a.closedAt) }
+    : { tone: "pending", icon: "checkCircle", label: "Sign back on rack", t: "—" };
 
   const steps = [
-    { tone:"done",   icon:"alertTri",     label:"Sign lifted from rack", t: liftedAt },
-    { tone:"done",   icon:"bell",          label:"Alert raised",          t: alertAt  },
+    { tone: "done", icon: "alertTri", label: "Sign lifted from rack", t: liftedAt },
+    { tone: "done", icon: "bell",     label: "Alert raised",          t: liftedAt },
     step3,
     step4,
   ];
@@ -4926,14 +5643,14 @@ function SpillPipeline({ a, escalated }) {
             <div className="sp-pipe-l">{s.label}</div>
             <div className="sp-pipe-t">{s.t}</div>
           </div>
-          {i < steps.length - 1 && <div className={"sp-pipe-line sp-pipe-" + (steps[i+1].tone === "pending" ? "pending" : "done")} />}
+          {i < steps.length - 1 && <div className={"sp-pipe-line sp-pipe-" + (steps[i + 1].tone === "pending" ? "pending" : "done")} />}
         </React.Fragment>
       ))}
     </div>
   );
 }
 
-function SpillCard({ a, onAck, onResolve }) {
+function SpillCard({ a, ackMinutes, busy, onAck, onResolve, onFloorPlan }) {
   const [, force] = React.useReducer((x) => x + 1, 0);
 
   React.useEffect(() => {
@@ -4942,52 +5659,49 @@ function SpillCard({ a, onAck, onResolve }) {
     return () => clearInterval(t);
   }, [a.state]);
 
-  const remainingMs = a.state === "new" ? Math.max(0, a.escalateAt - Date.now()) : 0;
+  const openedMs   = new Date(a.openedAt).getTime() || 0;
+  const escAt      = ackMinutes != null ? openedMs + ackMinutes * 60000 : null;
+  const remainingMs = a.state === "new" && escAt != null ? Math.max(0, escAt - Date.now()) : 0;
   const remainingSec = Math.ceil(remainingMs / 1000);
-  const totalMs = (a.escalateTotal || 300) * 1000;
-  const pct = a.state === "new" ? Math.max(0, Math.min(100, (remainingMs / totalMs) * 100)) : 0;
-  const escalated = a.state === "new" && remainingMs <= 0;
+  const totalMs    = ackMinutes != null ? ackMinutes * 60000 : 1;
+  const pct        = a.state === "new" && escAt != null ? Math.max(0, Math.min(100, (remainingMs / totalMs) * 100)) : 0;
+  const escalated  = a.state === "new" && escAt != null && remainingMs <= 0;
 
-  const sevMeta = {
-    high:   { tone:"crit", label:"High severity" },
-    medium: { tone:"warn", label:"Medium severity" },
-    low:    { tone:"muted", label:"Low severity" },
-  };
   const stateMeta = {
-    new:           { tone:"crit", label:"Live", live:true },
-    acknowledged:  { tone:"warn", label:"Acknowledged" },
-    resolved:      { tone:"ok",   label:"Resolved" },
+    new:          { tone: "crit", label: "Live", live: true },
+    acknowledged: { tone: "warn", label: "Acknowledged" },
+    resolved:     { tone: "ok",   label: "Resolved" },
   };
-  const sev = sevMeta[a.severity] || sevMeta.medium;
-  const m   = stateMeta[a.state];
+  const m = stateMeta[a.state];
 
   const timerTone = escalated ? "var(--crit)" : pct < 25 ? "var(--crit)" : pct < 50 ? "var(--warn)" : "var(--accent)";
+  const whereBits = [a.floorName, a.zoneName].filter(Boolean).join(" · ");
 
   return (
     <div className={"spill-card spill-" + a.state + (escalated ? " escalated" : "")}>
       <div className="sc-rail" style={{ background: m.tone === "crit" ? "var(--crit)" : m.tone === "warn" ? "var(--warn)" : "var(--ok)" }} />
       <div className="sc-main">
         <div className="sc-top">
-          <span className="sc-id">{a.id}</span>
+          <span className="sc-id">{a.shortId}</span>
           <Pill tone={m.tone} dot>
             {m.live && <span className="blip-dot" />}
             {m.label}
           </Pill>
-          <Pill tone={sev.tone}>{sev.label}</Pill>
-          <span className="sc-raised">Raised {a.raisedAt}</span>
+          <span className="sc-raised">Raised {spFmtClock(a.openedAt)} · {spAgo(a.openedAt)}</span>
         </div>
 
-        <div className="sc-title">{a.location}</div>
+        <div className="sc-title">{a.title}</div>
         <div className="sc-site">
-          <Icon name="mapPin" size={12} />{a.site}
-          <span className="sc-sep" />
-          <span className="sc-hanger">Hanger {a.hanger}</span>
+          <Icon name="mapPin" size={12} />{a.siteName || whereBits || "Location not set"}
+          {a.hangerLabel && <React.Fragment><span className="sc-sep" /><span className="sc-hanger">Hanger {a.hangerLabel}</span></React.Fragment>}
         </div>
         <div className="sc-lifted">
           <Icon name="alertTri" size={12} />
-          Sign <b>{a.hanger}</b> lifted from rack at <b>{a.raisedAt}</b>
+          {a.hangerLabel
+            ? <span>Sign on <b>{a.hangerLabel}</b> lifted from its rack at <b>{spFmtClock(a.openedAt)}</b>{whereBits ? " · " + whereBits : ""}</span>
+            : <span>Sign lifted from its rack at <b>{spFmtClock(a.openedAt)}</b>{whereBits ? " · " + whereBits : ""}</span>}
         </div>
-        <p className="sc-note">{a.note}</p>
+        {a.locationNote && <p className="sc-note">{a.locationNote}</p>}
 
         <SpillPipeline a={a} escalated={escalated} />
 
@@ -4995,43 +5709,47 @@ function SpillCard({ a, onAck, onResolve }) {
           <div className="esc-block">
             <div className="esc-row">
               <Icon name="clock" size={14} />
-              {escalated ? (
-                <span style={{ color:"var(--crit)", fontWeight:700 }}>
-                  Escalated to site manager — awaiting response
+              {escAt == null ? (
+                <span>Escalates to on-duty supervisors automatically if nobody acknowledges.</span>
+              ) : escalated ? (
+                <span style={{ color: "var(--crit)", fontWeight: 700 }}>
+                  Escalated to on-duty supervisors, awaiting response
                 </span>
               ) : (
                 <span>
-                  Escalates to site manager in <b style={{ fontFamily:"var(--mono)", color:timerTone }}>{formatMMSS(remainingSec)}</b>
+                  Escalates to on-duty supervisors in <b style={{ fontFamily: "var(--mono)", color: timerTone }}>{formatMMSS(remainingSec)}</b>
                 </span>
               )}
             </div>
-            <div className="esc-bar"><i style={{ width: pct + "%", background: timerTone }} /></div>
+            {escAt != null && <div className="esc-bar"><i style={{ width: pct + "%", background: timerTone }} /></div>}
           </div>
         )}
 
         {a.state === "acknowledged" && (
           <div className="sc-status-line ack">
-            <Icon name="check" size={14} />Acknowledged by {a.ackBy} at {a.ackAt}
+            <Icon name="check" size={14} />
+            Acknowledged{a.ackBy ? " by " + a.ackBy : ""} at {spFmtClock(a.ackAt)}
           </div>
         )}
 
         {a.state === "resolved" && (
           <div className="sc-status-line ok">
-            <Icon name="checkCircle" size={14} />Resolved by {a.resolvedBy} at {a.resolvedAt}
+            <Icon name="checkCircle" size={14} />
+            Closed at {spFmtClock(a.closedAt)}{SPILL_REASON_DONE[a.closureReason] ? " · " + SPILL_REASON_DONE[a.closureReason] : ""}
           </div>
         )}
 
         {a.state !== "resolved" && (
           <div className="sc-actions">
             {a.state === "new" && (
-              <button className="btn" onClick={() => onAck(a.id)}>
-                <Icon name="check" size={15} />Acknowledge
+              <button className="btn" disabled={busy} onClick={onAck}>
+                <Icon name="check" size={15} />{busy ? "Acknowledging…" : "Acknowledge"}
               </button>
             )}
-            <button className="btn btn-primary" onClick={() => onResolve(a.id)}>
+            <button className="btn btn-primary" disabled={busy} onClick={onResolve}>
               <Icon name="checkCircle" size={15} />Resolve
             </button>
-            <button className="btn btn-ghost" style={{ marginLeft:"auto" }}>
+            <button className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={onFloorPlan}>
               <Icon name="mapPin" size={14} />View on floor plan
             </button>
           </div>
@@ -5041,96 +5759,403 @@ function SpillCard({ a, onAck, onResolve }) {
   );
 }
 
-function SpillsView() {
-  const D = useSiteData();
-  const { site } = React.useContext(SiteContext);
-  const [alerts, setAlerts] = React.useState(() =>
-    HL.spillAlerts.map((a) =>
-      a.state === "new"
-        ? { ...a, escalateAt: Date.now() + (a.escalateInSec || 300) * 1000 }
-        : a
-    )
-  );
-  const [filter, setFilter] = React.useState("Live");
-  const [rulesOpen, setRulesOpen] = React.useState(false);
-  const visibleIds = new Set(D.spillAlerts.map((a) => a.id));
-  const scoped = alerts.filter((a) => visibleIds.has(a.id));
+/* Close an alert against the real endpoint. Only closes on a 2xx; errors stay
+   on screen. The backend takes the sign out of service and notifies admins on
+   the damaged/missing reasons, so that is spelled out before submitting. */
+function ResolveSpillModal({ alert, onClose, onDone }) {
+  const [reason, setReason] = React.useState("manual");
+  const [note, setNote]     = React.useState("");
+  const [busy, setBusy]     = React.useState(false);
+  const [err, setErr]       = React.useState(null);
 
-  const ack = (id) => setAlerts((as) => as.map((a) =>
-    a.id === id ? { ...a, state:"acknowledged", ackBy:"You (Site lead)", ackAt:"just now" } : a
-  ));
-  const resolve = (id) => setAlerts((as) => as.map((a) =>
-    a.id === id ? { ...a, state:"resolved", resolvedBy:"You (Site lead)", resolvedAt:"just now" } : a
-  ));
+  const submit = () => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    hlApi("/alerts/" + alert.id + "/close", {
+      method: "POST",
+      body: { reason, note: note.trim() ? note.trim().slice(0, 500) : undefined },
+    })
+      .then(({ ok, status }) => {
+        if (ok) { onDone(reason); return; }
+        if (status === 404) setErr("That alert no longer exists. Close this and refresh.");
+        else setErr("Could not close the alert. Check your access and try again.");
+      })
+      .catch(() => setErr("Could not reach the server. Check your connection and try again."))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="overlay" onClick={busy ? undefined : onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="checkCircle" size={18} /></div>
+          <div>
+            <h3>Resolve spill alert</h3>
+            <p>{alert.title}{alert.siteName ? " · " + alert.siteName : ""}</p>
+          </div>
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="ai-fields">
+            <div className="ai-field">
+              <label>Why is it being closed?</label>
+              <select className="dv-input" value={reason} onChange={(e) => setReason(e.target.value)}>
+                {SPILL_CLOSE_REASONS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              </select>
+              <div className="ai-hint">
+                {reason === "manual"
+                  ? "If the sign goes back on its rack, the sensor closes the alert by itself. Use this when it needs closing by hand."
+                  : "The hanger is marked out of service and admins and supervisors are notified to sort a replacement sign."}
+              </div>
+            </div>
+            <div className="ai-field">
+              <label>Note (optional)</label>
+              <textarea className="dv-input" rows={3} maxLength={500} value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g. Mopped and dried, cone left in place" />
+            </div>
+            {err && <div style={{ fontSize: 13, color: "var(--crit)" }}>{err}</div>}
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary" disabled={busy} onClick={submit}>
+            <Icon name="check" size={15} />{busy ? "Closing…" : "Close alert"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* The real org-wide escalation timers, saved to the backend the moment you
+   hit Save. There is no per-severity rule in the system, so none is offered. */
+function EscalationRulesModal({ settings, onClose, onSaved }) {
+  const [ack, setAck]   = React.useState(String(settings.ackMinutes != null ? settings.ackMinutes : ""));
+  const [res, setRes]   = React.useState(String(settings.resolutionMinutes != null ? settings.resolutionMinutes : ""));
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr]   = React.useState(null);
+
+  const save = () => {
+    const a = parseInt(ack, 10);
+    const r = parseInt(res, 10);
+    if (!a || a < 1 || a > 120) { setErr("Acknowledge timer must be between 1 and 120 minutes."); return; }
+    if (!r || r < 1 || r > 720) { setErr("Overdue timer must be between 1 and 720 minutes."); return; }
+    setErr(null);
+    const calls = [];
+    if (a !== settings.ackMinutes)        calls.push(hlApi("/settings/ack-timer",        { method: "PUT", body: { minutes: a } }));
+    if (r !== settings.resolutionMinutes) calls.push(hlApi("/settings/resolution-timer", { method: "PUT", body: { minutes: r } }));
+    if (calls.length === 0) { onClose(); return; }
+    setBusy(true);
+    Promise.all(calls)
+      .then((results) => {
+        if (results.some((x) => !x.ok)) { setErr("Could not save. Check your access and try again."); return; }
+        onSaved({ ackMinutes: a, resolutionMinutes: r });
+      })
+      .catch(() => setErr("Could not reach the server. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="overlay" onClick={busy ? undefined : onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="bell" size={18} /></div>
+          <div>
+            <h3>Escalation rules</h3>
+            <p>Live on your whole organisation. Saved straight to the server.</p>
+          </div>
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="ai-fields">
+            <div className="ai-field">
+              <label>Escalate if nobody acknowledges within (minutes)</label>
+              <input className="dv-input" type="number" min={1} max={120} value={ack} onChange={(e) => setAck(e.target.value)} />
+              <div className="ai-hint">Every on-duty supervisor then gets push, SMS and email, and on-duty staff are re-pinged.</div>
+            </div>
+            <div className="ai-field">
+              <label>Flag overdue if not resolved within (minutes)</label>
+              <input className="dv-input" type="number" min={1} max={720} value={res} onChange={(e) => setRes(e.target.value)} />
+              <div className="ai-hint">A spill still open after this long is re-broadcast and escalated even if it was acknowledged.</div>
+            </div>
+            {err && <div style={{ fontSize: 13, color: "var(--crit)" }}>{err}</div>}
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary" disabled={busy} onClick={save}>
+            <Icon name="check" size={15} />{busy ? "Saving…" : "Save rules"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SpillsView({ go }) {
+  const { site } = React.useContext(SiteContext);
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canManage = me.role === "admin" || me.role === "supervisor";
+  const { showToast, toastNode } = useViewToast();
+
+  const [active, setActive]       = React.useState(null);  // null loading | false load-failed | [rows]
+  const [resolved, setResolved]   = React.useState(null);  // null loading | false no-access | [rows]
+  const [floorSite, setFloorSite] = React.useState({ map: {}, loaded: false });
+  const [users, setUsers]         = React.useState({});
+  const [settings, setSettings]   = React.useState(undefined); // undefined loading | null no-access | object
+  const [filter, setFilter]       = React.useState("Live");
+  const [rulesOpen, setRulesOpen] = React.useState(false);
+  const [resolveFor, setResolveFor] = React.useState(null);
+  const [busyId, setBusyId]       = React.useState(null);
+
+  // Hanger map lives in state for renders and in a ref so the poll can spot
+  // alerts from hangers registered after mount and top the map up.
+  const [hangers, setHangers] = React.useState({});
+  const hangersRef = React.useRef({});
+  const loadHangers = React.useCallback(() => {
+    return hlApi("/hangers").then(({ ok, b }) => {
+      if (!ok || !b) return;
+      const m = {};
+      (b.hangers || []).forEach((h) => { m[h.id] = h; });
+      hangersRef.current = m;
+      setHangers(m);
+    }).catch(() => {});
+  }, []);
+
+  const refreshAlerts = React.useCallback(() => {
+    hlApi("/alerts/active")
+      .then(({ ok, b }) => {
+        if (!ok || !b) { setActive((prev) => (Array.isArray(prev) ? prev : false)); return; }
+        const rows = (b.alerts || []).filter((a) => a.kind !== "planned_cleaning");
+        setActive(rows);
+        if (rows.some((r) => r.hangerId && !hangersRef.current[r.hangerId])) loadHangers();
+      })
+      .catch(() => setActive((prev) => (Array.isArray(prev) ? prev : false)));
+
+    // Resolved today. /reports/spills filters on openedAt, so look back 48h
+    // and keep rows actually closed since local midnight. Supervisor/admin only.
+    const from = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const to   = new Date(Date.now() + 60 * 1000).toISOString();
+    hlApi("/reports/spills?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to))
+      .then(({ ok, status, b }) => {
+        if (status === 403) { setResolved(false); return; }
+        if (!ok || !b) return; // keep whatever we had rather than claiming zero
+        const midnight = new Date();
+        midnight.setHours(0, 0, 0, 0);
+        setResolved((b.spills || []).filter((r) => r.closedAt && new Date(r.closedAt) >= midnight));
+      })
+      .catch(() => {});
+  }, [loadHangers]);
+
+  React.useEffect(() => {
+    refreshAlerts();
+    const t = setInterval(refreshAlerts, 15000); // new spills appear without a manual refresh
+    return () => clearInterval(t);
+  }, [refreshAlerts]);
+
+  React.useEffect(() => {
+    loadHangers();
+    hlApi("/buildings")
+      .then(({ ok, b }) => {
+        if (!ok || !b) throw new Error("buildings");
+        return Promise.all((b.buildings || []).map((bd) =>
+          hlApi("/buildings/" + bd.id + "/floors").then(({ ok: fOk, b: fB }) => ({
+            bd,
+            floors: fOk && fB ? fB.floors || [] : [],
+          }))
+        ));
+      })
+      .then((rows) => {
+        const m = {};
+        rows.forEach(({ bd, floors }) => floors.forEach((f) => { m[f.id] = { id: bd.id, name: bd.name }; }));
+        setFloorSite({ map: m, loaded: true });
+      })
+      .catch(() => {});
+    hlApi("/settings")
+      .then(({ ok, b }) => setSettings(ok && b ? b : null))
+      .catch(() => setSettings(null));
+    hlApi("/users")
+      .then(({ ok, b }) => {
+        if (!ok || !b) return;
+        const m = {};
+        (b.users || []).forEach((u) => { m[u.id] = u.name || u.email; });
+        setUsers(m);
+      })
+      .catch(() => {});
+  }, [loadHangers]);
+
+  const composeActive = (row) => {
+    const h = hangers[row.hangerId];
+    const b = row.floorId ? floorSite.map[row.floorId] : null;
+    return {
+      id: row.id,
+      shortId: String(row.id).slice(0, 8).toUpperCase(),
+      state: row.status === "open" ? "new" : "acknowledged",
+      openedAt: row.openedAt,
+      ackAt: row.acknowledgedAt || null,
+      ackBy: row.acknowledgedBy ? users[row.acknowledgedBy] || null : null,
+      closedAt: null,
+      closureReason: null,
+      title: (h && h.name) || row.zoneName || "Unassigned hanger",
+      zoneName: row.zoneName || null,
+      floorName: row.floorName || null,
+      siteId: b ? b.id : null,
+      siteName: b ? b.name : null,
+      hangerLabel: h ? h.name || h.devEui : null,
+      locationNote: (h && h.locationNote) || null,
+    };
+  };
+  const composeResolved = (r) => ({
+    id: r.alertId,
+    shortId: String(r.alertId).slice(0, 8).toUpperCase(),
+    state: "resolved",
+    openedAt: r.openedAt,
+    ackAt: r.acknowledgedAt || null,
+    ackBy: null,
+    closedAt: r.closedAt,
+    closureReason: r.closureReason || null,
+    title: r.zoneName || "Unassigned hanger",
+    zoneName: r.zoneName || null,
+    floorName: r.floorName || null,
+    siteId: null,
+    siteName: r.buildingName || null,
+    hangerLabel: null,
+    locationNote: null,
+  });
+
+  const inSite = (a) => !site || a.siteId === site.id || (a.siteName && a.siteName === site.name);
+  const liveRows      = (Array.isArray(active) ? active : []).map(composeActive);
+  const scopedLive    = site && floorSite.loaded ? liveRows.filter(inSite) : liveRows;
+  const resolvedRows  = (Array.isArray(resolved) ? resolved : []).map(composeResolved);
+  const scopedResolved = site ? resolvedRows.filter(inSite) : resolvedRows;
+  const scopeNote = !!site && !floorSite.loaded && liveRows.length > 0;
+
+  const ack = (id) => {
+    setBusyId(id);
+    hlApi("/alerts/" + id + "/acknowledge", { method: "POST" })
+      .then(({ ok, status }) => {
+        if (ok) showToast("Acknowledged. You are marked as attending.");
+        else if (status === 409) showToast("Already acknowledged or closed by someone else.");
+        else showToast("Could not acknowledge that alert. Check your access.");
+        refreshAlerts();
+      })
+      .catch(() => showToast("Could not reach the server. Check your connection."))
+      .finally(() => setBusyId(null));
+  };
+
+  const handleResolved = (reason) => {
+    setResolveFor(null);
+    showToast(reason === "manual"
+      ? "Alert closed."
+      : "Alert closed. The sign is out of service and admins have been notified.");
+    refreshAlerts();
+  };
 
   const counts = {
-    live:    scoped.filter((a) => a.state === "new").length,
-    ack:     scoped.filter((a) => a.state === "acknowledged").length,
-    res:     scoped.filter((a) => a.state === "resolved").length,
+    live: scopedLive.filter((a) => a.state === "new").length,
+    ack:  scopedLive.filter((a) => a.state === "acknowledged").length,
+    res:  Array.isArray(resolved) ? scopedResolved.length : null,
   };
+  const liveSiteCount = new Set(scopedLive.filter((a) => a.state === "new" && a.siteName).map((a) => a.siteName)).size;
+
   const tabs = [
-    { id:"Live",         label:"Live",          n:counts.live },
-    { id:"Acknowledged", label:"Acknowledged",  n:counts.ack },
-    { id:"Resolved",     label:"Resolved today", n:counts.res },
-    { id:"All",          label:"All" },
+    { id: "Live",         label: "Live",           n: counts.live },
+    { id: "Acknowledged", label: "Acknowledged",   n: counts.ack },
+    { id: "Resolved",     label: "Resolved today", n: counts.res == null ? undefined : counts.res },
+    { id: "All",          label: "All" },
   ];
 
-  const shown = scoped.filter((a) => {
-    if (filter === "Live")         return a.state === "new";
-    if (filter === "Acknowledged") return a.state === "acknowledged";
-    if (filter === "Resolved")     return a.state === "resolved";
-    return true;
-  });
+  const shown = filter === "Live"
+    ? scopedLive.filter((a) => a.state === "new")
+    : filter === "Acknowledged"
+    ? scopedLive.filter((a) => a.state === "acknowledged")
+    : filter === "Resolved"
+    ? scopedResolved
+    : scopedLive.filter((a) => a.state === "new")
+        .concat(scopedLive.filter((a) => a.state === "acknowledged"))
+        .concat(scopedResolved);
+
+  const ackMinutes = settings && settings.ackMinutes != null ? settings.ackMinutes : null;
+
+  if (active === null) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Loading live spill alerts…</div>
+      </div>
+    );
+  }
+  if (active === false) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ fontSize: 13.5 }}>
+          <div style={{ color: "var(--warn)", marginBottom: 10 }}>Could not load spill alerts. Check your connection.</div>
+          <button className="btn" onClick={() => { setActive(null); refreshAlerts(); }}>
+            <Icon name="rotateCw" size={14} />Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-inner">
       <div className="page-head">
         <div>
           <h1 className="page-title">Spill alerts</h1>
-          <p className="page-desc">A spill happens, the cleaner lifts the yellow sign onto the floor, the hanger sensor detects the lift and HazardLink raises this alert. Acknowledge to stop the escalation; resolve once the sign is back on its rack.{site ? " Filtered to " + site.name + "." : ""}</p>
+          <p className="page-desc">A spill happens, the cleaner lifts the yellow sign onto the floor, the hanger sensor detects the lift and HazardLink raises this alert. Acknowledge to stop the escalation; the alert closes itself once the sign is back on its rack.{site ? " Filtered to " + site.name + "." : ""}</p>
         </div>
-        <button className="btn" onClick={() => setRulesOpen(true)}><Icon name="bell" size={15} />Escalation rules</button>
+        {canManage && settings && (
+          <button className="btn" onClick={() => setRulesOpen(true)}><Icon name="bell" size={15} />Escalation rules</button>
+        )}
       </div>
 
-      {rulesOpen && (
-        <SimpleAddModal
-          title="Escalation rules"
-          subtitle="Choose when an unacknowledged spill escalates to the site manager"
-          icon="bell"
-          submitLabel="Save rules" submitIcon="check"
-          successTitle="Rules saved"
-          successCopy="Escalation rules updated for every site. Live spills will follow the new thresholds."
-          fields={[
-            { id:"high",   label:"High severity — escalate after",    type:"select", default:"3 minutes",  options:["1 minute","3 minutes","5 minutes","10 minutes"] },
-            { id:"med",    label:"Medium severity — escalate after",  type:"select", default:"5 minutes",  options:["3 minutes","5 minutes","10 minutes","15 minutes"] },
-            { id:"low",    label:"Low severity — escalate after",     type:"select", default:"10 minutes", options:["5 minutes","10 minutes","30 minutes","1 hour"] },
-            { id:"target", label:"Escalate to", default:"site.manager@hazardlink.ie", placeholder:"site.manager@hazardlink.ie" },
-          ]}
-          onClose={() => setRulesOpen(false)} />
+      {rulesOpen && settings && (
+        <EscalationRulesModal
+          settings={settings}
+          onClose={() => setRulesOpen(false)}
+          onSaved={(vals) => {
+            setSettings((s) => Object.assign({}, s, vals));
+            setRulesOpen(false);
+            showToast("Escalation rules saved. Live spills follow the new timers.");
+          }} />
       )}
 
-      <div className="kpi-row" style={{ gridTemplateColumns:"repeat(3,1fr)" }}>
+      {resolveFor && (
+        <ResolveSpillModal
+          alert={resolveFor}
+          onClose={() => setResolveFor(null)}
+          onDone={handleResolved} />
+      )}
+
+      <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
         <div className="kpi">
           <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertTri" size={16} /></div>
+            <div className="kpi-ico" style={{ background: softBg("crit"), color: solid("crit") }}><Icon name="alertTri" size={16} /></div>
             <span className="kpi-label">Live spills</span>
           </div>
           <div className="kpi-val">{counts.live}</div>
-          <div className="kpi-foot">across {new Set(scoped.filter((a) => a.state === "new").map((a) => a.site)).size} sites</div>
+          <div className="kpi-foot">
+            {counts.live === 0 ? "none right now"
+              : liveSiteCount > 0 ? "across " + liveSiteCount + " site" + (liveSiteCount === 1 ? "" : "s")
+              : "site not yet assigned"}
+          </div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="check" size={16} /></div>
+            <div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="check" size={16} /></div>
             <span className="kpi-label">Acknowledged, awaiting clear</span>
           </div>
           <div className="kpi-val">{counts.ack}</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div>
+            <div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}><Icon name="checkCircle" size={16} /></div>
             <span className="kpi-label">Resolved today</span>
           </div>
-          <div className="kpi-val">{counts.res}</div>
+          <div className="kpi-val">{counts.res == null ? "—" : counts.res}</div>
+          {resolved === false && <div className="kpi-foot">needs supervisor access</div>}
         </div>
       </div>
 
@@ -5144,18 +6169,41 @@ function SpillsView() {
         </div>
       </div>
 
+      {scopeNote && (
+        <div className="card card-pad" style={{ marginBottom: 12, fontSize: 13, color: "var(--ink-3)" }}>
+          Site details are still loading, so alerts from every site are shown for now.
+        </div>
+      )}
+
       <div className="spill-list">
-        {shown.length === 0 && (
-          <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
+        {filter === "Resolved" && resolved === false && (
+          <div className="empty" style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius)" }}>
+            <div className="empty-ico"><Icon name="lock" size={28} /></div>
+            <h3>Resolved history needs supervisor access</h3>
+            <p>Closed spill alerts are part of reporting, which is limited to supervisors and admins.</p>
+          </div>
+        )}
+        {filter === "Resolved" && resolved === null && (
+          <div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Loading today's resolved spills…</div>
+        )}
+        {shown.length === 0 && !(filter === "Resolved" && (resolved === false || resolved === null)) && (
+          <div className="empty" style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius)" }}>
             <div className="empty-ico"><Icon name="checkCircle" size={28} /></div>
             <h3>No spills in this view</h3>
             <p>Nothing to do here. The smart signs will let you know.</p>
           </div>
         )}
         {shown.map((a) => (
-          <SpillCard key={a.id} a={a} onAck={ack} onResolve={resolve} />
+          <SpillCard key={a.id} a={a}
+            ackMinutes={ackMinutes}
+            busy={busyId === a.id}
+            onAck={() => ack(a.id)}
+            onResolve={() => setResolveFor(a)}
+            onFloorPlan={() => go && go("floorplan")} />
         ))}
       </div>
+
+      {toastNode}
     </div>
   );
 }
@@ -6590,36 +7638,78 @@ Object.assign(window, { FloorPlanView });
 
 /* ════════════════════ asset_44_6aa8b35f.js ════════════════════ */
 ;
-/* HazardLink — Devices view: the real setup hub for HazardLink hardware.
+/* HazardLink — Devices view, wired to the live backend.
 
    Two device types:
-   • GATEWAY  — mains-powered LoRa base station. Setup via Bluetooth pairing
-                from the phone, then WiFi creds. Self-registers, comes online.
+   • GATEWAY  — mains-powered LoRa base station. It pairs over Bluetooth in
+                the mobile app, joins the site WiFi and then REGISTERS ITSELF
+                with the cloud (a signed heartbeat from the firmware). The
+                browser cannot do that part, so the "Add gateway" modal
+                explains the real steps instead of faking a scan.
    • HANGER   — battery LoRa sensor that clips to a yellow wet-floor sign.
-                Hall-effect sensor reports when the sign is lifted off its rack.
-                Setup either by typing the DevEUI (BOR-format ID) or via
-                Bluetooth "Discover nearby" from the phone.
+                Registered here by typing its DevEUI (POST /hangers/register).
+                Bluetooth discovery only works in the mobile app.
 
-   Devices are grouped by site/building. Each shows live status; gateways
-   also show how many hangers they hear right now.
+   Data: GET /gateways, GET /hangers, GET /buildings (+ floors + zones to
+   resolve each hanger's building). Grouped by real building client-side.
+   Rename/relocate = PATCH, remove = DELETE (with confirm). The list
+   re-fetches every 20 seconds so online/offline stays fresh. */
 
-   Newly-added hangers are pushed into HL_LIVE so the Floor-plan editor can
-   surface them as "Unplaced" pins to drop onto the building plan. */
+/* ── Online windows — mirror web/src/pages/Gateways.tsx + Hangers.tsx ──
+   Gateways heartbeat continuously: quiet for 90 s means offline.
+   Hangers deep-sleep and check in once a day: 26 h = daily beat + margin. */
+const DV_GW_ONLINE_MS  = 90 * 1000;
+const DV_HGR_ONLINE_MS = 26 * 60 * 60 * 1000;
 
-function SignalBars({ signal }) {
+function dvRelTime(iso) {
+  if (!iso) return "Never";
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 45) return "just now";
+  if (diff < 3600) return Math.max(1, Math.floor(diff / 60)) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  return Math.floor(diff / 86400) + "d ago";
+}
+
+/* dBm → 0..5 bars, same bands as the legacy signalLabel() */
+function dvBarsFromRssi(rssi) {
+  if (rssi === null || rssi === undefined) return 0;
+  if (rssi >= -45) return 5;
+  if (rssi >= -55) return 4;
+  if (rssi >= -65) return 3;
+  if (rssi >= -75) return 2;
+  return 1;
+}
+
+function dvUptime(sec) {
+  if (sec === null || sec === undefined) return "—";
+  if (sec < 60) return sec + "s";
+  if (sec < 3600) return Math.floor(sec / 60) + "m";
+  if (sec < 86400) return Math.floor(sec / 3600) + "h " + Math.floor((sec % 3600) / 60) + "m";
+  return Math.floor(sec / 86400) + "d " + Math.floor((sec % 86400) / 3600) + "h";
+}
+
+const DV_DEVEUI_RE = /^(BOR[0-9A-Fa-f]{13}|[0-9A-Fa-f]{16})$/;
+
+function SignalBars({ bars, rssi }) {
+  const title = rssi === null || rssi === undefined
+    ? "No signal reading yet"
+    : "RSSI " + rssi + " dBm";
   return (
-    <div className="signal-bars" title={"Signal " + signal + "/5"}>
+    <div className="signal-bars" title={title}>
       {[1,2,3,4,5].map((n) => (
-        <i key={n} className={signal >= n ? "on" : ""} style={{ height: 4 + n*2.2 }} />
+        <i key={n} className={bars >= n ? "on" : ""} style={{ height: 4 + n*2.2 }} />
       ))}
-      <span className="signal-num">{signal === 0 ? "—" : signal + "/5"}</span>
+      <span className="signal-num">{bars === 0 ? "—" : bars + "/5"}</span>
     </div>
   );
 }
 
-function Battery({ pct }) {
-  if (pct === null || pct === undefined) {
+function Battery({ pct, mains }) {
+  if (mains) {
     return <span className="bat-mains"><Icon name="activity" size={12} />Mains powered</span>;
+  }
+  if (pct === null || pct === undefined) {
+    return <span className="bat-num" style={{ color: "var(--ink-3)" }}>—</span>;
   }
   const tone = pct < 20 ? "var(--crit)" : pct < 40 ? "var(--warn)" : "var(--ok)";
   return (
@@ -6633,32 +7723,38 @@ function Battery({ pct }) {
   );
 }
 
-/* Tiny mock OLED screen for the device detail panel — gateway version. */
-function GatewayScreen({ name, hangersHeard, ssid, signal }) {
+/* Tiny OLED-style screen in the detail panel — gateway version, real values. */
+function GatewayScreen({ name, linked, ssid, bars, online }) {
   return (
     <div className="dev-screen dev-screen-gw">
       <div className="dev-screen-glow" />
       <div className="dev-screen-content">
         <div className="ds-row ds-row-name">HZL // {name}</div>
-        <div className="ds-row"><span>HANGERS</span><b>{hangersHeard} HEARD</b></div>
+        <div className="ds-row"><span>HANGERS</span><b>{linked} LINKED</b></div>
         <div className="ds-row"><span>WIFI</span><b>{ssid || "—"}</b></div>
         <div className="ds-row">
           <span>RSSI</span>
           <b>
             {[1,2,3,4,5].map((n) =>
               <span key={n} style={{ display: "inline-block", width: 5, height: 4 + n*2,
-                marginRight: 2, background: signal >= n ? "#27d28a" : "rgba(255,255,255,.18)" }} />
+                marginRight: 2, background: bars >= n ? "#27d28a" : "rgba(255,255,255,.18)" }} />
             )}
           </b>
         </div>
-        <div className="ds-row ds-row-ok"><span>•</span><b>ONLINE</b></div>
+        <div className={"ds-row " + (online ? "ds-row-ok" : "ds-row-warn")}>
+          <span>•</span><b>{online ? "ONLINE" : "OFFLINE"}</b>
+        </div>
       </div>
     </div>
   );
 }
 
-/* Hanger screen */
-function HangerScreen({ name, battery, signal, gateway, lifted }) {
+/* Hanger screen — real battery/signal/gateway/status. */
+function HangerScreen({ name, battery, bars, gateway, statusKey }) {
+  const statusText = {
+    online: "ONLINE", offline: "OFFLINE",
+    out_of_service: "OUT OF SERVICE", decommissioned: "RETIRED",
+  }[statusKey] || "—";
   return (
     <div className="dev-screen dev-screen-hgr">
       <div className="dev-screen-glow" />
@@ -6673,10 +7769,10 @@ function HangerScreen({ name, battery, signal, gateway, lifted }) {
             {battery == null ? "—" : battery + "%"}
           </b>
         </div>
-        <div className="ds-row"><span>SIGNAL</span><b>{signal === 0 ? "—" : signal + "/5"}</b></div>
+        <div className="ds-row"><span>SIGNAL</span><b>{bars === 0 ? "—" : bars + "/5"}</b></div>
         <div className="ds-row"><span>GW</span><b>{gateway || "—"}</b></div>
-        <div className={"ds-row " + (lifted ? "ds-row-warn" : "ds-row-ok")}>
-          <span>•</span><b>{lifted ? "LIFTED" : "ON RACK"}</b>
+        <div className={"ds-row " + (statusKey === "online" ? "ds-row-ok" : "ds-row-warn")}>
+          <span>•</span><b>{statusText}</b>
         </div>
       </div>
     </div>
@@ -6684,48 +7780,12 @@ function HangerScreen({ name, battery, signal, gateway, lifted }) {
 }
 
 /* ============================================================
-   Add Gateway wizard — power on → Bluetooth → WiFi → registered
+   Add gateway — honest explainer. Gateways register THEMSELVES:
+   Bluetooth pairing + WiFi happen in the mobile app (a browser
+   cannot pair over Bluetooth), then the box calls home and shows
+   up in this list on its own. No fake scanning here.
    ============================================================ */
-function AddGatewayWizard({ onClose, onComplete }) {
-  const [step, setStep] = React.useState(1);
-  const [poweredOn, setPoweredOn] = React.useState(false);
-  const [scanning, setScanning] = React.useState(false);
-  const [pickedBLE, setPickedBLE] = React.useState(null);
-  const [building, setBuilding] = React.useState(HL.deviceBuildings[0] ? HL.deviceBuildings[0].name : "");
-  const [room, setRoom] = React.useState("Plant room");
-  const [ssid, setSsid] = React.useState("");
-  const [wifiPwd, setWifiPwd] = React.useState("");
-  const [connecting, setConnecting] = React.useState(false);
-
-  /* Synthesize a BLE discovery list as soon as we hit step 2 */
-  const bleCandidates = React.useMemo(() => ([]), []);
-
-  React.useEffect(() => {
-    if (step === 2 && poweredOn) {
-      setScanning(true);
-      const t = setTimeout(() => setScanning(false), 1200);
-      return () => clearTimeout(t);
-    }
-  }, [step, poweredOn]);
-
-  const newId = pickedBLE ? pickedBLE.id.replace("GW-NEW-", "GW-NEW-") : "GW-NEW-A4F2";
-
-  const finish = () => {
-    setConnecting(true);
-    setTimeout(() => {
-      const id = pickedBLE.id;
-      const gateway = {
-        id, type: "Gateway",
-        room, building, site: building,
-        ssid,
-        online: true, battery: null, signal: 5,
-        hangersHeard: 0, addedAt: "just now",
-      };
-      HL_LIVE.addGateway(gateway);
-      onComplete(gateway);
-    }, 1400);
-  };
-
+function AddGatewayWizard({ onClose, gatewayCount }) {
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal dev-wizard" onClick={(e) => e.stopPropagation()}>
@@ -6733,159 +7793,29 @@ function AddGatewayWizard({ onClose, onComplete }) {
           <div className="mh-ico"><Icon name="monitor" size={18} /></div>
           <div>
             <h3>Add LoRa gateway</h3>
-            <p>Mains-powered base station — pair from your phone, give it WiFi, it self-registers.</p>
+            <p>Mains-powered base station. It registers itself once it gets your site WiFi.</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
 
-        <div className="dev-wizard-steps">
-          {["Power on","Bluetooth","WiFi","Registered"].map((l, i) => {
-            const n = i + 1;
-            const cls = step === n ? "on" : step > n ? "done" : "";
-            return (
-              <div key={l} className={"dev-step " + cls}>
-                <span className="dev-step-n">{step > n ? "✓" : n}</span>
-                <span>{l}</span>
-              </div>
-            );
-          })}
-        </div>
-
         <div className="modal-body">
-          {step === 1 && (
-            <React.Fragment>
-              <div className="dev-step-h">Plug it in</div>
-              <p className="dev-step-p">Plug the gateway into mains. The display lights up and the small LED on the front blinks <b>blue</b> while it waits to be paired. Confirm once that's happening.</p>
-              <div className="dev-illus">
-                <div className={"dev-led" + (poweredOn ? " on" : "")}>
-                  <span className="dev-led-dot" />
-                  <div className="dev-led-l">{poweredOn ? "LED solid green" : "LED blinking blue"}</div>
-                </div>
-                <button className={"btn " + (poweredOn ? "" : "btn-primary")}
-                  onClick={() => setPoweredOn(true)}>
-                  <Icon name={poweredOn ? "checkCircle" : "activity"} size={14} />
-                  {poweredOn ? "Powered on" : "Confirm powered on"}
-                </button>
-              </div>
-            </React.Fragment>
-          )}
+          <div className="dev-step-h">1. Plug it in</div>
+          <p className="dev-step-p">Plug the gateway into mains, ideally central in the building. The LED blinks blue while it waits to be paired.</p>
 
-          {step === 2 && (
-            <React.Fragment>
-              <div className="dev-step-h">Connect over Bluetooth</div>
-              <p className="dev-step-p">HazardLink will pair with the gateway over Bluetooth from this phone. The gateway is in pairing mode for 5 minutes after power-on.</p>
-              {scanning && (
-                <div className="dev-scan">
-                  <div className="dev-scan-pulse"><Icon name="activity" size={16} /></div>
-                  <div>
-                    <b>Scanning nearby</b>
-                    <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Looking for gateways within 5 m</div>
-                  </div>
-                </div>
-              )}
-              {!scanning && (
-                <div className="dev-ble-list">
-                  {bleCandidates.map((b) => (
-                    <button key={b.id}
-                      className={"dev-ble-row" + (pickedBLE && pickedBLE.id === b.id ? " on" : "")}
-                      onClick={() => setPickedBLE(b)}>
-                      <div className="dev-ble-ico"><Icon name="monitor" size={14} /></div>
-                      <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                        <div className="dev-ble-name">{b.name}</div>
-                        <div className="dev-ble-meta">{b.mac} · RSSI {b.rssi} dBm</div>
-                      </div>
-                      <div className="dev-ble-sig">{b.rssi > -50 ? "Strong" : b.rssi > -70 ? "Good" : "Weak"}</div>
-                    </button>
-                  ))}
-                  <button className="dev-ble-rescan" onClick={() => setScanning(true)}>
-                    <Icon name="activity" size={12} />Re-scan
-                  </button>
-                </div>
-              )}
-            </React.Fragment>
-          )}
+          <div className="dev-step-h" style={{ marginTop: 14 }}>2. Pair from the mobile app</div>
+          <p className="dev-step-p">Open the HazardLink app on your phone and run <b>Add a gateway</b>. It pairs over Bluetooth and sends the WiFi name and password straight to the box. Bluetooth setup only works in the mobile app, a web browser cannot pair with the device.</p>
 
-          {step === 3 && (
-            <React.Fragment>
-              <div className="dev-step-h">Enter site WiFi</div>
-              <p className="dev-step-p">The gateway uses your site's WiFi to forward LoRa packets to the cloud. Once you save the credentials it joins the network and self-registers — no console work needed.</p>
-              <div className="vm-grid">
-                <div className="ai-field"><label>Site / building</label>
-                  <select className="dv-input" value={building} onChange={(e) => setBuilding(e.target.value)}>
-                    {HL.deviceBuildings.map((b) => <option key={b.id}>{b.name}</option>)}
-                  </select>
-                </div>
-                <div className="ai-field"><label>Mounting location</label>
-                  <input className="dv-input" value={room} onChange={(e) => setRoom(e.target.value)}
-                    placeholder="e.g. Plant room, IT cupboard" />
-                </div>
-                <div className="ai-field"><label>WiFi network (SSID)</label>
-                  <input className="dv-input" value={ssid} onChange={(e) => setSsid(e.target.value)}
-                    placeholder="e.g. AVIVA-IoT" autoFocus />
-                </div>
-                <div className="ai-field"><label>Password</label>
-                  <input className="dv-input" type="password" value={wifiPwd}
-                    onChange={(e) => setWifiPwd(e.target.value)}
-                    placeholder="WPA2 / WPA3" />
-                </div>
-              </div>
-              <p style={{ marginTop: 14, fontSize: 12, color: "var(--ink-3)", lineHeight: 1.5 }}>
-                <Icon name="shield" size={11} /> Credentials are sent over the encrypted Bluetooth link and stored only on the gateway. HazardLink never sees them.
-              </p>
-            </React.Fragment>
-          )}
+          <div className="dev-step-h" style={{ marginTop: 14 }}>3. It registers itself</div>
+          <p className="dev-step-p">Once on WiFi the gateway calls home and appears in this list on its own, usually inside a minute. This page checks for new devices every 20 seconds{typeof gatewayCount === "number" ? ", you have " + gatewayCount + " registered now" : ""}.</p>
 
-          {step === 4 && (
-            <div style={{ textAlign: "center", padding: "12px 0" }}>
-              {connecting ? (
-                <React.Fragment>
-                  <div className="mic-orb" style={{ width: 72, height: 72 }}><Icon name="activity" size={28} /></div>
-                  <h3 style={{ margin: "16px 0 6px", fontSize: 17, fontFamily: "var(--font-head)" }}>Joining WiFi…</h3>
-                  <p style={{ fontSize: 13, color: "var(--ink-2)", margin: 0 }}>Gateway is connecting to {ssid || "the network"} and self-registering.</p>
-                </React.Fragment>
-              ) : (
-                <React.Fragment>
-                  <div className="mic-orb" style={{ width: 72, height: 72, background: "var(--ok)" }}><Icon name="checkCircle" size={28} /></div>
-                  <h3 style={{ margin: "16px 0 6px", fontSize: 17, fontFamily: "var(--font-head)" }}>Gateway online</h3>
-                  <p style={{ fontSize: 13, color: "var(--ink-2)", margin: "0 auto", maxWidth: 380, lineHeight: 1.55 }}>
-                    {pickedBLE && pickedBLE.id} registered in {building} · waiting for first hanger to come into range.
-                  </p>
-                </React.Fragment>
-              )}
-            </div>
-          )}
+          <div className="dev-gw-hint" style={{ marginTop: 16 }}>
+            <Icon name="info" size={12} />
+            Credentials go over the encrypted Bluetooth link, straight to the gateway. HazardLink never sees them.
+          </div>
         </div>
 
         <div className="modal-foot">
-          {step > 1 && step < 4 && (
-            <button className="btn" onClick={() => setStep(step - 1)}>Back</button>
-          )}
-          {step === 1 && (
-            <React.Fragment>
-              <button className="btn" onClick={onClose}>Cancel</button>
-              <button className="btn btn-primary" disabled={!poweredOn} style={{ opacity: poweredOn ? 1 : .5 }}
-                onClick={() => setStep(2)}>
-                Next: Bluetooth pair<Icon name="chevronRight" size={14} />
-              </button>
-            </React.Fragment>
-          )}
-          {step === 2 && (
-            <button className="btn btn-primary" disabled={!pickedBLE || scanning}
-              style={{ opacity: !pickedBLE || scanning ? .5 : 1 }}
-              onClick={() => setStep(3)}>
-              Next: site WiFi<Icon name="chevronRight" size={14} />
-            </button>
-          )}
-          {step === 3 && (
-            <button className="btn btn-primary" disabled={!ssid.trim()}
-              style={{ opacity: ssid.trim() ? 1 : .5 }}
-              onClick={() => { setStep(4); finish(); }}>
-              <Icon name="send" size={14} />Send WiFi &amp; register
-            </button>
-          )}
-          {step === 4 && !connecting && (
-            <button className="btn btn-primary" onClick={onClose}>Done</button>
-          )}
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
         </div>
       </div>
     </div>
@@ -6893,52 +7823,152 @@ function AddGatewayWizard({ onClose, onComplete }) {
 }
 
 /* ============================================================
-   Add Hanger wizard — DevEUI or Discover nearby → assign → save
+   Add hanger wizard — real registration by DevEUI.
+   POST /hangers/register with a real building/floor/zone picker
+   (each level can create a new entry inline, mirroring the
+   legacy Hangers page). Bluetooth discovery is mobile-app only,
+   so that option is honestly disabled.
    ============================================================ */
-function AddHangerWizard({ onClose, onComplete }) {
+function AddHangerWizard({ onClose, onDone, gateways }) {
   const [step, setStep] = React.useState(1);
-  const [mode, setMode] = React.useState(null); // "type" | "ble"
+  const [mode, setMode] = React.useState(null); // only "type" can proceed
   const [devEUI, setDevEUI] = React.useState("");
-  const [scanning, setScanning] = React.useState(false);
-  const [picked, setPicked] = React.useState(null);
-  const [building, setBuilding] = React.useState(HL.deviceBuildings[0] ? HL.deviceBuildings[0].name : "");
-  const [floor, setFloor] = React.useState("Ground floor");
-  const [zone, setZone] = React.useState("");
+  const [audible, setAudible] = React.useState(false);
 
-  const bleCandidates = React.useMemo(() => ([]), []);
+  /* Location picker state — ids, cascading fetches like the legacy page. */
+  const [buildings, setBuildings] = React.useState(null); // null = loading
+  const [floors, setFloors]       = React.useState([]);
+  const [zones, setZones]         = React.useState([]);
+  const [buildingId, setBuildingId] = React.useState("");
+  const [floorId, setFloorId]       = React.useState("");
+  const [zoneId, setZoneId]         = React.useState("");
+
+  /* Inline "+ add new" state per level */
+  const [creating, setCreating] = React.useState(null); // "building" | "floor" | "zone"
+  const [draft, setDraft]       = React.useState("");
+  const [creatingBusy, setCreatingBusy] = React.useState(false);
+
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr]   = React.useState(null);
+  const [saved, setSaved] = React.useState(null);
 
   React.useEffect(() => {
-    if (step === 2 && mode === "ble") {
-      setScanning(true);
-      const t = setTimeout(() => setScanning(false), 1400);
-      return () => clearTimeout(t);
-    }
-  }, [step, mode]);
+    hlApi("/buildings").then(({ ok, b }) => {
+      setBuildings(ok && b && b.buildings ? b.buildings : false);
+    });
+  }, []);
 
-  const finish = () => {
-    /* Build the hanger record. Use whichever id source was chosen. */
-    const fullId = mode === "ble" ? picked.id : devEUI.trim();
-    const shortId = mode === "ble" ? picked.short
-      : ("HGR-" + (fullId.replace(/[^A-Z0-9]/gi, "").slice(-5).toUpperCase()));
-    const gatewayId = HL_LIVE.gatewayForHanger(shortId, building);
-    HL_LIVE.setHangerGateway(shortId, gatewayId);
-    const hanger = {
-      id: shortId,
-      devEUI: fullId,
-      type: "Hanger",
-      site: building, building,
-      floorLabel: floor,
-      zone: zone || "Awaiting placement",
-      battery: mode === "ble" ? picked.batt : 100,
-      signal: 4,
-      online: true,
-      gateway: gatewayId,
-      addedAt: "just now",
-      placed: null,
-    };
-    HL_LIVE.addHanger(hanger);
-    onComplete(hanger);
+  React.useEffect(() => {
+    setFloorId(""); setZoneId(""); setFloors([]); setZones([]);
+    if (!buildingId) return;
+    hlApi("/buildings/" + buildingId + "/floors").then(({ ok, b }) => {
+      if (ok && b && b.floors) setFloors(b.floors.slice().sort((a, x) => a.orderIndex - x.orderIndex));
+      else setErr("Could not load the floors for that building.");
+    });
+  }, [buildingId]);
+
+  React.useEffect(() => {
+    setZoneId(""); setZones([]);
+    if (!floorId) return;
+    hlApi("/floors/" + floorId + "/zones").then(({ ok, b }) => {
+      if (ok && b && b.zones) setZones(b.zones);
+      else setErr("Could not load the zones for that floor.");
+    });
+  }, [floorId]);
+
+  const createInline = () => {
+    const name = draft.trim();
+    if (!name || creatingBusy) return;
+    setCreatingBusy(true); setErr(null);
+    let req;
+    if (creating === "building") req = hlApi("/buildings", { body: { name } });
+    else if (creating === "floor") {
+      const nextOrder = floors.reduce((m, f) => Math.max(m, f.orderIndex), -1) + 1;
+      req = hlApi("/buildings/" + buildingId + "/floors", { body: { name, orderIndex: nextOrder } });
+    } else req = hlApi("/floors/" + floorId + "/zones", { body: { name } });
+    req.then(({ ok, status, b }) => {
+      if (!ok) {
+        setErr(status === 403 ? "Only admins can create locations." : "Could not create that. Try again.");
+        return;
+      }
+      if (creating === "building" && b && b.building) {
+        setBuildings((prev) => [...(prev || []), b.building]);
+        setBuildingId(b.building.id);
+      } else if (creating === "floor" && b && b.floor) {
+        setFloors((prev) => [...prev, b.floor]);
+        setFloorId(b.floor.id);
+      } else if (creating === "zone" && b && b.zone) {
+        setZones((prev) => [...prev, b.zone]);
+        setZoneId(b.zone.id);
+      }
+      setCreating(null); setDraft("");
+    }).finally(() => setCreatingBusy(false));
   };
+
+  const devEuiOk = DV_DEVEUI_RE.test(devEUI.trim());
+
+  const submit = () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    hlApi("/hangers/register", { body: {
+      devEui: devEUI.trim().toUpperCase(),
+      zoneId: zoneId || undefined,
+      audibleAlarmEnabled: audible,
+    }}).then(({ ok, status, b }) => {
+      if (ok && b && b.hanger) {
+        setSaved(b.hanger);
+        setStep(4);
+        onDone && onDone(b.hanger);
+        return;
+      }
+      if (status === 409) setErr("That DevEUI is already registered in your organisation.");
+      else if (status === 400 && b && b.details) {
+        const first = Object.values(b.details).flat()[0];
+        setErr(first || "The backend rejected that DevEUI.");
+      } else if (status === 403) setErr("Your login does not have permission to register devices. Ask an admin.");
+      else setErr("Could not register the hanger. Check your connection and try again.");
+    }).finally(() => setBusy(false));
+  };
+
+  /* Which gateway would it report through? Real lookup: most recently seen
+     gateway assigned to the picked building. */
+  const gwForBuilding = buildingId
+    ? (gateways || [])
+        .filter((g) => g.buildingId === buildingId)
+        .sort((a, b) => new Date(b.lastSeenAt || 0) - new Date(a.lastSeenAt || 0))[0]
+    : null;
+
+  const pickerRow = (label, options, selectedId, onSelect, level, placeholder, disabled) => (
+    <div className="ai-field">
+      <label>{label}</label>
+      <select className="dv-input" value={selectedId} disabled={disabled}
+        onChange={(e) => onSelect(e.target.value)}>
+        <option value="">{placeholder}</option>
+        {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+      {creating === level ? (
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <input className="dv-input" autoFocus value={draft} placeholder={"New " + level + " name"}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") createInline(); }} />
+          <button className="btn btn-primary" disabled={!draft.trim() || creatingBusy}
+            style={{ opacity: draft.trim() && !creatingBusy ? 1 : .5 }} onClick={createInline}>
+            {creatingBusy ? "Saving…" : "Save"}
+          </button>
+          <button className="btn" onClick={() => { setCreating(null); setDraft(""); }}>
+            <Icon name="x" size={13} />
+          </button>
+        </div>
+      ) : (
+        !disabled && (
+          <button className="dev-ble-rescan" style={{ marginTop: 6 }}
+            onClick={() => { setCreating(level); setDraft(""); }}>
+            <Icon name="plus" size={12} />Add new {level}
+          </button>
+        )
+      )}
+    </div>
+  );
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -6953,7 +7983,7 @@ function AddHangerWizard({ onClose, onComplete }) {
         </div>
 
         <div className="dev-wizard-steps">
-          {["Identify","Pick device","Assign","Saved"].map((l, i) => {
+          {["Identify","DevEUI","Assign","Saved"].map((l, i) => {
             const n = i + 1;
             const cls = step === n ? "on" : step > n ? "done" : "";
             return (
@@ -6973,109 +8003,77 @@ function AddHangerWizard({ onClose, onComplete }) {
                 <button className={"dev-mode" + (mode === "type" ? " on" : "")} onClick={() => setMode("type")}>
                   <div className="dev-mode-ico"><Icon name="edit" size={16} /></div>
                   <div className="dev-mode-l">Type DevEUI</div>
-                  <div className="dev-mode-h">Punch in the BOR-format ID printed on the sticker. Useful when the hanger is already on the rack and you're sitting at a desk.</div>
+                  <div className="dev-mode-h">Punch in the ID printed under the QR code on the back of the hanger. It registers straight away.</div>
                 </button>
-                <button className={"dev-mode" + (mode === "ble" ? " on" : "")} onClick={() => setMode("ble")}>
+                <button className="dev-mode" disabled style={{ opacity: .55, cursor: "default" }}>
                   <div className="dev-mode-ico"><Icon name="activity" size={16} /></div>
                   <div className="dev-mode-l">Discover nearby</div>
-                  <div className="dev-mode-h">Find any unprovisioned hanger within Bluetooth range of this phone — no typing. Best when you have the hanger in hand.</div>
+                  <div className="dev-mode-h">Bluetooth discovery needs the HazardLink mobile app. A web browser cannot scan for devices, so use the phone for this one.</div>
                 </button>
               </div>
             </React.Fragment>
           )}
 
-          {step === 2 && mode === "type" && (
+          {step === 2 && (
             <React.Fragment>
               <div className="dev-step-h">Enter the DevEUI</div>
-              <p className="dev-step-p">Printed under the QR code on the back of the hanger. Format is BOR followed by 16 hex characters.</p>
+              <p className="dev-step-p">Printed under the QR code on the back of the hanger, also shown on its boot screen. Either BOR plus 13 hex characters, or a plain 16 hex character LoRaWAN ID.</p>
               <div className="ai-field">
                 <label>DevEUI</label>
                 <input className="dv-input" autoFocus value={devEUI}
                   onChange={(e) => setDevEUI(e.target.value.toUpperCase())}
                   style={{ fontFamily: "var(--mono)", letterSpacing: ".05em" }}
-                  placeholder="HGR-B0R-XXXX-XXXX-XXXX" />
-                <div className="ai-hint" style={{ color: devEUI.length >= 12 ? "var(--ok)" : "var(--ink-3)" }}>
-                  <Icon name={devEUI.length >= 12 ? "checkCircle" : "info"} size={11} />
-                  {devEUI.length >= 12 ? "Looks valid" : "16 hex characters · prefix BOR"}
+                  placeholder="BOR3C0F02EADB342" />
+                <div className="ai-hint" style={{ color: devEuiOk ? "var(--ok)" : "var(--ink-3)" }}>
+                  <Icon name={devEuiOk ? "checkCircle" : "info"} size={11} />
+                  {devEuiOk ? "Looks valid" : "BOR + 13 hex characters, or 16 hex characters"}
                 </div>
               </div>
-            </React.Fragment>
-          )}
-
-          {step === 2 && mode === "ble" && (
-            <React.Fragment>
-              <div className="dev-step-h">Discover nearby</div>
-              <p className="dev-step-p">Hold a powered hanger close to your phone. Press its button once to put it in pairing mode — it'll appear in the list below.</p>
-              {scanning ? (
-                <div className="dev-scan">
-                  <div className="dev-scan-pulse"><Icon name="activity" size={16} /></div>
-                  <div>
-                    <b>Scanning for unprovisioned hangers</b>
-                    <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Bluetooth, within 5 m</div>
-                  </div>
-                </div>
-              ) : (
-                <div className="dev-ble-list">
-                  {bleCandidates.map((b) => (
-                    <button key={b.id}
-                      className={"dev-ble-row" + (picked && picked.id === b.id ? " on" : "")}
-                      onClick={() => setPicked(b)}>
-                      <div className="dev-ble-ico"><Icon name="droplet" size={14} /></div>
-                      <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                        <div className="dev-ble-name">{b.short}</div>
-                        <div className="dev-ble-meta" style={{ fontFamily: "var(--mono)" }}>{b.id.slice(0, 20)}…</div>
-                      </div>
-                      <div className="dev-ble-sig">
-                        <div style={{ fontSize: 11, color: "var(--ok)", fontWeight: 700 }}>{b.batt}%</div>
-                        <div style={{ fontSize: 10.5, color: "var(--ink-3)" }}>RSSI {b.rssi}</div>
-                      </div>
-                    </button>
-                  ))}
-                  <button className="dev-ble-rescan" onClick={() => setScanning(true)}>
-                    <Icon name="activity" size={12} />Re-scan
-                  </button>
-                </div>
-              )}
             </React.Fragment>
           )}
 
           {step === 3 && (
             <React.Fragment>
-              <div className="dev-step-h">Assign to site, floor and zone</div>
-              <p className="dev-step-p">Where does this hanger live? You can refine the exact spot on the floor plan after saving.</p>
-              <div className="vm-grid">
-                <div className="ai-field"><label>Site / building</label>
-                  <select className="dv-input" value={building} onChange={(e) => setBuilding(e.target.value)}>
-                    {HL.deviceBuildings.map((b) => <option key={b.id}>{b.name}</option>)}
-                  </select>
+              <div className="dev-step-h">Assign to a building, floor and zone</div>
+              <p className="dev-step-p">Where does this hanger live? You can skip this and assign it later from the device list.</p>
+              {buildings === null && (
+                <p className="dev-step-p" style={{ color: "var(--ink-3)" }}>Loading your buildings…</p>
+              )}
+              {buildings === false && (
+                <p className="dev-step-p" style={{ color: "var(--warn)" }}>Could not load your buildings. You can still register now and assign later.</p>
+              )}
+              {Array.isArray(buildings) && (
+                <div className="vm-grid">
+                  {pickerRow("Building", buildings, buildingId, setBuildingId, "building", buildings.length ? "Pick a building (optional)" : "No buildings yet", false)}
+                  {pickerRow("Floor", floors, floorId, setFloorId, "floor", buildingId ? "Pick a floor" : "Pick a building first", !buildingId)}
+                  {pickerRow("Zone", zones, zoneId, setZoneId, "zone", floorId ? "Pick a zone" : "Pick a floor first", !floorId)}
+                  <div className="ai-field">
+                    <label>Audible alarm</label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink-2)", cursor: "pointer", paddingTop: 8 }}>
+                      <input type="checkbox" checked={audible} onChange={(e) => setAudible(e.target.checked)} />
+                      Sound the buzzer when the sign is lifted
+                    </label>
+                  </div>
                 </div>
-                <div className="ai-field"><label>Floor</label>
-                  <select className="dv-input" value={floor} onChange={(e) => setFloor(e.target.value)}>
-                    <option>Basement</option><option>Ground floor</option>
-                    <option>Level 1</option><option>Level 2</option><option>Level 3</option>
-                    <option>Roof</option>
-                  </select>
-                </div>
-                <div className="ai-field" style={{ gridColumn: "span 2" }}>
-                  <label>Zone label <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>(what staff will read on the plan)</span></label>
-                  <input className="dv-input" value={zone} onChange={(e) => setZone(e.target.value)}
-                    placeholder="e.g. Aisle 6, Reception lobby, Pool deck north" autoFocus />
-                </div>
-              </div>
+              )}
               <div className="dev-gw-hint">
                 <Icon name="info" size={12} />
-                Will report through <b>{HL_LIVE.gatewayForHanger("preview-" + building, building)}</b>
-                <span>(the nearest LoRa gateway in {building})</span>
+                {gwForBuilding
+                  ? <React.Fragment>Will report through <b>{gwForBuilding.name || ("Gateway " + (gwForBuilding.devEui || "").slice(-4))}</b><span>(the LoRa gateway in that building)</span></React.Fragment>
+                  : buildingId
+                    ? <React.Fragment>No gateway in that building yet<span>it still registers now and reports once one is online</span></React.Fragment>
+                    : <React.Fragment>No zone picked<span>it registers as unassigned and you can place it later</span></React.Fragment>}
               </div>
+              {err && <p style={{ marginTop: 10, fontSize: 12.5, color: "var(--crit)" }}>{err}</p>}
             </React.Fragment>
           )}
 
           {step === 4 && (
             <div style={{ textAlign: "center", padding: "12px 0" }}>
               <div className="mic-orb" style={{ width: 72, height: 72, background: "var(--ok)" }}><Icon name="checkCircle" size={28} /></div>
-              <h3 style={{ margin: "16px 0 6px", fontSize: 17, fontFamily: "var(--font-head)" }}>Hanger added</h3>
+              <h3 style={{ margin: "16px 0 6px", fontSize: 17, fontFamily: "var(--font-head)" }}>Hanger registered</h3>
               <p style={{ fontSize: 13, color: "var(--ink-2)", margin: "0 auto", maxWidth: 400, lineHeight: 1.55 }}>
-                Saved to {building} · {floor}. It's now waiting as an <b>unplaced pin</b> in Floor plans — open the plan editor and drop it onto the spot where the sign lives.
+                <span style={{ fontFamily: "var(--mono)" }}>{saved && saved.devEui}</span> is saved{zoneId ? " to its zone" : " without a zone, assign one from its detail panel when you are ready"}. It shows Offline until its first check-in arrives.
               </p>
             </div>
           )}
@@ -7083,26 +8081,25 @@ function AddHangerWizard({ onClose, onComplete }) {
 
         <div className="modal-foot">
           {step > 1 && step < 4 && (
-            <button className="btn" onClick={() => setStep(step - 1)}>Back</button>
+            <button className="btn" onClick={() => { setErr(null); setStep(step - 1); }}>Back</button>
           )}
           {step === 1 && (
             <React.Fragment>
               <button className="btn" onClick={onClose}>Cancel</button>
-              <button className="btn btn-primary" disabled={!mode} style={{ opacity: mode ? 1 : .5 }}
+              <button className="btn btn-primary" disabled={mode !== "type"} style={{ opacity: mode === "type" ? 1 : .5 }}
                 onClick={() => setStep(2)}>Next<Icon name="chevronRight" size={14} /></button>
             </React.Fragment>
           )}
           {step === 2 && (
-            <button className="btn btn-primary"
-              disabled={mode === "type" ? devEUI.length < 12 : !picked}
-              style={{ opacity: (mode === "type" ? devEUI.length >= 12 : !!picked) ? 1 : .5 }}
+            <button className="btn btn-primary" disabled={!devEuiOk}
+              style={{ opacity: devEuiOk ? 1 : .5 }}
               onClick={() => setStep(3)}>Next<Icon name="chevronRight" size={14} /></button>
           )}
           {step === 3 && (
-            <button className="btn btn-primary" disabled={!zone.trim()}
-              style={{ opacity: zone.trim() ? 1 : .5 }}
-              onClick={() => { setStep(4); finish(); }}>
-              <Icon name="check" size={14} />Save hanger
+            <button className="btn btn-primary" disabled={busy}
+              style={{ opacity: busy ? .5 : 1 }}
+              onClick={submit}>
+              <Icon name="check" size={14} />{busy ? "Registering…" : zoneId ? "Register hanger" : "Register, assign later"}
             </button>
           )}
           {step === 4 && (
@@ -7115,63 +8112,170 @@ function AddHangerWizard({ onClose, onComplete }) {
 }
 
 /* ============================================================
-   Map: hanger id → its sign state via floor-plan data
+   Main view — real gateways + hangers grouped by real building
    ============================================================ */
-const HGR_PIN_MAP = (() => {
-  const m = {};
-  HL.floorPlanSites.forEach((s) => s.floors.forEach((f) => f.pins.forEach((p) => { m[p.id] = p; })));
-  return m;
-})();
-function signStateFor(d) {
-  if (d.type !== "Hanger") return null;
-  if (!d.online) return { dot:"offline",  label:"Sign offline" };
-  const pin = HGR_PIN_MAP[d.id];
-  if (pin && pin.state === "deployed") return { dot:"deployed", label:"Sign lifted" };
-  return { dot:"cleared", label:"Sign on rack" };
-}
+function DevicesView({ go }) {
+  const siteCtx = React.useContext(SiteContext) || {};
+  const activeSite = siteCtx.site || null;
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const isAdmin = me.role === "admin";
+  const isStaff = isAdmin || me.role === "supervisor";
 
-/* ============================================================
-   Main view
-   ============================================================ */
-function DevicesView() {
-  const D = useSiteData();
-  const live = useHLLive();
-  const buildings = D.deviceBuildings;
-  const [filter, setFilter]   = React.useState("All");
+  const [phase, setPhase]         = React.useState("loading"); // loading | error | ready
+  const [gateways, setGateways]   = React.useState([]);
+  const [hangers, setHangers]     = React.useState([]);
+  const [buildings, setBuildings] = React.useState([]);
+  const [tree, setTree] = React.useState({ floorById: {}, zoneById: {}, floorsByBuilding: {}, zonesByFloor: {}, loaded: false });
+  const [lowBatt, setLowBatt]     = React.useState(20);
+  const [filter, setFilter]       = React.useState("All");
   const [wizardOpen, setWizardOpen] = React.useState(null); // "gateway" | "hanger"
-  const [detail, setDetail]   = React.useState(null);
+  const [detail, setDetail]       = React.useState(null);   // { kind, id }
+  const [recentIds, setRecentIds] = React.useState({});     // hangers registered this session
   const { showToast, toastNode } = useViewToast();
 
-  /* Merge added devices into the per-building listing.
-     Only show added devices whose building is currently visible. */
-  const mergedBuildings = React.useMemo(() => {
-    return buildings.map((b) => {
-      const extras = [
-        ...live.addedGateways.filter((g) => g.building === b.name),
-        ...live.addedHangers .filter((h) => h.building === b.name),
-      ];
-      return { ...b, devices: [...extras, ...b.devices] };
-    });
-  }, [buildings, live.addedGateways.length, live.addedHangers.length]);
+  const refreshAll = React.useCallback((silent) => {
+    return Promise.all([hlApi("/gateways"), hlApi("/hangers"), hlApi("/buildings")])
+      .then(([g, h, b]) => {
+        if (!g.ok || !h.ok || !b.ok) {
+          setPhase((p) => (p === "ready" ? "ready" : "error"));
+          return;
+        }
+        const bl = (b.b && b.b.buildings) || [];
+        setGateways((g.b && g.b.gateways) || []);
+        setHangers((h.b && h.b.hangers) || []);
+        setBuildings(bl);
+        /* Resolve the buildings → floors → zones tree so hangers (which only
+           carry a zoneId) can be grouped under their real building. A tree
+           failure is not fatal, the devices just group as unassigned. */
+        const floorById = {}, zoneById = {}, floorsByBuilding = {}, zonesByFloor = {};
+        return Promise.all(bl.map((bd) =>
+          hlApi("/buildings/" + bd.id + "/floors").then((fr) => {
+            const floors = (fr.ok && fr.b && fr.b.floors) || [];
+            floorsByBuilding[bd.id] = floors.slice().sort((a, x) => a.orderIndex - x.orderIndex);
+            return Promise.all(floors.map((f) => {
+              floorById[f.id] = f;
+              return hlApi("/floors/" + f.id + "/zones").then((zr) => {
+                const zs = (zr.ok && zr.b && zr.b.zones) || [];
+                zonesByFloor[f.id] = zs;
+                zs.forEach((z) => { zoneById[z.id] = z; });
+              });
+            }));
+          })
+        )).then(() => {
+          setTree({ floorById, zoneById, floorsByBuilding, zonesByFloor, loaded: true });
+        }).catch(() => {}).then(() => { setPhase("ready"); });
+      })
+      .catch(() => { setPhase((p) => (p === "ready" ? "ready" : "error")); });
+  }, []);
 
-  const all = mergedBuildings.flatMap((b) => b.devices.map((d) => ({ ...d, _building: b.name })));
+  React.useEffect(() => {
+    refreshAll();
+    const t = setInterval(() => refreshAll(true), 20000); // keep online/offline fresh
+    return () => clearInterval(t);
+  }, [refreshAll]);
+
+  React.useEffect(() => {
+    if (!isStaff) return; // GET /settings is admin/supervisor only
+    hlApi("/settings").then(({ ok, b }) => {
+      if (ok && b && typeof b.lowBatteryThreshold === "number") setLowBatt(b.lowBatteryThreshold);
+    });
+  }, [isStaff]);
+
+  /* ── Normalise into row models ── */
+  const now = Date.now();
+
+  const gwRows = gateways.map((g) => {
+    const online = !!(g.lastSeenAt && now - new Date(g.lastSeenAt).getTime() <= DV_GW_ONLINE_MS);
+    const linked = hangers.filter((h) => h.reportsViaGatewayId === g.id).length;
+    const flags = [];
+    if (!g.buildingId) flags.push({ label: "No building set", tone: "accent" });
+    return {
+      kind: "gateway", id: g.id, raw: g,
+      label: g.name || ("Gateway " + (g.devEui || "").slice(-4)),
+      devEui: g.devEui,
+      statusKey: online ? "online" : "offline",
+      statusLabel: online ? "Online" : "Offline",
+      statusTone: online ? "ok" : "crit",
+      online, mains: true, battery: null,
+      bars: dvBarsFromRssi(g.rssi), rssi: g.rssi,
+      lastSeenAt: g.lastSeenAt,
+      buildingId: g.buildingId || null,
+      whereLabel: g.locationNote || "Location note not set",
+      linked, flags,
+    };
+  });
+
+  const hgRows = hangers.map((h) => {
+    const zone  = h.zoneId ? tree.zoneById[h.zoneId] : null;
+    const floor = zone ? tree.floorById[zone.floorId] : null;
+    const online = !!(h.lastSeenAt && now - new Date(h.lastSeenAt).getTime() <= DV_HGR_ONLINE_MS);
+    const statusKey = h.status === "out_of_service" ? "out_of_service"
+      : h.status === "decommissioned" ? "decommissioned"
+      : online ? "online" : "offline";
+    const statusMeta = {
+      online:          { label: "Online",         tone: "ok" },
+      offline:         { label: "Offline",        tone: "crit" },
+      out_of_service:  { label: "Out of service", tone: "warn" },
+      decommissioned:  { label: "Decommissioned", tone: "muted" },
+    }[statusKey];
+    const lowBattery = h.batteryPct !== null && h.batteryPct !== undefined && h.batteryPct <= lowBatt;
+    const flags = [];
+    if (lowBattery) flags.push({ label: "Low battery", tone: "warn" });
+    if (statusKey === "out_of_service") flags.push({ label: "Out of service", tone: "warn" });
+    if (statusKey === "decommissioned") flags.push({ label: "Decommissioned", tone: "muted" });
+    if (!h.zoneId && statusKey !== "decommissioned") flags.push({ label: "No zone assigned", tone: "accent" });
+    return {
+      kind: "hanger", id: h.id, raw: h,
+      label: h.name || h.devEui,
+      devEui: h.devEui,
+      statusKey, statusLabel: statusMeta.label, statusTone: statusMeta.tone,
+      online, mains: false, battery: h.batteryPct,
+      bars: dvBarsFromRssi(h.rssi), rssi: h.rssi,
+      lastSeenAt: h.lastSeenAt, lastLiftedAt: h.lastLiftedAt,
+      buildingId: floor ? floor.buildingId : null,
+      zoneId: h.zoneId || null,
+      zoneName: zone ? zone.name : null,
+      floorName: floor ? floor.name : null,
+      whereLabel: zone
+        ? (floor ? floor.name + " · " : "") + zone.name + (h.locationNote ? " · " + h.locationNote : "")
+        : (h.locationNote || "No zone assigned"),
+      gwName: h.reportsViaGatewayName || null,
+      flags,
+      isNew: !!recentIds[h.id],
+    };
+  });
+
+  const allRows = [...gwRows, ...hgRows];
+
+  /* Group by real building; anything unresolved goes to Unassigned. */
+  let groups = buildings.map((b) => ({
+    id: b.id, name: b.name,
+    devices: [
+      ...gwRows.filter((r) => r.buildingId === b.id),
+      ...hgRows.filter((r) => r.buildingId === b.id),
+    ],
+  }));
+  const orphans = allRows.filter((r) => !r.buildingId);
+  if (orphans.length > 0) groups.push({ id: "unassigned", name: "Not assigned to a building", devices: orphans });
+  if (activeSite) groups = groups.filter((g2) => g2.id === activeSite.id);
+
+  const visible = groups.flatMap((g2) => g2.devices);
   const counts = {
-    online:  all.filter((d) => d.online).length,
-    offline: all.filter((d) => !d.online).length,
-    lowBat:  all.filter((d) => d.battery !== null && d.battery !== undefined && d.battery < 20).length,
-    flagged: all.filter((d) => (d.flags || []).length > 0).length,
-    hgr:     all.filter((d) => d.type === "Hanger").length,
-    gw:      all.filter((d) => d.type === "Gateway").length,
-    unplaced: live.addedHangers.filter((h) => !h.placed).length,
+    online:   visible.filter((r) => r.statusKey === "online").length,
+    offline:  visible.filter((r) => r.statusKey === "offline").length,
+    lowBat:   visible.filter((r) => r.kind === "hanger" && r.battery !== null && r.battery !== undefined && r.battery <= lowBatt).length,
+    hgr:      visible.filter((r) => r.kind === "hanger").length,
+    gw:       visible.filter((r) => r.kind === "gateway").length,
+    unzoned:  visible.filter((r) => r.kind === "hanger" && !r.zoneId && r.statusKey !== "decommissioned").length,
   };
 
-  const filterMatch = (d) => {
+  const filterMatch = (r) => {
     switch (filter) {
       case "All":      return true;
-      case "Hangers":  return d.type === "Hanger";
-      case "Gateways": return d.type === "Gateway";
-      case "Offline":  return !d.online;
-      case "Flagged":  return (d.flags || []).length > 0;
+      case "Hangers":  return r.kind === "hanger";
+      case "Gateways": return r.kind === "gateway";
+      case "Offline":  return r.statusKey === "offline";
+      case "Flagged":  return r.flags.length > 0;
       default: return true;
     }
   };
@@ -7179,24 +8283,48 @@ function DevicesView() {
   const tabs = ["All", "Hangers", "Gateways", "Offline", "Flagged"];
   const grid = "1.5fr 120px 110px 140px 130px 130px";
 
-  const onAdded = (kind, dev) => {
-    showToast(kind === "gateway"
-      ? `${dev.id} registered · ${dev.building} now has +1 gateway`
-      : `${dev.id} added · drop it on the floor plan to finish`);
-    setWizardOpen(null);
+  const onHangerRegistered = (h) => {
+    setRecentIds((prev) => ({ ...prev, [h.id]: true }));
+    showToast((h.name || h.devEui) + " registered");
+    refreshAll(true);
   };
+
+  const detailRow = detail ? allRows.find((r) => r.kind === detail.kind && r.id === detail.id) : null;
+
+  if (phase === "loading") {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Loading your devices…</div>
+      </div>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color: "var(--warn)", fontSize: 13.5 }}>
+          Could not load your devices.
+          <button className="btn" style={{ marginLeft: 12 }} onClick={() => { setPhase("loading"); refreshAll(); }}>Try again</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-inner">
       {wizardOpen === "gateway" && (
-        <AddGatewayWizard onClose={() => setWizardOpen(null)}
-          onComplete={(g) => onAdded("gateway", g)} />
+        <AddGatewayWizard onClose={() => setWizardOpen(null)} gatewayCount={gateways.length} />
       )}
       {wizardOpen === "hanger" && (
-        <AddHangerWizard onClose={() => setWizardOpen(null)}
-          onComplete={(h) => onAdded("hanger", h)} />
+        <AddHangerWizard onClose={() => setWizardOpen(null)} onDone={onHangerRegistered} gateways={gateways} />
       )}
-      {detail && <DeviceDetailPanel device={detail} onClose={() => setDetail(null)} />}
+      {detailRow && (
+        <DeviceDetailPanel key={detailRow.kind + detailRow.id}
+          device={detailRow} buildings={buildings} tree={tree}
+          isAdmin={isAdmin} isStaff={isStaff} go={go}
+          onClose={() => setDetail(null)}
+          onChanged={() => refreshAll(true)}
+          showToast={showToast} />
+      )}
 
       <div className="page-head">
         <div>
@@ -7211,7 +8339,10 @@ function DevicesView() {
           <button className="btn" onClick={() => setWizardOpen("gateway")}>
             <Icon name="monitor" size={15} />Add gateway
           </button>
-          <button className="btn btn-primary" onClick={() => setWizardOpen("hanger")}>
+          <button className="btn btn-primary" disabled={!isAdmin}
+            style={{ opacity: isAdmin ? 1 : .5 }}
+            title={isAdmin ? undefined : "Registering hangers needs an admin login"}
+            onClick={() => isAdmin && setWizardOpen("hanger")}>
             <Icon name="plus" size={15} />Add hanger
           </button>
         </div>
@@ -7220,23 +8351,23 @@ function DevicesView() {
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}><Icon name="activity" size={16} /></div><span className="kpi-label">Devices online</span></div>
-          <div className="kpi-val">{counts.online}<small>/{all.length}</small></div>
+          <div className="kpi-val">{counts.online}<small>/{visible.length}</small></div>
           <div className="kpi-foot">{counts.gw} gateways · {counts.hgr} hangers</div>
         </div>
         <div className="kpi" style={{ borderColor: counts.offline ? "var(--crit)" : "" }}>
           <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("crit"), color: solid("crit") }}><Icon name="alertCircle" size={16} /></div><span className="kpi-label">Offline</span></div>
           <div className="kpi-val" style={{ color: counts.offline ? "var(--crit)" : "" }}>{counts.offline}</div>
-          <div className="kpi-foot">not seen for &gt;15 min</div>
+          <div className="kpi-foot">past their check-in window</div>
         </div>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="alertTri" size={16} /></div><span className="kpi-label">Low battery</span></div>
           <div className="kpi-val" style={{ color: counts.lowBat ? "var(--warn)" : "" }}>{counts.lowBat}</div>
-          <div className="kpi-foot">hangers below 20%</div>
+          <div className="kpi-foot">hangers at or below {lowBatt}%</div>
         </div>
-        <div className="kpi" style={{ borderColor: counts.unplaced ? "var(--accent)" : "" }}>
-          <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("accent"), color: solid("accent") }}><Icon name="mapPin" size={16} /></div><span className="kpi-label">Unplaced hangers</span></div>
-          <div className="kpi-val" style={{ color: counts.unplaced ? "var(--accent)" : "" }}>{counts.unplaced}</div>
-          <div className="kpi-foot">drop onto floor plan</div>
+        <div className="kpi" style={{ borderColor: counts.unzoned ? "var(--accent)" : "" }}>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("accent"), color: solid("accent") }}><Icon name="mapPin" size={16} /></div><span className="kpi-label">Unassigned hangers</span></div>
+          <div className="kpi-val" style={{ color: counts.unzoned ? "var(--accent)" : "" }}>{counts.unzoned}</div>
+          <div className="kpi-foot">no zone assigned yet</div>
         </div>
       </div>
 
@@ -7247,16 +8378,33 @@ function DevicesView() {
           ))}
         </div>
         <div style={{ marginLeft:"auto", fontSize:12.5, color:"var(--ink-3)" }}>
-          {all.filter(filterMatch).length} of {all.length} devices
+          {visible.filter(filterMatch).length} of {visible.length} devices
         </div>
       </div>
 
-      {mergedBuildings.map((b) => {
+      {visible.length === 0 && (
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+          <div style={{ fontWeight: 700, color: "var(--ink-2)", marginBottom: 6 }}>
+            {activeSite ? "No devices at " + activeSite.name + " yet" : "No devices yet"}
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--ink-3)", maxWidth: 480, margin: "0 auto 14px", lineHeight: 1.5 }}>
+            Plug in a gateway and pair it from the mobile app, it registers itself here.
+            Hangers can be registered right now by typing their DevEUI.
+          </div>
+          {isAdmin && (
+            <button className="btn btn-primary" onClick={() => setWizardOpen("hanger")}>
+              <Icon name="plus" size={15} />Register a hanger
+            </button>
+          )}
+        </div>
+      )}
+
+      {groups.map((b) => {
         const rows = b.devices.filter(filterMatch);
         if (rows.length === 0) return null;
-        const onlineCount = b.devices.filter((d) => d.online).length;
-        const buildingHangers = b.devices.filter((d) => d.type === "Hanger").length;
-        const buildingGateways = b.devices.filter((d) => d.type === "Gateway");
+        const onlineCount = b.devices.filter((r) => r.statusKey === "online").length;
+        const buildingHangers = b.devices.filter((r) => r.kind === "hanger").length;
+        const buildingGateways = b.devices.filter((r) => r.kind === "gateway").length;
         return (
           <div key={b.id} className="card" style={{ marginBottom:14 }}>
             <div className="card-head">
@@ -7264,7 +8412,7 @@ function DevicesView() {
               <h3 style={{ margin:0 }}>{b.name}</h3>
               <span className="sub">{onlineCount}/{b.devices.length} online</span>
               <span className="head-act">
-                <Pill tone="muted">{buildingHangers} hangers · {buildingGateways.length} gateways</Pill>
+                <Pill tone="muted">{buildingHangers} hangers · {buildingGateways} gateways</Pill>
               </span>
             </div>
 
@@ -7272,78 +8420,150 @@ function DevicesView() {
               <div>Device</div><div>Type</div><div>Status</div><div>Battery</div><div>Signal</div><div>Last seen</div>
             </div>
 
-            {rows.map((d) => {
-              const signState = signStateFor(d);
-              const isAdded = d.addedAt === "just now" || live.addedHangers.find((h) => h.id === d.id) || live.addedGateways.find((g) => g.id === d.id);
-              const unplaced = d.type === "Hanger" && live.addedHangers.find((h) => h.id === d.id && !h.placed);
-              const heard = d.type === "Gateway" ? HL_LIVE.hangersHeardBy(d.id, b.name) : null;
-              const reportsThrough = d.type === "Hanger" ? HL_LIVE.gatewayForHanger(d.id, b.name) : null;
-              return (
-              <div className="dv-row" key={d.id} style={{ gridTemplateColumns:grid, cursor:"pointer" }} onClick={() => setDetail({ ...d, _building: b.name, _heard: heard, _reportsThrough: reportsThrough })}>
+            {rows.map((d) => (
+              <div className="dv-row" key={d.kind + d.id} style={{ gridTemplateColumns:grid, cursor:"pointer" }}
+                onClick={() => setDetail({ kind: d.kind, id: d.id })}>
                 <div className="dv-cell-dev">
-                  <span className={"dv-ico dv-" + d.type.toLowerCase()}>
-                    <Icon name={d.type === "Gateway" ? "monitor" : "droplet"} size={14} />
+                  <span className={"dv-ico dv-" + d.kind}>
+                    <Icon name={d.kind === "gateway" ? "monitor" : "droplet"} size={14} />
                   </span>
                   <div style={{ minWidth:0 }}>
-                    <div className="dv-id">{d.id}
-                      {isAdded && <span className="dv-new-pill">NEW</span>}
+                    <div className="dv-id">{d.label}
+                      {d.isNew && <span className="dv-new-pill">NEW</span>}
                     </div>
-                    <div className="dv-where">{d.room || d.zone || "—"}</div>
+                    <div className="dv-where">{d.whereLabel}</div>
                     <div className="dv-hw">
-                      {d.type === "Gateway"
-                        ? <React.Fragment>Mains LoRa gateway · {d.ssid ? <span style={{ fontFamily: "var(--mono)" }}>{d.ssid}</span> : "site WiFi"}</React.Fragment>
-                        : <React.Fragment>Heltec ESP32 · Hall-effect sensor{reportsThrough && <span> · via <b style={{ color: "var(--ink-2)", fontFamily: "var(--mono)" }}>{reportsThrough}</b></span>}</React.Fragment>}
+                      {d.kind === "gateway"
+                        ? <React.Fragment>Mains LoRa gateway · <span style={{ fontFamily: "var(--mono)" }}>{d.devEui}</span>{d.raw.ssid ? <React.Fragment> · {d.raw.ssid}</React.Fragment> : null}</React.Fragment>
+                        : <React.Fragment>Hall-effect sign sensor · <span style={{ fontFamily: "var(--mono)" }}>{d.devEui}</span>{d.gwName && <span> · via <b style={{ color: "var(--ink-2)" }}>{d.gwName}</b></span>}</React.Fragment>}
                     </div>
-                    {(d.flags || []).length > 0 && (
+                    {d.flags.length > 0 && (
                       <div className="dv-flags">
                         {d.flags.map((f) => (
-                          <Pill key={f} tone={f.startsWith("Anti-theft") ? "crit" : f === "Low battery" ? "warn" : "muted"} dot>{f}</Pill>
+                          <Pill key={f.label} tone={f.tone} dot>{f.label}</Pill>
                         ))}
-                      </div>
-                    )}
-                    {unplaced && (
-                      <div className="dv-flags">
-                        <Pill tone="accent" dot>Unplaced — drop on plan</Pill>
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="dv-type-cell">
-                  {d.type}
-                  {d.type === "Hanger" && signState && (
+                  {d.kind === "gateway" ? "Gateway" : "Hanger"}
+                  {d.kind === "hanger" && (
                     <div className="dv-sign-state">
-                      <span className={"pin-dot " + signState.dot} />{signState.label}
+                      <span className={"pin-dot " + (d.statusKey === "offline" ? "offline" : "cleared")} />
+                      {d.lastLiftedAt ? "Lifted " + dvRelTime(d.lastLiftedAt) : "Never lifted"}
                     </div>
                   )}
-                  {d.type === "Gateway" && heard != null && (
+                  {d.kind === "gateway" && (
                     <div className="dv-sign-state">
-                      <Icon name="activity" size={11} />{heard} hangers heard
+                      <Icon name="activity" size={11} />
+                      {d.linked === 1 ? "1 hanger reports via it" : d.linked + " hangers report via it"}
                     </div>
                   )}
                 </div>
                 <div>
-                  <Pill tone={d.online ? "ok" : "crit"} dot>{d.online ? "Online" : "Offline"}</Pill>
+                  <Pill tone={d.statusTone} dot>{d.statusLabel}</Pill>
                 </div>
-                <div><Battery pct={d.battery} /></div>
-                <div><SignalBars signal={d.signal} /></div>
-                <div className="dv-last">{d.lastSeen || d.addedAt || "—"}</div>
+                <div><Battery pct={d.battery} mains={d.mains} /></div>
+                <div><SignalBars bars={d.bars} rssi={d.rssi} /></div>
+                <div className="dv-last">{dvRelTime(d.lastSeenAt)}</div>
               </div>
-              );
-            })}
+            ))}
           </div>
         );
       })}
+
+      {toastNode}
     </div>
   );
 }
 
 /* ============================================================
-   Device detail panel — now shows a mocked OLED screen
+   Device detail panel — real state, rename/relocate (PATCH),
+   remove (DELETE with confirm).
    ============================================================ */
-function DeviceDetailPanel({ device, onClose }) {
+function DeviceDetailPanel({ device, buildings, tree, isAdmin, isStaff, go, onClose, onChanged, showToast }) {
   const d = device;
-  const isGW = d.type === "Gateway";
-  const lifted = !isGW && (HGR_PIN_MAP[d.id] && HGR_PIN_MAP[d.id].state === "deployed");
+  const isGW = d.kind === "gateway";
+  const canEdit = isGW ? isAdmin : isStaff;   // backend: gateway PATCH admin, hanger PATCH admin+supervisor
+  const canDelete = isAdmin;                  // both DELETEs are admin only
+
+  /* Edit form state, initialised from the live record */
+  const zone0  = !isGW && d.zoneId ? tree.zoneById[d.zoneId] : null;
+  const floor0 = zone0 ? tree.floorById[zone0.floorId] : null;
+  const [name, setName] = React.useState(d.raw.name || "");
+  const [note, setNote] = React.useState(d.raw.locationNote || "");
+  const [buildingId, setBuildingId] = React.useState(isGW ? (d.raw.buildingId || "") : (floor0 ? floor0.buildingId : ""));
+  const [floorId, setFloorId] = React.useState(floor0 ? floor0.id : "");
+  const [zoneId, setZoneId] = React.useState(!isGW ? (d.raw.zoneId || "") : "");
+  const [audible, setAudible] = React.useState(!isGW && !!d.raw.audibleAlarmEnabled);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr]   = React.useState(null);
+
+  const floors = buildingId ? (tree.floorsByBuilding[buildingId] || []) : [];
+  const zones  = floorId ? (tree.zonesByFloor[floorId] || []) : [];
+
+  const dirty = isGW
+    ? (name.trim() !== (d.raw.name || "") || (buildingId || "") !== (d.raw.buildingId || "") || note.trim() !== (d.raw.locationNote || ""))
+    : (name.trim() !== (d.raw.name || "") || note.trim() !== (d.raw.locationNote || "") || (zoneId || "") !== (d.raw.zoneId || "") || audible !== !!d.raw.audibleAlarmEnabled);
+
+  const save = () => {
+    if (busy || !dirty) return;
+    setBusy(true); setErr(null);
+    const body = isGW
+      ? {
+          buildingId: buildingId || null,
+          locationNote: note.trim() || null,
+          // Backend rejects an empty gateway name, so only send it when set.
+          ...(name.trim() ? { name: name.trim() } : {}),
+        }
+      : {
+          name: name.trim(),
+          locationNote: note.trim() || null,
+          zoneId: zoneId || null,
+          audibleAlarmEnabled: audible,
+        };
+    hlApi((isGW ? "/gateways/" : "/hangers/") + d.id, { method: "PATCH", body })
+      .then(({ ok, status }) => {
+        if (!ok) {
+          setErr(status === 403 ? "Your login cannot edit this device." : "Could not save the changes. Try again.");
+          return;
+        }
+        showToast(isGW ? "Gateway updated" : "Hanger updated");
+        onChanged();
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const remove = () => {
+    if (busy) return;
+    const msg = isGW
+      ? "Remove " + d.label + "? It disappears from your organisation. If the box stays powered, its next heartbeat can register it again."
+      : "Delete " + d.label + " permanently? This also deletes its alert and event history.";
+    if (!window.confirm(msg)) return;
+    setBusy(true); setErr(null);
+    hlApi((isGW ? "/gateways/" : "/hangers/") + d.id, { method: "DELETE" })
+      .then(({ ok, status }) => {
+        if (!ok) {
+          setErr(status === 403 ? "Only admins can remove devices." : "Could not remove it. Try again.");
+          return;
+        }
+        showToast(d.label + " removed");
+        onClose();
+        onChanged();
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const zonePath = (() => {
+    if (!zone0) return "Unassigned";
+    const bName = floor0 ? (buildings.find((b) => b.id === floor0.buildingId) || {}).name : null;
+    return [bName, floor0 && floor0.name, zone0.name].filter(Boolean).join(" · ");
+  })();
+  const gwBuildingName = isGW
+    ? ((buildings.find((b) => b.id === d.raw.buildingId) || {}).name || "Unassigned")
+    : null;
+
   return (
     <React.Fragment>
       <div className="panel-overlay" onClick={onClose} />
@@ -7353,44 +8573,133 @@ function DeviceDetailPanel({ device, onClose }) {
             <Icon name={isGW ? "monitor" : "droplet"} size={17} />
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="panel-title">{d.id}</div>
-            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>{d.type} · {d.room || d.zone || "—"} · {d._building || d.building}</div>
+            <div className="panel-title">{d.label}</div>
+            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>
+              {isGW ? "Gateway · " + gwBuildingName : "Hanger · " + zonePath}
+            </div>
           </div>
           <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="panel-body">
           <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-            <Pill tone={d.online ? "ok" : "crit"} dot>{d.online ? "Online" : "Offline"}</Pill>
-            {(d.flags || []).map((f) => (
-              <Pill key={f} tone={f.startsWith("Anti-theft") ? "crit" : "warn"} dot>{f}</Pill>
+            <Pill tone={d.statusTone} dot>{d.statusLabel}</Pill>
+            {d.flags.filter((f) => f.label !== "Out of service" && f.label !== "Decommissioned").map((f) => (
+              <Pill key={f.label} tone={f.tone} dot>{f.label}</Pill>
             ))}
           </div>
 
-          {/* OLED screen */}
+          {/* OLED screen — real values */}
           {isGW
-            ? <GatewayScreen name={d.id} hangersHeard={d._heard != null ? d._heard : 0} ssid={d.ssid || "Site WiFi"} signal={d.signal} />
-            : <HangerScreen name={d.id} battery={d.battery} signal={d.signal} gateway={d._reportsThrough || d.gateway} lifted={lifted} />}
+            ? <GatewayScreen name={d.label} linked={d.linked} ssid={d.raw.ssid} bars={d.bars} online={d.online} />
+            : <HangerScreen name={d.label} battery={d.battery} bars={d.bars} gateway={d.gwName} statusKey={d.statusKey} />}
 
           <div style={{ marginTop: 14 }}>
-            <div className="info-row"><span className="k">Battery</span><span className="v"><Battery pct={d.battery} /></span></div>
-            <div className="info-row"><span className="k">Signal</span><span className="v"><SignalBars signal={d.signal} /></span></div>
+            <div className="info-row"><span className="k">Battery</span><span className="v"><Battery pct={d.battery} mains={d.mains} /></span></div>
+            <div className="info-row"><span className="k">Signal</span><span className="v"><SignalBars bars={d.bars} rssi={d.rssi} /></span></div>
             {isGW
               ? <React.Fragment>
-                  <div className="info-row"><span className="k">WiFi network</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d.ssid || "—"}</span></div>
-                  <div className="info-row"><span className="k">Hangers heard</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d._heard != null ? d._heard : "—"}</span></div>
+                  <div className="info-row"><span className="k">WiFi network</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d.raw.ssid || "—"}</span></div>
+                  <div className="info-row"><span className="k">IP address</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d.raw.ipAddress || "—"}</span></div>
+                  <div className="info-row"><span className="k">Hangers linked</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d.linked}</span></div>
+                  <div className="info-row"><span className="k">Packets forwarded</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{(d.raw.packetsForwarded || 0).toLocaleString()}</span></div>
+                  <div className="info-row"><span className="k">Uptime</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{dvUptime(d.raw.uptimeSec)}</span></div>
                 </React.Fragment>
               : <React.Fragment>
-                  <div className="info-row"><span className="k">Reports through</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d._reportsThrough || d.gateway || "—"}</span></div>
-                  <div className="info-row"><span className="k">DevEUI</span><span className="v" style={{ fontFamily:"var(--mono)", fontSize: 11.5 }}>{d.devEUI || "BOR-" + d.id.replace("HGR-","")}</span></div>
+                  <div className="info-row"><span className="k">Reports through</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d.gwName || "—"}</span></div>
+                  <div className="info-row"><span className="k">Last lifted</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d.lastLiftedAt ? dvRelTime(d.lastLiftedAt) : "Never"}</span></div>
+                  <div className="info-row"><span className="k">Audible alarm</span><span className="v">{d.raw.audibleAlarmEnabled ? "On" : "Off"}</span></div>
                 </React.Fragment>}
-            <div className="info-row"><span className="k">Last seen</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d.lastSeen || d.addedAt || "—"}</span></div>
-            <div className="info-row" style={{ borderBottom:"none" }}><span className="k">Type</span><span className="v">{d.type}</span></div>
+            <div className="info-row"><span className="k">DevEUI</span><span className="v" style={{ fontFamily:"var(--mono)", fontSize: 11.5 }}>{d.devEui}</span></div>
+            <div className="info-row"><span className="k">Firmware</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{d.raw.firmwareVersion || "—"}</span></div>
+            <div className="info-row" style={{ borderBottom:"none" }}><span className="k">Last seen</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{dvRelTime(d.lastSeenAt)}</span></div>
           </div>
 
+          {/* Edit — real PATCH */}
+          {canEdit ? (
+            <div style={{ marginTop: 18 }}>
+              <div className="panel-label">Edit device</div>
+              <div className="ai-field" style={{ marginTop: 8 }}>
+                <label>Name</label>
+                <input className="dv-input" value={name} maxLength={80}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={isGW ? "e.g. Reception gateway" : "e.g. Ward 4B main bathroom"} />
+              </div>
+              {isGW ? (
+                <div className="ai-field" style={{ marginTop: 10 }}>
+                  <label>Building</label>
+                  <select className="dv-input" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
+                    <option value="">Unassigned</option>
+                    {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <React.Fragment>
+                  <div className="ai-field" style={{ marginTop: 10 }}>
+                    <label>Building</label>
+                    <select className="dv-input" value={buildingId}
+                      onChange={(e) => { setBuildingId(e.target.value); setFloorId(""); setZoneId(""); }}>
+                      <option value="">Unassigned</option>
+                      {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="ai-field" style={{ marginTop: 10 }}>
+                    <label>Floor</label>
+                    <select className="dv-input" value={floorId} disabled={!buildingId}
+                      onChange={(e) => { setFloorId(e.target.value); setZoneId(""); }}>
+                      <option value="">{buildingId ? "Pick a floor" : "Pick a building first"}</option>
+                      {floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="ai-field" style={{ marginTop: 10 }}>
+                    <label>Zone</label>
+                    <select className="dv-input" value={zoneId} disabled={!floorId}
+                      onChange={(e) => setZoneId(e.target.value)}>
+                      <option value="">{floorId ? "Pick a zone" : "Pick a floor first"}</option>
+                      {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+                    </select>
+                  </div>
+                </React.Fragment>
+              )}
+              <div className="ai-field" style={{ marginTop: 10 }}>
+                <label>{isGW ? "Where in the building" : "Where exactly"}</label>
+                <input className="dv-input" value={note} maxLength={280}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={isGW ? "e.g. behind reception desk" : "e.g. on the wall by the sinks"} />
+              </div>
+              {!isGW && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink-2)", cursor: "pointer", marginTop: 12 }}>
+                  <input type="checkbox" checked={audible} onChange={(e) => setAudible(e.target.checked)} />
+                  Audible alarm when the sign is lifted
+                </label>
+              )}
+              {err && <p style={{ marginTop: 10, fontSize: 12.5, color: "var(--crit)" }}>{err}</p>}
+              <button className="btn btn-primary" disabled={!dirty || busy}
+                style={{ marginTop: 12, width: "100%", justifyContent: "center", opacity: dirty && !busy ? 1 : .5 }}
+                onClick={save}>
+                <Icon name="check" size={14} />{busy ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          ) : (
+            <p style={{ marginTop: 16, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+              <Icon name="info" size={11} /> Editing devices needs an admin{isGW ? "" : " or supervisor"} login.
+            </p>
+          )}
+
           <div style={{ display:"flex", gap:10, marginTop:18 }}>
-            <button className="btn" style={{ flex:1 }} onClick={onClose}><Icon name="mapPin" size={15} />Locate on plan</button>
-            <button className="btn btn-primary" style={{ flex:1 }} onClick={onClose}><Icon name="send" size={15} />Send heartbeat</button>
+            {go && (
+              <button className="btn" style={{ flex:1 }} onClick={() => { onClose(); go("floorplan"); }}>
+                <Icon name="mapPin" size={15} />Open floor plans
+              </button>
+            )}
+            <button className="btn" style={{ flex:1, color: "var(--crit)" }} disabled={!canDelete || busy}
+              title={canDelete ? undefined : "Removing devices needs an admin login"}
+              onClick={remove}>
+              <Icon name="trash" size={15} />{isGW ? "Remove gateway" : "Delete hanger"}
+            </button>
           </div>
+          {!canDelete && (
+            <p style={{ marginTop: 8, fontSize: 11.5, color: "var(--ink-3)" }}>Removing devices needs an admin login.</p>
+          )}
         </div>
       </aside>
     </React.Fragment>
@@ -7401,7 +8710,68 @@ Object.assign(window, { DevicesView, DeviceDetailPanel });
 
 /* ════════════════════ asset_37_8ef74e9e.js ════════════════════ */
 ;
-/* HazardLink — Maintenance list + Work order detail */
+/* HazardLink — Maintenance list + Work order detail
+   Wired to the live backend (backend/src/routes/maintenance.ts):
+   GET /jobs, POST /jobs, GET /jobs/:id (job + quotes + events),
+   POST /jobs/:id/tender, PATCH /quotes/:id, POST /jobs/:id/award,
+   POST /jobs/:id/start|complete|cancel, GET /contractors, GET /assets,
+   GET /users, GET /ai/status, POST /jobs/:id/rank-quotes.
+   Missing data shows "—" or an honest empty state. Nothing is invented. */
+
+const WO_STATUS_META = {
+  logged:      { label:"Logged",      tone:"muted",  bucket:"Open" },
+  scoped:      { label:"Scoped",      tone:"muted",  bucket:"Open" },
+  tendering:   { label:"Tendering",   tone:"warn",   bucket:"Tendering" },
+  awarded:     { label:"Awarded",     tone:"accent", bucket:"In progress" },
+  scheduled:   { label:"Scheduled",   tone:"secure", bucket:"In progress" },
+  in_progress: { label:"In progress", tone:"accent", bucket:"In progress" },
+  completed:   { label:"Completed",   tone:"ok",     bucket:"Done" },
+  cancelled:   { label:"Cancelled",   tone:"crit",   bucket:null },
+};
+const WO_PRIORITY_META = {
+  emergency: { label:"Emergency", tone:"crit" },
+  urgent:    { label:"Urgent",    tone:"warn" },
+  routine:   { label:"Routine",   tone:"muted" },
+};
+const WO_SOURCE_LABEL = {
+  manual:"logged manually", sensor:"sensor", ppm:"PPM", tenant_request:"tenant request",
+};
+const WO_EVENT_LABEL = {
+  logged:"Logged", tendered:"Tender sent", quoted:"Quote received", awarded:"Awarded",
+  scheduled:"Scheduled", started:"Work started", completed:"Completed", cancelled:"Cancelled",
+};
+
+function woShortId(id) { return "WO-" + String(id || "").slice(0, 6).toUpperCase(); }
+function woSiteName(buildingId) {
+  const s = (HL.sites || []).find((x) => x.id === buildingId);
+  return s ? s.name : null;
+}
+const WO_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function woFmtDate(v) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  return d.getDate() + " " + WO_MONTHS[d.getMonth()] + " " + d.getFullYear();
+}
+function woFmtDateTime(v) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return d.getDate() + " " + WO_MONTHS[d.getMonth()] + ", " + hh + ":" + mm;
+}
+function woEuro(cents) {
+  if (cents == null) return "—";
+  const v = cents / 100;
+  return "€" + (cents % 100 === 0 ? v.toLocaleString("en-IE") : v.toFixed(2));
+}
+
+function WoPriority({ p }) {
+  const m = WO_PRIORITY_META[p];
+  if (!m) return <PriorityPill p={p} />;
+  return <Pill tone={m.tone} dot>{m.label}</Pill>;
+}
 
 function Step({ s }) {
   const ico = s.state === "done" ? "check" : s.state === "active" ? "clock" : null;
@@ -7425,45 +8795,225 @@ function Step({ s }) {
   );
 }
 
-function Quote({ q }) {
+/* One contractor quote from GET /jobs/:id. The price bar is the only bar:
+   it is the real ratio against the cheapest submitted price (cheapest = 100).
+   No ratings or lead-time scores are invented. */
+function Quote({ q, cheapestCents, awardable, busy, aiPick, onAward, onEnter }) {
+  const priced = (q.status === "submitted" || q.status === "awarded") && q.amountCents != null;
+  const isCheapest = priced && cheapestCents != null && q.amountCents === cheapestCents;
+  const priceBar = priced && cheapestCents != null && q.amountCents > 0
+    ? Math.max(4, Math.round((cheapestCents / q.amountCents) * 100))
+    : null;
+  const note =
+    q.status === "pending"   ? "invited, awaiting their quote"
+  : q.status === "declined"  ? "not chosen"
+  : q.status === "withdrawn" ? "withdrawn"
+  : [
+      q.submittedAt ? "quoted " + woFmtDate(q.submittedAt) : "quote received",
+      q.proposedStartDate ? "can start " + q.proposedStartDate : null,
+      q.notes || null,
+    ].filter(Boolean).join(" · ");
+
   return (
-    <div className={"quote" + (q.best ? " best" : "")}>
-      {q.best && <span className="quote-rank">Best value · {q.value}</span>}
+    <div className={"quote" + (isCheapest ? " best" : "")}>
+      {isCheapest && <span className="quote-rank">Cheapest quote</span>}
       <div className="quote-top">
-        <div className="quote-name">{q.name}<small>{q.note}</small></div>
-        <div className="quote-price">{q.price}</div>
+        <div className="quote-name">
+          {q.contractorName}
+          {q.isPreferred ? <Pill tone="accent">Preferred</Pill> : null}
+          {aiPick ? <Pill tone="ok" icon="sparkles">AI pick</Pill> : null}
+          <small>{note}</small>
+        </div>
+        <div className="quote-price">{q.amountCents != null ? woEuro(q.amountCents) : "—"}</div>
       </div>
-      <div className="quote-bars">
-        {q.bars.map((b, i) => (
-          <div key={i}>
-            <div className="qbar-l"><span>{b.l}</span><b>{b.v}</b></div>
-            <div className="qbar"><i style={{ width: b.v + "%" }} /></div>
+      {priceBar != null && (
+        <div className="quote-bars">
+          <div>
+            <div className="qbar-l"><span>Price against the cheapest quote</span><b>{woEuro(q.amountCents)}</b></div>
+            <div className="qbar"><i style={{ width: priceBar + "%" }} /></div>
           </div>
-        ))}
+        </div>
+      )}
+      <div style={{ display:"flex", gap:8, marginTop:10, justifyContent:"flex-end", alignItems:"center" }}>
+        {q.status === "awarded" && <Pill tone="ok" icon="checkCircle">Awarded</Pill>}
+        {q.status === "pending" && (
+          <button className="btn btn-sm" disabled={busy} onClick={() => onEnter(q)}>
+            <Icon name="edit" size={13} />Enter their quote
+          </button>
+        )}
+        {q.status === "submitted" && awardable && (
+          <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => onAward(q)}>
+            <Icon name="check" size={13} />Award
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* Pick contractors and send the real tender: POST /jobs/:id/tender emails each
+   one a no-login quote link. The list is the org's real contractor register. */
+function WOTenderModal({ jobId, onClose, onDone, showToast }) {
+  const [list, setList]       = React.useState(null); // null loading | false error | rows
+  const [sel, setSel]         = React.useState({});
+  const [sending, setSending] = React.useState(false);
+
+  React.useEffect(() => {
+    hlApi("/contractors")
+      .then(({ ok, b }) => setList(ok && b ? (b.contractors || []) : false))
+      .catch(() => setList(false));
+  }, []);
+
+  const chosen = Object.keys(sel).filter((k) => sel[k]);
+  const send = () => {
+    if (!chosen.length || sending) return;
+    setSending(true);
+    hlApi("/jobs/" + jobId + "/tender", { method:"POST", body:{ contractorIds: chosen } })
+      .then(({ ok, status }) => {
+        if (!ok) {
+          showToast(status === 403
+            ? "Tendering needs the approve-quotes permission on your role."
+            : "Could not send the tender. Try again.");
+          return;
+        }
+        showToast("Tender sent. " + chosen.length + " contractor" + (chosen.length === 1 ? "" : "s") + " invited to quote by email.");
+        onDone();
+        onClose();
+      })
+      .finally(() => setSending(false));
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="send" size={18} /></div>
+          <div>
+            <h3>Tender to contractors</h3>
+            <p>Each contractor you pick is emailed a no-login link to submit their price and earliest start date.</p>
+          </div>
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body" style={{ maxHeight:380, overflowY:"auto" }}>
+          {list === null && (
+            <div style={{ padding:"18px 0", color:"var(--ink-3)", fontSize:13.5 }}>Loading your contractors…</div>
+          )}
+          {list === false && (
+            <div style={{ padding:"18px 0", color:"var(--warn)", fontSize:13.5 }}>Could not load your contractors. Close this and try again.</div>
+          )}
+          {Array.isArray(list) && list.length === 0 && (
+            <div style={{ padding:"18px 0", color:"var(--ink-3)", fontSize:13.5 }}>
+              No contractors on your organisation yet. Add them under Contractor accreditation first, then tender this job.
+            </div>
+          )}
+          {Array.isArray(list) && list.map((c) => (
+            <label key={c.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"9px 2px", borderBottom:"1px solid var(--line)", cursor:"pointer" }}>
+              <input type="checkbox" checked={!!sel[c.id]}
+                onChange={(e) => setSel((p) => ({ ...p, [c.id]: e.target.checked }))} />
+              <span style={{ flex:1, minWidth:0 }}>
+                <b style={{ fontSize:13.5 }}>{c.name}</b>
+                <span style={{ display:"block", fontSize:12, color: c.email ? "var(--ink-3)" : "var(--warn)" }}>
+                  {c.email ? c.email : "No email on file, so the invite cannot reach them"}
+                </span>
+              </span>
+              {c.isPreferred && <Pill tone="accent">Preferred</Pill>}
+            </label>
+          ))}
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!chosen.length || sending}
+            style={{ opacity: chosen.length ? 1 : .5 }} onClick={send}>
+            <Icon name="send" size={15} />{sending ? "Sending…" : "Send tender" + (chosen.length ? " (" + chosen.length + ")" : "")}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 function Maintenance({ go, workOrders, openWO, flashId, onCreate }) {
-  const D = useSiteData();
   const { site } = React.useContext(SiteContext);
-  const visibleIds = new Set(D.workOrders.map((w) => w.id));
-  const scoped = site ? workOrders.filter((w) => visibleIds.has(w.id)) : workOrders;
-  const [filter, setFilter]     = React.useState("All");
-  const [viewMode, setViewMode] = React.useState("list");
-  const tabs = ["All", "Open", "In progress", "Tendering", "Done"];
-  const rows = scoped.filter((w) => filter === "All" ? true : w.status === filter);
+  const [jobs, setJobs]           = React.useState(null); // null loading | false error | rows
+  const [errStatus, setErrStatus] = React.useState(0);
+  const [assets, setAssets]       = React.useState([]);
+  const [filter, setFilter]       = React.useState("All");
+  const [viewMode, setViewMode]   = React.useState("list");
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [flash, setFlash]         = React.useState(null);
+  const { showToast, toastNode }  = useViewToast();
 
-  // board: map Scheduled -> In progress so it appears in that column
-  const boardItems = scoped.map((w) => ({
-    ...w, boardStatus: w.status === "Scheduled" ? "In progress" : w.status,
-  }));
+  const refresh = React.useCallback(() => {
+    return hlApi("/jobs")
+      .then(({ ok, status, b }) => {
+        if (!ok) { setErrStatus(status); setJobs(false); return; }
+        setJobs((b && b.jobs) || []);
+      })
+      .catch(() => setJobs(false));
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+    hlApi("/assets").then(({ ok, b }) => { if (ok && b && b.assets) setAssets(b.assets); }).catch(() => {});
+  }, [refresh]);
+
+  const assetName = (id) => {
+    if (!id) return null;
+    const a = assets.find((x) => x.id === id);
+    return a ? a.name : null;
+  };
+
+  const all = Array.isArray(jobs) ? jobs : [];
+  const scoped = site ? all.filter((j) => j.buildingId === site.id) : all;
+
+  const tabs = ["All", "Open", "In progress", "Tendering", "Done"];
+  const bucketOf = (j) => (WO_STATUS_META[j.status] || {}).bucket;
+  const rows = scoped.filter((j) => filter === "All" ? true : bucketOf(j) === filter);
+
   const kanbanCols = [
     { id:"Open",        label:"Logged",       tone:"muted" },
     { id:"In progress", label:"In progress",  tone:"accent" },
     { id:"Tendering",   label:"Tendering",    tone:"warn" },
     { id:"Done",        label:"Done",          tone:"ok" },
+  ];
+  const cancelledCount = scoped.filter((j) => j.status === "cancelled").length;
+
+  const openJob = (id) => {
+    window.__woJobId = id;
+    openWO(id); // App navigates to the "wo" view
+  };
+
+  const handleCreate = (vals) => {
+    setCreateOpen(false);
+    const siteRow = (HL.sites || []).find((s) => s.name === vals.building);
+    const prio = { Emergency:"emergency", Urgent:"urgent", Routine:"routine" }[vals.priority] || "routine";
+    hlApi("/jobs", { method:"POST", body:{
+      title: (vals.title || "").trim(),
+      description: (vals.description || "").trim() || undefined,
+      priority: prio,
+      buildingId: siteRow ? siteRow.id : undefined,
+    }}).then(({ ok, status, b }) => {
+      if (!ok || !b || !b.id) {
+        showToast(status === 403 || status === 401
+          ? "Only admins and supervisors can log work orders."
+          : "Could not log the work order. Try again.");
+        return;
+      }
+      setFlash(b.id);
+      showToast("Work order logged: " + (b.title || vals.title));
+      refresh();
+    });
+  };
+
+  const createFields = [
+    { id:"title", label:"What needs doing", type:"text", placeholder:"e.g. Leak under the sink in the first-floor kitchen" },
+    { id:"description", label:"Details (optional)", type:"textarea", rows:3, required:false,
+      placeholder:"Anything a contractor would need to know" },
+    ...((HL.sites || []).length ? [{
+      id:"building", label:"Building (optional)", type:"select", required:false,
+      placeholder:"No building, portfolio-wide", options:(HL.sites || []).map((s) => s.name),
+    }] : []),
+    { id:"priority", label:"Priority", type:"select", options:["Routine","Urgent","Emergency"], default:"Routine" },
   ];
 
   return (
@@ -7471,145 +9021,432 @@ function Maintenance({ go, workOrders, openWO, flashId, onCreate }) {
       <div className="page-head">
         <div>
           <h1 className="page-title">Maintenance</h1>
-          <p className="page-desc">From a logged fault to a finished, costed job — with contractors built into the flow.</p>
+          <p className="page-desc">From a logged fault to a finished, costed job, with contractors built into the flow.</p>
         </div>
-        <button className="btn btn-primary" onClick={onCreate}><Icon name="plus" size={15} />New work order</button>
+        <button className="btn btn-primary" onClick={() => setCreateOpen(true)}><Icon name="plus" size={15} />New work order</button>
       </div>
 
-      <div className="toolbar">
-        {viewMode === "list" && (
-          <div className="seg">
-            {tabs.map((t) => (
-              <button key={t} className={filter === t ? "on" : ""} onClick={() => setFilter(t)}>{t}</button>
-            ))}
-          </div>
-        )}
-        <div style={{ marginLeft:"auto", display:"flex", gap:10, alignItems:"center" }}>
-          <div className="vm-seg">
-            <button className={"vm-btn" + (viewMode === "list"  ? " on" : "")} onClick={() => setViewMode("list")}>
-              <Icon name="layers" size={14} />List
-            </button>
-            <button className={"vm-btn" + (viewMode === "board" ? " on" : "")} onClick={() => setViewMode("board")}>
-              <Icon name="grid" size={14} />Board
-            </button>
-          </div>
-          {viewMode === "list" && (
-            <div style={{ fontSize:13, color:"var(--ink-3)" }}>{rows.length} work orders</div>
-          )}
-        </div>
-      </div>
-
-      {viewMode === "list" ? (
-        <div className="card wo-table">
-          <div className="wo-head">
-            <div>ID</div><div>Work order</div><div>Site</div><div>Assignee</div><div>Status</div><div>Priority</div>
-          </div>
-          {rows.map((w) => (
-            <div className={"wo-row" + (w.id === flashId ? " flash" : "")} key={w.id} onClick={() => openWO(w.id)}>
-              <div className="wo-id">{w.id}</div>
-              <div className="wo-title">{w.title}<small>{w.asset} · via {w.source}</small></div>
-              <div className="wo-site">{w.site}</div>
-              <div className="wo-assignee"><span className="wo-mini-av">{w.initials}</span>{w.assignee}</div>
-              <div><Pill tone={w.statusTone} dot>{w.status}</Pill></div>
-              <div><PriorityPill p={w.priority} /></div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="kanban">
-          {kanbanCols.map((col) => {
-            const cards = boardItems.filter((w) => w.boardStatus === col.id);
-            return (
-              <div className="kanban-col" key={col.id}>
-                <div className="kanban-head">
-                  <span>{col.label}</span>
-                  <Pill tone={col.tone}>{cards.length}</Pill>
-                </div>
-                <div className="kanban-cards">
-                  {cards.length === 0 && (
-                    <div style={{ padding:"18px 12px", textAlign:"center", color:"var(--ink-3)", fontSize:12 }}>None</div>
-                  )}
-                  {cards.map((w) => (
-                    <div className={"kanban-card" + (w.id === flashId ? " flash" : "")} key={w.id} onClick={() => openWO(w.id)}>
-                      <div className="kc-id">{w.id}</div>
-                      <div className="kc-title">{w.title}</div>
-                      <div className="kc-foot">
-                        <PriorityPill p={w.priority} />
-                        <span className="kc-av" title={w.assignee}>{w.initials}</span>
-                        <span className="kc-site">{w.site.split(" ")[0]}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      {jobs === null && (
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading your work orders…</div>
+      )}
+      {jobs === false && (
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          {errStatus === 403 || errStatus === 401
+            ? "Work orders are for admin and supervisor accounts."
+            : "Could not load the work orders. Refresh to try again."}
         </div>
       )}
+
+      {Array.isArray(jobs) && all.length === 0 && (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No work orders yet</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", marginBottom:14 }}>
+            Log the first fault and it appears here, ready to tender to your contractors.
+          </div>
+          <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+            <Icon name="plus" size={15} />New work order
+          </button>
+        </div>
+      )}
+
+      {Array.isArray(jobs) && all.length > 0 && (
+        <React.Fragment>
+          <div className="toolbar">
+            {viewMode === "list" && (
+              <div className="seg">
+                {tabs.map((t) => (
+                  <button key={t} className={filter === t ? "on" : ""} onClick={() => setFilter(t)}>{t}</button>
+                ))}
+              </div>
+            )}
+            <div style={{ marginLeft:"auto", display:"flex", gap:10, alignItems:"center" }}>
+              <div className="vm-seg">
+                <button className={"vm-btn" + (viewMode === "list"  ? " on" : "")} onClick={() => setViewMode("list")}>
+                  <Icon name="layers" size={14} />List
+                </button>
+                <button className={"vm-btn" + (viewMode === "board" ? " on" : "")} onClick={() => setViewMode("board")}>
+                  <Icon name="grid" size={14} />Board
+                </button>
+              </div>
+              {viewMode === "list" && (
+                <div style={{ fontSize:13, color:"var(--ink-3)" }}>{rows.length} work order{rows.length === 1 ? "" : "s"}</div>
+              )}
+            </div>
+          </div>
+
+          {viewMode === "list" ? (
+            <div className="card wo-table">
+              <div className="wo-head">
+                <div>ID</div><div>Work order</div><div>Site</div><div>Assignee</div><div>Status</div><div>Priority</div>
+              </div>
+              {rows.length === 0 && (
+                <div style={{ padding:"26px 16px", textAlign:"center", color:"var(--ink-3)", fontSize:13 }}>
+                  Nothing in this tab right now.
+                </div>
+              )}
+              {rows.map((w) => {
+                const sm = WO_STATUS_META[w.status] || { label:w.status, tone:"muted" };
+                const an = assetName(w.assetId);
+                const siteNm = woSiteName(w.buildingId);
+                return (
+                  <div className={"wo-row" + (w.id === flash || w.id === flashId ? " flash" : "")} key={w.id} onClick={() => openJob(w.id)}>
+                    <div className="wo-id">{woShortId(w.id)}</div>
+                    <div className="wo-title">{w.title}<small>{(an ? an + " · " : "") + "via " + (WO_SOURCE_LABEL[w.source] || w.source)}</small></div>
+                    <div className="wo-site">{siteNm || "—"}</div>
+                    <div className="wo-assignee">—</div>
+                    <div><Pill tone={sm.tone} dot>{sm.label}</Pill></div>
+                    <div><WoPriority p={w.priority} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <React.Fragment>
+              <div className="kanban">
+                {kanbanCols.map((col) => {
+                  const cards = scoped.filter((w) => bucketOf(w) === col.id);
+                  return (
+                    <div className="kanban-col" key={col.id}>
+                      <div className="kanban-head">
+                        <span>{col.label}</span>
+                        <Pill tone={col.tone}>{cards.length}</Pill>
+                      </div>
+                      <div className="kanban-cards">
+                        {cards.length === 0 && (
+                          <div style={{ padding:"18px 12px", textAlign:"center", color:"var(--ink-3)", fontSize:12 }}>None</div>
+                        )}
+                        {cards.map((w) => (
+                          <div className={"kanban-card" + (w.id === flash ? " flash" : "")} key={w.id} onClick={() => openJob(w.id)}>
+                            <div className="kc-id">{woShortId(w.id)}</div>
+                            <div className="kc-title">{w.title}</div>
+                            <div className="kc-foot">
+                              <WoPriority p={w.priority} />
+                              <span className="kc-site">{(woSiteName(w.buildingId) || "—").split(" ")[0]}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {cancelledCount > 0 && (
+                <div style={{ marginTop:10, fontSize:12.5, color:"var(--ink-3)" }}>
+                  {cancelledCount} cancelled job{cancelledCount === 1 ? "" : "s"} not shown on the board. See the list view under All.
+                </div>
+              )}
+            </React.Fragment>
+          )}
+        </React.Fragment>
+      )}
+
+      {createOpen && (
+        <SimpleAddModal
+          title="New work order"
+          subtitle="Logs the fault on your organisation. You can tender it to contractors from the work order page."
+          icon="wrench"
+          submitLabel="Log work order" submitIcon="check"
+          fields={createFields}
+          onSubmit={handleCreate}
+          onClose={() => setCreateOpen(false)} />
+      )}
+
+      {toastNode}
     </div>
   );
 }
 
 function WorkOrder({ go }) {
-  const _wo = HL.woDetail || {};
-  const w = {
-    id:"", title:"", priority:"", site:"", desc:"", scope:"", sla:"",
-    scopeBullets:[], quotes:[], steps:[],
-    ...(_wo),
-    asset:    { name:"", id:"", make:"", health:0, ...(_wo.asset || {}) },
-    reporter: { initials:"", name:"", role:"", ...(_wo.reporter || {}) },
+  // The board stashes the picked job id before navigating (same pattern as
+  // window.__settingsInitialTab). Direct visits without an id get an honest
+  // empty state rather than an invented job.
+  const [jobId] = React.useState(() => (typeof window !== "undefined" && window.__woJobId) || null);
+  const [data, setData]           = React.useState(null); // null loading | false error | { job, quotes, events }
+  const [errStatus, setErrStatus] = React.useState(0);
+  const [assets, setAssets]       = React.useState([]);
+  const [users, setUsers]         = React.useState([]);
+  const [aiOn, setAiOn]           = React.useState(false);
+  const [busy, setBusy]           = React.useState(false);
+  const [modal, setModal]         = React.useState(null); // { kind, quote? }
+  const [ranking, setRanking]     = React.useState(null);
+  const [rankBusy, setRankBusy]   = React.useState(false);
+  const { showToast, toastNode }  = useViewToast();
+
+  const refresh = React.useCallback(() => {
+    if (!jobId) return Promise.resolve();
+    return hlApi("/jobs/" + jobId)
+      .then(({ ok, status, b }) => {
+        if (!ok || !b || !b.job) { setErrStatus(status); setData(false); return; }
+        setData(b);
+      })
+      .catch(() => setData(false));
+  }, [jobId]);
+
+  React.useEffect(() => {
+    if (!jobId) return;
+    refresh();
+    hlApi("/assets").then(({ ok, b }) => { if (ok && b && b.assets) setAssets(b.assets); }).catch(() => {});
+    hlApi("/users").then(({ ok, b }) => { if (ok && b && b.users) setUsers(b.users); }).catch(() => {});
+    hlApi("/ai/status").then(({ ok, b }) => { if (ok && b) setAiOn(!!b.configured); }).catch(() => {});
+  }, [jobId, refresh]);
+
+  const backLink = (
+    <button className="back-link" onClick={() => go("maintenance")}>
+      <Icon name="arrowLeft" size={16} />Back to maintenance
+    </button>
+  );
+
+  if (!jobId) {
+    return (
+      <div className="content-inner">
+        {backLink}
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No work order selected</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)" }}>Open one from the Maintenance board to see its full lifecycle here.</div>
+        </div>
+      </div>
+    );
+  }
+  if (data === null) {
+    return (
+      <div className="content-inner">
+        {backLink}
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the work order…</div>
+      </div>
+    );
+  }
+  if (data === false) {
+    return (
+      <div className="content-inner">
+        {backLink}
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          {errStatus === 404
+            ? "That work order no longer exists."
+            : errStatus === 403 || errStatus === 401
+              ? "Work orders are for admin and supervisor accounts."
+              : "Could not load the work order. Go back and try again."}
+        </div>
+      </div>
+    );
+  }
+
+  const job = data.job;
+  const quotes = data.quotes || [];
+  const events = data.events || [];
+  const sm = WO_STATUS_META[job.status] || { label:job.status, tone:"muted" };
+  const siteNm = woSiteName(job.buildingId);
+  const asset = job.assetId ? assets.find((a) => a.id === job.assetId) : null;
+  const reporter = job.reportedByUserId ? users.find((u) => u.id === job.reportedByUserId) : null;
+  const reporterName = reporter ? (reporter.name || reporter.email) : null;
+  const reporterInitials = (reporterName || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+
+  const canTender   = ["logged", "scoped", "tendering"].includes(job.status);
+  const canStart    = ["awarded", "scheduled"].includes(job.status);
+  const openStill   = !["completed", "cancelled"].includes(job.status);
+  const awardable   = ["logged", "scoped", "tendering"].includes(job.status);
+
+  const pricedQuotes = quotes.filter((q) => (q.status === "submitted" || q.status === "awarded") && q.amountCents != null);
+  const cheapestCents = pricedQuotes.length ? Math.min.apply(null, pricedQuotes.map((q) => q.amountCents)) : null;
+  const receivedCount = quotes.filter((q) => q.status === "submitted" || q.status === "awarded").length;
+  const quoteOrder = { awarded:0, submitted:1, pending:2, declined:3, withdrawn:4 };
+  const sortedQuotes = quotes.slice().sort((a, b) => {
+    const so = (quoteOrder[a.status] ?? 9) - (quoteOrder[b.status] ?? 9);
+    if (so !== 0) return so;
+    return (a.amountCents ?? Infinity) - (b.amountCents ?? Infinity);
+  });
+
+  // Timeline: the job's real event log, oldest first. The newest entry is
+  // "active" while the job is still open. No invented future steps.
+  const asc = events.slice().reverse();
+  const steps = asc.map((e, i) => ({
+    state: openStill && i === asc.length - 1 ? "active" : "done",
+    title: WO_EVENT_LABEL[e.type] || e.type,
+    by: e.detail || null,
+    time: woFmtDateTime(e.createdAt),
+  }));
+
+  const act = (path, body, okMsg) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/jobs/" + job.id + path, { method:"POST", body: body || {} })
+      .then(({ ok, status }) => {
+        if (!ok) {
+          showToast(status === 403 ? "Your role does not have permission for that." : "That did not save. Try again.");
+          return;
+        }
+        if (okMsg) showToast(okMsg);
+        refresh();
+      })
+      .finally(() => setBusy(false));
   };
-  const [assigned, setAssigned] = React.useState(false);
+
+  const award = (quote, reason) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/jobs/" + job.id + "/award", { method:"POST", body:{ quoteId: quote.id, reason: reason || undefined } })
+      .then(({ ok, status, b }) => {
+        if (!ok) {
+          if (status === 400 && b && b.error === "reason_required_not_cheapest") {
+            setModal({ kind:"award", quote });
+          } else {
+            showToast(status === 403 ? "Awarding needs the approve-quotes permission on your role." : "Could not award that quote.");
+          }
+          return;
+        }
+        showToast("Awarded to " + quote.contractorName + ". The other invites were declined.");
+        setRanking(null);
+        refresh();
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const submitQuoteEntry = (vals) => {
+    const q = modal.quote;
+    setModal(null);
+    const amt = Math.round(parseFloat(String(vals.amount).replace(",", ".")) * 100);
+    if (!isFinite(amt) || amt < 0) { showToast("Enter the quoted amount in euro."); return; }
+    hlApi("/quotes/" + q.id, { method:"PATCH", body:{
+      amountCents: amt,
+      proposedStartDate: vals.start || undefined,
+      notes: (vals.notes || "").trim() || undefined,
+    }}).then(({ ok, status }) => {
+      if (!ok) {
+        showToast(status === 403 || status === 401 ? "Your role does not have permission for that." : "Could not record the quote. Try again.");
+        return;
+      }
+      showToast("Quote recorded for " + q.contractorName + ".");
+      refresh();
+    });
+  };
+
+  const runRank = () => {
+    if (rankBusy) return;
+    setRankBusy(true);
+    hlApi("/jobs/" + job.id + "/rank-quotes", { method:"POST", body:{} })
+      .then(({ ok, status, b }) => {
+        if (!ok || !b || !b.ranking) {
+          showToast(status === 400
+            ? "AI ranking needs at least two submitted quotes."
+            : "Could not rank the quotes right now. Try again.");
+          return;
+        }
+        setRanking(b.ranking);
+      })
+      .finally(() => setRankBusy(false));
+  };
 
   return (
     <div className="content-inner">
-      <button className="back-link" onClick={() => go("maintenance")}>
-        <Icon name="arrowLeft" size={16} />Back to maintenance
-      </button>
+      {backLink}
 
       <div className="wo-detail-head">
         <div style={{ flex:1 }}>
-          <div className="wo-num">{w.id}</div>
-          <h1>{w.title}</h1>
+          <div className="wo-num">{woShortId(job.id)}</div>
+          <h1>{job.title}</h1>
           <div className="tags">
             <Pill tone="maint" icon="wrench">Maintenance</Pill>
-            <PriorityPill p={w.priority} />
-            <Pill tone={assigned ? "ok" : "accent"} dot>{assigned ? "Assigned" : "In progress"}</Pill>
-            <Pill tone="muted" icon="mapPin">{w.site}</Pill>
+            <WoPriority p={job.priority} />
+            <Pill tone={sm.tone} dot>{sm.label}</Pill>
+            {siteNm && <Pill tone="muted" icon="mapPin">{siteNm}</Pill>}
           </div>
         </div>
-        {!assigned && (
-          <button className="btn btn-primary" onClick={() => setAssigned(true)}>
-            <Icon name="check" size={15} />Assign contractor
-          </button>
-        )}
-        {assigned && <Pill tone="ok" icon="checkCircle">Contractor assigned</Pill>}
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end", alignItems:"center" }}>
+          {canTender && (
+            <button className="btn btn-primary" disabled={busy} onClick={() => setModal({ kind:"tender" })}>
+              <Icon name="send" size={15} />{job.status === "tendering" ? "Invite more contractors" : "Tender to contractors"}
+            </button>
+          )}
+          {canStart && (
+            <button className="btn" disabled={busy} onClick={() => act("/start", {}, "Work marked as started.")}>
+              <Icon name="clock" size={15} />Start work
+            </button>
+          )}
+          {openStill && (
+            <button className="btn" disabled={busy} onClick={() => setModal({ kind:"complete" })}>
+              <Icon name="checkCircle" size={15} />Mark complete
+            </button>
+          )}
+          {openStill && (
+            <button className="btn btn-ghost" disabled={busy} onClick={() => setModal({ kind:"cancel" })}>
+              <Icon name="x" size={15} />Cancel job
+            </button>
+          )}
+          {job.status === "completed" && <Pill tone="ok" icon="checkCircle">Completed {woFmtDate(job.completedAt)}</Pill>}
+          {job.status === "cancelled" && <Pill tone="crit" icon="x">Cancelled</Pill>}
+        </div>
       </div>
 
       <div className="detail-grid">
         <div className="detail-main">
           <div className="card card-pad">
-            <p style={{ margin:0, fontSize:14.5, lineHeight:1.6, color:"var(--ink-2)" }}>{w.desc}</p>
+            <p style={{ margin:0, fontSize:14.5, lineHeight:1.6, color:"var(--ink-2)" }}>
+              {job.description || "No description was logged with this job."}
+            </p>
+            {job.awardReason && (
+              <p style={{ margin:"10px 0 0", fontSize:13, lineHeight:1.55, color:"var(--ink-2)" }}>
+                <b>Award reason:</b> {job.awardReason}
+              </p>
+            )}
+            {job.completionNote && (
+              <p style={{ margin:"10px 0 0", fontSize:13, lineHeight:1.55, color:"var(--ink-2)" }}>
+                <b>Completion note:</b> {job.completionNote}
+              </p>
+            )}
           </div>
 
-          <div className="ai-scope">
-            <div className="ai-scope-head">
-              <Icon name="sparkles" size={17} />
-              <b>AI-drafted scope of works</b>
-              <span className="tag">from asset history</span>
+          {job.scope && (
+            <div className="ai-scope">
+              <div className="ai-scope-head">
+                <Icon name="sparkles" size={17} />
+                <b>AI-drafted scope of works</b>
+                <span className="tag">review before relying on it</span>
+              </div>
+              <p>{job.scope}</p>
             </div>
-            <p>{w.scope}</p>
-            <ul>{w.scopeBullets.map((b, i) => <li key={i}>{b}</li>)}</ul>
-          </div>
+          )}
 
           <div className="card">
             <div className="card-head">
               <h3>Contractor quotes</h3>
-              <span className="sub">Ranked on value, not just price</span>
-              <span className="head-act"><Pill tone="ok" dot>{w.quotes.length} received</Pill></span>
+              <span className="sub">Quotes come back through the emailed tender link</span>
+              <span className="head-act" style={{ display:"flex", gap:8, alignItems:"center" }}>
+                {aiOn && receivedCount >= 2 && (
+                  <button className="btn btn-sm" disabled={rankBusy} onClick={runRank}>
+                    <Icon name="sparkles" size={13} />{rankBusy ? "Ranking…" : "Rank with AI"}
+                  </button>
+                )}
+                <Pill tone={receivedCount ? "ok" : "muted"} dot>{receivedCount} received</Pill>
+              </span>
             </div>
             <div className="card-pad">
-              {w.quotes.map((q, i) => <Quote q={q} key={i} />)}
+              {ranking && (
+                <div style={{ border:"1px solid var(--line)", borderRadius:10, padding:"12px 14px", marginBottom:12, fontSize:13, color:"var(--ink-2)", lineHeight:1.55 }}>
+                  <b style={{ display:"flex", alignItems:"center", gap:6 }}><Icon name="sparkles" size={14} />AI ranking</b>
+                  {ranking.summary && <p style={{ margin:"6px 0 0" }}>{ranking.summary}</p>}
+                  {(ranking.rankings || []).slice().sort((a, b) => a.rank - b.rank).map((r) => {
+                    const q = quotes.find((x) => x.id === r.quoteId);
+                    return (
+                      <p key={r.quoteId} style={{ margin:"6px 0 0" }}>
+                        <b>{r.rank}. {q ? q.contractorName : "Quote"}:</b> {r.valueComment}
+                      </p>
+                    );
+                  })}
+                </div>
+              )}
+              {quotes.length === 0 && (
+                <div style={{ padding:"6px 0 10px", color:"var(--ink-3)", fontSize:13.5 }}>
+                  No contractors invited yet. Use Tender to contractors to send this job out for quotes.
+                </div>
+              )}
+              {sortedQuotes.map((q) => (
+                <Quote key={q.id} q={q}
+                  cheapestCents={cheapestCents}
+                  awardable={awardable}
+                  busy={busy}
+                  aiPick={!!(ranking && ranking.recommendedQuoteId === q.id)}
+                  onAward={(qq) => award(qq)}
+                  onEnter={(qq) => setModal({ kind:"quote", quote: qq })} />
+              ))}
             </div>
           </div>
         </div>
@@ -7618,48 +9455,140 @@ function WorkOrder({ go }) {
           <div className="card">
             <div className="card-head"><h3>Lifecycle</h3></div>
             <div className="card-pad">
-              <div className="stepper">{w.steps.map((s, i) => <Step s={s} key={i} />)}</div>
+              {steps.length === 0
+                ? <div style={{ color:"var(--ink-3)", fontSize:13 }}>No timeline entries yet.</div>
+                : <div className="stepper">{steps.map((s, i) => <Step s={s} key={i} />)}</div>}
             </div>
           </div>
 
           <div className="card card-pad">
             <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", color:"var(--ink-3)", marginBottom:12 }}>Asset</div>
-            <div className="asset-card">
-              <div className="asset-thumb"><Icon name="box" size={22} /></div>
-              <div>
-                <div style={{ fontWeight:700, fontSize:14 }}>{w.asset.name}</div>
-                <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>{w.asset.id} · {w.asset.make}</div>
+            {asset ? (
+              <React.Fragment>
+                <div className="asset-card">
+                  <div className="asset-thumb"><Icon name="box" size={22} /></div>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:14 }}>{asset.name}</div>
+                    <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>
+                      {[asset.category, asset.make, asset.model].filter(Boolean).join(" · ") || "No details recorded"}
+                    </div>
+                  </div>
+                </div>
+                {asset.conditionScore != null ? (
+                  <div style={{ marginTop:14 }}>
+                    <div className="qbar-l" style={{ fontSize:11 }}><span>Condition score</span><b>{asset.conditionScore}/5</b></div>
+                    <div className="qbar">
+                      <i style={{
+                        width: (asset.conditionScore * 20) + "%",
+                        background: asset.conditionScore >= 4 ? "var(--ok)" : asset.conditionScore === 3 ? "var(--warn)" : "var(--crit)",
+                      }} />
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop:12, fontSize:12, color:"var(--ink-3)" }}>No condition score recorded for this asset.</div>
+                )}
+              </React.Fragment>
+            ) : (
+              <div style={{ fontSize:13, color:"var(--ink-3)" }}>
+                {job.assetId ? "The linked asset could not be loaded." : "No asset linked to this job."}
               </div>
-            </div>
-            <div style={{ marginTop:14 }}>
-              <div className="qbar-l" style={{ fontSize:11 }}><span>Asset health</span><b>{w.asset.health}%</b></div>
-              <div className="qbar"><i style={{ width: w.asset.health + "%", background:"var(--warn)" }} /></div>
-            </div>
+            )}
           </div>
 
           <div className="card card-pad">
             <div className="info-row"><span className="k">Reported by</span>
               <span className="v" style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <span className="wo-mini-av">{w.reporter.initials}</span>{w.reporter.name} · {w.reporter.role}
+                {reporterName
+                  ? <React.Fragment><span className="wo-mini-av">{reporterInitials}</span>{reporterName}</React.Fragment>
+                  : "—"}
               </span>
             </div>
-            <div className="info-row"><span className="k">SLA</span><span className="v" style={{ color:"var(--warn)" }}>{w.sla}</span></div>
-            <div className="info-row"><span className="k">Site</span><span className="v">{w.site}</span></div>
+            <div className="info-row"><span className="k">Raised</span><span className="v">{woFmtDateTime(job.createdAt)}</span></div>
+            <div className="info-row"><span className="k">Source</span><span className="v">{WO_SOURCE_LABEL[job.source] || job.source}</span></div>
+            {job.scheduledStartAt && (
+              <div className="info-row"><span className="k">Scheduled</span><span className="v">{woFmtDateTime(job.scheduledStartAt)}</span></div>
+            )}
+            <div className="info-row"><span className="k">Site</span><span className="v">{siteNm || "—"}</span></div>
           </div>
 
           <div className="card card-pad">
             <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", color:"var(--ink-3)", marginBottom:11 }}>Photo proof</div>
-            <div className="proof-grid">
-              {[].map((p, i) => (
-                <div className="proof" key={i}>
+            {job.completionPhotoUrl ? (
+              <div className="proof-grid">
+                <a className="proof" href={job.completionPhotoUrl} target="_blank" rel="noreferrer">
                   <span className="pcam"><Icon name="camera" size={15} /></span>
-                  <span className="plabel">{p}</span>
-                </div>
-              ))}
-            </div>
+                  <span className="plabel">Completion photo</span>
+                </a>
+              </div>
+            ) : (
+              <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>No photos on this job yet.</div>
+            )}
           </div>
         </div>
       </div>
+
+      {modal && modal.kind === "tender" && (
+        <WOTenderModal jobId={job.id} showToast={showToast}
+          onDone={refresh} onClose={() => setModal(null)} />
+      )}
+
+      {modal && modal.kind === "quote" && (
+        <SimpleAddModal
+          title={"Enter the quote from " + modal.quote.contractorName}
+          subtitle="For quotes that came back by phone or email. It is recorded against their tender invite."
+          icon="edit"
+          submitLabel="Record quote" submitIcon="check"
+          fields={[
+            { id:"amount", label:"Quoted amount in euro", type:"number", placeholder:"e.g. 420" },
+            { id:"start", label:"Earliest start date (optional)", type:"date", required:false },
+            { id:"notes", label:"Notes from the contractor (optional)", type:"textarea", rows:2, required:false },
+          ]}
+          onSubmit={submitQuoteEntry}
+          onClose={() => setModal(null)} />
+      )}
+
+      {modal && modal.kind === "award" && (
+        <SimpleAddModal
+          title={"Award to " + modal.quote.contractorName}
+          subtitle="This is not the cheapest quote, so a reason is required. It is recorded on the job's audit trail."
+          icon="check"
+          submitLabel="Award with reason" submitIcon="check"
+          fields={[
+            { id:"reason", label:"Why this quote over the cheapest?", type:"textarea", rows:3,
+              placeholder:"e.g. Can attend today and the cheapest has a three-week lead time" },
+          ]}
+          onSubmit={(vals) => { const q = modal.quote; setModal(null); award(q, (vals.reason || "").trim()); }}
+          onClose={() => setModal(null)} />
+      )}
+
+      {modal && modal.kind === "complete" && (
+        <SimpleAddModal
+          title="Mark this job complete"
+          subtitle="Closes the work order and stamps the completion time on the timeline."
+          icon="checkCircle"
+          submitLabel="Mark complete" submitIcon="check"
+          fields={[
+            { id:"note", label:"Completion note (optional)", type:"textarea", rows:3, required:false,
+              placeholder:"What was done, parts used, anything to watch" },
+          ]}
+          onSubmit={(vals) => { setModal(null); act("/complete", { completionNote: (vals.note || "").trim() || undefined }, "Job marked complete."); }}
+          onClose={() => setModal(null)} />
+      )}
+
+      {modal && modal.kind === "cancel" && (
+        <SimpleAddModal
+          title="Cancel this job"
+          subtitle="The job is closed as cancelled and the reason goes on the timeline."
+          icon="x"
+          submitLabel="Cancel job" submitIcon="x"
+          fields={[
+            { id:"reason", label:"Reason (optional)", type:"textarea", rows:2, required:false },
+          ]}
+          onSubmit={(vals) => { setModal(null); act("/cancel", { reason: (vals.reason || "").trim() || undefined }, "Job cancelled."); }}
+          onClose={() => setModal(null)} />
+      )}
+
+      {toastNode}
     </div>
   );
 }
@@ -7668,23 +9597,120 @@ Object.assign(window, { Step, Maintenance, WorkOrder });
 
 /* ════════════════════ asset_17_54494e3b.js ════════════════════ */
 ;
-/* HazardLink — Maintenance overview (reliability KPIs + small charts) */
+/* HazardLink — Maintenance overview (reliability KPIs + small charts)
+   Wired to the live backend: GET /maintenance/kpis (computed server-side from
+   the real jobs, quotes, PPMs and assets), GET /jobs (backlog + MTTR charts)
+   and GET /ppms (per-site compliance + the Up next list). No invented trends:
+   where there is no history yet, the card says so. */
 
 function _maintTone(v) {
   return v >= 90 ? "var(--ok)" : v >= 80 ? "var(--warn)" : "var(--crit)";
 }
 
+const _MO_DAY = 86400000;
+const _MO_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function _moToMs(v) {
+  if (!v) return null;
+  const s = String(v);
+  const t = Date.parse(s.length === 10 ? s + "T00:00:00" : s);
+  return isNaN(t) ? null : t;
+}
+
 function MaintenanceOverview({ go }) {
-  const m = HL.maintenanceMetrics || {};
-  const hasData = (m.upcoming && m.upcoming.length) || (m.bySite && m.bySite.length) ||
-                  (m.backlogPriority && m.backlogPriority.length) || !!(m.backlog && m.backlog.v);
+  const [kpis, setKpis] = React.useState(null); // null loading | false error | object
+  const [jobs, setJobs] = React.useState([]);
+  const [ppms, setPpms] = React.useState([]);
+  const [jobsFailed, setJobsFailed] = React.useState(false);
+  const [ppmsFailed, setPpmsFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    hlApi("/maintenance/kpis").then(({ ok, b }) => setKpis(ok && b ? b : false)).catch(() => setKpis(false));
+    hlApi("/jobs")
+      .then(({ ok, b }) => { if (ok && b && b.jobs) setJobs(b.jobs); else setJobsFailed(true); })
+      .catch(() => setJobsFailed(true));
+    hlApi("/ppms")
+      .then(({ ok, b }) => { if (ok && b && b.ppms) setPpms(b.ppms); else setPpmsFailed(true); })
+      .catch(() => setPpmsFailed(true));
+  }, []);
+
+  const k = kpis && kpis !== false ? kpis : null;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const activePpms = ppms.filter((p) => p.active);
+
+  // PM compliance by site: share of each building's active PPM tasks not overdue.
+  const bySiteMap = {};
+  for (const p of activePpms) {
+    const nm = (p.building && p.building.name) || "No building set";
+    if (!bySiteMap[nm]) bySiteMap[nm] = { total:0, onTime:0 };
+    bySiteMap[nm].total++;
+    if (p.nextDueDate >= todayIso) bySiteMap[nm].onTime++;
+  }
+  const bySite = Object.keys(bySiteMap).map((l) => ({
+    l, v: Math.round((bySiteMap[l].onTime / bySiteMap[l].total) * 100),
+  }));
+
+  // MTTR by month, last 6 months: mean days from logged to closed for reactive
+  // jobs completed in that month. Months with no completed jobs are skipped.
+  const mttrMonths = (() => {
+    const now = new Date();
+    const out = [];
+    for (let i = 5; i >= 0; i--) {
+      const from = new Date(now.getFullYear(), now.getMonth() - i, 1).getTime();
+      const to = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime();
+      const done = jobs.filter((j) => {
+        if (j.source === "ppm" || j.status !== "completed" || !j.completedAt || !j.createdAt) return false;
+        const c = _moToMs(j.completedAt);
+        return c != null && c >= from && c < to;
+      });
+      if (!done.length) continue;
+      const avg = done.reduce((s, j) => s + (_moToMs(j.completedAt) - _moToMs(j.createdAt)), 0) / done.length / _MO_DAY;
+      out.push({ l: _MO_MONTHS[new Date(from).getMonth()], v: Math.round(avg * 10) / 10 });
+    }
+    return out;
+  })();
+
+  // Open backlog by priority and by age, from the live jobs list.
+  const open = jobs.filter((j) => j.status !== "completed" && j.status !== "cancelled");
+  const prCount = { emergency:0, urgent:0, routine:0 };
+  for (const j of open) prCount[j.priority] = (prCount[j.priority] || 0) + 1;
+  const backlogPriority = [
+    { l:"Emergency", v:prCount.emergency, tone:"crit" },
+    { l:"Urgent",    v:prCount.urgent,    tone:"warn" },
+    { l:"Routine",   v:prCount.routine,   tone:"muted" },
+  ];
+  const nowMs = Date.now();
+  const ages = { fresh:0, week:0, old:0 };
+  for (const j of open) {
+    const days = (nowMs - (_moToMs(j.createdAt) || nowMs)) / _MO_DAY;
+    if (days < 7) ages.fresh++; else if (days <= 14) ages.week++; else ages.old++;
+  }
+  const backlogAge = [
+    { l:"Less than 7 days", v:ages.fresh, tone:"ok" },
+    { l:"7 to 14 days",     v:ages.week,  tone:"warn" },
+    { l:"Over 14 days",     v:ages.old,   tone:"crit" },
+  ];
+  const prMax = Math.max(1, ...backlogPriority.map((b) => b.v));
+  const ageMax = Math.max(1, ...backlogAge.map((b) => b.v));
+
+  // Up next: the three nearest active PPM tasks (the API returns soonest first).
+  const upcoming = activePpms.slice(0, 3).map((p) => ({
+    id: p.id,
+    title: p.title,
+    site: (p.building && p.building.name) || "—",
+    due: p.nextDueDate,
+    overdue: p.nextDueDate < todayIso,
+    assignee: p.contractorName || "—",
+  }));
+
+  const totalJobs = k ? Object.values(k.byStatus || {}).reduce((a, b) => a + b, 0) : 0;
+  const hasData = totalJobs > 0 || (k && k.activePpms > 0) || activePpms.length > 0;
 
   return (
     <div className="content-inner">
       <div className="page-head">
         <div>
           <h1 className="page-title">Maintenance overview</h1>
-          <p className="page-desc">Reliability across every site at a glance — planned versus reactive, mean time to repair, and what's coming up next.</p>
+          <p className="page-desc">Reliability across every site at a glance: planned versus reactive, mean time to repair, and what's coming up next.</p>
         </div>
         <div style={{ display:"flex", gap:10 }}>
           <button className="btn" onClick={() => go("ppm")}><Icon name="clock" size={15} />PPM schedule</button>
@@ -7694,7 +9720,13 @@ function MaintenanceOverview({ go }) {
         </div>
       </div>
 
-      {!hasData ? (
+      {kpis === null ? (
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the live maintenance figures…</div>
+      ) : kpis === false ? (
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          Could not load the maintenance figures. This page needs an admin or supervisor login and a working connection.
+        </div>
+      ) : !hasData ? (
         <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
           <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No maintenance data yet</div>
           <div style={{ fontSize:13.5, color:"var(--ink-3)" }}>Reliability KPIs and charts appear here once work orders and PPMs start flowing.</div>
@@ -7707,12 +9739,14 @@ function MaintenanceOverview({ go }) {
             <div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div>
             <span className="kpi-label">PM compliance</span>
           </div>
-          <div className="kpi-val">{m.pmCompliance.v}<small>%</small></div>
+          <div className="kpi-val">
+            {k.pmCompliancePct != null ? k.pmCompliancePct : "—"}
+            {k.pmCompliancePct != null && <small>%</small>}
+          </div>
           <div className="kpi-foot">
-            <span className={"trend " + (m.pmCompliance.up ? "trend-up" : "trend-down")}>
-              <Icon name={m.pmCompliance.up ? "trendUp" : "trendDown"} size={13} />{m.pmCompliance.trend}
-            </span>
-            {m.pmCompliance.foot}
+            {k.activePpms
+              ? (k.activePpms - k.overduePpms) + " of " + k.activePpms + " active PPMs on time"
+              : "no active PPM tasks yet"}
           </div>
         </div>
         <div className="kpi">
@@ -7720,12 +9754,12 @@ function MaintenanceOverview({ go }) {
             <div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="clock" size={16} /></div>
             <span className="kpi-label">Mean time to repair</span>
           </div>
-          <div className="kpi-val">{m.mttr.v}<small>{m.mttr.unit}</small></div>
+          <div className="kpi-val">
+            {k.mttrDays != null ? k.mttrDays : "—"}
+            {k.mttrDays != null && <small>d</small>}
+          </div>
           <div className="kpi-foot">
-            <span className={"trend " + (m.mttr.up ? "trend-up" : "trend-down")}>
-              <Icon name={m.mttr.up ? "trendUp" : "trendDown"} size={13} />{m.mttr.trend}
-            </span>
-            {m.mttr.foot}
+            {k.mttrDays != null ? "reactive jobs closed in the last 180 days" : "no reactive jobs closed yet"}
           </div>
         </div>
         <div className="kpi">
@@ -7733,12 +9767,11 @@ function MaintenanceOverview({ go }) {
             <div className="kpi-ico" style={{ background:softBg("maint"), color:solid("maint") }}><Icon name="wrench" size={16} /></div>
             <span className="kpi-label">Open backlog</span>
           </div>
-          <div className="kpi-val">{m.backlog.v}</div>
+          <div className="kpi-val">{k.openBacklog}</div>
           <div className="kpi-foot">
-            <span className={"trend " + (m.backlog.up ? "trend-up" : "trend-down")}>
-              <Icon name={m.backlog.up ? "trendUp" : "trendDown"} size={13} />{m.backlog.trend}
-            </span>
-            {m.backlog.foot}
+            {k.openBacklog
+              ? "oldest has been open " + k.backlogOldestDays + " day" + (k.backlogOldestDays === 1 ? "" : "s")
+              : "no open work orders"}
           </div>
         </div>
         <div className="kpi">
@@ -7746,12 +9779,14 @@ function MaintenanceOverview({ go }) {
             <div className="kpi-ico" style={{ background:softBg("secure"), color:solid("secure") }}><Icon name="layers" size={16} /></div>
             <span className="kpi-label">Planned share</span>
           </div>
-          <div className="kpi-val">{m.plannedShare.v}<small>{m.plannedShare.unit}</small></div>
+          <div className="kpi-val">
+            {k.plannedSharePct != null ? k.plannedSharePct : "—"}
+            {k.plannedSharePct != null && <small>%</small>}
+          </div>
           <div className="kpi-foot">
-            <span className={"trend " + (m.plannedShare.up ? "trend-up" : "trend-down")}>
-              <Icon name={m.plannedShare.up ? "trendUp" : "trendDown"} size={13} />{m.plannedShare.trend}
-            </span>
-            {m.plannedShare.foot}
+            {k.plannedSharePct != null
+              ? k.planned90 + " planned, " + k.reactive90 + " reactive, last 90 days"
+              : "no jobs completed in the last 90 days"}
           </div>
         </div>
       </div>
@@ -7759,80 +9794,110 @@ function MaintenanceOverview({ go }) {
       <div className="report-grid">
         <div className="card chart-card">
           <div className="chart-title">PM compliance by site</div>
-          <div className="chart-sub">Planned tasks completed on time this month</div>
-          <HorizBars data={m.bySite} color="var(--ok)" max={100} />
+          <div className="chart-sub">Share of each site's active PPM tasks that are not overdue</div>
+          {bySite.length
+            ? <HorizBars data={bySite} color="var(--ok)" max={100} />
+            : <div style={{ fontSize:13, color:"var(--ink-3)", padding:"14px 0" }}>
+                {ppmsFailed ? "Could not load the PPM schedule for this chart." : "No active PPM tasks yet. Set them up under PPM schedule."}
+              </div>}
         </div>
 
         <div className="card chart-card">
           <div className="chart-title">Mean time to repair</div>
           <div className="chart-sub">Average calendar days from fault logged to work order closed</div>
-          <LineSparkline data={m.mttrMonths} color="var(--accent)" />
+          {mttrMonths.length >= 2
+            ? <LineSparkline data={mttrMonths} color="var(--accent)" />
+            : <div style={{ fontSize:13, color:"var(--ink-3)", padding:"14px 0" }}>
+                {jobsFailed ? "Could not load the work-order list for this chart." : "Not enough closed reactive jobs yet to draw a monthly trend."}
+              </div>}
         </div>
 
         <div className="card chart-card">
           <div className="chart-title">Planned vs reactive</div>
-          <div className="chart-sub">Share of work orders raised this month</div>
-          <div className="pvr-bar" title={m.plannedShare.v + "% planned · " + (100 - m.plannedShare.v) + "% reactive"}>
-            <div className="pvr-seg pvr-planned"  style={{ flex: m.plannedShare.v }}>
-              <span className="pvr-l">Planned</span>
-              <span className="pvr-n">{m.plannedShare.v}%</span>
-            </div>
-            <div className="pvr-seg pvr-reactive" style={{ flex: 100 - m.plannedShare.v }}>
-              <span className="pvr-l">Reactive</span>
-              <span className="pvr-n">{100 - m.plannedShare.v}%</span>
-            </div>
-          </div>
-          <div className="pvr-foot">
-            <span className="pvr-key pvr-planned" />Planned (PPM, condition-based)
-            <span className="pvr-key pvr-reactive" />Reactive (faults, spills, callouts)
-          </div>
+          <div className="chart-sub">Share of work orders completed in the last 90 days</div>
+          {k.plannedSharePct != null ? (
+            <React.Fragment>
+              <div className="pvr-bar" title={k.plannedSharePct + "% planned · " + (100 - k.plannedSharePct) + "% reactive"}>
+                {k.plannedSharePct > 0 && (
+                  <div className="pvr-seg pvr-planned" style={{ flex: k.plannedSharePct }}>
+                    <span className="pvr-l">Planned</span>
+                    <span className="pvr-n">{k.plannedSharePct}%</span>
+                  </div>
+                )}
+                {k.plannedSharePct < 100 && (
+                  <div className="pvr-seg pvr-reactive" style={{ flex: 100 - k.plannedSharePct }}>
+                    <span className="pvr-l">Reactive</span>
+                    <span className="pvr-n">{100 - k.plannedSharePct}%</span>
+                  </div>
+                )}
+              </div>
+              <div className="pvr-foot">
+                <span className="pvr-key pvr-planned" />Planned (PPM)
+                <span className="pvr-key pvr-reactive" />Reactive (faults, callouts)
+              </div>
+            </React.Fragment>
+          ) : (
+            <div style={{ fontSize:13, color:"var(--ink-3)", padding:"14px 0" }}>No work orders completed in the last 90 days yet.</div>
+          )}
         </div>
 
         <div className="card chart-card">
           <div className="chart-title">Open backlog</div>
           <div className="chart-sub">By priority and by age</div>
-          <div className="mb-block-label">Priority</div>
-          <div className="bar-group">
-            {m.backlogPriority.map((b) => (
-              <div className="bar-row" key={b.l}>
-                <div style={{ fontSize:12.5, color:"var(--ink-2)" }}>{b.l}</div>
-                <div className="bar-track">
-                  <div className="bar-fill" style={{ width:(b.v / 11 * 100) + "%", background: solid(b.tone) }} />
-                </div>
-                <div className="bar-num">{b.v}</div>
+          {open.length === 0 ? (
+            <div style={{ fontSize:13, color:"var(--ink-3)", padding:"14px 0" }}>
+              {jobsFailed ? "Could not load the work-order list for this chart." : "No open work orders right now."}
+            </div>
+          ) : (
+            <React.Fragment>
+              <div className="mb-block-label">Priority</div>
+              <div className="bar-group">
+                {backlogPriority.map((b) => (
+                  <div className="bar-row" key={b.l}>
+                    <div style={{ fontSize:12.5, color:"var(--ink-2)" }}>{b.l}</div>
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ width:(b.v / prMax * 100) + "%", background: solid(b.tone) }} />
+                    </div>
+                    <div className="bar-num">{b.v}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="mb-block-label" style={{ marginTop:16 }}>Age</div>
-          <div className="bar-group">
-            {m.backlogAge.map((b) => (
-              <div className="bar-row" key={b.l}>
-                <div style={{ fontSize:12.5, color:"var(--ink-2)" }}>{b.l}</div>
-                <div className="bar-track">
-                  <div className="bar-fill" style={{ width:(b.v / 14 * 100) + "%", background: solid(b.tone) }} />
-                </div>
-                <div className="bar-num">{b.v}</div>
+              <div className="mb-block-label" style={{ marginTop:16 }}>Age</div>
+              <div className="bar-group">
+                {backlogAge.map((b) => (
+                  <div className="bar-row" key={b.l}>
+                    <div style={{ fontSize:12.5, color:"var(--ink-2)" }}>{b.l}</div>
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ width:(b.v / ageMax * 100) + "%", background: solid(b.tone) }} />
+                    </div>
+                    <div className="bar-num">{b.v}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </React.Fragment>
+          )}
         </div>
       </div>
 
       <div className="card" style={{ marginTop:16 }}>
         <div className="card-head">
           <h3>Up next</h3>
-          <span className="sub">Three nearest PPMs</span>
+          <span className="sub">The nearest planned maintenance tasks</span>
           <button className="btn btn-ghost btn-sm head-act" onClick={() => go("ppm")}>
             See full schedule<Icon name="chevronRight" size={14} />
           </button>
         </div>
-        {m.upcoming.map((t) => (
+        {upcoming.length === 0 ? (
+          <div style={{ padding:"22px 24px", color:"var(--ink-3)", fontSize:13.5 }}>
+            {ppmsFailed ? "Could not load the PPM schedule." : "No PPM tasks on the schedule yet."}
+          </div>
+        ) : upcoming.map((t) => (
           <div className="wo-row" key={t.id} style={{ gridTemplateColumns:"100px 1fr 200px 150px 110px" }} onClick={() => go("ppm")}>
-            <div className="wo-id">{t.id}</div>
+            <div className="wo-id">{"PPM-" + String(t.id).slice(0, 4).toUpperCase()}</div>
             <div className="wo-title">{t.title}<small>{t.site}</small></div>
             <div style={{ fontSize:13, color:"var(--ink-2)" }}>{t.assignee}</div>
             <div style={{ fontSize:12.5, color:"var(--ink-3)", fontFamily:"var(--mono)" }}>{t.due}</div>
-            <div><Pill tone="muted" dot>Scheduled</Pill></div>
+            <div>{t.overdue ? <Pill tone="crit" dot>Overdue</Pill> : <Pill tone="muted" dot>Scheduled</Pill>}</div>
           </div>
         ))}
       </div>
@@ -7846,36 +9911,140 @@ Object.assign(window, { MaintenanceOverview });
 
 /* ════════════════════ asset_43_7a7799a9.js ════════════════════ */
 ;
-/* HazardLink — PPM schedule (planned preventive maintenance) */
+/* HazardLink — PPM schedule (planned preventive maintenance) — LIVE.
+   Wired to the real backend:
+     GET  /ppms                              — list (each row carries its latest schedule request)
+     POST /ppms                              — create a task
+     POST /ppms/:id/complete                 — mark done, rolls the next due date forward
+     POST /ppms/:id/request-schedule         — email the contractor a magic link to pick a date
+     POST /ppm-schedule-requests/:id/confirm — approve the contractor's proposed date
+   Pickers use GET /buildings and GET /contractors. No demo rows anywhere. */
 
 const PPM_BUCKETS = [
-  { id:"overdue",   label:"Overdue",           sub:"Past due — attend now",    tone:"crit" },
+  { id:"overdue",   label:"Overdue",           sub:"Past due, attend now",     tone:"crit" },
   { id:"this-week", label:"Due this week",     sub:"Next 7 days",               tone:"warn" },
   { id:"next-14",   label:"In the next 14 days", sub:"Plan for the next sprint", tone:"accent" },
   { id:"later",     label:"Later",              sub:"On the longer-term roster", tone:"muted" },
 ];
 
+/* Frequency labels ⇄ the backend's times-per-year integer */
+const _PPM_FREQS = [
+  { label:"Weekly",      perYear:52 },
+  { label:"Fortnightly", perYear:26 },
+  { label:"Monthly",     perYear:12 },
+  { label:"Bi-monthly",  perYear:6  },
+  { label:"Quarterly",   perYear:4  },
+  { label:"Half-yearly", perYear:2  },
+  { label:"Annually",    perYear:1  },
+];
+function _ppmFreqLabel(perYear) {
+  const hit = _PPM_FREQS.find((f) => f.perYear === perYear);
+  return hit ? hit.label : perYear + " times a year";
+}
+
+const _PPM_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function _ppmDaysUntil(iso) {
+  if (!iso) return null;
+  const t = Date.parse(String(iso).slice(0, 10) + "T00:00:00");
+  if (isNaN(t)) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.round((t - today.getTime()) / 86400000);
+}
+function _ppmFmtDate(iso) {
+  if (!iso) return "—";
+  const bits = String(iso).slice(0, 10).split("-");
+  const y = parseInt(bits[0], 10), m = parseInt(bits[1], 10), d = parseInt(bits[2], 10);
+  if (!y || !m || !d) return String(iso);
+  return d + " " + _PPM_MONTHS[m - 1] + " " + y;
+}
+function _ppmDueLabel(iso) {
+  const n = _ppmDaysUntil(iso);
+  if (n == null) return "—";
+  if (n < -1)  return (-n) + " days overdue";
+  if (n === -1) return "1 day overdue";
+  if (n === 0)  return "today";
+  if (n === 1)  return "tomorrow";
+  return "in " + n + " days";
+}
+function _ppmInitials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+function _ppmCopy(text) {
+  if (text && navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => {});
+  }
+  return Promise.resolve();
+}
+
+/* Shape a real /ppms row for the screen. Buckets come from the real due date. */
+function _ppmMap(p) {
+  const days = _ppmDaysUntil(p.nextDueDate);
+  const bucket =
+    days == null ? "later"
+    : days < 0    ? "overdue"
+    : days <= 7   ? "this-week"
+    : days <= 14  ? "next-14"
+    : "later";
+  const status =
+    !p.active ? "paused"
+    : days != null && days < 0  ? "overdue"
+    : days != null && days <= 7 ? "due-soon"
+    : "scheduled";
+  const sched = p.schedule || null;
+  const assignee = p.contractorName || "In-house";
+  return {
+    ...p,
+    days, bucket, status, assignee,
+    initials: _ppmInitials(assignee),
+    freqLabel: _ppmFreqLabel(p.frequencyPerYear),
+    dueLabel: _ppmDueLabel(p.nextDueDate),
+    siteName: (p.building && p.building.name) || "Whole portfolio",
+    awaiting: !!(sched && (sched.status === "sent" || sched.status === "proposed")),
+  };
+}
+
 function PPMView() {
-  const D = useSiteData();
-  const [filter, setFilter] = React.useState("All");
-  const [addOpen, setAddOpen] = React.useState(false);
-  const [detail, setDetail] = React.useState(null);
-  const all = D.ppmTasks;
+  const [rows, setRows]           = React.useState(null); // null loading | false error | [tasks]
+  const [errCode, setErrCode]     = React.useState(0);
+  const [buildings, setBuildings] = React.useState([]);
+  const [contractors, setContractors] = React.useState([]);
+  const [filter, setFilter]       = React.useState("All");
+  const [addOpen, setAddOpen]     = React.useState(false);
+  const [detailId, setDetailId]   = React.useState(null);
+  const { showToast, toastNode }  = useViewToast();
+
+  const refresh = React.useCallback(() => {
+    return hlApi("/ppms")
+      .then(({ ok, status, b }) => {
+        if (!ok || !b) { setErrCode(status || 0); setRows(false); return; }
+        setRows((b.ppms || []).map(_ppmMap));
+      })
+      .catch(() => setRows(false));
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+    hlApi("/buildings").then(({ ok, b }) => { if (ok && b) setBuildings(b.buildings || []); }).catch(() => {});
+    hlApi("/contractors").then(({ ok, b }) => { if (ok && b) setContractors(b.contractors || []); }).catch(() => {});
+  }, [refresh]);
+
+  const all = Array.isArray(rows) ? rows : [];
+  const detail = detailId ? all.find((t) => t.id === detailId) : null;
 
   const counts = {
-    overdue:   all.filter((t) => t.status === "overdue").length,
-    dueSoon:   all.filter((t) => t.status === "due-soon" || t.bucket === "this-week").length,
-    inProg:    all.filter((t) => t.status === "in-progress").length,
-    scheduled: all.filter((t) => t.status === "scheduled").length,
+    overdue:  all.filter((t) => t.status === "overdue").length,
+    dueSoon:  all.filter((t) => t.status === "due-soon").length,
+    awaiting: all.filter((t) => t.awaiting).length,
+    booked:   all.filter((t) => !!t.scheduledDate && t.active).length,
   };
-  const tabs = ["All", "Overdue", "Due this week", "In progress", "Later"];
+  const tabs = ["All", "Overdue", "Due this week", "Awaiting contractor", "Later"];
 
   const filterFn = (t) => {
-    if (filter === "All")            return true;
-    if (filter === "Overdue")         return t.bucket === "overdue";
-    if (filter === "Due this week")   return t.bucket === "this-week";
-    if (filter === "In progress")     return t.status === "in-progress";
-    if (filter === "Later")           return t.bucket === "next-14" || t.bucket === "later";
+    if (filter === "All")                 return true;
+    if (filter === "Overdue")             return t.bucket === "overdue";
+    if (filter === "Due this week")       return t.bucket === "this-week";
+    if (filter === "Awaiting contractor") return t.awaiting;
+    if (filter === "Later")               return t.bucket === "next-14" || t.bucket === "later";
     return true;
   };
   const shown = all.filter(filterFn);
@@ -7883,18 +10052,58 @@ function PPMView() {
   const grid = "92px 1fr 170px 130px 130px 130px";
 
   const statusPill = (t) => {
-    if (t.status === "overdue")     return <Pill tone="crit" dot>Overdue</Pill>;
-    if (t.status === "in-progress") return <Pill tone="accent" dot>In progress</Pill>;
-    if (t.status === "due-soon")    return <Pill tone="warn" dot>Due soon</Pill>;
+    if (t.status === "paused")   return <Pill tone="muted" dot>Paused</Pill>;
+    if (t.status === "overdue")  return <Pill tone="crit" dot>Overdue</Pill>;
+    if (t.scheduledDate)         return <Pill tone="accent" dot>Booked in</Pill>;
+    if (t.status === "due-soon") return <Pill tone="warn" dot>Due soon</Pill>;
     return <Pill tone="muted" dot>Scheduled</Pill>;
   };
+
+  const submitAdd = (vals) => {
+    const freq = _PPM_FREQS.find((f) => f.label === vals.frequency);
+    const bld  = buildings.find((x) => x.name === vals.building);
+    const con  = contractors.find((c) => c.name === vals.contractor);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(vals.next || "")) {
+      showToast("Pick the first due date from the date field.");
+      return;
+    }
+    hlApi("/ppms", { method: "POST", body: {
+      title: vals.title,
+      buildingId: bld ? bld.id : null,
+      frequencyPerYear: freq ? freq.perYear : 4,
+      nextDueDate: vals.next,
+      notes: vals.notes || null,
+      contractorName: con ? con.name : null,
+      contactEmail: con && con.email ? con.email : undefined,
+      contactPhone: con && con.phone ? con.phone : undefined,
+    }}).then(({ ok }) => {
+      if (!ok) { showToast("Could not create the task. Check the fields and try again."); return; }
+      showToast("PPM task created");
+      refresh();
+    });
+  };
+
+  if (rows === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the PPM schedule…</div></div>;
+  }
+  if (rows === false) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          {errCode === 403
+            ? "The PPM register needs an admin or supervisor login."
+            : "Could not load the PPM schedule. Refresh to try again."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-inner">
       <div className="page-head">
         <div>
           <h1 className="page-title">PPM schedule</h1>
-          <p className="page-desc">Every planned preventive maintenance task across all sites — what's due, when, and who's attending.</p>
+          <p className="page-desc">Every planned preventive maintenance task on your organisation: what's due, when, and who's attending.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setAddOpen(true)}><Icon name="plus" size={15} />New PPM task</button>
       </div>
@@ -7902,21 +10111,27 @@ function PPMView() {
       {addOpen && (
         <SimpleAddModal
           title="New PPM task"
-          subtitle="Schedule a planned preventive maintenance task and assign an attendee."
+          subtitle="Put a recurring maintenance task on the register. Reminders go out as it comes due."
           icon="clock"
           submitLabel="Create PPM" submitIcon="check"
-          successTitle="PPM scheduled"
-          successCopy="The task is on the schedule and will appear on the assignee's mobile when due."
+          successTitle="PPM saved"
+          successCopy="The task is being saved to the register. Reminders fire as it nears its due date, and you can send the contractor a scheduling link from the task. If saving fails a message will pop up."
           fields={[
-            { id:"name",      label:"Task name",  placeholder:"e.g. Quarterly HVAC service" },
-            { id:"asset",     label:"Asset",       type:"select", options:HL.assets.map((a) => a.name) },
-            { id:"frequency", label:"Frequency",   type:"select", options:["Weekly","Fortnightly","Monthly","Bi-monthly","Quarterly","Half-yearly","Annually"], default:"Quarterly" },
-            { id:"next",      label:"First due",   placeholder:"e.g. in 14 days, 22 Jun 2026" },
-            { id:"assignee",  label:"Assignee",    type:"select", options:HL.contractors.map((c) => c.name).concat(["In-house team"]) },
+            { id:"title",      label:"Task name",  placeholder:"e.g. Quarterly HVAC service" },
+            { id:"building",   label:"Building",   type:"select", options:["Whole portfolio"].concat(buildings.map((x) => x.name)), default:"Whole portfolio" },
+            { id:"frequency",  label:"Frequency",  type:"select", options:_PPM_FREQS.map((f) => f.label), default:"Quarterly" },
+            { id:"next",       label:"First due",  type:"date" },
+            { id:"contractor", label:"Contractor", type:"select", options:["In-house team"].concat(contractors.map((c) => c.name)), default:"In-house team" },
+            { id:"notes",      label:"Notes (optional)", type:"textarea", rows:3, required:false,
+              placeholder:"Scope, access arrangements, anything the contractor needs to know" },
           ]}
+          onSubmit={submitAdd}
           onClose={() => setAddOpen(false)} />
       )}
-      {detail && <PPMDetailPanel task={detail} onClose={() => setDetail(null)} />}
+      {detail && (
+        <PPMDetailPanel task={detail} onClose={() => setDetailId(null)}
+          onChanged={refresh} showToast={showToast} />
+      )}
 
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
         <div className="kpi">
@@ -7930,14 +10145,14 @@ function PPMView() {
           <div className="kpi-foot">in the next 7 days</div>
         </div>
         <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="activity" size={16} /></div><span className="kpi-label">In progress</span></div>
-          <div className="kpi-val">{counts.inProg}</div>
-          <div className="kpi-foot">attending today</div>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="send" size={16} /></div><span className="kpi-label">Awaiting contractor</span></div>
+          <div className="kpi-val">{counts.awaiting}</div>
+          <div className="kpi-foot">scheduling link out</div>
         </div>
         <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">Scheduled</span></div>
-          <div className="kpi-val">{counts.scheduled}</div>
-          <div className="kpi-foot">further out</div>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">Booked in</span></div>
+          <div className="kpi-val">{counts.booked}</div>
+          <div className="kpi-foot">visit date agreed</div>
         </div>
       </div>
 
@@ -7952,9 +10167,27 @@ function PPMView() {
         </div>
       </div>
 
+      {all.length === 0 && (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No PPM tasks yet</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", marginBottom:14, maxWidth:460, marginLeft:"auto", marginRight:"auto" }}>
+            Add your statutory and routine maintenance tasks and HazardLink will chase the due dates for you.
+          </div>
+          <button className="btn btn-primary" onClick={() => setAddOpen(true)}>
+            <Icon name="plus" size={15} />New PPM task
+          </button>
+        </div>
+      )}
+
+      {all.length > 0 && shown.length === 0 && (
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>
+          Nothing matches this filter.
+        </div>
+      )}
+
       {PPM_BUCKETS.map((b) => {
-        const rows = shown.filter((t) => t.bucket === b.id);
-        if (rows.length === 0) return null;
+        const bucketRows = shown.filter((t) => t.bucket === b.id);
+        if (bucketRows.length === 0) return null;
         return (
           <div key={b.id} className="card" style={{ marginBottom:14 }}>
             <div className="card-head">
@@ -7965,7 +10198,7 @@ function PPMView() {
                 <h3 style={{ margin:0 }}>{b.label}</h3>
                 <div className="sub">{b.sub}</div>
               </div>
-              <span className="head-act"><Pill tone={b.tone}>{`${rows.length} task${rows.length !== 1 ? "s" : ""}`}</Pill></span>
+              <span className="head-act"><Pill tone={b.tone}>{`${bucketRows.length} task${bucketRows.length !== 1 ? "s" : ""}`}</Pill></span>
             </div>
             <div className="wo-head" style={{ gridTemplateColumns:grid }}>
               <div>ID</div>
@@ -7975,15 +10208,18 @@ function PPMView() {
               <div>Assignee</div>
               <div>Status</div>
             </div>
-            {rows.map((t) => (
-              <div className="wo-row" key={t.id} style={{ gridTemplateColumns:grid }} onClick={() => setDetail(t)}>
-                <div className="wo-id">{t.id}</div>
-                <div className="wo-title">{t.name}<small>{t.asset} · {t.site}</small></div>
+            {bucketRows.map((t) => (
+              <div className="wo-row" key={t.id} style={{ gridTemplateColumns:grid }} onClick={() => setDetailId(t.id)}>
+                <div className="wo-id" title={t.id}>{t.id.slice(0, 8)}</div>
+                <div className="wo-title">{t.title}<small>{t.siteName}</small></div>
                 <div style={{ fontSize:13, color:"var(--ink-2)" }}>
-                  {t.frequency}
-                  <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2 }}>est. {t.duration}</div>
+                  {t.freqLabel}
+                  <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2 }}>reminder {t.reminderLeadDays} days ahead</div>
                 </div>
-                <div style={{ fontSize:12.5, color: t.status === "overdue" ? "var(--crit)" : t.status === "in-progress" ? "var(--accent)" : "var(--ink-3)", fontFamily:"var(--mono)", fontWeight:600 }}>{t.nextDue}</div>
+                <div title={t.nextDueDate} style={{ fontSize:12.5, color: t.status === "overdue" ? "var(--crit)" : t.status === "due-soon" ? "var(--warn)" : "var(--ink-3)", fontFamily:"var(--mono)", fontWeight:600 }}>
+                  {t.dueLabel}
+                  {t.scheduledDate && <div style={{ fontSize:11, color:"var(--accent)", marginTop:2, fontWeight:600 }}>visit {_ppmFmtDate(t.scheduledDate)}</div>}
+                </div>
                 <div className="wo-assignee"><span className="wo-mini-av">{t.initials}</span>{t.assignee}</div>
                 <div>{statusPill(t)}</div>
               </div>
@@ -7991,15 +10227,75 @@ function PPMView() {
           </div>
         );
       })}
+
+      {toastNode}
     </div>
   );
 }
 
 Object.assign(window, { PPMView });
 
-function PPMDetailPanel({ task, onClose }) {
-  const tone  = task.status === "overdue" ? "crit" : task.status === "in-progress" ? "accent" : task.status === "due-soon" ? "warn" : "muted";
-  const label = task.status === "overdue" ? "Overdue" : task.status === "in-progress" ? "In progress" : task.status === "due-soon" ? "Due soon" : "Scheduled";
+function PPMDetailPanel({ task, onClose, onChanged, showToast }) {
+  const t = task;
+  const toast = showToast || (() => {});
+  const [busy, setBusy] = React.useState(null); // "complete" | "link" | "confirm" | null
+  const sched = t.schedule && t.schedule.status !== "cancelled" ? t.schedule : null;
+
+  const tone  = t.status === "overdue" ? "crit" : t.status === "due-soon" ? "warn" : t.status === "paused" ? "muted" : t.scheduledDate ? "accent" : "muted";
+  const label = t.status === "overdue" ? "Overdue" : t.status === "due-soon" ? "Due soon" : t.status === "paused" ? "Paused" : t.scheduledDate ? "Booked in" : "Scheduled";
+
+  const markComplete = () => {
+    if (busy) return;
+    setBusy("complete");
+    hlApi("/ppms/" + t.id + "/complete", { method:"POST" }).then(({ ok, b }) => {
+      setBusy(null);
+      if (!ok) { toast("Could not mark that done. Try again."); return; }
+      toast("Marked done. Next due " + _ppmFmtDate(b && b.nextDueDate));
+      onChanged && onChanged();
+      onClose();
+    });
+  };
+
+  const sendLink = () => {
+    if (busy || !t.contactEmail) return;
+    setBusy("link");
+    hlApi("/ppms/" + t.id + "/request-schedule", { method:"POST" }).then(({ ok, b }) => {
+      setBusy(null);
+      if (!ok || !b) {
+        toast(b && b.error === "no_contact_email"
+          ? "This task has no contractor email on it, so a link can't be sent."
+          : "Could not create the scheduling link. Try again.");
+        return;
+      }
+      if (b.emailDelivered) {
+        toast("Scheduling link emailed to " + ((b.request && b.request.sentToEmail) || t.contactEmail));
+      } else {
+        _ppmCopy(b.scheduleUrl);
+        toast("Email isn't set up, so the link was copied instead. Send it to the contractor yourself.");
+      }
+      onChanged && onChanged();
+    });
+  };
+
+  const confirmProposed = () => {
+    if (busy || !sched) return;
+    setBusy("confirm");
+    hlApi("/ppm-schedule-requests/" + sched.id + "/confirm", { method:"POST", body:{} }).then(({ ok, b }) => {
+      setBusy(null);
+      if (!ok) { toast("Could not confirm the date. Try again."); return; }
+      toast("Visit booked for " + _ppmFmtDate(b && b.confirmedDate));
+      onChanged && onChanged();
+    });
+  };
+
+  const copyLink = () => {
+    if (!sched || !sched.scheduleUrl) return;
+    _ppmCopy(sched.scheduleUrl).then(() => toast("Scheduling link copied"));
+  };
+
+  const bld = t.building;
+  const contact = bld ? [bld.siteContactName, bld.siteContactPhone].filter(Boolean).join(" · ") : "";
+
   return (
     <React.Fragment>
       <div className="panel-overlay" onClick={onClose} />
@@ -8009,30 +10305,79 @@ function PPMDetailPanel({ task, onClose }) {
             <Icon name="clock" size={17} />
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="panel-title">{task.name}</div>
-            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>{task.id} · {task.site}</div>
+            <div className="panel-title">{t.title}</div>
+            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>{t.id.slice(0, 8)} · {t.siteName}</div>
           </div>
           <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="panel-body">
           <div style={{ display:"flex", gap:8, marginBottom:18, flexWrap:"wrap" }}>
             <Pill tone={tone} dot>{label}</Pill>
-            <Pill tone="muted">{task.frequency}</Pill>
-            <Pill tone="muted" icon="clock">{`Est. ${task.duration}`}</Pill>
+            <Pill tone="muted">{t.freqLabel}</Pill>
+            {t.awaiting && <Pill tone="accent" icon="send">Awaiting contractor</Pill>}
           </div>
-          <div className="info-row"><span className="k">Asset</span><span className="v">{task.asset}</span></div>
-          <div className="info-row"><span className="k">Site</span><span className="v">{task.site}</span></div>
-          <div className="info-row"><span className="k">Next due</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{task.nextDue}</span></div>
-          <div className="info-row"><span className="k">Last done</span><span className="v">{task.lastDone}</span></div>
-          <div className="info-row" style={{ borderBottom:"none" }}><span className="k">Assignee</span>
+          <div className="info-row"><span className="k">Building</span><span className="v">{t.siteName}</span></div>
+          {contact && <div className="info-row"><span className="k">On-site contact</span><span className="v" style={{ fontSize:12.5 }}>{contact}</span></div>}
+          <div className="info-row"><span className="k">Next due</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{_ppmFmtDate(t.nextDueDate)} · {t.dueLabel}</span></div>
+          <div className="info-row"><span className="k">Last done</span><span className="v">{t.lastCompletedAt ? _ppmFmtDate(t.lastCompletedAt) : "Not recorded yet"}</span></div>
+          {t.scheduledDate && <div className="info-row"><span className="k">Visit booked</span><span className="v" style={{ fontFamily:"var(--mono)", color:"var(--accent)" }}>{_ppmFmtDate(t.scheduledDate)}</span></div>}
+          <div className="info-row"><span className="k">Contractor</span>
             <span className="v" style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span className="wo-mini-av">{task.initials}</span>{task.assignee}
+              <span className="wo-mini-av">{t.initials}</span>{t.assignee}
             </span>
           </div>
+          {t.contactEmail && <div className="info-row"><span className="k">Email</span><span className="v" style={{ fontFamily:"var(--mono)", fontSize:12.5 }}>{t.contactEmail}</span></div>}
+          {t.contactPhone && <div className="info-row"><span className="k">Phone</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{t.contactPhone}</span></div>}
+          <div className="info-row" style={{ borderBottom: t.notes ? undefined : "none" }}><span className="k">Reminders</span><span className="v">{t.reminderLeadDays} days before due</span></div>
+          {t.notes && <div className="info-row" style={{ borderBottom:"none" }}><span className="k">Notes</span><span className="v" style={{ fontSize:12.5, lineHeight:1.5 }}>{t.notes}</span></div>}
+
+          {sched && (
+            <div style={{ marginTop:18 }}>
+              <div className="panel-label">Contractor scheduling</div>
+              <p style={{ fontSize:12.5, color:"var(--ink-2)", margin:"0 0 10px", lineHeight:1.55 }}>
+                {sched.status === "sent" && (
+                  "Link sent to " + (sched.sentToEmail || "the contractor") +
+                  (sched.emailDelivered ? ". Waiting for them to pick a date." : ". The email didn't go out, so copy the link below and send it yourself.")
+                )}
+                {sched.status === "proposed" && (
+                  "The contractor has proposed " + _ppmFmtDate(sched.proposedDate) +
+                  (sched.contractorNote ? ". Their note: \"" + sched.contractorNote + "\"" : ".") +
+                  " Approve it to book the visit."
+                )}
+                {sched.status === "confirmed" && ("Visit booked for " + _ppmFmtDate(sched.confirmedDate) + ". The contractor has been sent a confirmation.")}
+                {sched.status === "declined" && (
+                  "The contractor declined this request" +
+                  (sched.contractorNote ? ": \"" + sched.contractorNote + "\"" : ".") +
+                  " Send a fresh link or give them a ring."
+                )}
+              </p>
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                {sched.status === "proposed" && (
+                  <button className="btn btn-primary" onClick={confirmProposed} disabled={!!busy}>
+                    <Icon name="check" size={14} />{busy === "confirm" ? "Booking…" : "Approve " + _ppmFmtDate(sched.proposedDate)}
+                  </button>
+                )}
+                {sched.scheduleUrl && (sched.status === "sent" || sched.status === "proposed") && (
+                  <button className="btn" onClick={copyLink}><Icon name="link" size={14} />Copy link</button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div style={{ display:"flex", gap:10, marginTop:18 }}>
-            <button className="btn" style={{ flex:1 }} onClick={onClose}><Icon name="send" size={15} />Reassign</button>
-            <button className="btn btn-primary" style={{ flex:1 }} onClick={onClose}><Icon name="check" size={15} />Mark complete</button>
+            <button className="btn" style={{ flex:1 }} onClick={sendLink} disabled={!!busy || !t.contactEmail}
+              title={t.contactEmail ? "Email the contractor a no-login link to pick a visit date" : "This task has no contractor email, so a link can't be sent"}>
+              <Icon name="send" size={15} />{busy === "link" ? "Sending…" : sched && (sched.status === "sent" || sched.status === "proposed") ? "Resend link" : "Send schedule link"}
+            </button>
+            <button className="btn btn-primary" style={{ flex:1 }} onClick={markComplete} disabled={!!busy}>
+              <Icon name="check" size={15} />{busy === "complete" ? "Saving…" : "Mark complete"}
+            </button>
           </div>
+          {!t.contactEmail && (
+            <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:8, lineHeight:1.5 }}>
+              To send a scheduling link, create the task with a contractor that has an email on file.
+            </div>
+          )}
         </div>
       </aside>
     </React.Fragment>
@@ -8043,60 +10388,256 @@ Object.assign(window, { PPMDetailPanel });
 
 /* ════════════════════ asset_49_26b2ed36.js ════════════════════ */
 ;
-/* HazardLink — Meters (asset meter readings) */
+/* HazardLink — Meters (asset meter readings) — LIVE.
+   Wired to the real backend:
+     GET  /meters              — meters with asset names + due state (due / due_soon / ok / tracking)
+     POST /meters              — add a meter to an asset
+     POST /meters/:id/readings — log a reading (updates the current value)
+     POST /meters/:id/service  — mark serviced (resets the interval from the current value)
+   Asset picker uses GET /assets. Readings are stored server-side, but there is
+   no backend endpoint to list them yet, so a history view can't be shown. */
+
+function _mtrAgo(ts) {
+  const t = new Date(ts).getTime();
+  if (isNaN(t)) return "—";
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins < 60) return mins <= 1 ? "just now" : mins + " min ago";
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return hrs + (hrs === 1 ? " hour ago" : " hours ago");
+  const days = Math.round(hrs / 24);
+  if (days < 7) return days + (days === 1 ? " day ago" : " days ago");
+  if (days < 31) { const w = Math.round(days / 7); return w + (w === 1 ? " week ago" : " weeks ago"); }
+  const months = Math.round(days / 30);
+  return months + (months === 1 ? " month ago" : " months ago");
+}
+function _mtrNum(n) {
+  return n == null ? "0" : Number(n).toLocaleString("en-IE");
+}
+/* Uniquify select labels so two same-named rows stay distinguishable. */
+function _mtrOptions(items, labelFn) {
+  const seen = {};
+  return items.map((it) => {
+    const base = labelFn(it) || "Unnamed";
+    let label = base;
+    if (seen[base]) { seen[base] += 1; label = base + " (" + seen[base] + ")"; }
+    else seen[base] = 1;
+    return { label, item: it };
+  });
+}
+
+const _MTR_UI = {
+  due:      { tone:"crit",  label:"Service due" },
+  due_soon: { tone:"warn",  label:"Due soon" },
+  ok:       { tone:"ok",    label:"On track" },
+  tracking: { tone:"muted", label:"Tracking" },
+};
+
+/* Shape a real /meters row for the screen. */
+function _mtrMap(m) {
+  const ui = _MTR_UI[m.status] || _MTR_UI.tracking;
+  const unit = m.unit || "";
+  return {
+    ...m,
+    ui, unit,
+    readingFmt: _mtrNum(m.currentValue),
+    lastReadFmt: m.lastReadingAt ? _mtrAgo(m.lastReadingAt) : "No readings yet",
+    intervalText: m.intervalValue != null
+      ? "service every " + _mtrNum(m.intervalValue) + (unit ? " " + unit : "")
+      : "tracking only",
+    nextText: m.intervalValue != null && m.nextServiceAt != null
+      ? "at " + _mtrNum(m.nextServiceAt) + (unit ? " " + unit : "")
+      : "—",
+    remainingText: m.intervalValue == null || m.remaining == null
+      ? ""
+      : m.remaining >= 0
+        ? _mtrNum(m.remaining) + (unit ? " " + unit : "") + " left"
+        : _mtrNum(-m.remaining) + (unit ? " " + unit : "") + " over",
+  };
+}
 
 function MetersView() {
-  const D = useSiteData();
-  const [filter, setFilter] = React.useState("All");
-  const [logOpen, setLogOpen] = React.useState(false);
-  const [detail, setDetail] = React.useState(null);
-  const all = D.meters;
+  const [rows, setRows]         = React.useState(null); // null loading | false error | [meters]
+  const [errCode, setErrCode]   = React.useState(0);
+  const [assets, setAssets]     = React.useState([]);
+  const [filter, setFilter]     = React.useState("All");
+  const [logOpen, setLogOpen]   = React.useState(false);
+  const [logPreset, setLogPreset] = React.useState("");
+  const [addOpen, setAddOpen]   = React.useState(false);
+  const [detailId, setDetailId] = React.useState(null);
+  const { showToast, toastNode } = useViewToast();
+
+  const refresh = React.useCallback(() => {
+    return hlApi("/meters")
+      .then(({ ok, status, b }) => {
+        if (!ok || !b) { setErrCode(status || 0); setRows(false); return; }
+        setRows((b.meters || []).map(_mtrMap));
+      })
+      .catch(() => setRows(false));
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+    hlApi("/assets").then(({ ok, b }) => { if (ok && b) setAssets(b.assets || []); }).catch(() => {});
+  }, [refresh]);
+
+  const all = Array.isArray(rows) ? rows : [];
+  const detail = detailId ? all.find((m) => m.id === detailId) : null;
+
+  const meterOpts = React.useMemo(
+    () => _mtrOptions(all, (m) => (m.assetName || "No asset") + " · " + m.name),
+    [rows]
+  ); // eslint-disable-line react-hooks/exhaustive-deps
+  const assetOpts = React.useMemo(
+    () => _mtrOptions(assets, (a) => a.name),
+    [assets]
+  );
 
   const counts = {
-    total:     all.length,
-    overdue:   all.filter((m) => m.status === "overdue").length,
-    dueSoon:   all.filter((m) => m.status === "due-soon").length,
-    onTrack:   all.filter((m) => m.status === "on-schedule").length,
+    total:   all.length,
+    due:     all.filter((m) => m.status === "due").length,
+    dueSoon: all.filter((m) => m.status === "due_soon").length,
+    onTrack: all.filter((m) => m.status === "ok" || m.status === "tracking").length,
   };
-  const tabs = ["All", "Overdue", "Due soon", "On schedule"];
+  const tabs = ["All", "Service due", "Due soon", "On track"];
   const filterFn = (m) => {
-    if (filter === "All")           return true;
-    if (filter === "Overdue")        return m.status === "overdue";
-    if (filter === "Due soon")       return m.status === "due-soon";
-    if (filter === "On schedule")    return m.status === "on-schedule";
+    if (filter === "All")         return true;
+    if (filter === "Service due") return m.status === "due";
+    if (filter === "Due soon")    return m.status === "due_soon";
+    if (filter === "On track")    return m.status === "ok" || m.status === "tracking";
     return true;
   };
 
   const grid = "1.5fr 150px 160px 130px 140px 110px";
-  const rows = all.filter(filterFn);
+  const shown = all.filter(filterFn);
+
+  const openLog = (presetLabel) => {
+    setLogPreset(presetLabel || "");
+    setLogOpen(true);
+  };
+
+  const submitReading = (vals) => {
+    const opt = meterOpts.find((o) => o.label === vals.meter);
+    if (!opt) { showToast("Pick which meter the reading is for."); return; }
+    const value = parseInt(String(vals.reading || "").replace(/[,\s]/g, ""), 10);
+    if (isNaN(value) || value < 0) { showToast("Enter the reading as a whole number, e.g. 14820."); return; }
+    hlApi("/meters/" + opt.item.id + "/readings", { method:"POST", body:{
+      value,
+      note: (vals.note || "").trim() || undefined,
+    }}).then(({ ok }) => {
+      if (!ok) { showToast("Could not save the reading. Try again."); return; }
+      showToast("Reading saved for " + (opt.item.assetName || opt.item.name));
+      refresh();
+    });
+  };
+
+  const submitMeter = (vals) => {
+    const opt = assetOpts.find((o) => o.label === vals.asset);
+    if (!opt) { showToast("Pick which asset this meter belongs to."); return; }
+    const parseOpt = (s) => {
+      const t = String(s == null ? "" : s).trim().replace(/[,\s]/g, "");
+      if (!t) return null;
+      return /^\d+$/.test(t) ? parseInt(t, 10) : undefined;
+    };
+    const interval = parseOpt(vals.interval);
+    const current  = parseOpt(vals.current);
+    if (interval === undefined) { showToast("The service interval must be a whole number."); return; }
+    if (current === undefined)  { showToast("The current reading must be a whole number."); return; }
+    hlApi("/meters", { method:"POST", body:{
+      assetId: opt.item.id,
+      name: vals.name,
+      unit: (vals.unit || "").trim() || undefined,
+      intervalValue: interval,
+      currentValue: current != null ? current : undefined,
+    }}).then(({ ok }) => {
+      if (!ok) { showToast("Could not add the meter. Try again."); return; }
+      showToast("Meter added to " + opt.item.name);
+      refresh();
+    });
+  };
+
+  const markServiced = (m) => {
+    hlApi("/meters/" + m.id + "/service", { method:"POST" }).then(({ ok }) => {
+      if (!ok) { showToast("Could not record the service. Try again."); return; }
+      showToast("Service recorded at " + _mtrNum(m.currentValue) + (m.unit ? " " + m.unit : ""));
+      refresh();
+    });
+  };
+
+  if (rows === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading meters…</div></div>;
+  }
+  if (rows === false) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          {errCode === 403
+            ? "The meters register needs an admin or supervisor login."
+            : "Could not load the meters. Refresh to try again."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-inner">
       <div className="page-head">
         <div>
           <h1 className="page-title">Meters</h1>
-          <p className="page-desc">Run hours, cycle counts and self-test passes for every monitored asset. Readings drive condition-based PPMs and warranty claims.</p>
+          <p className="page-desc">Run hours, cycle counts and other usage figures for your assets. Each reading updates the meter and its next-service point.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setLogOpen(true)}><Icon name="plus" size={15} />Log reading</button>
+        <div style={{ display:"flex", gap:8 }}>
+          <button className="btn" onClick={() => setAddOpen(true)}><Icon name="gauge" size={15} />Add meter</button>
+          <button className="btn btn-primary" onClick={() => openLog("")} disabled={all.length === 0}
+            title={all.length === 0 ? "Add a meter first" : undefined}>
+            <Icon name="plus" size={15} />Log reading
+          </button>
+        </div>
       </div>
 
       {logOpen && (
         <SimpleAddModal
           title="Log meter reading"
-          subtitle="Record the latest run hours, cycle count or self-test pass."
+          subtitle="Record the latest figure off the meter. It updates the current value straight away."
           icon="activity"
           submitLabel="Save reading" submitIcon="check"
           successTitle="Reading saved"
-          successCopy="The next-due date has been recalculated from the new figure."
+          successCopy="The meter's current value and next-service point are being updated from the new figure. If saving fails a message will pop up."
           fields={[
-            { id:"asset",   label:"Asset",   type:"select", options:HL.meters.map((m) => m.asset) },
-            { id:"reading", label:"Reading", placeholder:"e.g. 14,820" },
-            { id:"taken",   label:"Taken on",default:"Today" },
-            { id:"by",      label:"Recorded by", default:"You" },
+            { id:"meter",   label:"Meter",   type:"select", options:meterOpts.map((o) => o.label), default:logPreset },
+            { id:"reading", label:"New reading", placeholder:"e.g. 14820" },
+            { id:"note",    label:"Note (optional)", required:false, placeholder:"e.g. read off the panel display" },
           ]}
+          onSubmit={submitReading}
           onClose={() => setLogOpen(false)} />
       )}
-      {detail && <MeterDetailPanel meter={detail} onClose={() => setDetail(null)} />}
+
+      {addOpen && (
+        <SimpleAddModal
+          title="Add a meter"
+          subtitle="Track run hours, cycles or any usage figure on an asset. Set a service interval and HazardLink flags when a service falls due."
+          icon="gauge"
+          submitLabel="Add meter" submitIcon="check"
+          successTitle="Meter saved"
+          successCopy="The meter is being added to the register. Log readings against it and the due state updates as usage climbs. If saving fails a message will pop up."
+          fields={[
+            { id:"asset",    label:"Asset", type:"select", options:assetOpts.map((o) => o.label),
+              placeholder: assetOpts.length ? "Select…" : "No assets yet, add one in Assets first" },
+            { id:"name",     label:"Meter name", placeholder:"e.g. Run hours", default:"Run hours" },
+            { id:"unit",     label:"Unit (optional)", required:false, placeholder:"e.g. h, cycles" },
+            { id:"interval", label:"Service interval (optional)", required:false, placeholder:"e.g. 250 for a service every 250 h" },
+            { id:"current",  label:"Current reading (optional)", required:false, placeholder:"e.g. 14820" },
+          ]}
+          onSubmit={submitMeter}
+          onClose={() => setAddOpen(false)} />
+      )}
+      {detail && (
+        <MeterDetailPanel meter={detail} onClose={() => setDetailId(null)}
+          onLogReading={(m) => {
+            const opt = meterOpts.find((o) => o.item.id === m.id);
+            openLog(opt ? opt.label : "");
+          }}
+          onMarkServiced={markServiced} />
+      )}
 
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
         <div className="kpi">
@@ -8105,19 +10646,19 @@ function MetersView() {
           <div className="kpi-foot">across all assets</div>
         </div>
         <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertCircle" size={16} /></div><span className="kpi-label">Overdue reads</span></div>
-          <div className="kpi-val" style={{ color: counts.overdue ? "var(--crit)" : "var(--ok)" }}>{counts.overdue}</div>
-          <div className="kpi-foot">past due date</div>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="alertCircle" size={16} /></div><span className="kpi-label">Service due</span></div>
+          <div className="kpi-val" style={{ color: counts.due ? "var(--crit)" : "var(--ok)" }}>{counts.due}</div>
+          <div className="kpi-foot">interval used up</div>
         </div>
         <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div><span className="kpi-label">Due this week</span></div>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="clock" size={16} /></div><span className="kpi-label">Due soon</span></div>
           <div className="kpi-val">{counts.dueSoon}</div>
-          <div className="kpi-foot">scheduled in next 7 days</div>
+          <div className="kpi-foot">nearing the interval</div>
         </div>
         <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">On schedule</span></div>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("ok"), color:solid("ok") }}><Icon name="checkCircle" size={16} /></div><span className="kpi-label">On track</span></div>
           <div className="kpi-val">{counts.onTrack}</div>
-          <div className="kpi-foot">read on time</div>
+          <div className="kpi-foot">inside the interval</div>
         </div>
       </div>
 
@@ -8128,56 +10669,70 @@ function MetersView() {
           ))}
         </div>
         <div style={{ marginLeft:"auto", fontSize:12.5, color:"var(--ink-3)" }}>
-          {rows.length} of {all.length} meters
+          {shown.length} of {all.length} meters
         </div>
       </div>
 
-      <div className="card">
-        <div className="wo-head" style={{ gridTemplateColumns:grid }}>
-          <div>Asset</div>
-          <div>Meter</div>
-          <div>Latest reading</div>
-          <div>Last read</div>
-          <div>Next due</div>
-          <div>Status</div>
+      {all.length === 0 ? (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No meters yet</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", marginBottom:14, maxWidth:460, marginLeft:"auto", marginRight:"auto" }}>
+            Add a meter to an asset, log readings, and HazardLink flags when usage says a service is due.
+          </div>
+          <button className="btn btn-primary" onClick={() => setAddOpen(true)}>
+            <Icon name="gauge" size={15} />Add meter
+          </button>
         </div>
-        {rows.map((m) => {
-          const tone = m.status === "overdue" ? "crit" : m.status === "due-soon" ? "warn" : "ok";
-          const label = m.status === "overdue" ? "Overdue" : m.status === "due-soon" ? "Due soon" : "On schedule";
-          return (
-            <div className="wo-row" key={m.id} style={{ gridTemplateColumns:grid }} onClick={() => setDetail(m)}>
+      ) : (
+        <div className="card">
+          <div className="wo-head" style={{ gridTemplateColumns:grid }}>
+            <div>Asset</div>
+            <div>Meter</div>
+            <div>Latest reading</div>
+            <div>Last read</div>
+            <div>Next service</div>
+            <div>Status</div>
+          </div>
+          {shown.length === 0 && (
+            <div style={{ padding:"26px 18px", fontSize:13, color:"var(--ink-3)" }}>Nothing matches this filter.</div>
+          )}
+          {shown.map((m) => (
+            <div className="wo-row" key={m.id} style={{ gridTemplateColumns:grid }} onClick={() => setDetailId(m.id)}>
               <div style={{ display:"flex", alignItems:"flex-start", gap:11 }}>
                 <div className="meter-ic"><Icon name="activity" size={14} /></div>
                 <div style={{ minWidth:0 }}>
-                  <div className="wo-title" style={{ fontSize:13.5 }}>{m.asset}</div>
-                  <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2, fontFamily:"var(--mono)" }}>{m.assetId} · {m.site}</div>
+                  <div className="wo-title" style={{ fontSize:13.5 }}>{m.assetName || "No asset"}</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2, fontFamily:"var(--mono)" }} title={m.id}>{m.id.slice(0, 8)}</div>
                 </div>
               </div>
               <div style={{ fontSize:13, color:"var(--ink-2)" }}>
-                <div>{m.type}</div>
-                <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2 }}>{m.frequency}</div>
+                <div>{m.name}</div>
+                <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2 }}>{m.intervalText}</div>
               </div>
               <div className="meter-reading">
-                <span className="mr-n">{m.reading}</span>
+                <span className="mr-n">{m.readingFmt}</span>
                 <span className="mr-u">{m.unit}</span>
               </div>
-              <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>{m.lastRead}</div>
-              <div style={{ fontSize:12.5, color: tone === "ok" ? "var(--ink-2)" : solid(tone), fontFamily:"var(--mono)" }}>{m.nextDue}</div>
-              <div><Pill tone={tone} dot>{label}</Pill></div>
+              <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>{m.lastReadFmt}</div>
+              <div style={{ fontSize:12.5, color: m.ui.tone === "ok" || m.ui.tone === "muted" ? "var(--ink-2)" : solid(m.ui.tone), fontFamily:"var(--mono)" }}>
+                {m.nextText}
+                {m.remainingText && <div style={{ fontSize:11, marginTop:2 }}>{m.remainingText}</div>}
+              </div>
+              <div><Pill tone={m.ui.tone} dot>{m.ui.label}</Pill></div>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {toastNode}
     </div>
   );
 }
 
 Object.assign(window, { MetersView });
 
-function MeterDetailPanel({ meter, onClose }) {
+function MeterDetailPanel({ meter, onClose, onLogReading, onMarkServiced }) {
   const m = meter;
-  const tone  = m.status === "overdue" ? "crit" : m.status === "due-soon" ? "warn" : "ok";
-  const label = m.status === "overdue" ? "Overdue" : m.status === "due-soon" ? "Due soon" : "On schedule";
   return (
     <React.Fragment>
       <div className="panel-overlay" onClick={onClose} />
@@ -8187,31 +10742,45 @@ function MeterDetailPanel({ meter, onClose }) {
             <Icon name="activity" size={17} />
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="panel-title">{m.asset}</div>
-            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>{m.assetId} · {m.site}</div>
+            <div className="panel-title">{m.assetName || "No asset"}</div>
+            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>{m.name} · {m.id.slice(0, 8)}</div>
           </div>
           <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="panel-body">
           <div style={{ display:"flex", gap:8, marginBottom:18, flexWrap:"wrap" }}>
-            <Pill tone={tone} dot>{label}</Pill>
-            <Pill tone="muted">{m.frequency}</Pill>
-            <Pill tone="muted">{m.type}</Pill>
+            <Pill tone={m.ui.tone} dot>{m.ui.label}</Pill>
+            <Pill tone="muted">{m.intervalText}</Pill>
           </div>
 
           <div className="meter-big">
-            <div className="mb-n">{m.reading}</div>
+            <div className="mb-n">{m.readingFmt}</div>
             <div className="mb-u">{m.unit}</div>
             <div className="mb-l">latest reading</div>
           </div>
 
-          <div className="info-row"><span className="k">Last read</span><span className="v">{m.lastRead}</span></div>
-          <div className="info-row"><span className="k">Next due</span><span className="v" style={{ color: tone === "ok" ? "var(--ink)" : solid(tone), fontFamily:"var(--mono)" }}>{m.nextDue}</span></div>
-          <div className="info-row" style={{ borderBottom:"none" }}><span className="k">Asset</span><span className="v">{m.asset}</span></div>
+          <div className="info-row"><span className="k">Last read</span><span className="v">{m.lastReadFmt}</span></div>
+          <div className="info-row"><span className="k">Last serviced at</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{_mtrNum(m.lastServiceValue)}{m.unit ? " " + m.unit : ""}</span></div>
+          <div className="info-row"><span className="k">Next service</span>
+            <span className="v" style={{ color: m.ui.tone === "ok" || m.ui.tone === "muted" ? "var(--ink)" : solid(m.ui.tone), fontFamily:"var(--mono)" }}>
+              {m.intervalValue != null ? m.nextText + (m.remainingText ? " · " + m.remainingText : "") : "no interval set"}
+            </span>
+          </div>
+          <div className="info-row" style={{ borderBottom:"none" }}><span className="k">Asset</span><span className="v">{m.assetName || "—"}</span></div>
+
+          <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:14, lineHeight:1.55 }}>
+            Every reading is stored, but the backend has no endpoint to list past readings yet, so a history view can't be shown here.
+          </div>
 
           <div style={{ display:"flex", gap:10, marginTop:18 }}>
-            <button className="btn" style={{ flex:1 }} onClick={onClose}><Icon name="file" size={15} />View history</button>
-            <button className="btn btn-primary" style={{ flex:1 }} onClick={onClose}><Icon name="plus" size={15} />Log reading</button>
+            <button className="btn" style={{ flex:1 }}
+              title="Records a service at the current reading and restarts the interval from there"
+              onClick={() => { onClose(); onMarkServiced && onMarkServiced(m); }}>
+              <Icon name="check" size={15} />Mark serviced
+            </button>
+            <button className="btn btn-primary" style={{ flex:1 }} onClick={() => { onClose(); onLogReading && onLogReading(m); }}>
+              <Icon name="plus" size={15} />Log reading
+            </button>
           </div>
         </div>
       </aside>
@@ -8223,10 +10792,16 @@ Object.assign(window, { MeterDetailPanel });
 
 /* ════════════════════ asset_46_956d8c2c.js ════════════════════ */
 ;
-/* HazardLink — Parts and inventory (with QR codes, scanner, full part detail) */
+/* HazardLink — Parts and inventory — LIVE.
+   Wired to the real backend:
+     GET   /parts     — the org's parts with stock levels + reorder levels
+     POST  /parts     — add a part
+     PATCH /parts/:id — edit a part (stock in/out adjusts stockQty through this)
+   There is no backend movement ledger, purchase-order store or auto-reorder
+   rule yet — those controls are disabled or session-local and say so. */
 
 function StockBar({ onHand, min, max }) {
-  const tone = onHand === 0 ? "crit" : onHand < min ? "warn" : "ok";
+  const tone = onHand === 0 ? "crit" : (min > 0 && onHand <= min) ? "warn" : "ok";
   const pct = Math.max(2, Math.min(100, (onHand / Math.max(max, 1)) * 100));
   const minPct = Math.max(0, Math.min(100, (min / Math.max(max, 1)) * 100));
   return (
@@ -8237,122 +10812,177 @@ function StockBar({ onHand, min, max }) {
       </div>
       <div className="stock-nums">
         <span className="stock-on" style={{ color: solid(tone) }}>{onHand}</span>
-        <span className="stock-of">/ {max}</span>
+        <span className="stock-of">min {min}</span>
       </div>
     </div>
   );
 }
 
-/* deterministic helpers — synthesize bin location and usage history per part */
-function _partBin(p) {
-  const aisles = ["A","B","C","D"];
-  const a    = aisles[_qrHash(p.id)   % aisles.length];
-  const shelf = (_qrHash(p.code)  % 5) + 1;
-  const bin   = (_qrHash(p.name)  % 30) + 1;
-  return "Aisle " + a + " · Shelf " + shelf + " · Bin " + String(bin).padStart(2, "0");
+/* Shape a real /parts row for the screen (and for the PO tab, which expects
+   onHand / min / max / price / code / supplier). `max` is only a display and
+   reorder-suggestion scale — the backend tracks stockQty and reorderLevel. */
+function _prtMap(p) {
+  const onHand = p.stockQty || 0;
+  const min = p.reorderLevel || 0;
+  const status = onHand <= 0 ? "out" : (min > 0 && onHand <= min) ? "low" : "in-stock";
+  return {
+    ...p,
+    onHand, min, status,
+    max: Math.max(onHand, min * 2, 8),
+    code: p.sku || "",
+    unit: p.unit || "each",
+    hasPrice: p.unitCostCents != null,
+    price: p.unitCostCents != null ? moneyEUR(p.unitCostCents / 100) : "€0.00",
+    supplier: p.supplier || "No supplier set",
+  };
 }
-function _initialUsage(p) {
-  // No seeded usage history for a brand-new org — events accrue as stock moves.
-  return [];
+function _prtInt(s) {
+  const t = String(s == null ? "" : s).trim().replace(/,/g, "");
+  if (!t) return null;                                  // blank = not given
+  return /^\d+$/.test(t) ? parseInt(t, 10) : undefined; // undefined = invalid
+}
+function _prtCents(s) {
+  const t = String(s == null ? "" : s).trim().replace(/[€,\s]/g, "");
+  if (!t) return null;
+  return /^\d+(\.\d{1,2})?$/.test(t) ? Math.round(parseFloat(t) * 100) : undefined;
 }
 
 /* ===========================================================
    List view
    =========================================================== */
 function PartsView({ go, onScan, pendingScan, onConsumeScan }) {
-  const D = useSiteData();
+  const [rows, setRows]       = React.useState(null); // null loading | false error | [parts]
+  const [errCode, setErrCode] = React.useState(0);
   const [filter,  setFilter]  = React.useState("All");
   const [addOpen, setAddOpen] = React.useState(false);
   const [detailId, setDetailId] = React.useState(null);
   const [section, setSection] = React.useState("inventory"); // inventory | po
-  // Mutable on-hand counts (id → number). Falls back to data default.
-  const [stock, setStock] = React.useState({});
-  // Mutable usage history (id → array). Lazy-initialized on first open.
+  // Movements made in this session (id → array). Real actions the user took
+  // here — the backend has no movement ledger to load history from.
   const [usage, setUsage] = React.useState({});
-  // Per-part auto-reorder toggle overrides (id → bool). Initial values
-  // come from PART_REORDER_CFG; this map only stores overrides.
-  const [autoOverride, setAutoOverride] = React.useState({});
   const { showToast, toastNode } = useViewToast();
 
-  const isAuto = (p) => {
-    if (autoOverride[p.id] != null) return autoOverride[p.id];
-    return !!(PART_REORDER_CFG[p.id] && PART_REORDER_CFG[p.id].auto);
-  };
-  const toggleAuto = (p) => {
-    setAutoOverride((o) => ({ ...o, [p.id]: !isAuto(p) }));
-    showToast(isAuto(p)
-      ? `Auto-reorder paused for ${p.name}`
-      : `Auto-reorder on · ${p.name} → ${p.supplier}`);
-  };
+  const refresh = React.useCallback(() => {
+    return hlApi("/parts")
+      .then(({ ok, status, b }) => {
+        if (!ok || !b) { setErrCode(status || 0); setRows(false); return; }
+        setRows((b.parts || []).map(_prtMap));
+      })
+      .catch(() => setRows(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
 
-  const addStockFromPO = (partId, qty, poId) => {
-    setStock((s) => {
-      const raw = HL.parts.find((x) => x.id === partId);
-      const current = s[partId] != null ? s[partId] : (raw ? raw.onHand : 0);
-      return { ...s, [partId]: current + qty };
-    });
-    const entry = {
-      id: "u-po-" + Date.now() + "-" + partId,
-      date: "just now", type: "in", qty,
-      ref: poId, by: "Goods-in", note: `Received via ${poId}`,
-    };
-    setUsage((u) => ({ ...u, [partId]: [entry, ...(u[partId] || [])] }));
-  };
+  const all = Array.isArray(rows) ? rows : [];
 
-  // Pick up scan-resolutions from the app
+  /* Stock in/out — a real PATCH of stockQty. Returns a promise of success. */
+  const adjustStock = React.useCallback((partId, delta, note, ref) => {
+    const p = all.find((x) => x.id === partId);
+    if (!p) return Promise.resolve(false);
+    const next = Math.max(0, p.onHand + delta);
+    return hlApi("/parts/" + partId, { method: "PATCH", body: { stockQty: next } })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not update the stock level. Try again."); return false; }
+        const me = (typeof HL !== "undefined" && HL.currentUser && (HL.currentUser.name || HL.currentUser.email)) || "You";
+        const entry = {
+          id: "u-" + Date.now(),
+          date: "just now",
+          type: delta >= 0 ? "in" : "out",
+          qty: Math.abs(delta),
+          ref: ref || (delta >= 0 ? "Manual entry" : "Manual issue"),
+          by: me,
+          note: note || "",
+        };
+        setUsage((u) => ({ ...u, [partId]: [entry].concat(u[partId] || []) }));
+        return refresh().then(() => true);
+      });
+  }, [all, refresh, showToast]);
+
+  // PO tab "Receive" pushes each line into real stock via the same PATCH.
+  const addStockFromPO = (partId, qty, poId) => { adjustStock(partId, qty, "", poId); };
+
+  // Pick up scan-resolutions from the app. The scanner is a demo mock, so a
+  // code only opens a part if it matches a real id or SKU.
   React.useEffect(() => {
     if (pendingScan) {
-      setDetailId(pendingScan.id);
+      const hit = all.find((x) => x.id === pendingScan.id || (x.sku && x.sku === pendingScan.id));
+      if (hit) setDetailId(hit.id);
+      else showToast("Code " + pendingScan.id + " doesn't match any part in your inventory.");
       onConsumeScan && onConsumeScan();
     }
   }, [pendingScan && pendingScan.ts]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const partWithLive = (p) => {
-    if (!p) return p;
-    const live = stock[p.id];
-    if (live == null) return p;
-    const status = live === 0 ? "out" : live < p.min ? "low" : "in-stock";
-    return { ...p, onHand: live, status };
+  const submitAdd = (vals) => {
+    const qty  = _prtInt(vals.qty);
+    const min  = _prtInt(vals.min);
+    const cost = _prtCents(vals.cost);
+    if (qty === undefined)  { showToast("Opening stock must be a whole number."); return; }
+    if (min === undefined)  { showToast("The minimum level must be a whole number."); return; }
+    if (cost === undefined) { showToast("The unit cost must be a number, e.g. 32 or 32.50."); return; }
+    hlApi("/parts", { method: "POST", body: {
+      name: vals.name,
+      sku: (vals.sku || "").trim() || null,
+      unit: (vals.unit || "").trim() || "each",
+      stockQty: qty != null ? qty : 0,
+      reorderLevel: min != null ? min : 0,
+      unitCostCents: cost,
+      supplier: (vals.supplier || "").trim() || null,
+      notes: (vals.notes || "").trim() || null,
+    }}).then(({ ok }) => {
+      if (!ok) { showToast("Could not add the part. Check the fields and try again."); return; }
+      showToast("Part added to the inventory");
+      refresh();
+    });
   };
 
-  // If a part detail is open, render the detail page.
-  if (detailId) {
-    const raw = HL.parts.find((x) => x.id === detailId);
-    const live = partWithLive(raw);
-    if (!live) { setDetailId(null); return null; }
+  if (rows === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the inventory…</div></div>;
+  }
+  if (rows === false) {
     return (
-      <PartDetail
-        part={live}
-        usage={usage[detailId] || _initialUsage(raw)}
-        onBack={() => setDetailId(null)}
-        onStockChange={(delta, entry) => {
-          setStock((s) => ({ ...s, [detailId]: Math.max(0, (s[detailId] != null ? s[detailId] : raw.onHand) + delta) }));
-          setUsage((u) => ({ ...u, [detailId]: [entry, ...(u[detailId] || _initialUsage(raw))] }));
-        }}
-      />
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          {errCode === 403
+            ? "The parts register needs an admin or supervisor login."
+            : "Could not load the inventory. Refresh to try again."}
+        </div>
+      </div>
     );
   }
 
-  const allRaw = D.parts;
-  const all    = allRaw.map(partWithLive);
+  // If a part detail is open, render the detail page.
+  if (detailId) {
+    const live = all.find((x) => x.id === detailId);
+    if (!live) { setDetailId(null); return null; }
+    return (
+      <React.Fragment>
+        <PartDetail
+          part={live}
+          usage={usage[detailId] || []}
+          onBack={() => setDetailId(null)}
+          onAdjust={(kind, qty, note) => adjustStock(detailId, kind === "in" ? qty : -qty, note)}
+          onReorder={() => { setDetailId(null); setSection("po"); }}
+        />
+        {toastNode}
+      </React.Fragment>
+    );
+  }
 
   const counts = {
     total:   all.length,
     inStock: all.filter((p) => p.status === "in-stock").length,
     low:     all.filter((p) => p.status === "low").length,
     out:     all.filter((p) => p.status === "out").length,
-    pending: all.filter((p) => /awaiting|PO/i.test(p.lastOrder)).length,
   };
+  const valueCents = all.reduce((s, p) => s + (p.unitCostCents != null ? p.onHand * p.unitCostCents : 0), 0);
 
   const filterFn = (p) => {
-    if (filter === "All")            return true;
-    if (filter === "Low stock")      return p.status === "low";
-    if (filter === "Out of stock")   return p.status === "out";
-    if (filter === "Pending reorder") return /awaiting|PO/i.test(p.lastOrder);
+    if (filter === "All")          return true;
+    if (filter === "Low stock")    return p.status === "low";
+    if (filter === "Out of stock") return p.status === "out";
     return true;
   };
-  const tabs = ["All", "Low stock", "Out of stock", "Pending reorder"];
-  const rows = all.filter(filterFn);
+  const tabs = ["All", "Low stock", "Out of stock"];
+  const shown = all.filter(filterFn);
 
   const grid = "1.4fr 56px 160px 150px 130px 90px 120px 96px";
 
@@ -8361,7 +10991,7 @@ function PartsView({ go, onScan, pendingScan, onConsumeScan }) {
       <div className="page-head">
         <div>
           <h1 className="page-title">Parts and inventory</h1>
-          <p className="page-desc">Every spare part and consumable across the central stores and on-site stockrooms. Scan a QR to find or update stock without typing.</p>
+          <p className="page-desc">Every spare part and consumable your organisation tracks, with live stock levels and reorder flags.</p>
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn" onClick={onScan}><Icon name="scan" size={15} />Scan</button>
@@ -8372,19 +11002,22 @@ function PartsView({ go, onScan, pendingScan, onConsumeScan }) {
       {addOpen && (
         <SimpleAddModal
           title="Add part to inventory"
-          subtitle="Set a min level and HazardLink will reorder automatically."
+          subtitle="Set a minimum level and the part is flagged for reorder the moment stock dips to it."
           icon="package"
           submitLabel="Add part" submitIcon="check"
-          successTitle="Part added"
-          successCopy="The part is now tracked. Auto-reorder kicks in the moment stock dips below the min level."
+          successTitle="Part saved"
+          successCopy="The part is being added to the register with its stock and minimum level. If saving fails a message will pop up."
           fields={[
-            { id:"name",     label:"Part name",  placeholder:"e.g. Pleated air filter, 600×600" },
-            { id:"code",     label:"Part code",   placeholder:"e.g. PAF-600" },
-            { id:"category", label:"Category",    type:"select", options:["Belts","Filters","Plumbing","Refrigerant","Batteries","Lifts","Auto doors","Pool","Lighting","Other"] },
-            { id:"location", label:"Location",   type:"select", options:["Central stores, Dublin"].concat(HL.sites.map((s) => s.name)) },
-            { id:"min",      label:"Minimum level", placeholder:"e.g. 4" },
-            { id:"supplier", label:"Supplier",      placeholder:"e.g. Buckley & Co" },
+            { id:"name",     label:"Part name", placeholder:"e.g. Pleated air filter, 600×600" },
+            { id:"sku",      label:"SKU / part code (optional)", required:false, placeholder:"e.g. PAF-600" },
+            { id:"unit",     label:"Unit (optional)", required:false, placeholder:"e.g. each, box, litre" },
+            { id:"qty",      label:"Opening stock (optional)", required:false, placeholder:"e.g. 12" },
+            { id:"min",      label:"Minimum level (optional)", required:false, placeholder:"e.g. 4" },
+            { id:"cost",     label:"Unit cost in euro (optional)", required:false, placeholder:"e.g. 32.50" },
+            { id:"supplier", label:"Supplier (optional)", required:false, placeholder:"e.g. Buckley & Co" },
+            { id:"notes",    label:"Notes (optional)", type:"textarea", rows:2, required:false, placeholder:"e.g. fits AHU 3 and AHU 4" },
           ]}
+          onSubmit={submitAdd}
           onClose={() => setAddOpen(false)} />
       )}
 
@@ -8396,14 +11029,19 @@ function PartsView({ go, onScan, pendingScan, onConsumeScan }) {
       </div>
 
       {section === "po" ? (
-        <PurchaseOrdersTab parts={all} onAddStock={addStockFromPO} showToast={showToast} />
+        <React.Fragment>
+          <div className="card card-pad" style={{ marginBottom:14, fontSize:12.5, color:"var(--ink-3)", lineHeight:1.55 }}>
+            Purchase orders are not stored on the backend yet, so anything drafted here lasts for this session only. Receiving a PO does update real stock levels.
+          </div>
+          <PurchaseOrdersTab parts={all} onAddStock={addStockFromPO} showToast={showToast} />
+        </React.Fragment>
       ) : (
       <React.Fragment>
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("muted"), color:solid("muted") }}><Icon name="package" size={16} /></div><span className="kpi-label">SKUs tracked</span></div>
           <div className="kpi-val">{counts.total}</div>
-          <div className="kpi-foot">across all stores</div>
+          <div className="kpi-foot">{counts.inStock} in stock</div>
         </div>
         <div className="kpi">
           <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("warn"), color:solid("warn") }}><Icon name="alertTri" size={16} /></div><span className="kpi-label">Low stock</span></div>
@@ -8416,9 +11054,9 @@ function PartsView({ go, onScan, pendingScan, onConsumeScan }) {
           <div className="kpi-foot">cannot fulfil work orders</div>
         </div>
         <div className="kpi">
-          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="send" size={16} /></div><span className="kpi-label">Pending reorders</span></div>
-          <div className="kpi-val">{counts.pending}</div>
-          <div className="kpi-foot">PO raised, awaiting delivery</div>
+          <div className="kpi-top"><div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="creditCard" size={16} /></div><span className="kpi-label">Stock value</span></div>
+          <div className="kpi-val">{moneyEUR(valueCents / 100)}</div>
+          <div className="kpi-foot">at unit cost, where set</div>
         </div>
       </div>
 
@@ -8429,59 +11067,68 @@ function PartsView({ go, onScan, pendingScan, onConsumeScan }) {
           ))}
         </div>
         <div style={{ marginLeft:"auto", fontSize:12.5, color:"var(--ink-3)" }}>
-          {rows.length} of {all.length} parts
+          {shown.length} of {all.length} parts
         </div>
       </div>
 
+      {all.length === 0 ? (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No parts yet</div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", marginBottom:14, maxWidth:460, marginLeft:"auto", marginRight:"auto" }}>
+            Add the spares and consumables you keep on the shelf and HazardLink tracks the stock levels.
+          </div>
+          <button className="btn btn-primary" onClick={() => setAddOpen(true)}>
+            <Icon name="plus" size={15} />Add part
+          </button>
+        </div>
+      ) : (
       <div className="card">
         <div className="wo-head" style={{ gridTemplateColumns:grid }}>
           <div>Part</div>
           <div>QR</div>
-          <div>Location</div>
+          <div>Supplier</div>
           <div>Stock on hand</div>
           <div>Status</div>
           <div>Unit price</div>
-          <div>Last reorder</div>
+          <div>Notes</div>
           <div>Auto-reorder</div>
         </div>
-        {rows.map((p) => {
+        {shown.length === 0 && (
+          <div style={{ padding:"26px 18px", fontSize:13, color:"var(--ink-3)" }}>Nothing matches this filter.</div>
+        )}
+        {shown.map((p) => {
           const tone = p.status === "in-stock" ? "ok" : p.status === "low" ? "warn" : "crit";
           const label = p.status === "in-stock" ? "In stock" : p.status === "low" ? "Reorder — at min" : "Out of stock";
-          const cfg = PART_REORDER_CFG[p.id] || {};
-          const auto = isAuto(p);
           return (
             <div className="wo-row" key={p.id} style={{ gridTemplateColumns:grid }} onClick={() => setDetailId(p.id)}>
               <div style={{ display:"flex", alignItems:"flex-start", gap:11 }}>
                 <div className="part-ic"><Icon name="package" size={14} /></div>
                 <div style={{ minWidth:0 }}>
                   <div className="wo-title" style={{ fontSize:13.5 }}>{p.name}</div>
-                  <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2, fontFamily:"var(--mono)" }}>{p.code} · {p.category}</div>
-                  <div className="part-assets">{p.linkedAssets.join(" · ")}</div>
+                  <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2, fontFamily:"var(--mono)" }}>{p.code || "no SKU"} · per {p.unit}</div>
                 </div>
               </div>
               <div className="qr-thumb" title={p.id}>
                 <QRCode value={p.id} size={40} />
               </div>
-              <div className="part-loc">{p.site}<small>{p.supplier}</small></div>
+              <div className="part-loc">{p.supplier}<small title={p.id}>{p.id.slice(0, 8)}</small></div>
               <div><StockBar onHand={p.onHand} min={p.min} max={p.max} /></div>
               <div><Pill tone={tone} dot>{label}</Pill></div>
-              <div className="part-price">{p.price}</div>
-              <div className="part-reorder">
-                {p.lastOrder}
-                {cfg.reorderTo && <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2 }}>→ reorder to {cfg.reorderTo}</div>}
-              </div>
+              <div className="part-price">{p.hasPrice ? p.price : "—"}</div>
+              <div className="part-reorder">{p.notes || "—"}</div>
               <div onClick={(e) => e.stopPropagation()}>
-                <button className={"auto-toggle" + (auto ? " on" : "")}
-                  onClick={() => toggleAuto(p)}
-                  title={auto ? "Auto-reorder is on" : "Auto-reorder is off"}>
+                <button className="auto-toggle" disabled
+                  style={{ opacity:.45, cursor:"not-allowed" }}
+                  title="Auto-reorder needs a backend reorder rule. Not wired up yet.">
                   <span className="auto-knob" />
-                  <span className="auto-lbl">{auto ? "ON" : "OFF"}</span>
+                  <span className="auto-lbl">OFF</span>
                 </button>
               </div>
             </div>
           );
         })}
       </div>
+      )}
       </React.Fragment>
       )}
       {toastNode}
@@ -8492,11 +11139,11 @@ function PartsView({ go, onScan, pendingScan, onConsumeScan }) {
 /* ===========================================================
    Full-page Part Detail
    =========================================================== */
-function PartDetail({ part, usage, onBack, onStockChange }) {
+function PartDetail({ part, usage, onBack, onAdjust, onReorder }) {
   const p = part;
   const [flashCls, setFlashCls] = React.useState("");
   const [form, setForm] = React.useState(null);     // null | "in" | "out"
-  const [printedAt, setPrintedAt] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
   const tone  = p.status === "in-stock" ? "ok" : p.status === "low" ? "warn" : "crit";
   const label = p.status === "in-stock" ? "In stock" : p.status === "low" ? "Low — at min" : "Out of stock";
   const flashRef = React.useRef(null);
@@ -8509,19 +11156,14 @@ function PartDetail({ part, usage, onBack, onStockChange }) {
   }, [flashCls]);
 
   const handleSubmit = (type, qty, note) => {
-    const delta = type === "in" ? qty : -qty;
-    const entry = {
-      id:"u-new-" + Date.now(),
-      date:"just now",
-      type:type,
-      qty:qty,
-      ref:type === "in" ? "Manual entry" : "Manual issue",
-      by:"Aoife Kelly",
-      note:note || "",
-    };
-    onStockChange(delta, entry);
-    setFlashCls(type === "in" ? "flash-up" : "flash-down");
-    setForm(null);
+    if (saving) return;
+    setSaving(true);
+    Promise.resolve(onAdjust(type, qty, note)).then((ok) => {
+      setSaving(false);
+      if (ok === false) return;
+      setFlashCls(type === "in" ? "flash-up" : "flash-down");
+      setForm(null);
+    });
   };
 
   return (
@@ -8536,16 +11178,21 @@ function PartDetail({ part, usage, onBack, onStockChange }) {
         </div>
         <div className="dh-title">
           <h1>{p.name}</h1>
-          <div className="dh-id"><Icon name="scan" size={13} />{p.id} · {p.code} · {p.category}</div>
+          <div className="dh-id"><Icon name="scan" size={13} />{p.id.slice(0, 8)}{p.code ? " · " + p.code : ""} · per {p.unit}</div>
           <div className="dh-pills">
             <Pill tone={tone} dot>{label}</Pill>
-            <Pill tone="muted">{p.category}</Pill>
-            {/awaiting|PO/i.test(p.lastOrder) && <Pill tone="accent">PO in flight</Pill>}
+            {p.min > 0 && <Pill tone="muted">min {p.min}</Pill>}
           </div>
         </div>
         <div className="detail-head-actions">
-          <button className="btn"><Icon name="file" size={15} />Order history</button>
-          <button className="btn btn-primary"><Icon name="send" size={15} />Reorder now</button>
+          <button className="btn" disabled style={{ opacity:.5, cursor:"not-allowed" }}
+            title="Purchase orders are not stored on the backend yet, so there is no order history to show.">
+            <Icon name="file" size={15} />Order history
+          </button>
+          <button className="btn btn-primary" onClick={onReorder}
+            title="Opens the purchase orders tab. POs are session-only until the backend stores them.">
+            <Icon name="send" size={15} />Reorder now
+          </button>
         </div>
       </div>
 
@@ -8555,17 +11202,17 @@ function PartDetail({ part, usage, onBack, onStockChange }) {
             <div className="panel-label" style={{ marginBottom: 0 }}>Stock on hand</div>
             <div className="stock-big">
               <div ref={flashRef} className={"sb-n " + flashCls}>
-                {p.onHand}<small>/{p.max}</small>
+                {p.onHand}<small> {p.unit}</small>
               </div>
-              <div className="sb-cap">min level <b style={{ color: "var(--ink-2)", fontFamily: "var(--mono)" }}>{p.min}</b> · {p.site}</div>
+              <div className="sb-cap">min level <b style={{ color: "var(--ink-2)", fontFamily: "var(--mono)" }}>{p.min}</b> · {p.supplier}</div>
               <div className="sb-bar"><StockBar onHand={p.onHand} min={p.min} max={p.max} /></div>
             </div>
 
             <div className="stock-action-row">
-              <button className="btn btn-stock btn-stock-in" onClick={() => setForm(form === "in" ? null : "in")}>
+              <button className="btn btn-stock btn-stock-in" onClick={() => setForm(form === "in" ? null : "in")} disabled={saving}>
                 <Icon name="plus" size={15} />Add stock
               </button>
-              <button className="btn btn-stock btn-stock-out" onClick={() => setForm(form === "out" ? null : "out")} disabled={p.onHand === 0}>
+              <button className="btn btn-stock btn-stock-out" onClick={() => setForm(form === "out" ? null : "out")} disabled={p.onHand === 0 || saving}>
                 <Icon name="arrowRight" size={15} />Use stock
               </button>
             </div>
@@ -8582,8 +11229,13 @@ function PartDetail({ part, usage, onBack, onStockChange }) {
           <div className="card">
             <div className="card-head">
               <h3>Usage history</h3>
-              <span className="sub">stock in and stock out · newest first</span>
+              <span className="sub">stock in and stock out · this session</span>
             </div>
+            {usage.length === 0 && (
+              <div style={{ padding:"26px 18px", fontSize:12.5, color:"var(--ink-3)", lineHeight:1.55 }}>
+                No movements recorded yet. Stock changes made here update the live quantity, but the backend keeps no movement ledger, so history only covers this session.
+              </div>
+            )}
             {usage.map((u) => (
               <div className="usage-row" key={u.id}>
                 <div className={"usage-ico " + u.type}>
@@ -8608,29 +11260,25 @@ function PartDetail({ part, usage, onBack, onStockChange }) {
         <div className="detail-side">
           <div className="card qr-card">
             <QRCode value={p.id} size={200} />
-            <div className="qr-id-mono">{p.id}</div>
-            <button className="btn qr-print-btn" onClick={() => {
-              setPrintedAt("Sent to label printer");
-              setTimeout(() => setPrintedAt(null), 2600);
-            }}>
+            <div className="qr-id-mono">{p.id.slice(0, 8)}</div>
+            <div style={{ fontSize:11.5, color:"var(--ink-3)", lineHeight:1.5 }}>
+              Display code only. Real scannable labels aren't wired up yet.
+            </div>
+            <button className="btn qr-print-btn" disabled style={{ opacity:.5, cursor:"not-allowed" }}
+              title="Label printing needs real QR encoding first. Not wired up yet.">
               <Icon name="file" size={15} />Print label
             </button>
-            {printedAt && (
-              <div style={{ fontSize:11.5, color:"var(--ok)", fontWeight:700, display:"inline-flex", alignItems:"center", gap:6 }}>
-                <Icon name="checkCircle" size={13} />{printedAt}
-              </div>
-            )}
           </div>
 
           <div className="card meta-card">
-            <div className="info-row"><span className="k">Bin location</span><span className="v" style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}>{_partBin(p)}</span></div>
-            <div className="info-row"><span className="k">Site / store</span><span className="v">{p.site}</span></div>
+            <div className="info-row"><span className="k">SKU</span><span className="v" style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}>{p.code || "—"}</span></div>
+            <div className="info-row"><span className="k">Unit</span><span className="v">{p.unit}</span></div>
             <div className="info-row"><span className="k">Supplier</span><span className="v">{p.supplier}</span></div>
-            <div className="info-row"><span className="k">Unit price</span><span className="v" style={{ fontFamily: "var(--mono)" }}>{p.price}</span></div>
-            <div className="info-row"><span className="k">Last reorder</span><span className="v">{p.lastOrder}</span></div>
+            <div className="info-row"><span className="k">Unit price</span><span className="v" style={{ fontFamily: "var(--mono)" }}>{p.hasPrice ? p.price : "—"}</span></div>
+            <div className="info-row"><span className="k">Min level</span><span className="v" style={{ fontFamily: "var(--mono)" }}>{p.min}</span></div>
             <div className="info-row" style={{ borderBottom: "none" }}>
-              <span className="k">Linked assets</span>
-              <span className="v" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{p.linkedAssets.join(", ")}</span>
+              <span className="k">Notes</span>
+              <span className="v" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{p.notes || "—"}</span>
             </div>
           </div>
         </div>
@@ -8662,7 +11310,7 @@ function StockForm({ kind, maxOut, onCancel, onSubmit }) {
         <div className="grow">
           <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>Note (optional)</div>
           <input className="dv-input" value={note} onChange={(e) => setNote(e.target.value)}
-            placeholder={kind === "in" ? "e.g. PO 2031 received from supplier" : "e.g. Issued for WO-2041"} />
+            placeholder={kind === "in" ? "e.g. delivery received from supplier" : "e.g. issued for a work order"} />
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -9873,15 +12521,129 @@ Object.assign(window, {
 
 /* ════════════════════ asset_26_470d6346.js ════════════════════ */
 ;
-/* HazardLink — Security view (Command Centre + tabs).
-   Existing incident reporting, patrols and lone-worker check-in
-   are kept intact and surfaced inside the new layout. */
+/* HazardLink — Security view, wired to the live backend.
+   Incidents (list / log with photo / investigate / resolve / raise job),
+   patrol checkpoints + real scan trails, the lone-worker monitoring hub and
+   the current user's own check-in timer, plus real staff dispatch.
+   Data refreshes every 20 seconds. */
+
+/* ---------- small formatting helpers (file-local names) ---------- */
+function secFmtTime(ts) {
+  const d = new Date(ts);
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+function secFmtDay(ts) {
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const d = new Date(ts);
+  return d.getDate() + " " + M[d.getMonth()];
+}
+function secFmtDT(ts) { return ts ? secFmtDay(ts) + ", " + secFmtTime(ts) : "—"; }
+function secIsToday(ts) { return ts && new Date(ts).toDateString() === new Date().toDateString(); }
+function secWhen(ts) {
+  if (!ts) return "—";
+  return secIsToday(ts) ? secFmtTime(ts) : secFmtDay(ts) + ", " + secFmtTime(ts);
+}
+function secAgo(ts) {
+  if (!ts) return "—";
+  const m = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
+  if (m < 1) return "just now";
+  if (m < 60) return m + " min ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  return Math.floor(h / 24) + "d ago";
+}
+function secInitials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+/* Real org buildings have uuid ids; the no-login preview uses sample ids that
+   the backend would reject, so only ever send a buildingId that is a uuid. */
+function secUuidOr(id) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || "") ? id : undefined;
+}
+function secDueLabel(s) {
+  if (!s.nextCheckInDueAt) return "";
+  const mins = Math.round((new Date(s.nextCheckInDueAt).getTime() - Date.now()) / 60000);
+  if (mins < 0) return Math.abs(mins) + " min over";
+  if (mins === 0) return "due now";
+  return "due in " + mins + " min";
+}
+
+const SEC_SEV = {
+  low:      { label: "Low",      tone: "ok",   icon: "shield" },
+  medium:   { label: "Medium",   tone: "warn", icon: "alertCircle" },
+  high:     { label: "High",     tone: "crit", icon: "alertTri" },
+  critical: { label: "Critical", tone: "crit", icon: "alertTri" },
+};
+const SEC_STATUS = {
+  open:          { label: "Open",          tone: "warn" },
+  investigating: { label: "Investigating", tone: "accent" },
+  resolved:      { label: "Resolved",      tone: "ok" },
+};
+const SEC_ROLE_LABEL = { admin: "Admin", supervisor: "Supervisor", cleaner: "Field staff" };
+const SEC_KINDS = ["Intruder", "Theft", "Damage", "Suspicious activity", "Safety hazard", "Slip or trip", "Alarm activation", "Other"];
+
+/* Authed multipart photo upload. Returns a promise of { ok, url }. */
+function secUploadPhoto(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return fetch((window.HL_API_BASE || "/api") + "/uploads/photo", {
+    method: "POST",
+    headers: { authorization: "Bearer " + (localStorage.getItem("bor.token") || "") },
+    body: fd,
+  })
+    .then((r) => r.json().then((b) => ({ ok: r.ok, url: b && b.url })).catch(() => ({ ok: false, url: null })))
+    .catch(() => ({ ok: false, url: null }));
+}
 
 /* ============================================================
-   Kept from the previous version: incident detail panel + list,
-   patrols view, lone workers view.
+   Incident detail panel — real PATCH / raise-job actions
    ============================================================ */
-function IncidentPanel({ inc, onClose, onDispatch }) {
+function SecIncidentPanel({ inc, onClose, onChanged, showToast }) {
+  const [busy, setBusy] = React.useState(false);
+  const [resolving, setResolving] = React.useState(false);
+  const [note, setNote] = React.useState("");
+
+  const sev = SEC_SEV[inc.severity] || SEC_SEV.medium;
+  const st  = SEC_STATUS[inc.status] || SEC_STATUS.open;
+  const siteName = (inc.building && inc.building.name) || "No building set";
+
+  const patch = (body, okMsg) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/incidents/" + inc.id, { method: "PATCH", body })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not update the incident. Check your access."); return; }
+        showToast(okMsg);
+        setResolving(false);
+        setNote("");
+        onChanged();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  const raiseJob = () => {
+    if (busy || inc.raisedJobId) return;
+    setBusy(true);
+    hlApi("/incidents/" + inc.id + "/raise-job", { method: "POST" })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not raise the job. Try again."); return; }
+        showToast("Maintenance job raised from this incident");
+        onChanged();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  const steps = [];
+  if (inc.occurredAt) steps.push({ state: "done", title: "Happened", time: secFmtDT(inc.occurredAt) });
+  steps.push({ state: "done", title: "Logged", time: secFmtDT(inc.createdAt) });
+  if (inc.status === "resolved") {
+    steps.push({ state: "done", title: "Resolved", time: secFmtDT(inc.resolvedAt) });
+  } else {
+    steps.push({ state: "active", title: inc.status === "investigating" ? "Being investigated" : "Open, waiting on action" });
+  }
+
   return (
     <React.Fragment>
       <div className="panel-overlay" onClick={onClose} />
@@ -9891,53 +12653,88 @@ function IncidentPanel({ inc, onClose, onDispatch }) {
             <Icon name="shield" size={17} />
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="panel-title">{inc.type}</div>
-            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2 }}>{inc.id} · {inc.site}</div>
+            <div className="panel-title">{inc.title}</div>
+            <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:2, fontFamily:"var(--mono)" }}>{inc.id.slice(0, 8)} · {siteName}</div>
           </div>
           <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <div className="panel-body">
           <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
-            <Pill tone={inc.sevTone} dot>{inc.sev === "medium" ? "Medium severity" : inc.sev === "high" ? "High severity" : "Low severity"}</Pill>
-            <Pill tone={inc.statusTone} dot>{inc.status}</Pill>
+            <Pill tone={sev.tone} dot>{sev.label} severity</Pill>
+            <Pill tone={st.tone} dot>{st.label}</Pill>
+            {inc.kind && <Pill tone="muted">{inc.kind}</Pill>}
+            {inc.raisedJobId && <Pill tone="maint" icon="wrench">Job raised</Pill>}
           </div>
 
-          <p style={{ fontSize:13.5, lineHeight:1.65, color:"var(--ink-2)", margin:"0 0 20px" }}>{inc.desc}</p>
+          {inc.description && (
+            <p style={{ fontSize:13.5, lineHeight:1.65, color:"var(--ink-2)", margin:"0 0 20px" }}>{inc.description}</p>
+          )}
 
           <div className="panel-label">Timeline</div>
           <div className="stepper" style={{ marginBottom:20 }}>
-            {inc.steps.map((s, i) => <Step s={s} key={i} />)}
+            {steps.map((s, i) => <Step s={s} key={i} />)}
           </div>
 
-          <div className="info-row"><span className="k">Reported by</span><span className="v">{inc.reporter} · {inc.role}</span></div>
-          <div className="info-row"><span className="k">Logged</span><span className="v">{inc.time}</span></div>
-          <div className="info-row"><span className="k">Site</span><span className="v">{inc.site}</span></div>
+          <div className="info-row"><span className="k">Building</span><span className="v">{siteName}</span></div>
+          <div className="info-row"><span className="k">Logged</span><span className="v">{secFmtDT(inc.createdAt)}</span></div>
+          {inc.occurredAt && <div className="info-row"><span className="k">Happened</span><span className="v">{secFmtDT(inc.occurredAt)}</span></div>}
+          {inc.resolvedAt && <div className="info-row"><span className="k">Resolved</span><span className="v">{secFmtDT(inc.resolvedAt)}</span></div>}
+          {inc.resolutionNote && (
+            <div className="info-row"><span className="k">Resolution</span><span className="v" style={{ fontSize:12.5 }}>{inc.resolutionNote}</span></div>
+          )}
 
-          {inc.sev === "medium" && (
+          {inc.photoUrl && (
             <div style={{ marginTop:18 }}>
-              <div className="panel-label">Photos attached</div>
-              <div className="proof-grid">
-                {[].map((lbl, i) => (
-                  <div className="proof" key={i}>
-                    <span className="pcam"><Icon name="camera" size={15} /></span>
-                    <span className="plabel">{lbl}</span>
-                  </div>
-                ))}
-              </div>
+              <div className="panel-label">Photo</div>
+              <a href={inc.photoUrl} target="_blank" rel="noreferrer">
+                <img src={inc.photoUrl} alt="Incident photo"
+                  style={{ maxWidth:"100%", borderRadius:10, border:"1px solid var(--line)", display:"block" }} />
+              </a>
             </div>
           )}
 
-          <div style={{ display:"flex", gap:10, marginTop:20 }}>
-            {inc.status === "Open" && (
+          {resolving && (
+            <div style={{ marginTop:18 }}>
+              <div className="panel-label">Resolution note (optional)</div>
+              <textarea className="dv-input" rows={3} autoFocus value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="What was done, in a line or two" />
+            </div>
+          )}
+
+          <div style={{ display:"flex", gap:10, marginTop:20, flexWrap:"wrap" }}>
+            {inc.status === "open" && !resolving && (
+              <button className="btn" style={{ flex:1 }} disabled={busy}
+                onClick={() => patch({ status: "investigating" }, "Marked as investigating")}>
+                <Icon name="search" size={15} />Start investigating
+              </button>
+            )}
+            {inc.status !== "resolved" && !resolving && (
+              <button className="btn btn-primary" style={{ flex:1 }} disabled={busy} onClick={() => setResolving(true)}>
+                <Icon name="check" size={15} />Resolve
+              </button>
+            )}
+            {resolving && (
               <React.Fragment>
-                <button className="btn btn-primary" style={{ flex:1 }}><Icon name="check" size={15} />Acknowledge</button>
-                <button className="btn" style={{ flex:1 }} onClick={() => onDispatch && onDispatch(inc.id)}>
-                  <Icon name="send" size={15} />Dispatch guard
+                <button className="btn" style={{ flex:1 }} disabled={busy} onClick={() => { setResolving(false); setNote(""); }}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" style={{ flex:1 }} disabled={busy}
+                  onClick={() => patch({ status: "resolved", resolutionNote: note.trim() || undefined }, "Incident resolved")}>
+                  <Icon name="check" size={15} />{busy ? "Saving…" : "Confirm resolve"}
                 </button>
               </React.Fragment>
             )}
-            {inc.status !== "Open" && (
-              <button className="btn" style={{ flex:1 }}>View full report</button>
+            {inc.status === "resolved" && (
+              <button className="btn" style={{ flex:1 }} disabled={busy}
+                onClick={() => patch({ status: "open" }, "Incident reopened")}>
+                <Icon name="rotateCw" size={15} />Reopen
+              </button>
+            )}
+            {!inc.raisedJobId && !resolving && (
+              <button className="btn" style={{ flex:1 }} disabled={busy} onClick={raiseJob}>
+                <Icon name="wrench" size={15} />Raise maintenance job
+              </button>
             )}
           </div>
         </div>
@@ -9946,200 +12743,666 @@ function IncidentPanel({ inc, onClose, onDispatch }) {
   );
 }
 
-function IncidentsList({ incidents, onDispatch }) {
-  const [panel, setPanel] = React.useState(null);
-  const inc = incidents;
-  return (
-    <div>
-      {panel && <IncidentPanel inc={panel} onClose={() => setPanel(null)}
-        onDispatch={(id) => { setPanel(null); onDispatch && onDispatch(id); }} />}
-      <div className="card">
-        <div className="wo-head" style={{ gridTemplateColumns:"106px 1fr 180px 120px 90px" }}>
-          <div>ID</div><div>Incident</div><div>Site</div><div>Logged</div><div>Status</div>
-        </div>
-        {inc.map((item) => (
-          <div key={item.id} className="wo-row" style={{ gridTemplateColumns:"106px 1fr 180px 120px 90px" }}
-            onClick={() => setPanel(item)}>
-            <div className="wo-id">{item.id}</div>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:30, height:30, borderRadius:8, background:softBg(item.sevTone), color:solid(item.sevTone), display:"grid", placeItems:"center", flex:"none" }}>
-                <Icon name={item.sevTone === "warn" || item.sevTone === "crit" ? "alertTri" : "shield"} size={14} />
-              </div>
-              <div>
-                <div style={{ fontWeight:650, fontSize:14 }}>{item.type}</div>
-                <div style={{ fontSize:12, color:"var(--ink-3)" }}>{item.reporter} · {item.role}</div>
-              </div>
-            </div>
-            <div className="wo-site">{item.site}</div>
-            <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>{item.time}</div>
-            <div><Pill tone={item.statusTone} dot>{item.status}</Pill></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+/* ============================================================
+   Log incident modal — real POST, optional photo upload first
+   ============================================================ */
+function SecLogIncidentModal({ onClose, onSaved, showToast }) {
+  const sites = HL.sites || [];
+  const [title, setTitle]       = React.useState("");
+  const [kind, setKind]         = React.useState("");
+  const [severity, setSeverity] = React.useState("medium");
+  const [buildingId, setBId]    = React.useState(sites[0] ? sites[0].id : "");
+  const [desc, setDesc]         = React.useState("");
+  const [file, setFile]         = React.useState(null);
+  const [busy, setBusy]         = React.useState(false);
+  const canSave = title.trim().length > 0 && !busy;
 
-function PatrolsView({ patrols }) {
-  const [activeId, setActiveId] = React.useState(patrols[0] ? patrols[0].id : null);
-  const patrol = patrols.find((p) => p.id === activeId) || patrols[0];
-
-  if (!patrol) {
-    return (
-      <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
-        <div className="empty-ico"><Icon name="shield" size={28} /></div>
-        <h3>No patrols at this site</h3>
-        <p>Select a different site, or create a patrol route from settings.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display:"grid", gridTemplateColumns:"240px 1fr", gap:16 }}>
-      <div className="card">
-        <div className="card-head"><h3>Today's patrols</h3></div>
-        {patrols.map((p) => (
-          <div key={p.id} className="patrol-pick" onClick={() => setActiveId(p.id)}
-            style={{ background: activeId === p.id ? "var(--accent-soft)" : "" }}>
-            <span className="wo-mini-av" style={{ width:30, height:30, fontSize:11, flex:"none" }}>{p.initials}</span>
-            <div style={{ flex:1 }}>
-              <div style={{ fontWeight:650, fontSize:13 }}>{p.guard}</div>
-              <div style={{ fontSize:11.5, color:"var(--ink-3)" }}>{p.site}</div>
-            </div>
-            <Pill tone={p.status === "complete" ? "ok" : "accent"} dot>{p.status === "complete" ? "Done" : "Active"}</Pill>
-          </div>
-        ))}
-      </div>
-
-      <div className="card">
-        <div className="card-head">
-          <h3>{patrol.guard}</h3>
-          <div className="sub">{patrol.site} · started {patrol.started}</div>
-          <div className="head-act">
-            <span style={{ fontSize:12.5, color:"var(--ink-3)" }}>
-              {patrol.checkpoints.filter((c) => c.scanned).length}/{patrol.checkpoints.length} scanned
-            </span>
-          </div>
-        </div>
-        {patrol.checkpoints.map((cp) => (
-          <div className="checkpoint" key={cp.id}>
-            <div className="cp-dot" style={{ background: cp.scanned ? "var(--ok)" : "var(--line-2)" }} />
-            <div className="cp-name">{cp.name}</div>
-            {cp.scanned
-              ? <React.Fragment><span className="cp-time">{cp.time}</span><Pill tone="ok" style={{ marginLeft:6 }}>Scanned</Pill></React.Fragment>
-              : <Pill tone="muted">Pending</Pill>
-            }
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LoneWorkersView({ workers: initialWorkers }) {
-  const [workers, setWorkers] = React.useState(initialWorkers);
-  React.useEffect(() => { setWorkers(initialWorkers); }, [initialWorkers]);
-
-  const checkin = (id) => {
-    setWorkers((ws) => ws.map((w) => w.id === id ? { ...w, status:"ok", lastCheckin:"just now" } : w));
+  const submit = () => {
+    if (!canSave) return;
+    setBusy(true);
+    (file ? secUploadPhoto(file) : Promise.resolve({ ok: true, url: null }))
+      .then((up) => {
+        if (!up.ok) {
+          showToast("Could not upload the photo. It must be an image under 8 MB.");
+          return null;
+        }
+        return hlApi("/incidents", { method: "POST", body: {
+          title: title.trim(),
+          kind: kind || undefined,
+          severity,
+          buildingId: secUuidOr(buildingId),
+          description: desc.trim() || undefined,
+          photoUrl: up.url || undefined,
+        }});
+      })
+      .then((r) => {
+        if (!r) return;
+        if (!r.ok) { showToast("Could not log the incident. Check the details and try again."); return; }
+        onSaved();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
   };
 
   return (
-    <div>
-      <div className="lone-worker-grid">
-        {workers.map((w) => (
-          <div className={"lw-card" + (w.status === "overdue" ? " overdue" : "")} key={w.id}>
-            <div className="lw-head">
-              <div className="lw-av" style={{ background: w.status === "overdue" ? "var(--crit-soft)" : "var(--surface-3)", color: w.status === "overdue" ? "var(--crit)" : "var(--ink-2)" }}>
-                {w.initials}
-              </div>
-              <div style={{ flex:1 }}>
-                <div className="lw-name">{w.name}</div>
-                <div className="lw-role">{w.role}</div>
-              </div>
-              <Pill tone={w.status === "ok" ? "ok" : "crit"} dot>{w.status === "ok" ? "OK" : "Overdue"}</Pill>
-            </div>
-            <div className="lw-site"><Icon name="mapPin" size={12} />{w.site}</div>
-            <div className="lw-checkin" style={{ marginTop:6 }}>Last check-in: {w.lastCheckin}</div>
-            {w.status === "overdue" && (
-              <div style={{ marginTop:10, display:"flex", gap:8 }}>
-                <button className="btn btn-sm" style={{ flex:1, borderColor:"var(--crit)", color:"var(--crit)" }}>
-                  <Icon name="phone" size={13} />Call
-                </button>
-                <button className="btn btn-sm btn-primary" style={{ flex:1 }} onClick={() => checkin(w.id)}>
-                  <Icon name="check" size={13} />Mark safe
-                </button>
-              </div>
-            )}
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="shield" size={18} /></div>
+          <div>
+            <h3>Log incident</h3>
+            <p>Saved to the live security log for this organisation.</p>
           </div>
-        ))}
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="ai-fields">
+            <div className="ai-field">
+              <label>What happened</label>
+              <input className="dv-input" autoFocus value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="One line, e.g. Rear fire door forced overnight" />
+            </div>
+            <div className="ai-field">
+              <label>Type</label>
+              <select className="dv-input" value={kind} onChange={(e) => setKind(e.target.value)}>
+                <option value="">Select…</option>
+                {SEC_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </div>
+            <div className="ai-field">
+              <label>Severity</label>
+              <select className="dv-input" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+            <div className="ai-field">
+              <label>Building</label>
+              <select className="dv-input" value={buildingId} onChange={(e) => setBId(e.target.value)}>
+                <option value="">No building</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="ai-field">
+              <label>Details (optional)</label>
+              <textarea className="dv-input" rows={4} value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="Describe it in your own words" />
+            </div>
+            <div className="ai-field">
+              <label>Photo (optional)</label>
+              <input className="dv-input" type="file" accept="image/*" style={{ paddingTop: 7 }}
+                onChange={(e) => setFile((e.target.files && e.target.files[0]) || null)} />
+              <div className="ai-hint">JPG, PNG or WebP up to 8 MB. Uploaded before the incident saves.</div>
+            </div>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!canSave}
+            style={{ opacity: canSave ? 1 : .5 }} onClick={submit}>
+            <Icon name="send" size={15} />{busy ? "Saving…" : "Log incident"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 /* ============================================================
-   Command Centre — guards on duty, incidents, patrols, lone workers
+   Dispatch modal — real POST /dispatches (push, optional SMS)
    ============================================================ */
-function CommandBanner({ attention, reasons, onDispatch }) {
-  if (attention) {
-    return (
-      <div className="sc-banner sc-banner-attn">
-        <div className="sc-banner-ico"><Icon name="alertTri" size={20} /></div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div className="sc-banner-title">Attention needed — security desk action required</div>
-          <div className="sc-banner-sub">{reasons.join(" · ")}</div>
-        </div>
-        <button className="btn btn-primary" onClick={onDispatch}>
-          <Icon name="send" size={14} />Dispatch guard
-        </button>
-      </div>
-    );
-  }
+function SecDispatchModal({ users, preset, onClose, onSent, showToast }) {
+  const active = (users || []).filter((u) => !u.deactivatedAt);
+  const sorted = [...active].sort((a, b) => (b.onDuty ? 1 : 0) - (a.onDuty ? 1 : 0));
+  const [userId, setUserId]   = React.useState((preset && preset.userId) || (sorted[0] ? sorted[0].id : ""));
+  const [message, setMessage] = React.useState((preset && preset.message) || "");
+  const [alsoSms, setAlsoSms] = React.useState(false);
+  const [busy, setBusy]       = React.useState(false);
+  const canSend = userId && message.trim() && !busy;
+
+  const submit = () => {
+    if (!canSend) return;
+    setBusy(true);
+    hlApi("/dispatches", { method: "POST", body: { recipientUserId: userId, message: message.trim(), alsoSms } })
+      .then(({ ok, status }) => {
+        if (!ok) {
+          showToast(status === 403 ? "Only supervisors and admins can dispatch." : "Could not send the dispatch. Try again.");
+          return;
+        }
+        const who = sorted.find((u) => u.id === userId);
+        onSent((who && who.name) || "Staff member");
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
+  };
+
   return (
-    <div className="sc-banner sc-banner-ok">
-      <div className="sc-banner-ico sc-banner-ico-ok"><Icon name="checkCircle" size={20} /></div>
-      <div style={{ flex:1, minWidth:0 }}>
-        <div className="sc-banner-title">All clear across every site</div>
-        <div className="sc-banner-sub">Guards at post, patrols on schedule, no live incidents</div>
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="send" size={18} /></div>
+          <div>
+            <h3>Dispatch staff</h3>
+            <p>Sends a real push notification to their device, with SMS as an option.</p>
+          </div>
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body">
+          {sorted.length === 0 ? (
+            <div style={{ padding:"18px 0", fontSize:13.5, color:"var(--ink-3)" }}>
+              No active staff on this organisation yet. Invite people in Users first.
+            </div>
+          ) : (
+            <div className="ai-fields">
+              <div className="ai-field">
+                <label>Send to</label>
+                <select className="dv-input" value={userId} onChange={(e) => setUserId(e.target.value)}>
+                  {sorted.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {(u.name || u.email) + " · " + (SEC_ROLE_LABEL[u.role] || u.role) + (u.onDuty ? " · on duty" : "")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="ai-field">
+                <label>Message</label>
+                <textarea className="dv-input" rows={3} autoFocus value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Where to go and what to do, e.g. Check the rear loading bay door" />
+              </div>
+              <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:"var(--ink-2)", cursor:"pointer" }}>
+                <input type="checkbox" checked={alsoSms} onChange={(e) => setAlsoSms(e.target.checked)} />
+                <span>Also text them (needs a phone number on their profile)</span>
+              </label>
+            </div>
+          )}
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!canSend}
+            style={{ opacity: canSend ? 1 : .5 }} onClick={submit}>
+            <Icon name="send" size={15} />{busy ? "Sending…" : "Send dispatch"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function CommandCentre({ guards, incidents, patrols, loneWorkers, onDispatch, onOpenIncident }) {
+/* ============================================================
+   Incidents list — real rows
+   ============================================================ */
+function SecIncidentsList({ incidents, onOpen, onLog }) {
+  const grid = { gridTemplateColumns: "96px 1fr 170px 110px 120px" };
+  if (incidents.length === 0) {
+    return (
+      <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
+        <div className="empty-ico"><Icon name="shield" size={28} /></div>
+        <h3>No incidents logged</h3>
+        <p>Log incident records what happened, where, and how serious it was.</p>
+        <button className="btn btn-primary" style={{ marginTop:14 }} onClick={onLog}>
+          <Icon name="plus" size={15} />Log incident
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="card">
+      <div className="wo-head" style={grid}>
+        <div>Ref</div><div>Incident</div><div>Building</div><div>Logged</div><div>Status</div>
+      </div>
+      {incidents.map((item) => {
+        const sev = SEC_SEV[item.severity] || SEC_SEV.medium;
+        const st  = SEC_STATUS[item.status] || SEC_STATUS.open;
+        return (
+          <div key={item.id} className="wo-row" style={grid} onClick={() => onOpen(item.id)}>
+            <div className="wo-id">{item.id.slice(0, 8)}</div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:30, height:30, borderRadius:8, background:softBg(sev.tone), color:solid(sev.tone), display:"grid", placeItems:"center", flex:"none" }}>
+                <Icon name={sev.icon} size={14} />
+              </div>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontWeight:650, fontSize:14 }}>{item.title}</div>
+                <div style={{ fontSize:12, color:"var(--ink-3)" }}>
+                  {(item.kind ? item.kind + " · " : "") + sev.label + " severity"}
+                </div>
+              </div>
+            </div>
+            <div className="wo-site">{(item.building && item.building.name) || "—"}</div>
+            <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>{secWhen(item.createdAt)}</div>
+            <div><Pill tone={st.tone} dot>{st.label}</Pill></div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   Patrols — real checkpoints + scan trail
+   ============================================================ */
+function SecAddCheckpointModal({ onClose, onSaved, showToast }) {
+  const sites = HL.sites || [];
+  const [name, setName]         = React.useState("");
+  const [buildingId, setBId]    = React.useState(sites[0] ? sites[0].id : "");
+  const [locationNote, setLoc]  = React.useState("");
+  const [instructions, setIns]  = React.useState("");
+  const [busy, setBusy]         = React.useState(false);
+  const canSave = name.trim().length > 0 && !busy;
+
+  const submit = () => {
+    if (!canSave) return;
+    setBusy(true);
+    hlApi("/checkpoints", { method: "POST", body: {
+      name: name.trim(),
+      buildingId: secUuidOr(buildingId),
+      locationNote: locationNote.trim() || undefined,
+      instructions: instructions.trim() || undefined,
+      discipline: "security",
+    }})
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not add the checkpoint. Try again."); return; }
+        onSaved();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="scan" size={18} /></div>
+          <div>
+            <h3>Add patrol checkpoint</h3>
+            <p>Each checkpoint gets a scan link for its QR code. Guards scan it on their round, no login needed.</p>
+          </div>
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="ai-fields">
+            <div className="ai-field">
+              <label>Checkpoint name</label>
+              <input className="dv-input" autoFocus value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Loading bay rear door" />
+            </div>
+            <div className="ai-field">
+              <label>Building</label>
+              <select className="dv-input" value={buildingId} onChange={(e) => setBId(e.target.value)}>
+                <option value="">No building</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="ai-field">
+              <label>Where exactly (optional)</label>
+              <input className="dv-input" value={locationNote} onChange={(e) => setLoc(e.target.value)}
+                placeholder="e.g. Pillar beside the roller shutter" />
+            </div>
+            <div className="ai-field">
+              <label>On-scan instructions (optional)</label>
+              <textarea className="dv-input" rows={3} value={instructions} onChange={(e) => setIns(e.target.value)}
+                placeholder="What the guard should check at this point" />
+            </div>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!canSave}
+            style={{ opacity: canSave ? 1 : .5 }} onClick={submit}>
+            <Icon name="check" size={15} />{busy ? "Saving…" : "Add checkpoint"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SecPatrolsTab({ checkpoints, scans, onAdd, onChanged, showToast }) {
+  const [activeId, setActiveId] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const sel = checkpoints.find((c) => c.id === activeId) || checkpoints[0];
+
+  const scannedToday = (cp) => scans.some((s) => s.checkpointId === cp.id && secIsToday(s.scannedAt));
+
+  const copyLink = () => {
+    if (!sel) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(sel.scanUrl)
+        .then(() => showToast("Scan link copied. Print it as a QR at the point."))
+        .catch(() => showToast("Could not copy. The link is shown below the name."));
+    } else {
+      showToast("Could not copy. The link is shown below the name.");
+    }
+  };
+
+  const toggleActive = () => {
+    if (!sel || busy) return;
+    setBusy(true);
+    hlApi("/checkpoints/" + sel.id, { method: "PATCH", body: { active: !sel.active } })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not update the checkpoint."); return; }
+        showToast(sel.active ? "Checkpoint paused. Scans still work but it is off the round." : "Checkpoint back on the round.");
+        onChanged();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  if (checkpoints.length === 0) {
+    return (
+      <div className="empty" style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:"var(--radius)" }}>
+        <div className="empty-ico"><Icon name="scan" size={28} /></div>
+        <h3>No patrol checkpoints yet</h3>
+        <p>Add a checkpoint, print its QR from the scan link, and every guard scan lands here as the patrol trail.</p>
+        <button className="btn btn-primary" style={{ marginTop:14 }} onClick={onAdd}>
+          <Icon name="plus" size={15} />Add checkpoint
+        </button>
+      </div>
+    );
+  }
+
+  const trail = sel ? scans.filter((s) => s.checkpointId === sel.id) : [];
+
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"260px 1fr", gap:16 }}>
+      <div className="card">
+        <div className="card-head">
+          <h3>Patrol points</h3>
+          <span className="head-act">
+            <button className="btn btn-sm" onClick={onAdd}><Icon name="plus" size={13} />Add</button>
+          </span>
+        </div>
+        {checkpoints.map((cp) => {
+          const done = scannedToday(cp);
+          return (
+            <div key={cp.id} className="patrol-pick" onClick={() => setActiveId(cp.id)}
+              style={{ background: sel && sel.id === cp.id ? "var(--accent-soft)" : "" }}>
+              <div className="cp-dot" style={{ background: done ? "var(--ok)" : "var(--line-2)", flex:"none" }} />
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:650, fontSize:13 }}>{cp.name}</div>
+                <div style={{ fontSize:11.5, color:"var(--ink-3)" }}>{(cp.building && cp.building.name) || "No building"}</div>
+              </div>
+              {cp.active
+                ? <Pill tone={done ? "ok" : "muted"} dot>{done ? "Done" : "No scan"}</Pill>
+                : <Pill tone="muted">Paused</Pill>}
+            </div>
+          );
+        })}
+      </div>
+
+      {sel && (
+        <div className="card">
+          <div className="card-head">
+            <h3>{sel.name}</h3>
+            <div className="sub">
+              {((sel.building && sel.building.name) || "No building") + (sel.locationNote ? " · " + sel.locationNote : "")}
+            </div>
+            <div className="head-act" style={{ display:"flex", gap:8 }}>
+              <button className="btn btn-sm" onClick={copyLink}><Icon name="link" size={13} />Copy scan link</button>
+              <button className="btn btn-sm" disabled={busy} onClick={toggleActive}>
+                <Icon name={sel.active ? "x" : "check"} size={13} />{sel.active ? "Pause" : "Resume"}
+              </button>
+            </div>
+          </div>
+          <div className="card-pad" style={{ paddingTop:12, paddingBottom:8 }}>
+            <div style={{ fontSize:11.5, color:"var(--ink-3)", fontFamily:"var(--mono)", wordBreak:"break-all" }}>{sel.scanUrl}</div>
+            {sel.instructions && (
+              <div style={{ marginTop:10, padding:"10px 12px", background:"var(--surface-2)", border:"1px solid var(--line)", borderRadius:10, fontSize:13, color:"var(--ink-2)" }}>
+                <b style={{ fontSize:12, display:"block", marginBottom:3 }}>On-scan instructions</b>
+                {sel.instructions}
+              </div>
+            )}
+          </div>
+          <div className="card-head" style={{ borderTop:"1px solid var(--line)" }}>
+            <h3>Scan trail</h3>
+            <span className="sub">newest first · from the last 100 security scans</span>
+          </div>
+          {trail.length === 0 ? (
+            <div style={{ padding:"26px 18px", fontSize:13, color:"var(--ink-3)", textAlign:"center" }}>
+              No scans at this point yet.
+            </div>
+          ) : (
+            trail.map((s) => (
+              <div className="checkpoint" key={s.id}>
+                <div className="cp-dot" style={{ background: s.flagged ? "var(--crit)" : "var(--ok)" }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div className="cp-name">{s.guardName || "Name not given"}</div>
+                  {s.note && <div style={{ fontSize:12, color:"var(--ink-3)", marginTop:1 }}>{s.note}</div>}
+                </div>
+                {s.flagged && <Pill tone="crit" dot>Flagged</Pill>}
+                {s.photoUrl && (
+                  <a href={s.photoUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ textDecoration:"none" }}>
+                    <Icon name="camera" size={12} />Photo
+                  </a>
+                )}
+                <span className="cp-time">{secWhen(s.scannedAt)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Lone workers — my own timer + the live monitoring hub
+   ============================================================ */
+function SecMyTimerCard({ mySession, refresh, showToast }) {
+  const [interval, setIntervalMin] = React.useState("30");
+  const [note, setNote]            = React.useState("");
+  const [busy, setBusy]            = React.useState(false);
+  const [armPanic, setArmPanic]    = React.useState(false);
+
+  const call = (path, body, okMsg) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/lone-worker/" + path, { method: "POST", body })
+      .then(({ ok, b }) => {
+        if (!ok) { showToast("That did not go through. Try again."); return; }
+        if (okMsg) showToast(typeof okMsg === "function" ? okMsg(b) : okMsg);
+        setArmPanic(false);
+        refresh();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  const s = mySession;
+  return (
+    <div className="card card-pad" style={{ marginBottom:16 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+        <div style={{ width:34, height:34, borderRadius:9, background:softBg("secure"), color:solid("secure"), display:"grid", placeItems:"center", flex:"none" }}>
+          <Icon name="user" size={16} />
+        </div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:700, fontSize:14 }}>My check-in timer</div>
+          <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>
+            Miss a check-in and the alarm raises itself, emailing every admin and supervisor.
+          </div>
+        </div>
+        {s && <Pill tone={s.status === "alarm" ? "crit" : "ok"} dot>{s.status === "alarm" ? "Alarm raised" : "Running"}</Pill>}
+      </div>
+
+      {!s && (
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
+          <div className="ai-field" style={{ minWidth:150 }}>
+            <label>Check in every</label>
+            <select className="dv-input" value={interval} onChange={(e) => setIntervalMin(e.target.value)}>
+              {["15","30","45","60","90","120"].map((m) => <option key={m} value={m}>{m} minutes</option>)}
+            </select>
+          </div>
+          <div className="ai-field" style={{ flex:1, minWidth:220 }}>
+            <label>Where you are (optional)</label>
+            <input className="dv-input" value={note} onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g. Boiler house, unit 4" />
+          </div>
+          <button className="btn btn-primary" disabled={busy}
+            onClick={() => call("start", { intervalMinutes: parseInt(interval, 10), note: note.trim() || undefined },
+              "Timer running. Check in every " + interval + " minutes.")}>
+            <Icon name="clock" size={15} />Start session
+          </button>
+        </div>
+      )}
+
+      {s && s.status === "active" && (
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+          <div style={{ flex:1, minWidth:220, fontSize:13, color:"var(--ink-2)" }}>
+            Every {s.intervalMinutes} min · last check-in {secAgo(s.lastCheckInAt)} · next {secDueLabel(s)}
+            {s.note ? " · " + s.note : ""}
+          </div>
+          <button className="btn btn-primary" disabled={busy}
+            onClick={() => call("check-in", undefined, (b) =>
+              "Checked in. Next one due at " + (b && b.session && b.session.nextCheckInDueAt ? secFmtTime(b.session.nextCheckInDueAt) : "the usual time") + ".")}>
+            <Icon name="check" size={15} />I'm OK, check in
+          </button>
+          <button className="btn" disabled={busy} onClick={() => call("end", undefined, "Session ended.")}>
+            <Icon name="checkCircle" size={15} />End session
+          </button>
+          {!armPanic ? (
+            <button className="btn" style={{ borderColor:"var(--crit)", color:"var(--crit)" }} disabled={busy}
+              onClick={() => setArmPanic(true)}>
+              <Icon name="alertTri" size={15} />Panic
+            </button>
+          ) : (
+            <button className="btn" style={{ background:"var(--crit)", borderColor:"var(--crit)", color:"#fff" }} disabled={busy}
+              onClick={() => call("panic", undefined, "Alarm raised. Admins and supervisors are being emailed now.")}>
+              <Icon name="alertTri" size={15} />Press again to raise the alarm
+            </button>
+          )}
+        </div>
+      )}
+
+      {s && s.status === "alarm" && (
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+          <div style={{ flex:1, minWidth:220, fontSize:13, color:"var(--crit)", fontWeight:600 }}>
+            Alarm raised {secAgo(s.alarmAt)}{s.alarmReason === "panic" ? " by the panic button" : " after a missed check-in"}. Admins and supervisors were emailed.
+          </div>
+          <button className="btn btn-primary" disabled={busy}
+            onClick={() => call("end", undefined, "Alarm stood down. Session ended.")}>
+            <Icon name="check" size={15} />I'm safe, stand down
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SecLoneTab({ sessions, mySession, restricted, refresh, showToast }) {
+  const sessionState = (w) => {
+    if (w.status === "alarm") return { tone:"crit", label:"Alarm", overdue:true };
+    if (w.nextCheckInDueAt && new Date(w.nextCheckInDueAt) < new Date()) return { tone:"warn", label:"Check-in due", overdue:true };
+    return { tone:"ok", label:"OK", overdue:false };
+  };
+
+  return (
+    <div>
+      <SecMyTimerCard mySession={mySession} refresh={refresh} showToast={showToast} />
+
+      {restricted ? (
+        <div className="card card-pad" style={{ fontSize:13.5, color:"var(--ink-3)" }}>
+          Live monitoring of everyone's timers is for supervisors and admins. Your own timer above still works.
+        </div>
+      ) : sessions.length === 0 ? (
+        <div className="card card-pad" style={{ fontSize:13.5, color:"var(--ink-3)" }}>
+          No live lone-worker sessions. Anyone working alone can start a timer from this page, and a missed
+          check-in raises the alarm automatically.
+        </div>
+      ) : (
+        <div className="lone-worker-grid">
+          {sessions.map((w) => {
+            const st = sessionState(w);
+            return (
+              <div className={"lw-card" + (st.overdue ? " overdue" : "")} key={w.id}>
+                <div className="lw-head">
+                  <div className="lw-av" style={{ background: st.overdue ? "var(--crit-soft)" : "var(--surface-3)", color: st.overdue ? "var(--crit)" : "var(--ink-2)" }}>
+                    {secInitials(w.userName)}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div className="lw-name">{w.userName || "Unknown worker"}</div>
+                    <div className="lw-role">Checks in every {w.intervalMinutes} min</div>
+                  </div>
+                  <Pill tone={st.tone} dot>{st.label}</Pill>
+                </div>
+                {w.note && <div className="lw-site"><Icon name="mapPin" size={12} />{w.note}</div>}
+                <div className="lw-checkin" style={{ marginTop:6 }}>
+                  Started {secWhen(w.startedAt)} · last check-in {secAgo(w.lastCheckInAt)}
+                  {w.status === "active" && w.nextCheckInDueAt ? " · " + secDueLabel(w) : ""}
+                </div>
+                {w.status === "alarm" && (
+                  <div style={{ marginTop:10, fontSize:12.5, color:"var(--crit)", fontWeight:600 }}>
+                    {w.alarmReason === "panic" ? "Panic pressed" : "Missed check-in"} at {secWhen(w.alarmAt)}.
+                    Admins and supervisors were emailed automatically. Ring them now; the alarm stands down
+                    from their own device when they are safe.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Command centre — banner, KPIs, live boards (all real data)
+   ============================================================ */
+function SecCommandCentre({ D, onDispatch, onOpenIncident }) {
+  const now = new Date();
+  const openInc  = D.incidents.filter((i) => i.status !== "resolved");
+  const alarms   = D.sessions.filter((s) => s.status === "alarm");
+  const dueNow   = D.sessions.filter((s) => s.status === "active" && s.nextCheckInDueAt && new Date(s.nextCheckInDueAt) < now);
+  const onDuty   = D.users.filter((u) => !u.deactivatedAt && u.onDuty);
+  const activeStaff = D.users.filter((u) => !u.deactivatedAt);
+  const activeCps   = D.checkpoints.filter((c) => c.active);
+  const scansToday  = D.scans.filter((s) => secIsToday(s.scannedAt));
+  const coveredIds  = new Set(scansToday.map((s) => s.checkpointId));
+  const covered     = activeCps.filter((c) => coveredIds.has(c.id)).length;
+
   const reasons = [];
-  const panic   = guards.filter((g) => g.status === "panic");
-  const missed  = guards.filter((g) => g.cpMissed);
-  const openInc = incidents.filter((i) => i.status === "Open");
-  const overdue = loneWorkers.filter((w) => w.status === "overdue");
-  if (panic.length)   reasons.push(panic.length   + " panic activation" + (panic.length === 1 ? "" : "s"));
-  if (missed.length)  reasons.push(missed.length  + " missed checkpoint" + (missed.length === 1 ? "" : "s"));
+  if (alarms.length)  reasons.push(alarms.length + " lone-worker alarm" + (alarms.length === 1 ? "" : "s"));
+  if (dueNow.length)  reasons.push(dueNow.length + " check-in" + (dueNow.length === 1 ? "" : "s") + " overdue");
   if (openInc.length) reasons.push(openInc.length + " open incident" + (openInc.length === 1 ? "" : "s"));
-  if (overdue.length) reasons.push(overdue.length + " lone-worker overdue");
   const attention = reasons.length > 0;
 
-  /* Patrol scan progress */
-  const patrolProgress = patrols.map((p) => ({
-    id: p.id, guard: p.guard, initials: p.initials,
-    site: p.site, status: p.status,
-    scanned: p.checkpoints.filter((c) => c.scanned).length,
-    total:   p.checkpoints.length,
-  }));
+  const sevCount = (k) => D.incidents.filter((i) => i.severity === k && i.status !== "resolved").length;
 
   return (
     <React.Fragment>
-      <CommandBanner attention={attention} reasons={reasons} onDispatch={onDispatch} />
+      {attention ? (
+        <div className="sc-banner sc-banner-attn">
+          <div className="sc-banner-ico"><Icon name="alertTri" size={20} /></div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div className="sc-banner-title">Attention needed on the security desk</div>
+            <div className="sc-banner-sub">{reasons.join(" · ")}</div>
+          </div>
+          <button className="btn btn-primary" onClick={() => onDispatch(null)}>
+            <Icon name="send" size={14} />Dispatch staff
+          </button>
+        </div>
+      ) : (
+        <div className="sc-banner sc-banner-ok">
+          <div className="sc-banner-ico sc-banner-ico-ok"><Icon name="checkCircle" size={20} /></div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div className="sc-banner-title">All clear</div>
+            <div className="sc-banner-sub">No open incidents, no lone-worker alarms, timers running to schedule</div>
+          </div>
+        </div>
+      )}
 
-      {/* KPI strip */}
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:softBg("secure"), color:solid("secure") }}><Icon name="shield" size={16} /></div>
-            <span className="kpi-label">Guards on duty</span>
+            <span className="kpi-label">Staff on duty</span>
           </div>
-          <div className="kpi-val">{guards.length}</div>
-          <div className="kpi-foot">across {new Set(guards.map((g) => g.site)).size} sites · day shift</div>
+          <div className="kpi-val">{onDuty.length}</div>
+          <div className="kpi-foot">of {activeStaff.length} active staff · clocked on right now</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
@@ -10147,116 +13410,149 @@ function CommandCentre({ guards, incidents, patrols, loneWorkers, onDispatch, on
             <span className="kpi-label">Open incidents</span>
           </div>
           <div className="kpi-val">{openInc.length}</div>
-          <div className="kpi-foot">{incidents.filter((i) => i.sev === "high").length} high · {incidents.filter((i) => i.sev === "medium").length} medium · {incidents.filter((i) => i.sev === "low").length} low</div>
+          <div className="kpi-foot">{(sevCount("high") + sevCount("critical"))} high · {sevCount("medium")} medium · {sevCount("low")} low</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="scan" size={16} /></div>
-            <span className="kpi-label">Patrols on schedule</span>
+            <span className="kpi-label">Patrol points covered</span>
           </div>
-          <div className="kpi-val">
-            {patrolProgress.filter((p) => p.status === "in-progress" || p.status === "complete").length}
-            <small>/{patrolProgress.length}</small>
-          </div>
-          <div className="kpi-foot">{patrolProgress.reduce((s, p) => s + p.scanned, 0)} of {patrolProgress.reduce((s, p) => s + p.total, 0)} checkpoints scanned</div>
+          <div className="kpi-val">{covered}<small>/{activeCps.length}</small></div>
+          <div className="kpi-foot">{scansToday.length} scan{scansToday.length === 1 ? "" : "s"} logged today</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg(overdue.length ? "crit" : "ok"), color:solid(overdue.length ? "crit" : "ok") }}><Icon name="user" size={16} /></div>
+            <div className="kpi-ico" style={{ background:softBg(alarms.length ? "crit" : "ok"), color:solid(alarms.length ? "crit" : "ok") }}><Icon name="user" size={16} /></div>
             <span className="kpi-label">Lone workers</span>
           </div>
-          <div className="kpi-val">{loneWorkers.length - overdue.length}<small>/{loneWorkers.length}</small></div>
-          <div className="kpi-foot">{overdue.length} overdue · timers running</div>
+          <div className="kpi-val">{D.sessions.length - alarms.length}<small>/{D.sessions.length}</small></div>
+          <div className="kpi-foot">{alarms.length} in alarm · timers running</div>
         </div>
       </div>
 
-      {/* Status board */}
       <div className="sc-board">
         <div className="card sc-board-card">
           <div className="card-head">
-            <h3>Guards on duty</h3>
-            <span className="sub">colour-coded · click Dispatch to send any guard</span>
-            <span className="head-act"><Pill tone="secure" dot>{guards.length} live</Pill></span>
+            <h3>On duty now</h3>
+            <span className="sub">from shift clock-ins · dispatch sends a real push</span>
+            <span className="head-act"><Pill tone="secure" dot>{onDuty.length} live</Pill></span>
           </div>
-          <div className="sc-guards-list">
-            {guards.map((g) => (
-              <GuardCard key={g.id} g={g} onDispatch={() => onDispatch && onDispatch()} />
-            ))}
-          </div>
+          {onDuty.length === 0 ? (
+            <div style={{ padding:"26px 18px", fontSize:13, color:"var(--ink-3)", textAlign:"center" }}>
+              No staff are clocked on right now. On-duty status comes from shift clock-ins.
+            </div>
+          ) : (
+            <div className="sc-guards-list">
+              {onDuty.map((u) => (
+                <div key={u.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 16px", borderBottom:"1px solid var(--line)" }}>
+                  <span className="wo-mini-av" style={{ width:30, height:30, fontSize:11, flex:"none" }}>{secInitials(u.name || u.email)}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:650, fontSize:13 }}>{u.name || u.email}</div>
+                    <div style={{ fontSize:11.5, color:"var(--ink-3)" }}>{SEC_ROLE_LABEL[u.role] || u.role}</div>
+                  </div>
+                  <button className="btn btn-sm" onClick={() => onDispatch({ userId: u.id })}>
+                    <Icon name="send" size={12} />Dispatch
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="sc-board-right">
-          {/* Active incidents */}
           <div className="card">
             <div className="card-head">
               <h3>Active incidents</h3>
-              <span className="sub">by severity</span>
+              <span className="sub">newest first</span>
               <span className="head-act"><Pill tone={openInc.length ? "warn" : "ok"} dot>{openInc.length} open</Pill></span>
             </div>
             <div className="sc-incs">
-              {incidents.slice(0, 4).map((i) => (
-                <button key={i.id} className="sc-inc-row" onClick={() => onOpenIncident(i)}>
-                  <div className={"sc-inc-sev sc-sev-" + i.sevTone}>
-                    <Icon name={i.sevTone === "crit" ? "alertTri" : i.sevTone === "warn" ? "alertCircle" : "shield"} size={12} />
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div className="sc-inc-title">{i.type}</div>
-                    <div className="sc-inc-meta">{i.site} · {i.time} · <span className="sc-inc-id">{i.id}</span></div>
-                  </div>
-                  <Pill tone={i.statusTone} dot>{i.status}</Pill>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Patrol progress */}
-          <div className="card">
-            <div className="card-head">
-              <h3>Patrols</h3>
-              <span className="sub">scan progress</span>
-            </div>
-            <div className="sc-patrols">
-              {patrolProgress.map((p) => {
-                const pct = Math.round((p.scanned / Math.max(1, p.total)) * 100);
+              {openInc.length === 0 && (
+                <div style={{ padding:"18px 16px", fontSize:12.5, color:"var(--ink-3)" }}>No open incidents.</div>
+              )}
+              {openInc.slice(0, 4).map((i) => {
+                const sev = SEC_SEV[i.severity] || SEC_SEV.medium;
+                const st  = SEC_STATUS[i.status] || SEC_STATUS.open;
                 return (
-                  <div key={p.id} className="sc-patrol-row">
-                    <span className="wo-mini-av" style={{ width:24, height:24, fontSize:10 }}>{p.initials}</span>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div className="sc-patrol-top">
-                        <span className="sc-patrol-nm">{p.guard}</span>
-                        <span className="sc-patrol-frac">{p.scanned}/{p.total}</span>
-                      </div>
-                      <div className="sc-patrol-bar">
-                        <i style={{ width: pct + "%", background: p.status === "complete" ? "var(--ok)" : "var(--accent)" }} />
-                      </div>
-                      <div className="sc-patrol-meta">{p.site} · {p.status === "complete" ? "complete" : "in progress"}</div>
+                  <button key={i.id} className="sc-inc-row" onClick={() => onOpenIncident(i.id)}>
+                    <div className={"sc-inc-sev sc-sev-" + sev.tone}>
+                      <Icon name={sev.icon} size={12} />
                     </div>
-                  </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div className="sc-inc-title">{i.title}</div>
+                      <div className="sc-inc-meta">
+                        {((i.building && i.building.name) || "No building") + " · " + secWhen(i.createdAt) + " · "}
+                        <span className="sc-inc-id">{i.id.slice(0, 8)}</span>
+                      </div>
+                    </div>
+                    <Pill tone={st.tone} dot>{st.label}</Pill>
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Lone-worker timers */}
+          <div className="card">
+            <div className="card-head">
+              <h3>Patrols today</h3>
+              <span className="sub">one dot per checkpoint · green means scanned today</span>
+            </div>
+            <div className="sc-patrols">
+              {activeCps.length === 0 && (
+                <div style={{ padding:"18px 16px", fontSize:12.5, color:"var(--ink-3)" }}>
+                  No checkpoints yet. Add them in the Patrols tab.
+                </div>
+              )}
+              {activeCps.slice(0, 6).map((cp) => {
+                const last = scansToday.find((s) => s.checkpointId === cp.id);
+                return (
+                  <div key={cp.id} className="sc-patrol-row">
+                    <div className="cp-dot" style={{ background: last ? "var(--ok)" : "var(--line-2)", flex:"none", marginTop:4, justifySelf:"center" }} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div className="sc-patrol-top">
+                        <span className="sc-patrol-nm">{cp.name}</span>
+                        <span className="sc-patrol-frac">{last ? secFmtTime(last.scannedAt) : "—"}</span>
+                      </div>
+                      <div className="sc-patrol-meta">
+                        {((cp.building && cp.building.name) || "No building") + " · " + (last ? "scanned by " + (last.guardName || "unnamed guard") : "no scan today")}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {activeCps.length > 6 && (
+                <div style={{ padding:"8px 16px", fontSize:12, color:"var(--ink-3)" }}>
+                  Plus {activeCps.length - 6} more in the Patrols tab.
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="card">
             <div className="card-head">
               <h3>Lone-worker timers</h3>
-              <span className="sub">last check-in</span>
-              <span className="head-act"><Pill tone={overdue.length ? "crit" : "ok"} dot>{overdue.length ? overdue.length + " overdue" : "all OK"}</Pill></span>
+              <span className="sub">live sessions</span>
+              <span className="head-act"><Pill tone={alarms.length ? "crit" : "ok"} dot>{alarms.length ? alarms.length + " in alarm" : "all OK"}</Pill></span>
             </div>
             <div className="sc-lone">
-              {loneWorkers.map((w) => (
-                <div key={w.id} className={"sc-lone-row" + (w.status === "overdue" ? " overdue" : "")}>
-                  <span className="wo-mini-av" style={{ width:24, height:24, fontSize:9, background: w.status === "overdue" ? "var(--crit-soft)" : "var(--surface-3)", color: w.status === "overdue" ? "var(--crit)" : "var(--ink-2)" }}>{w.initials}</span>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div className="sc-lone-nm">{w.name}<span className="sc-lone-role"> · {w.role}</span></div>
-                    <div className="sc-lone-site">{w.site}</div>
+              {D.sessions.length === 0 && (
+                <div style={{ padding:"14px 16px", fontSize:12.5, color:"var(--ink-3)" }}>No live sessions.</div>
+              )}
+              {D.sessions.map((w) => {
+                const overdue = w.status === "alarm" || (w.nextCheckInDueAt && new Date(w.nextCheckInDueAt) < now);
+                return (
+                  <div key={w.id} className={"sc-lone-row" + (overdue ? " overdue" : "")}>
+                    <span className="wo-mini-av" style={{ width:24, height:24, fontSize:9, background: overdue ? "var(--crit-soft)" : "var(--surface-3)", color: overdue ? "var(--crit)" : "var(--ink-2)" }}>{secInitials(w.userName)}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div className="sc-lone-nm">{w.userName || "Unknown"}<span className="sc-lone-role"> · every {w.intervalMinutes} min</span></div>
+                      <div className="sc-lone-site">{w.note || (w.status === "alarm" ? "Alarm " + secAgo(w.alarmAt) : secDueLabel(w))}</div>
+                    </div>
+                    <div className="sc-lone-time">
+                      <Icon name="clock" size={11} />{secAgo(w.lastCheckInAt)}
+                    </div>
                   </div>
-                  <div className="sc-lone-time">
-                    <Icon name="clock" size={11} />{w.lastCheckin}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -10269,51 +13565,85 @@ function CommandCentre({ guards, incidents, patrols, loneWorkers, onDispatch, on
    Main view
    ============================================================ */
 function SecurityView({ go }) {
-  const [tab, setTab] = React.useState("command");
-  const [logOpen, setLogOpen] = React.useState(false);
-  const [dispatchOpen, setDispatchOpen] = React.useState(false);
-  const [presetIncident, setPresetIncident] = React.useState(null);
-  const [addNoteOpen, setAddNoteOpen] = React.useState(false);
-  const [posts, setPosts] = React.useState(SEC_POSTS);
-  const [passdown, setPassdown] = React.useState(SEC_PASSDOWN_SEED);
-  const [openIncidentPanel, setOpenIncidentPanel] = React.useState(null);
+  const [tab, setTab]                   = React.useState("command");
+  const [data, setData]                 = React.useState(null); // null = first load
+  const [logOpen, setLogOpen]           = React.useState(false);
+  const [addCpOpen, setAddCpOpen]       = React.useState(false);
+  const [dispatchState, setDispatch]    = React.useState(null); // null | { preset }
+  const [openIncidentId, setOpenIncId]  = React.useState(null);
   const { showToast, toastNode } = useViewToast();
-  const D = useSiteData();
 
-  const ackPost   = (id) => {
-    setPosts((ps) => ps.map((p) => p.id === id ? { ...p, ack:true, ackedAt:"just now" } : p));
-    showToast("Post order acknowledged");
-  };
-  const unackPost = (id) => setPosts((ps) => ps.map((p) => p.id === id ? { ...p, ack:false, ackedAt:undefined } : p));
+  const refresh = React.useCallback(() => {
+    return Promise.all([
+      hlApi("/incidents"),
+      hlApi("/checkpoints?discipline=security"),
+      hlApi("/checkpoint-scans?discipline=security"),
+      hlApi("/lone-worker/sessions"),
+      hlApi("/users"),
+      hlApi("/lone-worker/active"),
+    ]).then(([i, c, s, l, u, m]) => {
+      setData((prev) => ({
+        forbidden: i.status === 403,
+        failed: !i.ok && i.status !== 403,
+        incidents:   i.ok ? ((i.b && i.b.incidents)   || []) : (prev ? prev.incidents   : []),
+        checkpoints: c.ok ? ((c.b && c.b.checkpoints) || []) : (prev ? prev.checkpoints : []),
+        scans:       s.ok ? ((s.b && s.b.scans)       || []) : (prev ? prev.scans       : []),
+        sessions:    l.ok ? ((l.b && l.b.sessions)    || []) : (prev ? prev.sessions    : []),
+        sessionsRestricted: l.status === 403,
+        users:       u.ok ? ((u.b && u.b.users)       || []) : (prev ? prev.users       : []),
+        mySession:   m.ok ? ((m.b && m.b.session)     || null) : (prev ? prev.mySession : null),
+      }));
+    }).catch(() => {
+      setData((prev) => prev || { failed: true, forbidden: false, incidents: [], checkpoints: [], scans: [], sessions: [], sessionsRestricted: false, users: [], mySession: null });
+    });
+  }, []);
 
-  const addNote = (n) => {
-    setPassdown((ps) => [n, ...ps]);
-    setAddNoteOpen(false);
-    showToast("Pass-down note saved");
-  };
+  React.useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 20000);
+    return () => clearInterval(t);
+  }, [refresh]);
 
-  const onDispatch = (incidentId) => {
-    setPresetIncident(incidentId || null);
-    setDispatchOpen(true);
-  };
-  const handleDispatch = (payload) => {
-    const guard = SEC_GUARDS.find((g) => g.id === payload.guardId);
-    const dest  = payload.destKind === "incident" ? payload.incidentId : payload.location;
-    setDispatchOpen(false);
-    setPresetIncident(null);
-    showToast(`${guard?.name || "Guard"} dispatched to ${dest}`);
-  };
+  if (data === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the security desk…</div></div>;
+  }
+  if (data.failed) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>Could not load the security desk. Check your connection and refresh.</div></div>;
+  }
+
+  /* A field-staff login: the org-wide desk is supervisor and admin only, but the
+     personal check-in timer works for everyone. */
+  if (data.forbidden) {
+    return (
+      <div className="content-inner">
+        <div className="page-head">
+          <div>
+            <h1 className="page-title">Security</h1>
+            <p className="page-desc">Your personal lone-worker check-in timer. Incidents, patrols and the monitoring hub need a supervisor or admin login.</p>
+          </div>
+        </div>
+        <SecMyTimerCard mySession={data.mySession} refresh={refresh} showToast={showToast} />
+        {toastNode}
+      </div>
+    );
+  }
+
+  const openInc = data.incidents.filter((i) => i.status !== "resolved");
+  const alarms  = data.sessions.filter((s) => s.status === "alarm");
+  const openIncident = openIncidentId ? data.incidents.find((i) => i.id === openIncidentId) : null;
+
+  const openDispatch = (preset) => setDispatch({ preset: preset || {} });
 
   return (
     <div className="content-inner">
       <div className="page-head">
         <div>
           <h1 className="page-title">Security command centre</h1>
-          <p className="page-desc">Guards on duty, live incidents, patrols and lone-worker timers — plus post orders, shift handovers and the daily activity report.</p>
+          <p className="page-desc">Live incidents, patrol checkpoint scans and lone-worker timers for this organisation, refreshed every 20 seconds.</p>
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <button className="btn" onClick={() => onDispatch(null)}>
-            <Icon name="send" size={15} />Dispatch guard
+          <button className="btn" onClick={() => openDispatch(null)}>
+            <Icon name="send" size={15} />Dispatch staff
           </button>
           <button className="btn btn-primary" onClick={() => setLogOpen(true)}>
             <Icon name="plus" size={15} />Log incident
@@ -10322,72 +13652,69 @@ function SecurityView({ go }) {
       </div>
 
       {logOpen && (
-        <SimpleAddModal
-          title="Log incident"
-          subtitle="Capture what happened. Attach photos in the next step."
-          icon="shield"
-          submitLabel="Log incident" submitIcon="send"
-          successTitle="Incident logged"
-          successCopy="Site manager has been notified and the incident is on the security log."
-          fields={[
-            { id:"type",   label:"Incident type", type:"select",   options:["Slip and fall","Near miss","Lone-worker overdue","Suspicious person","Property damage","Panic activation","Other"] },
-            { id:"site",   label:"Site",          type:"select",   options:HL.sites.map((s) => s.name) },
-            { id:"sev",    label:"Severity",       type:"select",   options:["Low","Medium","High"], default:"Low" },
-            { id:"detail", label:"What happened", type:"textarea", placeholder:"Describe in your own words", rows:4 },
-          ]}
-          onClose={() => setLogOpen(false)} />
+        <SecLogIncidentModal
+          onClose={() => setLogOpen(false)}
+          onSaved={() => { setLogOpen(false); showToast("Incident logged"); refresh(); }}
+          showToast={showToast} />
       )}
 
-      {dispatchOpen && (
-        <DispatchGuardModal
-          guards={SEC_GUARDS}
-          presetIncident={presetIncident}
-          onClose={() => { setDispatchOpen(false); setPresetIncident(null); }}
-          onDispatch={handleDispatch} />
+      {addCpOpen && (
+        <SecAddCheckpointModal
+          onClose={() => setAddCpOpen(false)}
+          onSaved={() => { setAddCpOpen(false); showToast("Checkpoint added. Copy its scan link to print the QR."); refresh(); }}
+          showToast={showToast} />
       )}
 
-      {addNoteOpen && (
-        <AddPassDownModal
-          guards={SEC_GUARDS}
-          onClose={() => setAddNoteOpen(false)}
-          onSubmit={addNote} />
+      {dispatchState && (
+        <SecDispatchModal
+          users={data.users}
+          preset={dispatchState.preset}
+          onClose={() => setDispatch(null)}
+          onSent={(name) => { setDispatch(null); showToast(name + " dispatched. Push sent to their device."); }}
+          showToast={showToast} />
       )}
 
-      {openIncidentPanel && (
-        <IncidentPanel inc={openIncidentPanel}
-          onClose={() => setOpenIncidentPanel(null)}
-          onDispatch={(id) => { setOpenIncidentPanel(null); onDispatch(id); }} />
+      {openIncident && (
+        <SecIncidentPanel
+          inc={openIncident}
+          onClose={() => setOpenIncId(null)}
+          onChanged={refresh}
+          showToast={showToast} />
       )}
 
       <div className="tabs">
         {[
           ["command",   "Command centre"],
-          ["posts",     `Post orders (${posts.filter((p) => p.ack).length}/${posts.length})`],
-          ["passdown",  `Pass-down (${passdown.length})`],
-          ["dar",       "Daily activity report"],
-          ["incidents", `Incidents (${D.incidents.filter((i) => i.status === "Open").length})`],
-          ["patrols",   "Patrols"],
-          ["lone",      `Lone workers (${D.loneWorkers.filter((w) => w.status === "overdue").length || ""})`],
+          ["incidents", "Incidents (" + openInc.length + ")"],
+          ["patrols",   "Patrols (" + data.checkpoints.length + ")"],
+          ["lone",      "Lone workers" + (alarms.length ? " (" + alarms.length + ")" : "")],
         ].map(([id, label]) => (
           <button key={id} className={"tab-btn" + (tab === id ? " on" : "")} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
 
       {tab === "command" && (
-        <CommandCentre
-          guards={SEC_GUARDS}
-          incidents={D.incidents}
-          patrols={D.patrols}
-          loneWorkers={D.loneWorkers}
-          onDispatch={onDispatch}
-          onOpenIncident={setOpenIncidentPanel} />
+        <SecCommandCentre D={data} onDispatch={openDispatch} onOpenIncident={setOpenIncId} />
       )}
-      {tab === "posts"     && <PostOrdersTab posts={posts} guards={SEC_GUARDS} onAck={ackPost} onUnack={unackPost} />}
-      {tab === "passdown"  && <PassDownTab notes={passdown} onAdd={() => setAddNoteOpen(true)} />}
-      {tab === "dar"       && <DARTab events={SEC_DAR_EVENTS} stats={SEC_DAR_STATS} onExport={() => showToast("DAR queued for PDF export")} />}
-      {tab === "incidents" && <IncidentsList incidents={D.incidents} onDispatch={onDispatch} />}
-      {tab === "patrols"   && <PatrolsView patrols={D.patrols} />}
-      {tab === "lone"      && <LoneWorkersView workers={D.loneWorkers} />}
+      {tab === "incidents" && (
+        <SecIncidentsList incidents={data.incidents} onOpen={setOpenIncId} onLog={() => setLogOpen(true)} />
+      )}
+      {tab === "patrols" && (
+        <SecPatrolsTab
+          checkpoints={data.checkpoints}
+          scans={data.scans}
+          onAdd={() => setAddCpOpen(true)}
+          onChanged={refresh}
+          showToast={showToast} />
+      )}
+      {tab === "lone" && (
+        <SecLoneTab
+          sessions={data.sessions}
+          mySession={data.mySession}
+          restricted={data.sessionsRestricted}
+          refresh={refresh}
+          showToast={showToast} />
+      )}
 
       {toastNode}
     </div>
@@ -10398,193 +13725,160 @@ Object.assign(window, { SecurityView });
 
 /* ════════════════════ asset_48_f983ffff.js ════════════════════ */
 ;
-/* HazardLink — Visitor management
-   Adds: on-site register, expected today, watchlist screening,
-   visitor history and an evacuation roll-call modal. */
+/* HazardLink — Visitor management, wired to the live backend.
+   Real day sheet (on site / expected / history) from GET /visitors, walk-in
+   sign-in and expected bookings via POST /visitors, real sign-in / sign-out /
+   cancel actions, and an evacuation roll-call over the live on-site register.
+   The old watchlist tab is gone: there is no watchlist backend yet. */
 
-const VISITOR_SITES = HL.sites.map((s) => s.name);
-
-/* Hosts the receptionist can pick from */
-const VISITOR_HOSTS = [
-  { name: "Aoife Kelly",    role: "Facilities Manager",  site: "Aviva Office Tower" },
-  { name: "Ronan Walsh",    role: "Site Lead",            site: "Aviva Office Tower" },
-  { name: "Niamh Doherty",  role: "Operations Director",  site: "Northgate Logistics Hub" },
-  { name: "Padraig Burke",  role: "Yard Supervisor",      site: "Northgate Logistics Hub" },
-  { name: "Sinead Murphy",  role: "Store Manager",        site: "Riverside Retail Park" },
-  { name: "Caoimhe Lynch",  role: "Clinic Lead",          site: "Lee Valley Medical Centre" },
-  { name: "Eoin Brady",     role: "Duty Manager",         site: "Tramore Leisure Centre" },
-  { name: "Tara Fitzgerald", role: "Branch Librarian",    site: "Galway City Library" },
-];
-
-const VISITOR_REASONS = [
-  "Meeting", "Contractor — works",  "Delivery", "Audit / inspection",
+const VISITOR_PURPOSES = [
+  "Meeting", "Contractor works", "Delivery", "Audit or inspection",
   "Interview", "Tour", "Maintenance", "Other",
 ];
 
-/* People we do NOT want on site (former staff, court orders, etc.) */
-const VISITOR_WATCHLIST = [];
-
-/* Seed: people currently on-site at the start of the day */
-const SEED_ONSITE = [];
-
-/* Seed: pre-booked but not arrived yet */
-const SEED_EXPECTED = [];
-
-/* Seed: already signed in and out today */
-const SEED_HISTORY = [];
-
-let NEXT_VID = 4119;
-let NEXT_BADGE = 224;
-const nextVid   = () => "V-" + (NEXT_VID++);
-const nextBadge = () => "B-" + (NEXT_BADGE++);
-
-function watchlistMatch(name) {
-  const n = (name || "").trim().toLowerCase();
-  if (n.length < 2) return null;
-  return VISITOR_WATCHLIST.find((w) => {
-    const wn = w.name.toLowerCase();
-    return wn === n || wn.includes(n) || n.includes(wn);
-  }) || null;
+/* ---------- helpers (file-local names) ---------- */
+function vmPad(n) { return String(n).padStart(2, "0"); }
+function vmToday() {
+  const d = new Date();
+  return d.getFullYear() + "-" + vmPad(d.getMonth() + 1) + "-" + vmPad(d.getDate());
+}
+function vmFmtTime(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return vmPad(d.getHours()) + ":" + vmPad(d.getMinutes());
+}
+function vmDayLabel(day) {
+  if (day === vmToday()) return "today";
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const d = new Date(day + "T12:00:00");
+  return d.getDate() + " " + M[d.getMonth()];
+}
+function vmInitials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+function vmBuildingName(buildingId) {
+  const s = (HL.sites || []).find((x) => x.id === buildingId);
+  return s ? s.name : "—";
+}
+/* Real org buildings have uuid ids; the no-login preview uses sample ids that
+   the backend would reject, so only ever send a buildingId that is a uuid. */
+function vmUuidOr(id) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || "") ? id : undefined;
 }
 
 /* ============================================================
-   Sign-in modal
+   Add-visitor modal — walk-in (signs in now) or expected booking
    ============================================================ */
-function SignInVisitorModal({ defaultSite, onClose, onSubmit }) {
-  const [name, setName]       = React.useState("");
-  const [company, setCompany] = React.useState("");
-  const [host, setHost]       = React.useState("");
-  const [reason, setReason]   = React.useState("Meeting");
-  const [reg, setReg]         = React.useState("");
-  const [site, setSite]       = React.useState(defaultSite || VISITOR_SITES[0]);
-  const [override, setOverride] = React.useState(false);
-  const [badge] = React.useState(() => "B-" + NEXT_BADGE);
-  const flag    = watchlistMatch(name);
+function VmVisitorModal({ mode, day, defaultBuildingId, onClose, onSaved, showToast }) {
+  const walkIn = mode === "walkin";
+  const sites = HL.sites || [];
+  const [name, setName]         = React.useState("");
+  const [company, setCompany]   = React.useState("");
+  const [host, setHost]         = React.useState("");
+  const [purpose, setPurpose]   = React.useState("Meeting");
+  const [buildingId, setBId]    = React.useState(defaultBuildingId || (sites[0] ? sites[0].id : ""));
+  const [badge, setBadge]       = React.useState("");
+  const [due, setDue]           = React.useState((day || vmToday()) + "T09:00");
+  const [busy, setBusy]         = React.useState(false);
 
-  const hostOptions = VISITOR_HOSTS.filter((h) => h.site === site);
-
-  React.useEffect(() => { setHost(""); }, [site]);
-
-  const canSubmit = name.trim() && company.trim() && host && reason && site && (!flag || override);
+  const canSave = name.trim().length > 0 && !busy && (walkIn || due);
 
   const submit = () => {
-    if (!canSubmit) return;
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    onSubmit({
-      id: nextVid(),
+    if (!canSave) return;
+    let expectedAt;
+    if (!walkIn) {
+      const d = new Date(due);
+      if (isNaN(d.getTime())) { showToast("Pick a valid date and time."); return; }
+      expectedAt = d.toISOString();
+    }
+    setBusy(true);
+    hlApi("/visitors", { method: "POST", body: {
       name: name.trim(),
-      company: company.trim(),
-      host, reason, site,
-      badge: nextBadge(),
-      reg: reg.trim() || null,
-      timeIn: `${hh}:${mm}`,
-    });
+      company: company.trim() || undefined,
+      host: host.trim() || undefined,
+      purpose: purpose || undefined,
+      badge: walkIn ? (badge.trim() || undefined) : undefined,
+      buildingId: vmUuidOr(buildingId),
+      expectedAt,
+      signInNow: walkIn ? true : undefined,
+    }})
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not save the visitor. Check the details and try again."); return; }
+        onSaved();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusy(false));
   };
 
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
         <div className="modal-head">
-          <div className="mh-ico"><Icon name="user" size={18} /></div>
+          <div className="mh-ico"><Icon name={walkIn ? "user" : "calendar"} size={18} /></div>
           <div>
-            <h3>Sign in visitor</h3>
-            <p>Issue a badge, notify the host, add to the live register.</p>
+            <h3>{walkIn ? "Sign in walk-in visitor" : "Book an expected visitor"}</h3>
+            <p>{walkIn
+              ? "Added to the live on-site register straight away."
+              : "Goes on the day sheet as expected. Sign them in with one click when they arrive."}</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
 
         <div className="modal-body">
-          {flag && (
-            <div className="vm-flag">
-              <div className="vm-flag-ico"><Icon name="alertTri" size={18} /></div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="vm-flag-title">Do not admit — watchlist match</div>
-                <div className="vm-flag-sub">
-                  <b>{flag.name}</b> — {flag.reason}
-                </div>
-                <div className="vm-flag-meta">Added {flag.added} · Notify duty manager before proceeding.</div>
-              </div>
-            </div>
-          )}
-
           <div className="vm-grid">
             <div className="ai-field" style={{ gridColumn: "span 2" }}>
               <label>Visitor name</label>
               <input className="dv-input" autoFocus value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Full name as on photo ID" />
-              {!flag && name.trim().length > 1 && (
-                <div className="ai-hint" style={{ color: "var(--ok)" }}>
-                  <Icon name="checkCircle" size={11} /> No watchlist match
-                </div>
-              )}
+                placeholder="Full name" />
             </div>
             <div className="ai-field">
-              <label>Company</label>
+              <label>Company (optional)</label>
               <input className="dv-input" value={company}
                 onChange={(e) => setCompany(e.target.value)}
                 placeholder="e.g. Murphy Mechanical" />
             </div>
             <div className="ai-field">
-              <label>Site</label>
-              <select className="dv-input" value={site} onChange={(e) => setSite(e.target.value)}>
-                {VISITOR_SITES.map((s) => <option key={s} value={s}>{s}</option>)}
+              <label>Building</label>
+              <select className="dv-input" value={buildingId} onChange={(e) => setBId(e.target.value)}>
+                <option value="">No building</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div className="ai-field">
-              <label>Host being visited</label>
-              <select className="dv-input" value={host} onChange={(e) => setHost(e.target.value)}>
-                <option value="">Select host…</option>
-                {hostOptions.map((h) => <option key={h.name} value={h.name}>{h.name} — {h.role}</option>)}
+              <label>Host being visited (optional)</label>
+              <input className="dv-input" value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder="Who they are here to see" />
+            </div>
+            <div className="ai-field">
+              <label>Purpose</label>
+              <select className="dv-input" value={purpose} onChange={(e) => setPurpose(e.target.value)}>
+                {VISITOR_PURPOSES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
-            <div className="ai-field">
-              <label>Reason for visit</label>
-              <select className="dv-input" value={reason} onChange={(e) => setReason(e.target.value)}>
-                {VISITOR_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div className="ai-field">
-              <label>Vehicle registration <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>(optional)</span></label>
-              <input className="dv-input" value={reg}
-                onChange={(e) => setReg(e.target.value.toUpperCase())}
-                placeholder="e.g. 242-D-7741" />
-            </div>
-            <div className="ai-field">
-              <label>Badge number</label>
-              <div className="vm-badge-preview">
-                <Icon name="award" size={14} />
-                <span>{badge}</span>
-                <small>auto-assigned</small>
+            {walkIn ? (
+              <div className="ai-field">
+                <label>Badge (optional)</label>
+                <input className="dv-input" value={badge}
+                  onChange={(e) => setBadge(e.target.value)}
+                  placeholder="e.g. B-104" />
               </div>
-            </div>
-            <div className="ai-field" style={{ gridColumn: "span 2" }}>
-              <label>Visitor photo</label>
-              <div className="vm-photo-slot">
-                <div className="vm-photo-ico"><Icon name="camera" size={20} /></div>
-                <div>
-                  <div style={{ fontWeight: 650, fontSize: 13 }}>Capture from front-desk webcam</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>Required for the printed badge · click to retake</div>
-                </div>
+            ) : (
+              <div className="ai-field">
+                <label>Expected at</label>
+                <input className="dv-input" type="datetime-local" value={due}
+                  onChange={(e) => setDue(e.target.value)} />
               </div>
-            </div>
+            )}
           </div>
-
-          {flag && (
-            <label className="vm-override">
-              <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} />
-              <span>Duty manager has approved entry despite watchlist match (audit-logged).</span>
-            </label>
-          )}
         </div>
 
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={!canSubmit}
-            style={{ opacity: canSubmit ? 1 : .5 }} onClick={submit}>
-            <Icon name="check" size={15} />Sign in &amp; notify host
+          <button className="btn btn-primary" disabled={!canSave}
+            style={{ opacity: canSave ? 1 : .5 }} onClick={submit}>
+            <Icon name="check" size={15} />{busy ? "Saving…" : walkIn ? "Sign in visitor" : "Book visitor"}
           </button>
         </div>
       </div>
@@ -10593,15 +13887,17 @@ function SignInVisitorModal({ defaultSite, onClose, onSubmit }) {
 }
 
 /* ============================================================
-   Roll call modal — evacuation
+   Roll call modal — evacuation, over the real on-site register
    ============================================================ */
 function RollCallModal({ onSite, onClose }) {
   const [accounted, setAccounted] = React.useState(() => new Set());
   const bySite = React.useMemo(() => {
     const m = new Map();
     onSite.forEach((v) => {
-      if (!m.has(v.site)) m.set(v.site, []);
-      m.get(v.site).push(v);
+      const nm = vmBuildingName(v.buildingId);
+      const key = nm === "—" ? "No building set" : nm;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(v);
     });
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [onSite]);
@@ -10629,7 +13925,7 @@ function RollCallModal({ onSite, onClose }) {
           </div>
           <div>
             <h3 style={{ color: "var(--crit)" }}>Evacuation roll-call</h3>
-            <p>Tick each visitor as they reach the muster point. Hosts are also notified to confirm.</p>
+            <p>Tick each visitor as they reach the muster point. Ticks are a counting aid for the drill, they are not saved.</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
@@ -10658,7 +13954,7 @@ function RollCallModal({ onSite, onClose }) {
             <div className="empty" style={{ padding: "40px 20px" }}>
               <div className="empty-ico"><Icon name="checkCircle" size={26} /></div>
               <h3>No visitors on site</h3>
-              <p>Nothing to account for — building can be cleared.</p>
+              <p>Nothing to account for on this sheet.</p>
             </div>
           )}
 
@@ -10671,6 +13967,8 @@ function RollCallModal({ onSite, onClose }) {
               </div>
               {vs.map((v) => {
                 const ok = accounted.has(v.id);
+                const meta = [v.company, v.host ? "host " + v.host : null, "in " + vmFmtTime(v.signedInAt)]
+                  .filter(Boolean).join(" · ");
                 return (
                   <button key={v.id} className={"vm-rc-row" + (ok ? " on" : "")}
                     onClick={() => toggle(v.id)}>
@@ -10679,9 +13977,9 @@ function RollCallModal({ onSite, onClose }) {
                     </span>
                     <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                       <div className="vm-rc-nm">{v.name}</div>
-                      <div className="vm-rc-meta">{v.company} · host {v.host} · in {v.timeIn}</div>
+                      <div className="vm-rc-meta">{meta}</div>
                     </div>
-                    <span className="vm-badge-pill"><Icon name="award" size={11} />{v.badge}</span>
+                    {v.badge && <span className="vm-badge-pill"><Icon name="award" size={11} />{v.badge}</span>}
                   </button>
                 );
               })}
@@ -10707,64 +14005,73 @@ function RollCallModal({ onSite, onClose }) {
    ============================================================ */
 function VisitorsView({ go }) {
   const { site } = React.useContext(SiteContext);
-  const [tab, setTab]               = React.useState("onsite");
-  const [onSite, setOnSite]         = React.useState(SEED_ONSITE);
-  const [expected, setExpected]     = React.useState(SEED_EXPECTED);
-  const [history, setHistory]       = React.useState(SEED_HISTORY);
-  const [signInOpen, setSignInOpen] = React.useState(false);
-  const [rollOpen, setRollOpen]     = React.useState(false);
-  const { showToast, toastNode }    = useViewToast();
+  const [tab, setTab]       = React.useState("onsite");
+  const [day, setDay]       = React.useState(vmToday());
+  const [rows, setRows]     = React.useState(null); // null loading | false error | array
+  const [modal, setModal]   = React.useState(null); // "walkin" | "expected" | "rollcall"
+  const [busyId, setBusyId] = React.useState(null);
+  const { showToast, toastNode } = useViewToast();
 
-  /* Filter by current global site, if one is picked */
-  const filter = (arr) => site ? arr.filter((v) => v.site === site.name) : arr;
-  const vOnSite   = filter(onSite);
-  const vExpected = filter(expected);
-  const vHistory  = filter(history);
-  const flaggedHere = VISITOR_WATCHLIST;
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const canCancel = me.role === "admin" || me.role === "supervisor";
 
-  /* KPIs */
-  const signedInToday  = onSite.length + history.length;
-  const signedOutToday = history.length;
-  const expectedToday  = expected.length + signedInToday; // expected = arrived + still-to-arrive
-  const onSiteNow      = onSite.length;
-  const onSiteHere     = vOnSite.length;
+  const refresh = React.useCallback(() => {
+    const bId = vmUuidOr(site && site.id);
+    const qs = "?day=" + day + (bId ? "&buildingId=" + bId : "");
+    return hlApi("/visitors" + qs)
+      .then(({ ok, b }) => {
+        if (!ok) { setRows(false); return; }
+        setRows((b && b.visitors) || []);
+      })
+      .catch(() => setRows(false));
+  }, [day, site]);
 
-  const addSignedIn = (v) => {
-    setOnSite((xs) => [v, ...xs]);
-    showToast(`${v.name} signed in · host ${v.host} notified`);
+  React.useEffect(() => {
+    setRows(null);
+    refresh();
+    const t = setInterval(refresh, 30000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  const list = Array.isArray(rows) ? rows : [];
+  const vOnSite   = list.filter((v) => v.signedInAt && !v.signedOutAt);
+  const vExpected = list.filter((v) => !v.signedInAt && !v.signedOutAt);
+  const vHistory  = list.filter((v) => v.signedOutAt);
+
+  const signedInCt  = list.filter((v) => v.signedInAt).length;
+  const signedOutCt = vHistory.length;
+
+  const act = (v, path, okMsg) => {
+    if (busyId) return;
+    setBusyId(v.id);
+    hlApi("/visitors/" + v.id + path, { method: "POST" })
+      .then(({ ok }) => {
+        if (!ok) { showToast("That did not save. Try again."); return; }
+        showToast(okMsg);
+        return refresh();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusyId(null));
+  };
+  const signIn  = (v) => act(v, "/sign-in", v.name + " signed in");
+  const signOut = (v) => act(v, "/sign-out", v.name + " signed out");
+  const cancel = (v) => {
+    if (busyId) return;
+    setBusyId(v.id);
+    hlApi("/visitors/" + v.id, { method: "DELETE" })
+      .then(({ ok, status }) => {
+        if (!ok) {
+          showToast(status === 403 ? "Only supervisors and admins can remove a booking." : "Could not remove the booking.");
+          return;
+        }
+        showToast("Booking removed");
+        return refresh();
+      })
+      .catch(() => showToast("No connection. Try again."))
+      .finally(() => setBusyId(null));
   };
 
-  const signOut = (id) => {
-    const v = onSite.find((x) => x.id === id);
-    if (!v) return;
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    setOnSite((xs) => xs.filter((x) => x.id !== id));
-    setHistory((xs) => [{ ...v, timeOut: `${hh}:${mm}` }, ...xs]);
-    showToast(`${v.name} signed out · badge ${v.badge} returned`);
-  };
-
-  const arriveExpected = (id) => {
-    const e = expected.find((x) => x.id === id);
-    if (!e) return;
-    const flag = watchlistMatch(e.name);
-    if (flag) {
-      showToast(`⚠ ${e.name} matches watchlist — open sign-in to override`);
-      return;
-    }
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    const v = {
-      id: nextVid(),
-      name: e.name, company: e.company, host: e.host, reason: e.reason, site: e.site,
-      badge: nextBadge(), reg: null, timeIn: `${hh}:${mm}`,
-    };
-    setExpected((xs) => xs.filter((x) => x.id !== id));
-    setOnSite((xs) => [v, ...xs]);
-    showToast(`${e.name} signed in from expected list · badge ${v.badge}`);
-  };
+  const dayLabel = vmDayLabel(day);
 
   return (
     <div className="content-inner">
@@ -10772,117 +14079,136 @@ function VisitorsView({ go }) {
         <div>
           <h1 className="page-title">Visitor management</h1>
           <p className="page-desc">
-            Live on-site register for evacuation roll-call, watchlist screening at the front desk,
-            and the daily expected / signed-in / signed-out totals.
+            The live on-site register for evacuation roll-call, plus the day sheet of expected,
+            signed-in and signed-out visitors. Every entry here is a real record on your organisation.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn" onClick={() => setRollOpen(true)}>
+          <button className="btn" onClick={() => setModal("rollcall")}>
             <Icon name="alertTri" size={15} />Evacuation roll-call
           </button>
-          <button className="btn btn-primary" onClick={() => setSignInOpen(true)}>
-            <Icon name="plus" size={15} />Sign in visitor
+          <button className="btn" onClick={() => setModal("expected")}>
+            <Icon name="calendar" size={15} />Expected visitor
+          </button>
+          <button className="btn btn-primary" onClick={() => setModal("walkin")}>
+            <Icon name="plus" size={15} />Sign in walk-in
           </button>
         </div>
       </div>
 
       {/* KPI strip */}
       <div className="kpi-row" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
-        <div className="kpi" style={{ borderColor: onSiteNow > 0 ? "var(--accent)" : "" }}>
+        <div className="kpi" style={{ borderColor: vOnSite.length > 0 ? "var(--accent)" : "" }}>
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background: softBg("accent"), color: solid("accent") }}>
               <Icon name="users" size={16} />
             </div>
             <span className="kpi-label">On site now</span>
           </div>
-          <div className="kpi-val">{onSiteNow}</div>
-          <div className="kpi-foot">live register for evacuation roll-call</div>
+          <div className="kpi-val">{vOnSite.length}</div>
+          <div className="kpi-foot">live register for the roll-call</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background: softBg("secure"), color: solid("secure") }}>
               <Icon name="calendar" size={16} />
             </div>
-            <span className="kpi-label">Expected today</span>
+            <span className="kpi-label">Expected</span>
           </div>
-          <div className="kpi-val">{expectedToday}</div>
-          <div className="kpi-foot">{expected.length} not yet arrived</div>
+          <div className="kpi-val">{vExpected.length}</div>
+          <div className="kpi-foot">booked but not yet arrived</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}>
               <Icon name="check" size={16} />
             </div>
-            <span className="kpi-label">Signed in today</span>
+            <span className="kpi-label">Signed in</span>
           </div>
-          <div className="kpi-val">{signedInToday}</div>
-          <div className="kpi-foot">across {new Set([...onSite, ...history].map((v) => v.site)).size} sites</div>
+          <div className="kpi-val">{signedInCt}</div>
+          <div className="kpi-foot">on the sheet for {dayLabel}</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background: softBg("muted"), color: solid("muted") }}>
               <Icon name="arrowRight" size={16} />
             </div>
-            <span className="kpi-label">Signed out today</span>
+            <span className="kpi-label">Signed out</span>
           </div>
-          <div className="kpi-val">{signedOutToday}</div>
-          <div className="kpi-foot">badges returned and logged</div>
+          <div className="kpi-val">{signedOutCt}</div>
+          <div className="kpi-foot">visits completed and logged</div>
         </div>
       </div>
 
-      {site && (
-        <div style={{ fontSize: 12.5, color: "var(--ink-3)", margin: "-6px 0 14px" }}>
-          Showing visitors for <b style={{ color: "var(--ink)" }}>{site.name}</b> · {onSiteHere} on site here
+      <div className="toolbar" style={{ marginBottom: 14 }}>
+        <input className="dv-input" type="date" style={{ maxWidth: 170 }} value={day}
+          onChange={(e) => { if (e.target.value) setDay(e.target.value); }} />
+        <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
+          Sheet for {dayLabel} · visitors logged on that day
+          {site ? <React.Fragment> · filtered to <b style={{ color: "var(--ink)" }}>{site.name}</b></React.Fragment> : ""}
         </div>
-      )}
+        {rows === false && (
+          <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => { setRows(null); refresh(); }}>
+            <Icon name="rotateCw" size={13} />Retry
+          </button>
+        )}
+      </div>
 
       <div className="tabs">
         {[
-          ["onsite",    `On site (${vOnSite.length})`],
-          ["expected",  `Expected today (${vExpected.length})`],
-          ["watchlist", `Watchlist (${flaggedHere.length})`],
-          ["history",   `History (${vHistory.length})`],
+          ["onsite",   "On site (" + vOnSite.length + ")"],
+          ["expected", "Expected (" + vExpected.length + ")"],
+          ["history",  "History (" + vHistory.length + ")"],
         ].map(([id, label]) => (
           <button key={id} className={"tab-btn" + (tab === id ? " on" : "")} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
 
-      {tab === "onsite" && (
+      {rows === null && (
+        <div className="card card-pad" style={{ color: "var(--ink-3)", fontSize: 13.5 }}>Loading the day sheet…</div>
+      )}
+      {rows === false && (
+        <div className="card card-pad" style={{ color: "var(--warn)", fontSize: 13.5 }}>
+          Could not load the visitor sheet. Check your connection and press Retry.
+        </div>
+      )}
+
+      {Array.isArray(rows) && tab === "onsite" && (
         <div className="card">
           <div className="card-head">
             <h3>On site now</h3>
-            <span className="sub">badge issued · counted in evacuation roll-call</span>
+            <span className="sub">signed in, not yet signed out · counted in the roll-call</span>
             <span className="head-act"><Pill tone="accent" dot>{vOnSite.length} live</Pill></span>
           </div>
           {vOnSite.length === 0 ? (
             <div className="empty" style={{ padding: "48px 20px" }}>
               <div className="empty-ico"><Icon name="users" size={26} /></div>
               <h3>No visitors on site</h3>
-              <p>Use “Sign in visitor” to register the first arrival.</p>
+              <p>Use Sign in walk-in for arrivals, or sign in someone from the Expected tab.</p>
             </div>
           ) : (
             <React.Fragment>
               <div className="wo-head vm-on-grid">
                 <div>Visitor</div><div>Company</div><div>Host</div>
-                <div>Badge</div><div>In</div><div>Site</div><div></div>
+                <div>Badge</div><div>In</div><div>Building</div><div></div>
               </div>
               {vOnSite.map((v) => (
                 <div key={v.id} className="wo-row vm-on-grid">
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span className="wo-mini-av">{v.name.split(" ").map((p) => p[0]).slice(0,2).join("")}</span>
+                    <span className="wo-mini-av">{vmInitials(v.name)}</span>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 650, fontSize: 14 }}>{v.name}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{v.reason}{v.reg ? " · " + v.reg : ""}</div>
+                      {v.purpose && <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{v.purpose}</div>}
                     </div>
                   </div>
-                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{v.company}</div>
-                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{v.host}</div>
-                  <div><span className="vm-badge-pill"><Icon name="award" size={11} />{v.badge}</span></div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{v.timeIn}</div>
-                  <div className="wo-site" style={{ fontSize: 12.5 }}>{v.site}</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{v.company || "—"}</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{v.host || "—"}</div>
+                  <div>{v.badge ? <span className="vm-badge-pill"><Icon name="award" size={11} />{v.badge}</span> : <span style={{ color: "var(--ink-3)" }}>—</span>}</div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{vmFmtTime(v.signedInAt)}</div>
+                  <div className="wo-site" style={{ fontSize: 12.5 }}>{vmBuildingName(v.buildingId)}</div>
                   <div style={{ textAlign: "right" }}>
-                    <button className="btn btn-sm" onClick={() => signOut(v.id)}>
-                      <Icon name="arrowRight" size={12} />Sign out
+                    <button className="btn btn-sm" disabled={busyId === v.id} onClick={() => signOut(v)}>
+                      <Icon name="arrowRight" size={12} />{busyId === v.id ? "…" : "Sign out"}
                     </button>
                   </div>
                 </div>
@@ -10892,108 +14218,48 @@ function VisitorsView({ go }) {
         </div>
       )}
 
-      {tab === "expected" && (
+      {Array.isArray(rows) && tab === "expected" && (
         <div className="card">
           <div className="card-head">
-            <h3>Expected today</h3>
-            <span className="sub">pre-booked · click Arrived to sign in instantly</span>
-            <span className="head-act"><Pill tone="secure" dot>{vExpected.length} pre-booked</Pill></span>
+            <h3>Expected</h3>
+            <span className="sub">booked on this sheet · one click signs them in on arrival</span>
+            <span className="head-act"><Pill tone="secure" dot>{vExpected.length} booked</Pill></span>
           </div>
           {vExpected.length === 0 ? (
             <div className="empty" style={{ padding: "48px 20px" }}>
               <div className="empty-ico"><Icon name="calendar" size={26} /></div>
-              <h3>No-one else expected today</h3>
-              <p>Pre-book visitors from any meeting invite, or use Sign in for walk-ins.</p>
+              <h3>No one expected on this sheet</h3>
+              <p>Book visitors ahead with Expected visitor, or use Sign in walk-in when they turn up.</p>
             </div>
           ) : (
             <React.Fragment>
               <div className="wo-head vm-exp-grid">
                 <div>Visitor</div><div>Company</div><div>Host</div>
-                <div>Reason</div><div>Due</div><div>Site</div><div></div>
+                <div>Purpose</div><div>Due</div><div>Building</div><div></div>
               </div>
-              {vExpected.map((e) => {
-                const flag = watchlistMatch(e.name);
-                return (
-                  <div key={e.id} className={"wo-row vm-exp-grid" + (flag ? " vm-row-flag" : "")}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span className="wo-mini-av">{e.name.split(" ").map((p) => p[0]).slice(0,2).join("")}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 650, fontSize: 14 }}>{e.name}</div>
-                        {flag && <div style={{ fontSize: 11.5, color: "var(--crit)", fontWeight: 600 }}>⚠ Watchlist match</div>}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{e.company}</div>
-                    <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{e.host}</div>
-                    <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{e.reason}</div>
-                    <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{e.due}</div>
-                    <div className="wo-site" style={{ fontSize: 12.5 }}>{e.site}</div>
-                    <div style={{ textAlign: "right" }}>
-                      <button className="btn btn-sm btn-primary" onClick={() => arriveExpected(e.id)}>
-                        <Icon name="check" size={12} />Arrived
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </React.Fragment>
-          )}
-        </div>
-      )}
-
-      {tab === "watchlist" && (
-        <div className="card">
-          <div className="card-head">
-            <h3>Do-not-admit watchlist</h3>
-            <span className="sub">checked live against every sign-in attempt</span>
-            <span className="head-act"><Pill tone="crit" dot>{flaggedHere.length} flagged</Pill></span>
-          </div>
-          {flaggedHere.map((w, i) => (
-            <div key={i} className="vm-wl-row">
-              <div className="vm-wl-ico"><Icon name="alertTri" size={16} /></div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{w.name}</div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 2 }}>{w.reason}</div>
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Added {w.added}</div>
-              <Pill tone="crit" dot>Do not admit</Pill>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === "history" && (
-        <div className="card">
-          <div className="card-head">
-            <h3>Visitor log</h3>
-            <span className="sub">signed in and out today</span>
-          </div>
-          {vHistory.length === 0 ? (
-            <div className="empty" style={{ padding: "48px 20px" }}>
-              <div className="empty-ico"><Icon name="file" size={26} /></div>
-              <h3>No completed visits yet today</h3>
-              <p>Once visitors sign out, their full record appears here.</p>
-            </div>
-          ) : (
-            <React.Fragment>
-              <div className="wo-head vm-hist-grid">
-                <div>Visitor</div><div>Company</div><div>Host</div>
-                <div>Badge</div><div>In</div><div>Out</div><div>Site</div>
-              </div>
-              {vHistory.map((v) => (
-                <div key={v.id} className="wo-row vm-hist-grid">
+              {vExpected.map((e) => (
+                <div key={e.id} className="wo-row vm-exp-grid">
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span className="wo-mini-av">{v.name.split(" ").map((p) => p[0]).slice(0,2).join("")}</span>
+                    <span className="wo-mini-av">{vmInitials(e.name)}</span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 650, fontSize: 14 }}>{v.name}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{v.reason}</div>
+                      <div style={{ fontWeight: 650, fontSize: 14 }}>{e.name}</div>
                     </div>
                   </div>
-                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{v.company}</div>
-                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{v.host}</div>
-                  <div><span className="vm-badge-pill"><Icon name="award" size={11} />{v.badge}</span></div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{v.timeIn}</div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{v.timeOut}</div>
-                  <div className="wo-site" style={{ fontSize: 12.5 }}>{v.site}</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{e.company || "—"}</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{e.host || "—"}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{e.purpose || "—"}</div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{vmFmtTime(e.expectedAt)}</div>
+                  <div className="wo-site" style={{ fontSize: 12.5 }}>{vmBuildingName(e.buildingId)}</div>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    <button className="btn btn-sm btn-primary" disabled={busyId === e.id} onClick={() => signIn(e)}>
+                      <Icon name="check" size={12} />{busyId === e.id ? "…" : "Arrived"}
+                    </button>
+                    {canCancel && (
+                      <button className="icon-btn" title="Remove booking" disabled={busyId === e.id} onClick={() => cancel(e)}>
+                        <Icon name="trash" size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </React.Fragment>
@@ -11001,15 +14267,63 @@ function VisitorsView({ go }) {
         </div>
       )}
 
-      {signInOpen && (
-        <SignInVisitorModal
-          defaultSite={site ? site.name : VISITOR_SITES[0]}
-          onClose={() => setSignInOpen(false)}
-          onSubmit={(v) => { setSignInOpen(false); addSignedIn(v); }} />
+      {Array.isArray(rows) && tab === "history" && (
+        <div className="card">
+          <div className="card-head">
+            <h3>Visitor log</h3>
+            <span className="sub">signed in and out on this sheet</span>
+          </div>
+          {vHistory.length === 0 ? (
+            <div className="empty" style={{ padding: "48px 20px" }}>
+              <div className="empty-ico"><Icon name="file" size={26} /></div>
+              <h3>No completed visits on this sheet</h3>
+              <p>Once visitors sign out, their full record shows here.</p>
+            </div>
+          ) : (
+            <React.Fragment>
+              <div className="wo-head vm-hist-grid">
+                <div>Visitor</div><div>Company</div><div>Host</div>
+                <div>Badge</div><div>In</div><div>Out</div><div>Building</div>
+              </div>
+              {vHistory.map((v) => (
+                <div key={v.id} className="wo-row vm-hist-grid">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span className="wo-mini-av">{vmInitials(v.name)}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 650, fontSize: 14 }}>{v.name}</div>
+                      {v.purpose && <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{v.purpose}</div>}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{v.company || "—"}</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-2)" }}>{v.host || "—"}</div>
+                  <div>{v.badge ? <span className="vm-badge-pill"><Icon name="award" size={11} />{v.badge}</span> : <span style={{ color: "var(--ink-3)" }}>—</span>}</div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{vmFmtTime(v.signedInAt)}</div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{vmFmtTime(v.signedOutAt)}</div>
+                  <div className="wo-site" style={{ fontSize: 12.5 }}>{vmBuildingName(v.buildingId)}</div>
+                </div>
+              ))}
+            </React.Fragment>
+          )}
+        </div>
       )}
 
-      {rollOpen && (
-        <RollCallModal onSite={onSite} onClose={() => setRollOpen(false)} />
+      {(modal === "walkin" || modal === "expected") && (
+        <VmVisitorModal
+          mode={modal}
+          day={day}
+          defaultBuildingId={site ? site.id : ""}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            const wasWalkIn = modal === "walkin";
+            setModal(null);
+            showToast(wasWalkIn ? "Visitor signed in and on the live register" : "Visitor booked on the sheet");
+            refresh();
+          }}
+          showToast={showToast} />
+      )}
+
+      {modal === "rollcall" && (
+        <RollCallModal onSite={vOnSite} onClose={() => setModal(null)} />
       )}
 
       {toastNode}
@@ -11917,9 +15231,60 @@ Object.assign(window, { FormsView });
 
 /* ════════════════════ asset_13_4d008642.js ════════════════════ */
 ;
-/* HazardLink — Safety Data Sheets: library + add-product wizard */
+/* HazardLink — Safety Data Sheets: live library + add-product wizard */
 
 const WZ_STEPS = ["Identify product", "Review extraction", "Verify and save"];
+
+const SDS_DISC_META = {
+  cleaning:    { label:"Cleaning",    tone:"clean"  },
+  maintenance: { label:"Maintenance", tone:"maint"  },
+  security:    { label:"Security",    tone:"secure" },
+  general:     { label:"General",     tone:"muted"  },
+};
+
+function sdsSignalMeta(word) {
+  if (word === "Danger")  return { label:"Danger",  tone:"crit", icon:"alertTri" };
+  if (word === "Warning") return { label:"Warning", tone:"warn", icon:"alertTri" };
+  return { label:"No signal word", tone:"muted", icon:null };
+}
+
+function sdsFmtDay(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return d.getDate() + " " + m[d.getMonth()] + " " + d.getFullYear();
+}
+
+/* Multipart upload to the real extract endpoint. hlApi always JSON-encodes,
+   so this one builds its own FormData request with the same auth. */
+function hlSdsExtractUpload(file) {
+  const fd = new FormData();
+  fd.append("file", file, file.name || "sds");
+  return fetch((window.HL_API_BASE || "/api") + "/sds/extract", {
+    method: "POST",
+    headers: { authorization: "Bearer " + (localStorage.getItem("bor.token") || "") },
+    body: fd,
+  }).then((r) =>
+    r.json().then((b) => ({ ok: r.ok, status: r.status, b })).catch(() => ({ ok: r.ok, status: r.status, b: null }))
+  );
+}
+
+/* The backend only accepts YYYY-MM-DD (or null) for sheet dates. Extraction can
+   hand back dates in any format the sheet used, so guard before saving. */
+function sdsIsoOrNull(s) {
+  const t = (s || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
+}
+
+function sdsEmptyDraft() {
+  return {
+    discipline: "general", barcode: "", productName: "", manufacturer: "", productCode: "",
+    signalWord: "", pictogramsText: "", hazardStatements: [], precautionaryStatements: [], ingredients: [],
+    firstAid: "", storageHandling: "", ppe: "", issueDate: "", revisionDate: "",
+    sdsPdfUrl: "", source: "manual", extractionWarnings: [],
+  };
+}
 
 function BarcodeAnim() {
   const heights = [18,30,22,40,15,35,25,20,38,28,18,42,22,35,18,30,25,40,20,35,28,18,32,22];
@@ -11933,62 +15298,67 @@ function BarcodeAnim() {
   );
 }
 
-function WizardStep1({ onNext }) {
-  const [mode, setMode]       = React.useState("scan");
-  const [scanning, setScanning] = React.useState(false);
-  const [scanned, setScanned]  = React.useState(false);
-  const [manualName, setManualName] = React.useState("");
+const sdsInputStyle = { width:"100%", border:"1px solid var(--line)", borderRadius:10, padding:"10px 13px", fontSize:14, background:"var(--surface-2)", color:"var(--ink)", outline:"none", fontFamily:"inherit" };
+const sdsLabelStyle = { fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", color:"var(--ink-3)", display:"block", marginBottom:6 };
 
-  const handleScan = () => {
-    setScanning(true);
-    setTimeout(() => { setScanning(false); setScanned(true); }, 2000);
-  };
+function WizardStep1({ draft, setField, lookup, lookupBusy, runLookup, onNext }) {
+  const [mode, setMode] = React.useState("scan");
 
   return (
     <div>
       <div className="seg" style={{ marginBottom:20 }}>
-        <button className={mode === "scan" ? "on" : ""} onClick={() => { setMode("scan"); setScanned(false); }}>Scan barcode</button>
+        <button className={mode === "scan" ? "on" : ""} onClick={() => setMode("scan")}>Look up by barcode</button>
         <button className={mode === "manual" ? "on" : ""} onClick={() => setMode("manual")}>Manual entry</button>
+      </div>
+
+      <div style={{ marginBottom:14 }}>
+        <label style={sdsLabelStyle}>Discipline</label>
+        <select style={sdsInputStyle} value={draft.discipline} onChange={(e) => setField("discipline", e.target.value)}>
+          {Object.keys(SDS_DISC_META).map((k) => <option key={k} value={k}>{SDS_DISC_META[k].label}</option>)}
+        </select>
       </div>
 
       {mode === "scan" ? (
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
           <BarcodeAnim />
-          {!scanned ? (
-            <button className="btn btn-primary" onClick={handleScan} disabled={scanning}>
-              <Icon name="scan" size={15} />{scanning ? "Scanning..." : "Tap to scan barcode"}
+          <div style={{ display:"flex", gap:8 }}>
+            <input style={{ ...sdsInputStyle, flex:1, fontFamily:"var(--mono)" }}
+              value={draft.barcode}
+              onChange={(e) => setField("barcode", e.target.value)}
+              placeholder="Type the barcode from the label"
+              onKeyDown={(e) => { if (e.key === "Enter") runLookup(); }} />
+            <button className="btn btn-primary" onClick={runLookup} disabled={lookupBusy}>
+              <Icon name="scan" size={15} />{lookupBusy ? "Looking up…" : "Look up"}
             </button>
-          ) : (
-            <div className="barcode-field">
-              <Icon name="scan" size={20} />
-              —
-              <div style={{ marginLeft:"auto" }}><Pill tone="ok" dot>Matched</Pill></div>
+          </div>
+          {lookup && (
+            <div style={{ fontSize:13, lineHeight:1.55, color: lookup.tone === "warn" ? "var(--warn)" : lookup.tone === "ok" ? "var(--ok)" : "var(--ink-3)" }}>
+              {lookup.msg}
             </div>
           )}
-          {!scanned && (
-            <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13 }}>
-              Or upload the PDF directly
-              <button className="btn btn-ghost btn-sm" style={{ marginLeft:8 }}><Icon name="file" size={13} />Upload PDF</button>
-            </div>
-          )}
+          <div style={{ textAlign:"center", color:"var(--ink-3)", fontSize:13 }}>
+            Camera barcode scanning lives in the HazardLink mobile app. On the web, type the barcode, or skip straight to uploading the sheet on the next step.
+          </div>
         </div>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          {[["Product name", manualName, setManualName], ["Supplier", "", null], ["Barcode / product code", "", null]].map(([lbl, val, setter], i) => (
-            <div key={i}>
-              <label style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", color:"var(--ink-3)", display:"block", marginBottom:6 }}>{lbl}</label>
-              <input defaultValue={val} style={{ width:"100%", border:"1px solid var(--line)", borderRadius:10, padding:"10px 13px", fontSize:14, background:"var(--surface-2)", color:"var(--ink)", outline:"none", fontFamily:"inherit" }}
-                onChange={setter ? (e) => setter(e.target.value) : undefined} />
-            </div>
-          ))}
+          <div>
+            <label style={sdsLabelStyle}>Product name</label>
+            <input style={sdsInputStyle} value={draft.productName} onChange={(e) => setField("productName", e.target.value)} />
+          </div>
+          <div>
+            <label style={sdsLabelStyle}>Supplier</label>
+            <input style={sdsInputStyle} value={draft.manufacturer} onChange={(e) => setField("manufacturer", e.target.value)} />
+          </div>
+          <div>
+            <label style={sdsLabelStyle}>Barcode / product code</label>
+            <input style={sdsInputStyle} value={draft.barcode} onChange={(e) => setField("barcode", e.target.value)} />
+          </div>
         </div>
       )}
 
       <div style={{ marginTop:22, display:"flex", justifyContent:"flex-end" }}>
-        <button className="btn btn-primary"
-          disabled={mode === "scan" && !scanned}
-          style={{ opacity: mode === "scan" && !scanned ? .45 : 1 }}
-          onClick={onNext}>
+        <button className="btn btn-primary" onClick={onNext}>
           <Icon name="arrowRight" size={15} />Next: review extraction
         </button>
       </div>
@@ -11996,35 +15366,16 @@ function WizardStep1({ onNext }) {
   );
 }
 
-function WizardStep2({ onNext, onBack }) {
-  const [loading, setLoading] = React.useState(true);
-  const ext = HL.sdsExtraction;
+function WizardStep2({ draft, setField, reading, uploadNote, onUpload, onNext, onBack }) {
+  const fileRef = React.useRef(null);
 
-  React.useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 1800);
-    return () => clearTimeout(t);
-  }, []);
-
-  const fields = [
-    { key:"Product",          val:ext.product },
-    { key:"Supplier",         val:ext.supplier },
-    { key:"Product code",     val:ext.productCode },
-    { key:"Hazard statements",val:ext.hazards },
-    { key:"PPE required",     val:ext.ppe },
-    { key:"First aid — skin", val:ext.firstAidSkin },
-    { key:"First aid — eyes", val:ext.firstAidEyes },
-    { key:"Storage",          val:ext.storage },
-    { key:"Disposal",         val:ext.disposal },
-    { key:"Dilution guide",   val:ext.dilution },
-  ];
-
-  if (loading) {
+  if (reading) {
     return (
       <div style={{ padding:"52px 0", textAlign:"center" }}>
         <div className="mic-orb" style={{ margin:"0 auto 18px", width:68, height:68 }}>
           <Icon name="sparkles" size={26} />
         </div>
-        <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Reading the SDS PDF...</div>
+        <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Reading the SDS document…</div>
         <div style={{ color:"var(--ink-3)", fontSize:13, maxWidth:380, margin:"0 auto", lineHeight:1.6 }}>
           Extracting hazards, PPE and first-aid instructions directly from the document. Nothing is inferred or invented.
         </div>
@@ -12032,27 +15383,126 @@ function WizardStep2({ onNext, onBack }) {
     );
   }
 
+  const extracted = draft.source === "ai_extraction";
+
   return (
     <div>
-      <div className="ai-scope" style={{ marginBottom:18 }}>
-        <div className="ai-scope-head">
-          <Icon name="sparkles" size={17} />
-          <b>Extracted from the uploaded PDF</b>
-          <span className="tag">grounded, not invented</span>
+      {extracted && (
+        <div className="ai-scope" style={{ marginBottom:18 }}>
+          <div className="ai-scope-head">
+            <Icon name="sparkles" size={17} />
+            <b>Extracted from the uploaded document</b>
+            <span className="tag">grounded, not invented</span>
+          </div>
+          <p>The values below were read directly from the safety data sheet. Nothing is assumed. A person verifies before the sheet goes live to field teams.</p>
         </div>
-        <p>Every value below was read directly from the safety data sheet. Nothing is assumed. A person verifies before the sheet goes live to field teams.</p>
+      )}
+
+      <div className="card card-pad" style={{ marginBottom:16 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
+          <div>
+            <div style={{ fontWeight:700, fontSize:13.5 }}>Read from the SDS document</div>
+            <div style={{ fontSize:12.5, color:"var(--ink-3)", marginTop:2 }}>Upload the PDF or a clear photo. The fields are filled from the sheet only.</div>
+          </div>
+          <input ref={fileRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style={{ display:"none" }}
+            onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) onUpload(f); e.target.value = ""; }} />
+          <button className="btn btn-primary" onClick={() => fileRef.current && fileRef.current.click()}>
+            <Icon name="file" size={14} />Upload SDS
+          </button>
+        </div>
+        {draft.sdsPdfUrl && (
+          <a href={draft.sdsPdfUrl} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize:12.5, color:"var(--accent)", marginTop:10, display:"inline-flex", alignItems:"center", gap:5 }}>
+            <Icon name="link" size={12} />View the attached document
+          </a>
+        )}
+        {uploadNote && (
+          <div style={{ marginTop:10, fontSize:12.5, lineHeight:1.55, color: uploadNote.tone === "warn" ? "var(--warn)" : "var(--ink-3)" }}>
+            {uploadNote.msg}
+          </div>
+        )}
+        {draft.extractionWarnings.length > 0 && (
+          <div style={{ marginTop:10, fontSize:12.5, color:"var(--warn)", lineHeight:1.6 }}>
+            <b>Please double-check, the sheet did not clearly show:</b>
+            <ul style={{ margin:"4px 0 0 18px", padding:0 }}>
+              {draft.extractionWarnings.slice(0, 8).map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </div>
+        )}
       </div>
+
       <div className="card card-pad">
-        {fields.map((f, i) => (
-          <div className="extract-row" key={i}>
-            <div className="extract-key">{f.key}</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+          <div>
+            <label style={sdsLabelStyle}>Product name</label>
+            <input style={sdsInputStyle} value={draft.productName} onChange={(e) => setField("productName", e.target.value)} />
+          </div>
+          <div>
+            <label style={sdsLabelStyle}>Supplier</label>
+            <input style={sdsInputStyle} value={draft.manufacturer} onChange={(e) => setField("manufacturer", e.target.value)} />
+          </div>
+          <div>
+            <label style={sdsLabelStyle}>Product code</label>
+            <input style={sdsInputStyle} value={draft.productCode} onChange={(e) => setField("productCode", e.target.value)} />
+          </div>
+          <div>
+            <label style={sdsLabelStyle}>Signal word</label>
+            <select style={sdsInputStyle} value={draft.signalWord} onChange={(e) => setField("signalWord", e.target.value)}>
+              <option value="">None on the sheet</option>
+              <option value="Warning">Warning</option>
+              <option value="Danger">Danger</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <label style={sdsLabelStyle}>GHS pictogram codes (comma-separated)</label>
+          <input style={sdsInputStyle} value={draft.pictogramsText} onChange={(e) => setField("pictogramsText", e.target.value)} placeholder="e.g. GHS05, GHS07" />
+        </div>
+
+        {draft.hazardStatements.length > 0 && (
+          <div className="extract-row">
+            <div className="extract-key">Hazard statements</div>
             <div>
-              <div className="extract-val">{f.val}</div>
-              <span className="extract-source"><Icon name="sparkles" size={10} />from document</span>
+              {draft.hazardStatements.map((h, i) => (
+                <div className="extract-val" key={i}><b>{h.code}</b> {h.text}</div>
+              ))}
+              {extracted && <span className="extract-source"><Icon name="sparkles" size={10} />from document</span>}
             </div>
           </div>
-        ))}
+        )}
+        {draft.ingredients.length > 0 && (
+          <div className="extract-row">
+            <div className="extract-key">Listed components</div>
+            <div>
+              {draft.ingredients.map((it, i) => (
+                <div className="extract-val" key={i}>{it.name}{it.cas ? " · CAS " + it.cas : ""}{it.percent ? " · " + it.percent : ""}</div>
+              ))}
+              {extracted && <span className="extract-source"><Icon name="sparkles" size={10} />from document</span>}
+            </div>
+          </div>
+        )}
+        {(draft.hazardStatements.length > 0 || draft.ingredients.length > 0) && (
+          <div style={{ fontSize:11.5, color:"var(--ink-3)", margin:"6px 0 14px" }}>
+            Read from the uploaded sheet and saved as-is. If something looks wrong, upload a clearer copy of the sheet.
+          </div>
+        )}
+
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <div>
+            <label style={sdsLabelStyle}>PPE required</label>
+            <input style={sdsInputStyle} value={draft.ppe} onChange={(e) => setField("ppe", e.target.value)} placeholder="e.g. Nitrile gloves, safety glasses" />
+          </div>
+          <div>
+            <label style={sdsLabelStyle}>First aid</label>
+            <textarea style={{ ...sdsInputStyle, resize:"vertical" }} rows={2} value={draft.firstAid} onChange={(e) => setField("firstAid", e.target.value)} />
+          </div>
+          <div>
+            <label style={sdsLabelStyle}>Storage and handling</label>
+            <textarea style={{ ...sdsInputStyle, resize:"vertical" }} rows={2} value={draft.storageHandling} onChange={(e) => setField("storageHandling", e.target.value)} />
+          </div>
+        </div>
       </div>
+
       <div style={{ marginTop:18, display:"flex", gap:10, justifyContent:"space-between" }}>
         <button className="btn" onClick={onBack}><Icon name="arrowLeft" size={15} />Back</button>
         <button className="btn btn-primary" onClick={onNext}><Icon name="arrowRight" size={15} />Next: verify and save</button>
@@ -12061,12 +15511,13 @@ function WizardStep2({ onNext, onBack }) {
   );
 }
 
-function WizardStep3({ onSave, onBack }) {
+function WizardStep3({ draft, saving, saveError, onSave, onBack }) {
   const [status, setStatus] = React.useState("verified");
+  const canSave = (draft.productName || "").trim() !== "" && !saving;
 
   const opts = [
-    { v:"verified",     tone:"ok",   label:"Verified",      desc:"I have checked the extracted data against the original SDS and it is correct. This sheet can go live to field teams now." },
-    { v:"needs-review", tone:"warn", label:"Needs review",  desc:"One or more extracted values need a colleague or the supplier to confirm before going live." },
+    { v:"verified",     tone:"ok",   label:"Verified",      desc:"I have checked these details against the original SDS and they are correct. The sheet can go live to field teams now." },
+    { v:"needs-review", tone:"warn", label:"Needs review",  desc:"One or more values need a colleague or the supplier to confirm before going live. The sheet saves as Awaiting check." },
   ];
 
   return (
@@ -12092,33 +15543,431 @@ function WizardStep3({ onSave, onBack }) {
           ))}
         </div>
       </div>
+      {!(draft.productName || "").trim() && (
+        <div style={{ fontSize:13, color:"var(--warn)", marginBottom:12 }}>
+          A product name is needed before saving. Go back a step and fill it in.
+        </div>
+      )}
+      {saveError && (
+        <div style={{ fontSize:13, color:"var(--crit)", marginBottom:12, display:"flex", alignItems:"center", gap:6 }}>
+          <Icon name="alertCircle" size={14} />{saveError}
+        </div>
+      )}
       <div style={{ display:"flex", gap:10, justifyContent:"space-between" }}>
         <button className="btn" onClick={onBack}><Icon name="arrowLeft" size={15} />Back</button>
-        <button className="btn btn-primary" onClick={() => onSave(status)}>
-          <Icon name="check" size={15} />Save to library
+        <button className="btn btn-primary" onClick={() => onSave(status)} disabled={!canSave}
+          style={{ opacity: canSave ? 1 : .5 }}>
+          <Icon name="check" size={15} />{saving ? "Saving…" : "Save to library"}
         </button>
       </div>
     </div>
   );
 }
 
-function SDSView({ go }) {
-  const [mode, setMode]       = React.useState("library");
-  const [step, setStep]       = React.useState(0);
-  const [products, setProducts] = React.useState(HL.sds);
-  const [toast, setToast]     = React.useState(null);
+/* ===========================================================
+   Add-product wizard — real lookup, real upload + extraction,
+   real create. Staff only (the backend enforces it too).
+   =========================================================== */
+function SdsAddWizard({ onSaved, onCancel, onOpenExisting }) {
+  const [step, setStep]           = React.useState(0);
+  const [draft, setDraft]         = React.useState(sdsEmptyDraft);
+  const [lookup, setLookup]       = React.useState(null);   // { msg, tone }
+  const [lookupBusy, setLookupBusy] = React.useState(false);
+  const [reading, setReading]     = React.useState(false);
+  const [uploadNote, setUploadNote] = React.useState(null); // { msg, tone }
+  const [saving, setSaving]       = React.useState(false);
+  const [saveError, setSaveError] = React.useState(null);
 
-  const handleSave = (status) => {
-    const newProd = { id:"", name:"",
-      supplier:"", disc:"clean", hazard:"—",
-      status: status === "verified" ? "Verified" : "Awaiting check",
-      stone: status === "verified" ? "ok" : "warn",
-      date: status === "verified" ? "verified just now" : "AI-extracted, needs a person" };
-    setProducts((p) => [newProd, ...p]);
+  const setField = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+
+  const runLookup = () => {
+    const code = (draft.barcode || "").trim();
+    if (!code) { setLookup({ msg:"Type the barcode first.", tone:"warn" }); return; }
+    setLookupBusy(true); setLookup(null);
+    hlApi("/sds/lookup?barcode=" + encodeURIComponent(code))
+      .then(({ ok, b }) => {
+        setLookupBusy(false);
+        if (!ok || !b) { setLookup({ msg:"Lookup failed. You can still upload the SDS on the next step.", tone:"warn" }); return; }
+        if (b.found && b.sheet) { onOpenExisting(b.sheet); return; }
+        if (b.provider) {
+          const p = b.provider;
+          setDraft((d) => ({ ...d,
+            productName: d.productName || p.productName || "",
+            manufacturer: d.manufacturer || p.manufacturer || "",
+            signalWord: d.signalWord || p.signalWord || "",
+            pictogramsText: d.pictogramsText || (p.pictograms || []).join(", "),
+            hazardStatements: d.hazardStatements.length ? d.hazardStatements : (p.hazardStatements || []),
+            precautionaryStatements: d.precautionaryStatements.length ? d.precautionaryStatements : (p.precautionaryStatements || []),
+            ingredients: d.ingredients.length ? d.ingredients : (p.ingredients || []),
+            sdsPdfUrl: d.sdsPdfUrl || p.sdsPdfUrl || "",
+            source: "provider",
+          }));
+          setLookup({ msg:"SDS data found from your provider. Review it on the next step, and upload the sheet itself if you have it.", tone:"ok" });
+          return;
+        }
+        if (b.identity && (b.identity.name || b.identity.brand)) {
+          setDraft((d) => ({ ...d,
+            productName: d.productName || b.identity.name || "",
+            manufacturer: d.manufacturer || b.identity.brand || "",
+          }));
+          setLookup({ msg:'Found "' + (b.identity.name || b.identity.brand) + '" via ' + b.identity.source + ". Now upload its SDS so the hazards come from the sheet itself.", tone:"ok" });
+          return;
+        }
+        setLookup({ msg:"Not in any product database. Upload the SDS on the next step and it will be read from the sheet.", tone:"muted" });
+      })
+      .catch(() => { setLookupBusy(false); setLookup({ msg:"Lookup failed, check your connection.", tone:"warn" }); });
+  };
+
+  const handleUpload = (file) => {
+    setReading(true); setUploadNote(null);
+    hlSdsExtractUpload(file)
+      .then(({ ok, status, b }) => {
+        setReading(false);
+        if (!ok || !b) {
+          if (status === 403) setUploadNote({ msg:"Only supervisors and admins can add safety sheets.", tone:"warn" });
+          else if (status === 415) setUploadNote({ msg:"That file type will not work. Upload a PDF or a clear photo (JPG, PNG or WebP).", tone:"warn" });
+          else if (status === 413) setUploadNote({ msg:"That file is too large. Try a smaller photo or a compressed PDF.", tone:"warn" });
+          else setUploadNote({ msg:"Upload failed. Check the file and try again.", tone:"warn" });
+          return;
+        }
+        if (b.sdsPdfUrl) setField("sdsPdfUrl", b.sdsPdfUrl);
+        if (!b.aiConfigured) {
+          setUploadNote({ msg:"AI extraction is not configured on the server. The document is attached to the record, enter the details by hand.", tone:"warn" });
+          return;
+        }
+        const x = b.extracted;
+        if (!x) {
+          setUploadNote({ msg:"Could not read that document. The file is attached, enter the details by hand.", tone:"warn" });
+          return;
+        }
+        setDraft((d) => ({ ...d,
+          sdsPdfUrl: b.sdsPdfUrl || d.sdsPdfUrl,
+          productName: x.productName || d.productName,
+          manufacturer: x.manufacturer || d.manufacturer,
+          productCode: x.productCode || d.productCode,
+          signalWord: x.signalWord || d.signalWord,
+          pictogramsText: (x.pictograms && x.pictograms.length) ? x.pictograms.join(", ") : d.pictogramsText,
+          hazardStatements: (x.hazardStatements && x.hazardStatements.length) ? x.hazardStatements : d.hazardStatements,
+          precautionaryStatements: (x.precautionaryStatements && x.precautionaryStatements.length) ? x.precautionaryStatements : d.precautionaryStatements,
+          ingredients: (x.ingredients && x.ingredients.length) ? x.ingredients : d.ingredients,
+          firstAid: x.firstAid || d.firstAid,
+          storageHandling: x.storageHandling || d.storageHandling,
+          ppe: x.ppe || d.ppe,
+          issueDate: x.issueDate || d.issueDate,
+          revisionDate: x.revisionDate || d.revisionDate,
+          source: "ai_extraction",
+          extractionWarnings: x.warnings || [],
+        }));
+        setUploadNote(x.isLikelySds === false
+          ? { msg:"This does not look like a safety data sheet. Check the file, or correct the fields by hand.", tone:"warn" }
+          : { msg:"Sheet read. Review the fields below, then verify on the next step.", tone:"muted" });
+      })
+      .catch(() => { setReading(false); setUploadNote({ msg:"Upload failed, check your connection.", tone:"warn" }); });
+  };
+
+  const handleSave = (choice) => {
+    const name = (draft.productName || "").trim();
+    if (!name) { setSaveError("A product name is needed before saving."); return; }
+    setSaving(true); setSaveError(null);
+    hlApi("/sds", { method:"POST", body:{
+      discipline: draft.discipline || "general",
+      barcode: (draft.barcode || "").trim() || null,
+      productName: name,
+      manufacturer: (draft.manufacturer || "").trim() || null,
+      productCode: (draft.productCode || "").trim() || null,
+      signalWord: draft.signalWord || null,
+      pictograms: (draft.pictogramsText || "").split(",").map((s) => s.trim()).filter(Boolean),
+      hazardStatements: draft.hazardStatements || [],
+      precautionaryStatements: draft.precautionaryStatements || [],
+      ingredients: draft.ingredients || [],
+      firstAid: (draft.firstAid || "").trim() || null,
+      storageHandling: (draft.storageHandling || "").trim() || null,
+      ppe: (draft.ppe || "").trim() || null,
+      sdsPdfUrl: draft.sdsPdfUrl || null,
+      issueDate: sdsIsoOrNull(draft.issueDate),
+      revisionDate: sdsIsoOrNull(draft.revisionDate),
+      source: draft.source,
+      extractionWarnings: draft.extractionWarnings || [],
+      verified: choice === "verified",
+    }}).then(({ ok, status, b }) => {
+      setSaving(false);
+      if (!ok) {
+        if (status === 409) { setSaveError("That barcode is already in your library. Find it from the library list instead of adding it twice."); return; }
+        if (status === 403) { setSaveError("Only supervisors and admins can save safety sheets."); return; }
+        setSaveError("Could not save the sheet. Check the details and try again.");
+        return;
+      }
+      onSaved((b && b.sheet) || null, choice === "verified");
+    }).catch(() => { setSaving(false); setSaveError("Could not reach the server. Try again."); });
+  };
+
+  return (
+    <div style={{ maxWidth:680 }}>
+      <div className="wizard-steps" style={{ marginBottom:28 }}>
+        {WZ_STEPS.map((label, i) => (
+          <React.Fragment key={i}>
+            <div className={"wz-step" + (i < step ? " done" : i === step ? " active" : "")}>
+              <div className="wz-dot">{i < step ? <Icon name="check" size={12} /> : i + 1}</div>
+              <div className="wz-label">{label}</div>
+            </div>
+            {i < WZ_STEPS.length - 1 && <div className={"wz-line" + (i < step ? " done" : "")} />}
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div className="card card-pad">
+        {step === 0 && (
+          <WizardStep1 draft={draft} setField={setField}
+            lookup={lookup} lookupBusy={lookupBusy} runLookup={runLookup}
+            onNext={() => setStep(1)} />
+        )}
+        {step === 1 && (
+          <WizardStep2 draft={draft} setField={setField}
+            reading={reading} uploadNote={uploadNote} onUpload={handleUpload}
+            onNext={() => setStep(2)} onBack={() => setStep(0)} />
+        )}
+        {step === 2 && (
+          <WizardStep3 draft={draft} saving={saving} saveError={saveError}
+            onSave={handleSave} onBack={() => setStep(1)} />
+        )}
+      </div>
+
+      <button className="btn btn-ghost" style={{ marginTop:12 }} onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+/* ===========================================================
+   Sheet detail — the real record, with verify and delete
+   =========================================================== */
+function SdsSheetDetail({ sheet, isStaff, onBack, onChanged, onDeleted, showToast }) {
+  const [busy, setBusy] = React.useState(null); // "verify" | "delete"
+  const disc = SDS_DISC_META[sheet.discipline] || SDS_DISC_META.general;
+  const signal = sdsSignalMeta(sheet.signalWord);
+
+  const handleVerify = () => {
+    setBusy("verify");
+    hlApi("/sds/" + sheet.id + "/verify", { method:"POST" })
+      .then(({ ok, status }) => {
+        setBusy(null);
+        if (!ok) { showToast(status === 403 ? "Only supervisors and admins can verify sheets." : "Could not verify the sheet. Try again."); return; }
+        showToast("Sheet verified. It is live to your teams now.");
+        onChanged();
+      })
+      .catch(() => { setBusy(null); showToast("Could not reach the server. Try again."); });
+  };
+
+  const handleDelete = () => {
+    if (!window.confirm("Delete the safety sheet for " + sheet.productName + "? This cannot be undone.")) return;
+    setBusy("delete");
+    hlApi("/sds/" + sheet.id, { method:"DELETE" })
+      .then(({ ok, status }) => {
+        setBusy(null);
+        if (!ok) { showToast(status === 403 ? "Only supervisors and admins can delete sheets." : "Could not delete the sheet. Try again."); return; }
+        showToast("Safety sheet deleted");
+        onDeleted();
+      })
+      .catch(() => { setBusy(null); showToast("Could not reach the server. Try again."); });
+  };
+
+  const hazards = sheet.hazardStatements || [];
+  const precautions = sheet.precautionaryStatements || [];
+  const ingredients = sheet.ingredients || [];
+  const pictos = sheet.pictograms || [];
+  const warnings = sheet.extractionWarnings || [];
+
+  return (
+    <div className="content-inner">
+      <button className="back-link" onClick={onBack}>
+        <Icon name="arrowLeft" size={16} />Back to safety sheets
+      </button>
+
+      <div className="staff-prof-head">
+        <div className="asset-ic" style={{ width:52, height:52, background:softBg(disc.tone), color:solid(disc.tone), border:"none", flex:"none", display:"grid", placeItems:"center", borderRadius:12 }}>
+          <Icon name="beaker" size={24} />
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <h1 className="staff-prof-name">{sheet.productName}</h1>
+          <div className="staff-prof-sub">
+            <span>{sheet.manufacturer || "Supplier not recorded"}</span>
+            {sheet.barcode && (
+              <React.Fragment>
+                <span className="sp-sep" />
+                <span style={{ fontFamily:"var(--mono)", fontSize:12.5 }}>{sheet.barcode}</span>
+              </React.Fragment>
+            )}
+            <span className="sp-sep" />
+            <span>{disc.label}</span>
+          </div>
+        </div>
+        <Pill tone={signal.tone} icon={signal.icon || undefined}>{signal.label}</Pill>
+        {sheet.verified
+          ? <Pill tone="ok" icon="checkCircle">Verified</Pill>
+          : <Pill tone="warn" icon="clock">Awaiting check</Pill>}
+        {isStaff && !sheet.verified && (
+          <button className="btn btn-primary" onClick={handleVerify} disabled={busy === "verify"}>
+            <Icon name="check" size={14} />{busy === "verify" ? "Verifying…" : "Mark verified"}
+          </button>
+        )}
+        {isStaff && (
+          <button className="btn btn-decline" onClick={handleDelete} disabled={busy === "delete"}>
+            <Icon name="trash" size={14} />{busy === "delete" ? "Deleting…" : "Delete"}
+          </button>
+        )}
+      </div>
+
+      {!sheet.verified && (
+        <div className="card card-pad" style={{ marginBottom:18, fontSize:13, color:"var(--warn)", lineHeight:1.6 }}>
+          <b>Not yet checked by a person.</b>{" "}
+          {sheet.source === "ai_extraction"
+            ? "These values were read from the uploaded document and are waiting for someone to confirm them against the original sheet."
+            : "This record is waiting for someone to confirm it against the original sheet."}
+          {warnings.length > 0 && (
+            <div style={{ marginTop:6 }}>Unclear on the sheet: {warnings.slice(0, 4).join("; ")}.</div>
+          )}
+        </div>
+      )}
+
+      <div className="det-grid">
+        <div className="card card-pad">
+          <div className="panel-label">Hazards</div>
+          {pictos.length > 0 && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, margin:"8px 0 12px" }}>
+              {pictos.map((p, i) => <Pill key={i} tone="muted">{p}</Pill>)}
+            </div>
+          )}
+          {hazards.length === 0 && precautions.length === 0 && pictos.length === 0 && (
+            <div style={{ fontSize:13, color:"var(--ink-3)", padding:"8px 0" }}>No hazard information recorded on this sheet.</div>
+          )}
+          {hazards.map((h, i) => (
+            <div className="info-row" key={"h" + i}>
+              <span className="k" style={{ fontFamily:"var(--mono)" }}>{h.code || "H?"}</span>
+              <span className="v" style={{ fontWeight:500 }}>{h.text}</span>
+            </div>
+          ))}
+          {precautions.length > 0 && (
+            <React.Fragment>
+              <div className="panel-label" style={{ marginTop:14 }}>Precautions</div>
+              {precautions.map((p, i) => (
+                <div className="info-row" key={"p" + i}>
+                  <span className="k" style={{ fontFamily:"var(--mono)" }}>{p.code || "P?"}</span>
+                  <span className="v" style={{ fontWeight:500 }}>{p.text}</span>
+                </div>
+              ))}
+            </React.Fragment>
+          )}
+        </div>
+
+        <div className="card card-pad">
+          <div className="panel-label">Listed components</div>
+          {ingredients.length === 0
+            ? <div style={{ fontSize:13, color:"var(--ink-3)", padding:"8px 0" }}>None listed on the sheet.</div>
+            : ingredients.map((it, i) => (
+                <div className="info-row" key={i}>
+                  <span className="k">{it.name}</span>
+                  <span className="v" style={{ fontFamily:"var(--mono)", fontSize:12 }}>{[it.cas, it.percent].filter(Boolean).join(" · ") || "—"}</span>
+                </div>
+              ))}
+          <div className="panel-label" style={{ marginTop:14 }}>Record</div>
+          <div className="info-row"><span className="k">Product code</span><span className="v">{sheet.productCode || "—"}</span></div>
+          <div className="info-row"><span className="k">Issue date</span><span className="v">{sdsFmtDay(sheet.issueDate) || "—"}</span></div>
+          <div className="info-row"><span className="k">Revision date</span><span className="v">{sdsFmtDay(sheet.revisionDate) || "—"}</span></div>
+          <div className="info-row"><span className="k">Review by</span><span className="v">{sdsFmtDay(sheet.reviewDate) || "—"}</span></div>
+          <div className="info-row"><span className="k">Source</span><span className="v">{sheet.source === "ai_extraction" ? "Read from the uploaded sheet" : sheet.source === "provider" ? "SDS data provider" : "Entered by hand"}</span></div>
+          <div className="info-row" style={{ borderBottom: sheet.sdsPdfUrl ? undefined : "none" }}>
+            <span className="k">Verified</span>
+            <span className="v">{sheet.verified ? (sdsFmtDay(sheet.verifiedAt) ? "Yes, " + sdsFmtDay(sheet.verifiedAt) : "Yes") : "Not yet"}</span>
+          </div>
+          {sheet.sdsPdfUrl && (
+            <div style={{ marginTop:14 }}>
+              <a className="btn" href={sheet.sdsPdfUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration:"none" }}>
+                <Icon name="file" size={14} />Open the SDS document
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {(sheet.ppe || sheet.firstAid || sheet.storageHandling) && (
+        <div className="det-grid" style={{ marginTop:18 }}>
+          {(sheet.ppe || sheet.firstAid) && (
+            <div className="card card-pad">
+              {sheet.ppe && (
+                <React.Fragment>
+                  <div className="panel-label">PPE required</div>
+                  <div style={{ fontSize:13.5, color:"var(--ink-2)", lineHeight:1.6, marginBottom: sheet.firstAid ? 14 : 0 }}>{sheet.ppe}</div>
+                </React.Fragment>
+              )}
+              {sheet.firstAid && (
+                <React.Fragment>
+                  <div className="panel-label">First aid</div>
+                  <div style={{ fontSize:13.5, color:"var(--ink-2)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>{sheet.firstAid}</div>
+                </React.Fragment>
+              )}
+            </div>
+          )}
+          {sheet.storageHandling && (
+            <div className="card card-pad">
+              <div className="panel-label">Storage and handling</div>
+              <div style={{ fontSize:13.5, color:"var(--ink-2)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>
+                {sheet.storageHandling}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===========================================================
+   Top-level view
+   =========================================================== */
+function SDSView({ go }) {
+  const [sheets, setSheets] = React.useState(null); // null loading | false error | [sheets]
+  const [mode, setMode]     = React.useState("library"); // "library" | "adding"
+  const [openId, setOpenId] = React.useState(null);
+  const { showToast, toastNode } = useViewToast();
+
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const isStaff = me.role === "admin" || me.role === "supervisor";
+
+  const refresh = React.useCallback(() => {
+    return hlApi("/sds").then(({ ok, b }) => {
+      if (!ok) { setSheets(false); return; }
+      setSheets((b && b.sheets) || []);
+    }).catch(() => setSheets(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const list = Array.isArray(sheets) ? sheets : [];
+  const openSheet = openId ? list.find((s) => s.id === openId) : null;
+  React.useEffect(() => {
+    if (openId && Array.isArray(sheets) && !openSheet) setOpenId(null);
+  }, [openId, sheets, openSheet]);
+
+  if (openSheet) {
+    return (
+      <React.Fragment>
+        <SdsSheetDetail
+          sheet={openSheet}
+          isStaff={isStaff}
+          onBack={() => setOpenId(null)}
+          onChanged={refresh}
+          onDeleted={() => { setOpenId(null); refresh(); }}
+          showToast={showToast}
+        />
+        {toastNode}
+      </React.Fragment>
+    );
+  }
+
+  const handleSaved = (sheet, verified) => {
     setMode("library");
-    setStep(0);
-    setToast(status === "verified" ? "SDS saved and live to field teams" : "SDS saved, awaiting verification");
-    setTimeout(() => setToast(null), 4200);
+    refresh().then(() => { if (sheet && sheet.id) setOpenId(sheet.id); });
+    showToast(verified ? "SDS saved and live to your teams" : "SDS saved, it shows as Awaiting check until someone verifies it");
   };
 
   return (
@@ -12128,62 +15977,83 @@ function SDSView({ go }) {
           <h1 className="page-title">Safety data sheets</h1>
           <p className="page-desc">Every chemical on site, read from the original document. AI extracts, a person verifies.</p>
         </div>
-        {mode === "library" && (
-          <button className="btn btn-primary" onClick={() => { setMode("adding"); setStep(0); }}>
+        {mode === "library" && isStaff && (
+          <button className="btn btn-primary" onClick={() => setMode("adding")}>
             <Icon name="plus" size={15} />Add product
           </button>
         )}
       </div>
 
       {mode === "adding" ? (
-        <div style={{ maxWidth:680 }}>
-          <div className="wizard-steps" style={{ marginBottom:28 }}>
-            {WZ_STEPS.map((label, i) => (
-              <React.Fragment key={i}>
-                <div className={"wz-step" + (i < step ? " done" : i === step ? " active" : "")}>
-                  <div className="wz-dot">{i < step ? <Icon name="check" size={12} /> : i + 1}</div>
-                  <div className="wz-label">{label}</div>
-                </div>
-                {i < WZ_STEPS.length - 1 && <div className={"wz-line" + (i < step ? " done" : "")} />}
-              </React.Fragment>
-            ))}
-          </div>
-
-          <div className="card card-pad">
-            {step === 0 && <WizardStep1 onNext={() => setStep(1)} />}
-            {step === 1 && <WizardStep2 onNext={() => setStep(2)} onBack={() => setStep(0)} />}
-            {step === 2 && <WizardStep3 onSave={handleSave} onBack={() => setStep(1)} />}
-          </div>
-
-          <button className="btn btn-ghost" style={{ marginTop:12 }} onClick={() => { setMode("library"); setStep(0); }}>
-            Cancel
-          </button>
-        </div>
+        <SdsAddWizard
+          onSaved={handleSaved}
+          onCancel={() => setMode("library")}
+          onOpenExisting={(sheet) => {
+            setMode("library");
+            setSheets((cur) => {
+              const arr = Array.isArray(cur) ? cur : [];
+              return arr.some((s) => s.id === sheet.id) ? arr : [sheet, ...arr];
+            });
+            setOpenId(sheet.id);
+            showToast("That barcode is already in your library. Opened the sheet.");
+          }}
+        />
       ) : (
         <React.Fragment>
-          <div className="card" style={{ marginBottom:18 }}>
-            <div className="wo-head" style={{ gridTemplateColumns:"44px 1fr 140px 150px 1fr" }}>
-              <div></div><div>Product</div><div>Supplier</div><div>Hazard</div><div>Status</div>
-            </div>
-            {products.map((s) => (
-              <div key={s.id} className="wo-row" style={{ gridTemplateColumns:"44px 1fr 140px 150px 1fr" }}>
-                <div className="asset-ic" style={{ background:softBg(s.disc), color:solid(s.disc), border:"none" }}>
-                  <Icon name="beaker" size={18} />
-                </div>
-                <div className="asset-nm">{s.name}<small>{s.id}</small></div>
-                <div style={{ fontSize:13, color:"var(--ink-2)" }}>{s.supplier}</div>
-                <div>
-                  <Pill tone={["Corrosive","Flammable gas","Flammable"].includes(s.hazard) ? "crit" : "warn"} icon="alertTri">
-                    {s.hazard}
-                  </Pill>
-                </div>
-                <div>
-                  <Pill tone={s.stone} icon={s.stone === "ok" ? "checkCircle" : "clock"}>{s.status}</Pill>
-                  <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:4 }}>{s.date}</div>
-                </div>
+          {sheets === null && (
+            <div className="card card-pad" style={{ marginBottom:18, color:"var(--ink-3)", fontSize:13.5 }}>Loading the SDS library…</div>
+          )}
+          {sheets === false && (
+            <div className="card card-pad" style={{ marginBottom:18, color:"var(--warn)", fontSize:13.5 }}>Could not load the SDS library. Refresh to try again.</div>
+          )}
+          {Array.isArray(sheets) && list.length === 0 && (
+            <div className="card" style={{ marginBottom:18, textAlign:"center", padding:"48px 24px" }}>
+              <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>No safety data sheets yet</div>
+              <div style={{ fontSize:13.5, color:"var(--ink-3)", marginBottom:14 }}>
+                {isStaff
+                  ? "Add the products used on your sites. Each one is read from its own safety sheet."
+                  : "Ask a supervisor or admin to add the products used on your sites."}
               </div>
-            ))}
-          </div>
+              {isStaff && (
+                <button className="btn btn-primary" onClick={() => setMode("adding")}>
+                  <Icon name="plus" size={15} />Add your first product
+                </button>
+              )}
+            </div>
+          )}
+          {Array.isArray(sheets) && list.length > 0 && (
+            <div className="card" style={{ marginBottom:18 }}>
+              <div className="wo-head" style={{ gridTemplateColumns:"44px 1fr 140px 150px 1fr" }}>
+                <div></div><div>Product</div><div>Supplier</div><div>Hazard</div><div>Status</div>
+              </div>
+              {list.map((s) => {
+                const disc = SDS_DISC_META[s.discipline] || SDS_DISC_META.general;
+                const signal = sdsSignalMeta(s.signalWord);
+                const hCount = (s.hazardStatements || []).length;
+                return (
+                  <div key={s.id} className="wo-row" style={{ gridTemplateColumns:"44px 1fr 140px 150px 1fr" }} onClick={() => setOpenId(s.id)}>
+                    <div className="asset-ic" style={{ background:softBg(disc.tone), color:solid(disc.tone), border:"none" }}>
+                      <Icon name="beaker" size={18} />
+                    </div>
+                    <div className="asset-nm">{s.productName}<small>{s.barcode || s.productCode || disc.label}</small></div>
+                    <div style={{ fontSize:13, color:"var(--ink-2)" }}>{s.manufacturer || "—"}</div>
+                    <div>
+                      <Pill tone={signal.tone} icon={signal.icon || undefined}>{signal.label}</Pill>
+                      {hCount > 0 && <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:4 }}>{hCount} H-statement{hCount === 1 ? "" : "s"}</div>}
+                    </div>
+                    <div>
+                      <Pill tone={s.verified ? "ok" : "warn"} icon={s.verified ? "checkCircle" : "clock"}>{s.verified ? "Verified" : "Awaiting check"}</Pill>
+                      <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:4 }}>
+                        {s.verified
+                          ? (sdsFmtDay(s.verifiedAt) ? "checked " + sdsFmtDay(s.verifiedAt) : "checked by a person")
+                          : (s.source === "ai_extraction" ? "AI-read, needs a person" : "needs a person to check it")}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="ai-scope">
             <div className="ai-scope-head">
@@ -12191,16 +16061,12 @@ function SDSView({ go }) {
               <b>How HazardLink reads safety sheets</b>
               <span className="tag">grounded, not invented</span>
             </div>
-            <p>Scan the product barcode and upload the PDF. HazardLink reads the safety data sheet and pulls hazard statements, PPE requirements and first-aid instructions directly from the document — never inferring or inventing. Every sheet is verified by a person before it goes live to field teams.</p>
+            <p>Look a product up by its barcode and upload the sheet. HazardLink reads the safety data sheet and pulls hazard statements, PPE requirements and first-aid instructions directly from the document, never inferring or inventing. Every sheet is verified by a person before it goes live to field teams. Camera barcode scanning lives in the mobile app; on the web, type the barcode instead.</p>
           </div>
         </React.Fragment>
       )}
 
-      {toast && (
-        <div className="toast">
-          <Icon name="checkCircle" size={18} />{toast}
-        </div>
-      )}
+      {toastNode}
     </div>
   );
 }
@@ -12209,32 +16075,244 @@ Object.assign(window, { SDSView });
 
 /* ════════════════════ asset_33_a7d2e48a.js ════════════════════ */
 ;
-/* HazardLink — Asset register with QR codes, scanner support, full asset detail */
+/* HazardLink — Asset register with QR codes, scanner support, full asset detail.
+   Wired to the live backend: GET/POST /assets, GET /buildings, GET /jobs
+   (service history per asset), GET /meters, PATCH /assets/:id (condition),
+   POST /jobs + /jobs/:id/complete (log service). The fault-report QR link is
+   the asset's real /report/<token> URL minted by the backend. */
 
-function _serviceHistory(asset) {
-  return [];
+/* ---------- small helpers (real fields only) ---------- */
+
+const _AST_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function _astFmtDate(iso) {
+  if (!iso) return null;
+  const s = String(iso).slice(0, 10);
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const m = parseInt(parts[1], 10);
+  if (!m || m < 1 || m > 12) return s;
+  return parts[2].replace(/^0/, "") + " " + _AST_MONTHS[m - 1] + " " + parts[0];
+}
+
+/* conditionScore is the backend's 1..5 rating (nullable). No score, no bar. */
+const _AST_COND_LABEL = ["", "Poor", "Fair", "OK", "Good", "Excellent"];
+function _astCondition(score) {
+  if (score == null) return null;
+  const s = Math.max(1, Math.min(5, score));
+  return {
+    score: s,
+    pct: s * 20,
+    label: _AST_COND_LABEL[s],
+    tone: s <= 2 ? "crit" : s === 3 ? "warn" : "ok",
+  };
+}
+
+function _astWarranty(iso) {
+  if (!iso) return null;
+  const due = Date.parse(String(iso).slice(0, 10) + "T00:00:00");
+  if (isNaN(due)) return null;
+  const days = Math.round((due - Date.now()) / 86400000);
+  if (days < 0)   return { tone: "crit", label: "Warranty expired " + _astFmtDate(iso) };
+  if (days <= 90) return { tone: "warn", label: "Warranty ends " + _astFmtDate(iso) };
+  return { tone: "ok", label: "In warranty to " + _astFmtDate(iso) };
+}
+
+const _AST_CRIT = {
+  critical: { label: "Critical risk", tone: "crit" },
+  high:     { label: "High risk",     tone: "warn" },
+  medium:   { label: "Medium risk",   tone: "accent" },
+  low:      { label: "Low risk",      tone: "muted" },
+};
+
+function _astIcon(category) {
+  const c = (category || "").toLowerCase();
+  if (!c) return "box";
+  if (/fire|alarm|extinguish|safety|security|cctv|access/.test(c)) return "shield";
+  if (/pool|plumb|water|pump|drain/.test(c)) return "droplet";
+  if (/it|kiosk|screen|display|comms|network/.test(c)) return "monitor";
+  if (/lift|door|gate|barrier/.test(c)) return "cog";
+  if (/light|electric|power/.test(c)) return "activity";
+  if (/hvac|refrig|chill|cool|boiler|heat|vent|air/.test(c)) return "gauge";
+  return "wrench";
+}
+
+/* Real job statuses → stepper state + plain label */
+const _AST_JOB_META = {
+  logged:      { state: "pending", label: "Logged" },
+  scoped:      { state: "pending", label: "Scoped" },
+  tendering:   { state: "active",  label: "Out to tender" },
+  awarded:     { state: "active",  label: "Awarded" },
+  scheduled:   { state: "active",  label: "Scheduled" },
+  in_progress: { state: "active",  label: "In progress" },
+  completed:   { state: "done",    label: "Completed" },
+  cancelled:   { state: "pending", label: "Cancelled" },
+};
+const _AST_PRIORITY_LABEL = { emergency: "Emergency", urgent: "Urgent", routine: "Routine" };
+
+function _astReportUrl(token) {
+  const origin = (typeof window !== "undefined" && window.location && window.location.origin)
+    ? window.location.origin
+    : "https://app.hazardlink.ie";
+  return origin + "/report/" + token;
+}
+
+function _astCopy(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => _astCopyFallback(text));
+  }
+  return Promise.resolve(_astCopyFallback(text));
+}
+function _astCopyFallback(text) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
+}
+
+/* Latest completed job date for an asset, from its real jobs */
+function _astLastService(jobs) {
+  let best = null;
+  for (const j of jobs) {
+    if (j.status === "completed" && j.completedAt) {
+      if (!best || j.completedAt > best) best = j.completedAt;
+    }
+  }
+  return best ? _astFmtDate(best) : null;
 }
 
 /* ===========================================================
-   List view
+   List view (top level — owns the live data)
    =========================================================== */
 function AssetsView({ go, onScan, pendingScan, onConsumeScan }) {
-  const D = useSiteData();
+  const siteCtx = React.useContext(SiteContext);
+  const site = siteCtx ? siteCtx.site : null;
+
+  const [data, setData]         = React.useState(null); // null loading | false error | {assets,buildings,jobs,meters}
   const [detailId, setDetailId] = React.useState(null);
   const [addOpen, setAddOpen]   = React.useState(false);
+  const [saving, setSaving]     = React.useState(false);
+  const { showToast, toastNode } = useViewToast();
 
+  const refresh = React.useCallback(() => {
+    return Promise.all([hlApi("/assets"), hlApi("/buildings"), hlApi("/jobs"), hlApi("/meters")])
+      .then(([a, b, j, m]) => {
+        if (!a.ok || !b.ok) { setData(false); return; }
+        setData({
+          assets:    (a.b && a.b.assets)    || [],
+          buildings: (b.b && b.b.buildings) || [],
+          // jobs/meters are best-effort: null means "could not load", shown honestly
+          jobs:   j.ok ? ((j.b && j.b.jobs)   || []) : null,
+          meters: m.ok ? ((m.b && m.b.meters) || []) : null,
+        });
+      })
+      .catch(() => setData(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const loaded = data && data !== false ? data : null;
+  const bName = React.useCallback((id) => {
+    if (!loaded || !id) return null;
+    const b = loaded.buildings.find((x) => x.id === id);
+    return b ? b.name : null;
+  }, [loaded]);
+  const jobsFor = React.useCallback((assetId) => {
+    if (!loaded || !Array.isArray(loaded.jobs)) return [];
+    return loaded.jobs.filter((j) => j.assetId === assetId);
+  }, [loaded]);
+  const metersFor = React.useCallback((assetId) => {
+    if (!loaded || !Array.isArray(loaded.meters)) return [];
+    return loaded.meters.filter((mm) => mm.assetId === assetId);
+  }, [loaded]);
+
+  /* Scan resolution — the scanner hands back an id; match it against the real
+     register (id or serial). No match, no invented record. */
   React.useEffect(() => {
-    if (pendingScan) {
-      setDetailId(pendingScan.id);
-      onConsumeScan && onConsumeScan();
-    }
-  }, [pendingScan && pendingScan.ts]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!pendingScan || !loaded) return;
+    const code = String(pendingScan.id || "").toLowerCase();
+    const hit = loaded.assets.find((x) =>
+      x.id.toLowerCase() === code || (x.serial && x.serial.toLowerCase() === code));
+    if (hit) setDetailId(hit.id);
+    else showToast("Nothing on your register matches code " + pendingScan.id);
+    onConsumeScan && onConsumeScan();
+  }, [pendingScan && pendingScan.ts, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (detailId) {
-    const a = HL.assets.find((x) => x.id === detailId);
-    if (!a) { setDetailId(null); return null; }
-    return <AssetDetail asset={a} onBack={() => setDetailId(null)} />;
+  const submitAdd = (vals) => {
+    if (saving || !loaded) return;
+    setSaving(true);
+    const body = { name: String(vals.name || "").trim() };
+    const b = loaded.buildings.find((x) => x.name === vals.site);
+    if (b) body.buildingId = b.id;
+    if (vals.category) body.category = vals.category;
+    if (vals.make)     body.make = String(vals.make).trim();
+    if (vals.model)    body.model = String(vals.model).trim();
+    if (vals.serial)   body.serial = String(vals.serial).trim();
+    if (vals.install)  body.installDate = vals.install;
+    if (vals.warranty) body.warrantyExpiry = vals.warranty;
+    body.criticality = String(vals.crit || "medium").toLowerCase();
+    hlApi("/assets", { method: "POST", body })
+      .then(({ ok, b: created }) => {
+        if (!ok || !created || !created.id) { showToast("Could not add the asset. Check the fields and try again."); return; }
+        showToast(created.name + " is on the register, with its own fault-report link");
+        refresh();
+      })
+      .finally(() => setSaving(false));
+  };
+
+  /* ---------- loading / error ---------- */
+  if (data === null) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the asset register…</div>
+      </div>
+    );
   }
+  if (data === false) {
+    return (
+      <div className="content-inner">
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>Could not load the asset register. Refresh to try again.</div>
+      </div>
+    );
+  }
+
+  /* ---------- detail branch ---------- */
+  if (detailId) {
+    const a = loaded.assets.find((x) => x.id === detailId);
+    if (!a) { setDetailId(null); return null; }
+    return (
+      <React.Fragment>
+        <AssetDetail
+          asset={a}
+          siteName={bName(a.buildingId)}
+          jobs={jobsFor(a.id)}
+          jobsFailed={loaded.jobs === null}
+          meters={metersFor(a.id)}
+          onBack={() => setDetailId(null)}
+          refresh={refresh}
+          showToast={showToast}
+          go={go}
+        />
+        {toastNode}
+      </React.Fragment>
+    );
+  }
+
+  /* ---------- list branch ---------- */
+  const visible = site
+    ? loaded.assets.filter((x) => x.buildingId === site.id || bName(x.buildingId) === site.name)
+    : loaded.assets;
+
+  const categoryOptions = Array.from(new Set(
+    ["HVAC","Refrigeration","Plumbing","Lifts","Doors","Fire safety","Lighting","Pool plant","Security","Other"]
+      .concat(loaded.assets.map((x) => x.category).filter(Boolean))
+  ));
 
   return (
     <div className="content-inner">
@@ -12252,53 +16330,159 @@ function AssetsView({ go, onScan, pendingScan, onConsumeScan }) {
       {addOpen && (
         <SimpleAddModal
           title="Add asset"
-          subtitle="Register equipment and put it on the maintenance plan."
+          subtitle="Register equipment on the live register. It gets its own fault-report QR link straight away."
           icon="box"
           submitLabel="Add asset" submitIcon="check"
-          successTitle="Asset added"
-          successCopy="The asset is on the register. Schedule a PPM or log a reading whenever you're ready."
+          successTitle="Asset saved"
+          successCopy="It's on the register with a fault-report link of its own. Open the asset to print or copy the QR link."
           fields={[
-            { id:"name",  label:"Asset name", placeholder:"e.g. Rooftop HVAC unit 4" },
-            { id:"site",  label:"Site",       type:"select", options:HL.sites.map((s) => s.name) },
-            { id:"make",  label:"Make and model",  placeholder:"e.g. Daikin ZEAS, installed 2024" },
-            { id:"category", label:"Category", type:"select", options:["HVAC","Refrigeration","Plumbing","Lifts","Doors","Fire safety","Lighting","Pool plant","Other"] },
+            { id:"name",     label:"Asset name", placeholder:"e.g. Rooftop HVAC unit 4" },
+            { id:"site",     label:"Site", type:"select", required:false,
+              options:loaded.buildings.map((s) => s.name) },
+            { id:"category", label:"Category", type:"select", required:false, options:categoryOptions },
+            { id:"make",     label:"Make", placeholder:"e.g. Daikin", required:false },
+            { id:"model",    label:"Model", placeholder:"e.g. ZEAS 400", required:false },
+            { id:"serial",   label:"Serial number", required:false },
+            { id:"install",  label:"Install date", type:"date", required:false },
+            { id:"warranty", label:"Warranty expiry", type:"date", required:false },
+            { id:"crit",     label:"Criticality if it fails", type:"select",
+              options:["Low","Medium","High","Critical"], default:"Medium" },
           ]}
+          onSubmit={submitAdd}
           onClose={() => setAddOpen(false)} />
       )}
 
-      <div className="card">
-        <div className="wo-head" style={{ gridTemplateColumns:"56px 36px 1fr 180px 140px 110px 32px" }}>
-          <div>QR</div><div></div><div>Asset</div><div>Site</div><div>Health</div><div>Last service</div><div></div>
-        </div>
-        {D.assets.map((a) => (
-          <div className="wo-row" key={a.id} style={{ gridTemplateColumns:"56px 36px 1fr 180px 140px 110px 32px" }}
-            onClick={() => setDetailId(a.id)}>
-            <div className="qr-thumb" title={a.id}>
-              <QRCode value={a.id} size={40} />
-            </div>
-            <div className="asset-ic"><Icon name={a.icon} size={18} /></div>
-            <div className="asset-nm">{a.name}<small>{a.id}</small></div>
-            <div style={{ fontSize:13, color:"var(--ink-2)" }}>{a.site}</div>
-            <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-              <div className="health-bar"><i style={{ width:a.health + "%", background:solid(a.htone) }} /></div>
-              <span style={{ fontSize:12.5, fontWeight:700, color:solid(a.htone), fontVariantNumeric:"tabular-nums" }}>{a.health}%</span>
-            </div>
-            <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>{a.last}</div>
-            <div style={{ color:"var(--ink-3)" }}><Icon name="chevronRight" size={16} /></div>
+      {visible.length === 0 ? (
+        <div className="card" style={{ textAlign:"center", padding:"48px 24px" }}>
+          <div style={{ fontWeight:700, color:"var(--ink-2)", marginBottom:6 }}>
+            {site ? "No assets at " + site.name + " yet" : "No assets on the register yet"}
           </div>
-        ))}
-      </div>
+          <div style={{ fontSize:13.5, color:"var(--ink-3)", maxWidth:440, margin:"0 auto 14px" }}>
+            Add your plant and equipment, boilers, lifts, AC units, panels, and each one gets a QR fault-report link to stick on it.
+          </div>
+          <button className="btn btn-primary" onClick={() => setAddOpen(true)}>
+            <Icon name="plus" size={15} />Add your first asset
+          </button>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="wo-head" style={{ gridTemplateColumns:"56px 36px 1fr 180px 140px 110px 32px" }}>
+            <div>QR</div><div></div><div>Asset</div><div>Site</div><div>Condition</div><div>Last service</div><div></div>
+          </div>
+          {visible.map((a) => {
+            const cond = _astCondition(a.conditionScore);
+            const last = _astLastService(jobsFor(a.id));
+            const url  = a.reportToken ? _astReportUrl(a.reportToken) : null;
+            return (
+              <div className="wo-row" key={a.id} style={{ gridTemplateColumns:"56px 36px 1fr 180px 140px 110px 32px" }}
+                onClick={() => setDetailId(a.id)}>
+                <div className="qr-thumb" title={url || "No report link on this asset"}>
+                  {url
+                    ? <QRCode value={url} size={40} />
+                    : <span style={{ fontSize:11, color:"var(--ink-3)" }}>—</span>}
+                </div>
+                <div className="asset-ic"><Icon name={_astIcon(a.category)} size={18} /></div>
+                <div className="asset-nm">{a.name}<small>{[a.category, [a.make, a.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || a.id.slice(0, 8)}</small></div>
+                <div style={{ fontSize:13, color:"var(--ink-2)" }}>{a.buildingId ? (bName(a.buildingId) || "—") : "—"}</div>
+                {cond ? (
+                  <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+                    <div className="health-bar"><i style={{ width:cond.pct + "%", background:solid(cond.tone) }} /></div>
+                    <span style={{ fontSize:12.5, fontWeight:700, color:solid(cond.tone) }}>{cond.label}</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>Not rated</div>
+                )}
+                <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>{last || "—"}</div>
+                <div style={{ color:"var(--ink-3)" }}><Icon name="chevronRight" size={16} /></div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {toastNode}
     </div>
   );
 }
 
 /* ===========================================================
-   Full-page Asset Detail
+   Full-page Asset Detail — real fields, real history, real QR link
    =========================================================== */
-function AssetDetail({ asset, onBack }) {
+function AssetDetail({ asset, siteName, jobs, jobsFailed, meters, onBack, refresh, showToast, go }) {
   const a = asset;
-  const history = _serviceHistory(a);
-  const [printedAt, setPrintedAt] = React.useState(null);
+  const [modal, setModal]   = React.useState(null); // "service" | "wo"
+  const [copied, setCopied] = React.useState(false);
+  const [busy, setBusy]     = React.useState(false);
+
+  const cond = _astCondition(a.conditionScore);
+  const warr = _astWarranty(a.warrantyExpiry);
+  const crit = _AST_CRIT[a.criticality] || _AST_CRIT.medium;
+  const last = _astLastService(jobs);
+  const url  = a.reportToken ? _astReportUrl(a.reportToken) : null;
+
+  const history = [...jobs].sort((x, y) =>
+    String(y.completedAt || y.createdAt || "").localeCompare(String(x.completedAt || x.createdAt || "")));
+
+  const copyLink = () => {
+    if (!url) return;
+    _astCopy(url).then((ok) => {
+      if (ok) { setCopied(true); setTimeout(() => setCopied(false), 2000); }
+      else showToast("Could not copy. Select the link text and copy it yourself.");
+    });
+  };
+
+  const rateCondition = (n) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/assets/" + a.id, { method: "PATCH", body: { conditionScore: n } })
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not save the condition. Check your access."); return; }
+        showToast("Condition set to " + n + " · " + _AST_COND_LABEL[n]);
+        refresh();
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const submitService = (vals) => {
+    if (busy) return;
+    setBusy(true);
+    const title = String(vals.what || "").trim();
+    hlApi("/jobs", { method: "POST", body: {
+      title, assetId: a.id,
+      buildingId: a.buildingId || undefined,
+      description: vals.note ? String(vals.note).trim() : undefined,
+      priority: "routine",
+    }})
+      .then(({ ok, b }) => {
+        if (!ok || !b || !b.id) { showToast("Could not log the service. Try again."); return null; }
+        return hlApi("/jobs/" + b.id + "/complete", { method: "POST", body: {
+          completionNote: vals.note ? String(vals.note).trim() : title,
+        }}).then(({ ok: done }) => {
+          if (done) showToast("Service logged on this asset's history");
+          else showToast("Saved as an open work order. Mark it complete in Maintenance.");
+          refresh();
+        });
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const submitWorkOrder = (vals) => {
+    if (busy) return;
+    setBusy(true);
+    const pri = { Emergency: "emergency", Urgent: "urgent", Routine: "routine" }[vals.priority] || "routine";
+    hlApi("/jobs", { method: "POST", body: {
+      title: String(vals.title || "").trim(),
+      description: vals.desc ? String(vals.desc).trim() : undefined,
+      priority: pri,
+      assetId: a.id,
+      buildingId: a.buildingId || undefined,
+    }})
+      .then(({ ok }) => {
+        if (!ok) { showToast("Could not raise the work order. Try again."); return; }
+        showToast("Work order raised against " + a.name + ". It's in Maintenance now.");
+        refresh();
+      })
+      .finally(() => setBusy(false));
+  };
 
   return (
     <div className="content-inner">
@@ -12308,21 +16492,27 @@ function AssetDetail({ asset, onBack }) {
 
       <div className="detail-head-row">
         <div className="dh-ico" style={{ background:softBg("maint"), color:solid("maint") }}>
-          <Icon name={a.icon} size={20} />
+          <Icon name={_astIcon(a.category)} size={20} />
         </div>
         <div className="dh-title">
           <h1>{a.name}</h1>
-          <div className="dh-id"><Icon name="scan" size={13} />{a.id} · {a.site}</div>
+          <div className="dh-id"><Icon name="scan" size={13} />{a.id.slice(0, 8)} · {siteName || "No site set"}</div>
           <div className="dh-pills">
-            <Pill tone={a.htone} dot>
-              {a.htone === "ok" ? "Healthy" : a.htone === "warn" ? "Monitor" : "Critical"}
-            </Pill>
-            <Pill tone="muted">Last service {a.last}</Pill>
+            <Pill tone={crit.tone} dot>{crit.label}</Pill>
+            {cond
+              ? <Pill tone={cond.tone} dot>Condition · {cond.label}</Pill>
+              : <Pill tone="muted">Not rated yet</Pill>}
+            {warr && <Pill tone={warr.tone}>{warr.label}</Pill>}
+            <Pill tone="muted">{last ? "Last service " + last : "No completed service yet"}</Pill>
           </div>
         </div>
         <div className="detail-head-actions">
-          <button className="btn"><Icon name="plus" size={15} />Log service</button>
-          <button className="btn btn-primary"><Icon name="wrench" size={15} />Raise work order</button>
+          <button className="btn" onClick={() => setModal("service")} disabled={busy}>
+            <Icon name="plus" size={15} />Log service
+          </button>
+          <button className="btn btn-primary" onClick={() => setModal("wo")} disabled={busy}>
+            <Icon name="wrench" size={15} />Raise work order
+          </button>
         </div>
       </div>
 
@@ -12330,57 +16520,172 @@ function AssetDetail({ asset, onBack }) {
         <div className="detail-main">
           <div className="card card-pad">
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:9 }}>
-              <div style={{ fontWeight:700, fontSize:14, fontFamily:"var(--font-head)" }}>Asset health</div>
-              <span style={{ fontWeight:800, fontSize:18, color:solid(a.htone), fontVariantNumeric:"tabular-nums", fontFamily:"var(--mono)" }}>{a.health}%</span>
+              <div style={{ fontWeight:700, fontSize:14, fontFamily:"var(--font-head)" }}>Condition</div>
+              {cond
+                ? <span style={{ fontWeight:800, fontSize:18, color:solid(cond.tone), fontVariantNumeric:"tabular-nums", fontFamily:"var(--mono)" }}>{cond.score}/5</span>
+                : <span style={{ fontSize:12.5, color:"var(--ink-3)" }}>Not rated yet</span>}
             </div>
             <div className="qbar" style={{ height:9 }}>
-              <i style={{ width:a.health + "%", background:solid(a.htone) }} />
+              <i style={{ width:(cond ? cond.pct : 0) + "%", background:cond ? solid(cond.tone) : "var(--surface-3)" }} />
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:12, flexWrap:"wrap" }}>
+              <span style={{ fontSize:12.5, color:"var(--ink-3)" }}>Rate it:</span>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} className="btn btn-sm" disabled={busy}
+                  style={cond && cond.score === n ? { borderColor:solid(cond.tone), color:solid(cond.tone), fontWeight:700 } : {}}
+                  onClick={() => rateCondition(n)}
+                  title={n + " · " + _AST_COND_LABEL[n]}>
+                  {n}
+                </button>
+              ))}
+              <span style={{ fontSize:11.5, color:"var(--ink-3)" }}>1 poor · 5 excellent, saves to the register</span>
             </div>
           </div>
 
           <div className="card">
             <div className="card-head">
               <h3>Service history</h3>
-              <span className="sub">{history.length} events · newest first</span>
+              <span className="sub">{history.length} job{history.length === 1 ? "" : "s"} on this asset · newest first</span>
             </div>
             <div style={{ padding: "14px 18px" }}>
-              <div className="stepper">
-                {history.map((h, i) => <Step s={h} key={i} />)}
-              </div>
+              {jobsFailed ? (
+                <div style={{ padding:"16px 0", fontSize:13, color:"var(--warn)" }}>
+                  Could not load the work orders for this asset. Refresh to try again.
+                </div>
+              ) : history.length === 0 ? (
+                <div style={{ padding:"16px 0", fontSize:13, color:"var(--ink-3)" }}>
+                  No work orders or services logged against this asset yet. Log service or raise a work order above and it lands here.
+                </div>
+              ) : (
+                <div className="stepper">
+                  {history.map((j) => {
+                    const meta = _AST_JOB_META[j.status] || { state: "pending", label: j.status };
+                    const bits = [meta.label, _AST_PRIORITY_LABEL[j.priority] || j.priority];
+                    if (j.source === "ppm") bits.push("from PPM");
+                    if (j.source === "sensor") bits.push("from a sensor");
+                    return (
+                      <Step key={j.id} s={{
+                        state: meta.state,
+                        title: j.title,
+                        by:    bits.join(" · "),
+                        time:  _astFmtDate(j.completedAt || j.createdAt) || "",
+                      }} />
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         <div className="detail-side">
           <div className="card qr-card">
-            <QRCode value={a.id} size={200} />
-            <div className="qr-id-mono">{a.id}</div>
-            <button className="btn qr-print-btn" onClick={() => {
-              setPrintedAt("Sent to label printer");
-              setTimeout(() => setPrintedAt(null), 2600);
-            }}>
-              <Icon name="file" size={15} />Print label
-            </button>
-            {printedAt && (
-              <div style={{ fontSize:11.5, color:"var(--ok)", fontWeight:700, display:"inline-flex", alignItems:"center", gap:6 }}>
-                <Icon name="checkCircle" size={13} />{printedAt}
+            {url ? (
+              <React.Fragment>
+                <QRCode value={url} size={200} />
+                <div className="qr-id-mono" style={{ wordBreak:"break-all", fontSize:11 }}>{url}</div>
+                <div style={{ fontSize:12, color:"var(--ink-3)", lineHeight:1.5 }}>
+                  Print this and stick it on the asset. Anyone can scan it to report a fault, no login needed.
+                </div>
+                <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
+                  <a className="btn" href={url} target="_blank" rel="noreferrer">
+                    <Icon name="link" size={15} />Open report page
+                  </a>
+                  <button className="btn qr-print-btn" onClick={copyLink}>
+                    <Icon name={copied ? "checkCircle" : "file"} size={15} />{copied ? "Link copied" : "Copy link"}
+                  </button>
+                </div>
+              </React.Fragment>
+            ) : (
+              <div style={{ fontSize:13, color:"var(--ink-3)", padding:"18px 6px", lineHeight:1.55 }}>
+                This asset has no fault-report link yet. Newly added assets get one automatically.
               </div>
             )}
           </div>
 
           <div className="card meta-card">
-            <div className="info-row"><span className="k">Asset ID</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{a.id}</span></div>
-            <div className="info-row"><span className="k">Site</span><span className="v">{a.site}</span></div>
-            <div className="info-row"><span className="k">Last service</span><span className="v">{a.last}</span></div>
-            <div className="info-row"><span className="k">Condition</span>
-              <span className="v"><Pill tone={a.htone} dot>{a.htone === "ok" ? "Good" : a.htone === "warn" ? "Monitor" : "Critical"}</Pill></span>
+            <div className="info-row"><span className="k">Asset ID</span><span className="v" style={{ fontFamily:"var(--mono)", fontSize:11.5 }} title={a.id}>{a.id.slice(0, 8)}</span></div>
+            <div className="info-row"><span className="k">Site</span><span className="v">{siteName || "—"}</span></div>
+            <div className="info-row"><span className="k">Category</span><span className="v">{a.category || "—"}</span></div>
+            <div className="info-row"><span className="k">Make and model</span><span className="v">{[a.make, a.model].filter(Boolean).join(" ") || "—"}</span></div>
+            <div className="info-row"><span className="k">Serial</span><span className="v" style={{ fontFamily:"var(--mono)", fontSize:12 }}>{a.serial || "—"}</span></div>
+            <div className="info-row"><span className="k">Installed</span><span className="v">{_astFmtDate(a.installDate) || "—"}</span></div>
+            <div className="info-row"><span className="k">Warranty expiry</span><span className="v">{_astFmtDate(a.warrantyExpiry) || "—"}</span></div>
+            <div className="info-row"><span className="k">Expected life</span><span className="v">{a.expectedLifeYears != null ? a.expectedLifeYears + " years" : "—"}</span></div>
+            <div className="info-row"><span className="k">Replacement cost</span><span className="v">{a.replacementCostCents != null ? "€" + Math.round(a.replacementCostCents / 100).toLocaleString() : "—"}</span></div>
+            <div className="info-row" style={{ borderBottom: a.notes ? undefined : "none" }}>
+              <span className="k">Last service</span><span className="v">{last || "—"}</span>
             </div>
-            <div className="info-row" style={{ borderBottom:"none" }}>
-              <span className="k">Category</span><span className="v" style={{ textTransform:"capitalize" }}>{a.icon === "droplet" ? "Pool plant" : a.icon === "shield" ? "Fire safety" : a.icon === "monitor" ? "IT / kiosk" : "Mechanical"}</span>
-            </div>
+            {a.notes && (
+              <div className="info-row" style={{ borderBottom:"none" }}>
+                <span className="k">Notes</span><span className="v" style={{ fontSize:12.5 }}>{a.notes}</span>
+              </div>
+            )}
           </div>
+
+          {meters.length > 0 && (
+            <div className="card meta-card">
+              <div className="card-head">
+                <h3>Meters on this asset</h3>
+                <span className="sub">{meters.length} live meter{meters.length === 1 ? "" : "s"}</span>
+              </div>
+              {meters.map((m, i) => {
+                const tone = m.status === "due" ? "crit" : m.status === "due_soon" ? "warn" : m.status === "ok" ? "ok" : "muted";
+                const lbl  = m.status === "due" ? "Service due" : m.status === "due_soon" ? "Due soon" : m.status === "ok" ? "OK" : "Tracking";
+                return (
+                  <div className="info-row" key={m.id} style={i === meters.length - 1 ? { borderBottom:"none" } : {}}>
+                    <span className="k">{m.name}</span>
+                    <span className="v" style={{ display:"inline-flex", alignItems:"center", gap:8 }}>
+                      <span style={{ fontFamily:"var(--mono)", fontSize:12 }}>{m.currentValue}{m.unit ? " " + m.unit : ""}</span>
+                      <Pill tone={tone} dot>{lbl}</Pill>
+                    </span>
+                  </div>
+                );
+              })}
+              <div style={{ padding:"10px 16px 14px" }}>
+                <button className="btn btn-sm" onClick={() => go && go("meters")}>
+                  <Icon name="gauge" size={13} />Open meters
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {modal === "service" && (
+        <SimpleAddModal
+          title={"Log service — " + a.name}
+          subtitle="Records a completed job on this asset's history, dated today."
+          icon="check"
+          submitLabel="Log service" submitIcon="check"
+          successTitle="Service logged"
+          successCopy="It's saved as a completed work order on this asset. The toast below confirms it landed."
+          fields={[
+            { id:"what", label:"What was done", placeholder:"e.g. Annual service and filter change" },
+            { id:"note", label:"Notes (optional)", type:"textarea", rows:3, required:false,
+              placeholder:"Parts used, readings, anything worth keeping" },
+          ]}
+          onSubmit={submitService}
+          onClose={() => setModal(null)} />
+      )}
+
+      {modal === "wo" && (
+        <SimpleAddModal
+          title={"Raise work order — " + a.name}
+          subtitle="Creates a real maintenance job linked to this asset."
+          icon="wrench"
+          submitLabel="Raise work order" submitIcon="check"
+          successTitle="Work order raised"
+          successCopy="It's logged against this asset and sitting in Maintenance to be scoped and tendered."
+          fields={[
+            { id:"title",    label:"What needs doing", placeholder:"e.g. Compressor tripping on start-up" },
+            { id:"priority", label:"Priority", type:"select", options:["Routine","Urgent","Emergency"], default:"Routine" },
+            { id:"desc",     label:"Details (optional)", type:"textarea", rows:3, required:false,
+              placeholder:"What's wrong, when it started, access notes" },
+          ]}
+          onSubmit={submitWorkOrder}
+          onClose={() => setModal(null)} />
+      )}
     </div>
   );
 }
@@ -13882,121 +18187,97 @@ Object.assign(window, { AssistantView });
 
 /* ════════════════════ asset_23_6fc65753.js ════════════════════ */
 ;
-/* HazardLink — Billing (quotes + invoices + accounting integrations) */
+/* HazardLink — Billing (live invoices from the backend register)
 
-/* ============================================================
-   Seed data — realistic Irish customers + line items
-   ============================================================ */
-const BILL_CUSTOMERS = [];
+   Wired to the real endpoints:
+     GET   /invoices              list, newest first
+     POST  /invoices              create (number auto-assigned INV-####)
+     PATCH /invoices/:id          status moves: sent / paid / void
+     GET   /invoices/export.csv   Xero/Sage-importable CSV
 
-const VAT_DEFAULT = 23;
+   Amounts live in cents on the backend; the euro figure typed in the modal is
+   converted before sending. A sent invoice past its due date flips to overdue
+   on the server's daily tick, so the Overdue chip here is the real state.
 
-const SEED_QUOTES = [];
+   Quotes and accounting-package sync have no backend yet, so those tabs are
+   folded away rather than filled with demo data. */
 
-const SEED_INVOICES = [];
+const INV_STATUS_TONE  = { draft:"muted", sent:"accent", paid:"ok", overdue:"crit", void:"muted" };
+const INV_STATUS_LABEL = { draft:"Draft", sent:"Sent", paid:"Paid", overdue:"Overdue", void:"Void" };
 
-const SEED_INTEGRATIONS = [
-  { id:"xero",   name:"Xero",        desc:"Sync customers, invoices and payments. Auto-allocate paid invoices.",      letter:"X", color:"#13B5EA", connected:false, lastSync:"—" },
-  { id:"sage",   name:"Sage",         desc:"Push invoices to Sage Business Cloud Accounting.",                       letter:"S", color:"#00DC06", connected:false, lastSync:"—" },
-  { id:"qbooks", name:"QuickBooks",   desc:"Two-way sync of customers and invoices with QuickBooks Online.",         letter:"Q", color:"#2CA01C", connected:false, lastSync:"—" },
-];
+const BILL_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-/* ============================================================
-   Helpers
-   ============================================================ */
-const billCustomer = (id) => BILL_CUSTOMERS.find((c) => c.id === id) || { name:"—", site:"—" };
+const fmtCents = (cents, currency) => {
+  const n = (Number(cents) || 0) / 100;
+  const s = n.toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (!currency || currency === "EUR") ? "€" + s : s + " " + currency;
+};
 
-const lineTotal = (it) => Number(it.qty || 0) * Number(it.unit || 0);
-const sumLines  = (items) => items.reduce((s, it) => s + lineTotal(it), 0);
+function billFmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.getDate() + " " + BILL_MONTHS[d.getMonth()] + " " + d.getFullYear();
+}
 
-const fmtEur = (n) =>
-  "€" + Number(n || 0).toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function billSiteName(buildingId) {
+  if (!buildingId) return null;
+  const s = ((typeof HL !== "undefined" && HL.sites) || []).find((x) => x.id === buildingId);
+  return s ? s.name : null;
+}
 
-const QUOTE_STATUS_TONE = { Draft:"muted", Sent:"accent", Accepted:"ok",  Declined:"crit" };
-const INV_STATUS_TONE   = { Draft:"muted", Sent:"accent", Paid:"ok",      Overdue:"crit" };
-
-const todayLabel = () => "20 Jun 2026";
-
-/* ============================================================
-   Shared line-item builder (used by quote + invoice modal)
-   ============================================================ */
-function LineItemBuilder({ items, onChange, vatRate }) {
-  const update = (i, patch) => onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
-  const remove = (i) => onChange(items.filter((_, idx) => idx !== i));
-  const add    = () => onChange([...items, { desc:"", qty:1, unit:0 }]);
-
-  const subtotal = sumLines(items);
-  const vat      = subtotal * (Number(vatRate || 0) / 100);
-  const total    = subtotal + vat;
-
-  return (
-    <div className="bill-items">
-      <div className="bill-items-head">
-        <div>Description</div>
-        <div className="bill-num-col">Qty</div>
-        <div className="bill-num-col">Unit price</div>
-        <div className="bill-num-col">Total</div>
-        <div />
-      </div>
-      {items.map((it, i) => (
-        <div className="bill-item-row" key={i}>
-          <input className="dv-input bill-desc" value={it.desc}
-            placeholder="Service or part"
-            onChange={(e) => update(i, { desc: e.target.value })} />
-          <input className="dv-input bill-num" type="number" min="0" step="1"
-            value={it.qty} onChange={(e) => update(i, { qty: Number(e.target.value) })} />
-          <input className="dv-input bill-num" type="number" min="0" step="0.01"
-            value={it.unit} onChange={(e) => update(i, { unit: Number(e.target.value) })} />
-          <div className="bill-num-cell">{fmtEur(lineTotal(it))}</div>
-          <button className="icon-btn bill-rm" onClick={() => remove(i)} disabled={items.length === 1}>
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-      ))}
-      <button className="btn btn-sm bill-add-row" onClick={add}>
-        <Icon name="plus" size={13} />Add line item
-      </button>
-
-      <div className="bill-totals">
-        <div className="bill-total-row"><span>Subtotal</span><b>{fmtEur(subtotal)}</b></div>
-        <div className="bill-total-row"><span>VAT ({vatRate || 0}%)</span><b>{fmtEur(vat)}</b></div>
-        <div className="bill-total-row bill-grand"><span>Total</span><b>{fmtEur(total)}</b></div>
-      </div>
-    </div>
-  );
+function billStatusPill(status) {
+  return <Pill tone={INV_STATUS_TONE[status] || "muted"} dot>{INV_STATUS_LABEL[status] || status}</Pill>;
 }
 
 /* ============================================================
-   Builder modal — quote or invoice
+   New invoice modal — posts to the real register
    ============================================================ */
-function DocBuilderModal({ kind, vatRate, prefill, onClose, onSave }) {
-  const isInvoice = kind === "invoice";
-  const [customer, setCustomer] = React.useState(prefill?.customer || "");
-  const [summary,  setSummary]  = React.useState(prefill?.summary  || "");
-  const [notes,    setNotes]    = React.useState(prefill?.notes    || "");
-  const [due,      setDue]      = React.useState(prefill?.due      || "04 Jul 2026");
-  const [items,    setItems]    = React.useState(prefill?.items    || [{ desc:"", qty:1, unit:0 }]);
+function InvoiceModal({ onClose, onSaved }) {
+  const [customer,   setCustomer]   = React.useState("");
+  const [amount,     setAmount]     = React.useState("");
+  const [dueDate,    setDueDate]    = React.useState("");
+  const [buildingId, setBuildingId] = React.useState("");
+  const [notes,      setNotes]      = React.useState("");
+  const [busy,       setBusy]       = React.useState(false);
+  const [err,        setErr]        = React.useState("");
 
-  const canSave = customer && summary && items.some((it) => it.desc && it.qty > 0 && it.unit > 0);
+  const sites = (typeof HL !== "undefined" && HL.sites) || [];
+  const amountOk = Number(amount) > 0 && Number(amount) <= 20000000;
+  const canSave = customer.trim().length > 0 && amountOk && !busy;
 
   const save = (status) => {
     if (!canSave) return;
-    onSave({
-      customer, summary, notes, items,
+    setBusy(true);
+    setErr("");
+    hlApi("/invoices", { method: "POST", body: {
+      customerName: customer.trim(),
+      amountCents: Math.round(Number(amount) * 100),
+      currency: "EUR",
+      dueAt: dueDate ? new Date(dueDate + "T12:00:00Z").toISOString() : null,
+      buildingId: buildingId || null,
+      notes: notes.trim() || null,
       status,
-      ...(isInvoice ? { due } : {}),
-      date: todayLabel(),
-    });
+    }}).then(({ ok, status: st, b }) => {
+      if (!ok) {
+        setBusy(false);
+        setErr(st === 403 || st === 401
+          ? "You need the billing permission to raise invoices. Ask an admin."
+          : "Could not create the invoice. Check the amount and try again.");
+        return;
+      }
+      onSaved(b && b.invoice, status);
+    }).catch(() => { setBusy(false); setErr("Could not reach the backend. Try again."); });
   };
 
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal bill-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <div className="mh-ico"><Icon name={isInvoice ? "file" : "edit"} size={18} /></div>
+          <div className="mh-ico"><Icon name="file" size={18} /></div>
           <div>
-            <h3>{isInvoice ? "New invoice" : "New quote"}</h3>
-            <p>{isInvoice ? "Bill a customer for completed work." : "Quote the customer for a piece of work. They can accept it from the email link."}</p>
+            <h3>New invoice</h3>
+            <p>Raised on the live register. The invoice number is assigned automatically.</p>
           </div>
           <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
@@ -14005,53 +18286,43 @@ function DocBuilderModal({ kind, vatRate, prefill, onClose, onSave }) {
           <div className="bill-form-grid">
             <div className="ai-field">
               <label>Customer</label>
-              <select className="dv-input" value={customer} onChange={(e) => setCustomer(e.target.value)}>
-                <option value="">Pick a customer…</option>
-                {BILL_CUSTOMERS.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name} · {c.site}</option>
-                ))}
+              <input className="dv-input" value={customer} onChange={(e) => setCustomer(e.target.value)}
+                placeholder="e.g. Riverside SC Management" />
+            </div>
+            <div className="ai-field">
+              <label>Amount (€, total)</label>
+              <input className="dv-input" type="number" min="0" step="0.01" value={amount}
+                onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1450.00" />
+            </div>
+            <div className="ai-field">
+              <label>Due date</label>
+              <input className="dv-input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            <div className="ai-field">
+              <label>Site (optional)</label>
+              <select className="dv-input" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
+                <option value="">Not tied to a site</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
-            {isInvoice && (
-              <div className="ai-field">
-                <label>Due date</label>
-                <input className="dv-input" value={due} onChange={(e) => setDue(e.target.value)} placeholder="dd MMM yyyy" />
-              </div>
-            )}
             <div className="ai-field bill-form-full">
-              <label>{isInvoice ? "Invoice summary" : "Quote summary"}</label>
-              <input className="dv-input" value={summary} onChange={(e) => setSummary(e.target.value)}
-                placeholder={isInvoice ? "e.g. HVAC service — June 2026" : "e.g. Quarterly fire alarm test"} />
+              <label>Notes (optional, used as the description on exports)</label>
+              <textarea className="dv-input" rows={2} value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="What the invoice covers, payment terms…" />
             </div>
           </div>
-
-          <LineItemBuilder items={items} onChange={setItems} vatRate={vatRate} />
-
-          <div className="ai-field bill-form-full" style={{ marginTop:14 }}>
-            <label>Notes (visible to the customer)</label>
-            <textarea className="dv-input" rows={2} value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Site instructions, scope notes, payment terms…" />
-          </div>
+          {err && (
+            <div style={{ marginTop:12, fontSize:13, color:"var(--crit)" }}>{err}</div>
+          )}
         </div>
 
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>Cancel</button>
-          {isInvoice ? (
-            <React.Fragment>
-              <button className="btn" disabled={!canSave} style={{ opacity: canSave ? 1 : .5 }}
-                onClick={() => save("Draft")}><Icon name="file" size={14} />Save as draft</button>
-              <button className="btn btn-primary" disabled={!canSave} style={{ opacity: canSave ? 1 : .5 }}
-                onClick={() => save("Sent")}><Icon name="send" size={14} />Send invoice</button>
-            </React.Fragment>
-          ) : (
-            <React.Fragment>
-              <button className="btn" disabled={!canSave} style={{ opacity: canSave ? 1 : .5 }}
-                onClick={() => save("Draft")}><Icon name="file" size={14} />Save as draft</button>
-              <button className="btn btn-primary" disabled={!canSave} style={{ opacity: canSave ? 1 : .5 }}
-                onClick={() => save("Sent")}><Icon name="send" size={14} />Send quote</button>
-            </React.Fragment>
-          )}
+          <button className="btn" disabled={!canSave} style={{ opacity: canSave ? 1 : .5 }}
+            onClick={() => save("draft")}><Icon name="file" size={14} />Save as draft</button>
+          <button className="btn btn-primary" disabled={!canSave} style={{ opacity: canSave ? 1 : .5 }}
+            onClick={() => save("sent")}><Icon name="send" size={14} />Create and mark sent</button>
         </div>
       </div>
     </div>
@@ -14059,14 +18330,10 @@ function DocBuilderModal({ kind, vatRate, prefill, onClose, onSave }) {
 }
 
 /* ============================================================
-   Invoice detail panel
+   Invoice detail panel — real fields only
    ============================================================ */
-function InvoiceDetailPanel({ inv, vatRate, onClose, onMarkPaid, onSend, onDownload }) {
-  const cust     = billCustomer(inv.customer);
-  const subtotal = sumLines(inv.items);
-  const vat      = subtotal * (vatRate / 100);
-  const total    = subtotal + vat;
-
+function InvoiceDetailPanel({ inv, busy, onClose, onSend, onMarkPaid, onVoid }) {
+  const siteName = billSiteName(inv.buildingId);
   return (
     <React.Fragment>
       <div className="panel-overlay" onClick={onClose} />
@@ -14074,51 +18341,27 @@ function InvoiceDetailPanel({ inv, vatRate, onClose, onMarkPaid, onSend, onDownl
         <div className="panel-head">
           <div className="bill-panel-ico"><Icon name="file" size={17} /></div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="panel-title">{inv.id}</div>
+            <div className="panel-title">{inv.number}</div>
             <div className="bill-panel-sub">
-              {cust.name} · {inv.date}
+              {inv.customerName || "No customer name"} · raised {billFmtDate(inv.createdAt)}
             </div>
           </div>
-          <Pill tone={INV_STATUS_TONE[inv.status]} dot>{inv.status}</Pill>
+          {billStatusPill(inv.status)}
           <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
 
         <div className="panel-body">
           <div className="panel-section">
-            <div className="bill-detail-summary">{inv.summary}</div>
+            <div className="bill-detail-summary">{fmtCents(inv.amountCents, inv.currency)} due</div>
           </div>
 
           <div className="panel-section">
             <div className="panel-label">Bill to</div>
             <div className="bill-bill-to">
-              <div className="bill-bill-name">{cust.name}</div>
-              <div className="bill-bill-line">{cust.contact} · {cust.email}</div>
-              <div className="bill-bill-line"><Icon name="mapPin" size={11} />{cust.site}</div>
-            </div>
-          </div>
-
-          <div className="panel-section">
-            <div className="panel-label">Line items</div>
-            <div className="bill-detail-table">
-              <div className="bill-detail-th">
-                <div>Description</div>
-                <div className="bill-num-col">Qty</div>
-                <div className="bill-num-col">Unit</div>
-                <div className="bill-num-col">Total</div>
+              <div className="bill-bill-name">{inv.customerName || "—"}</div>
+              <div className="bill-bill-line">
+                <Icon name="mapPin" size={11} />{siteName || "Not tied to a site"}
               </div>
-              {inv.items.map((it, i) => (
-                <div className="bill-detail-tr" key={i}>
-                  <div>{it.desc}</div>
-                  <div className="bill-num-cell">{it.qty}</div>
-                  <div className="bill-num-cell">{fmtEur(it.unit)}</div>
-                  <div className="bill-num-cell"><b>{fmtEur(lineTotal(it))}</b></div>
-                </div>
-              ))}
-            </div>
-            <div className="bill-totals bill-totals-detail">
-              <div className="bill-total-row"><span>Subtotal</span><b>{fmtEur(subtotal)}</b></div>
-              <div className="bill-total-row"><span>VAT ({vatRate}%)</span><b>{fmtEur(vat)}</b></div>
-              <div className="bill-total-row bill-grand"><span>Total due</span><b>{fmtEur(total)}</b></div>
             </div>
           </div>
 
@@ -14126,13 +18369,17 @@ function InvoiceDetailPanel({ inv, vatRate, onClose, onMarkPaid, onSend, onDownl
             <div className="panel-label">Payment</div>
             <div className="auto-detail-box">
               <div className="auto-detail-row"><span className="k">Status</span>
-                <span className="v"><Pill tone={INV_STATUS_TONE[inv.status]} dot>{inv.status}</Pill></span>
+                <span className="v">{billStatusPill(inv.status)}</span>
               </div>
-              <div className="auto-detail-row"><span className="k">Issued</span><span className="v">{inv.date}</span></div>
-              <div className="auto-detail-row"><span className="k">Due</span><span className="v">{inv.due}</span></div>
-              {inv.status === "Paid" && inv.paidDate && (
+              <div className="auto-detail-row"><span className="k">Amount</span>
+                <span className="v">{fmtCents(inv.amountCents, inv.currency)}</span></div>
+              <div className="auto-detail-row"><span className="k">Issued</span>
+                <span className="v">{billFmtDate(inv.issuedAt)}</span></div>
+              <div className="auto-detail-row"><span className="k">Due</span>
+                <span className="v">{billFmtDate(inv.dueAt)}</span></div>
+              {inv.paidAt && (
                 <div className="auto-detail-row"><span className="k">Paid</span>
-                  <span className="v">{inv.paidDate} · {inv.method}</span></div>
+                  <span className="v">{billFmtDate(inv.paidAt)}</span></div>
               )}
             </div>
           </div>
@@ -14145,13 +18392,21 @@ function InvoiceDetailPanel({ inv, vatRate, onClose, onMarkPaid, onSend, onDownl
           )}
 
           <div className="panel-section panel-actions">
-            {inv.status !== "Sent" && inv.status !== "Paid" && (
-              <button className="btn" onClick={onSend}><Icon name="send" size={14} />Send</button>
+            {inv.status === "draft" && (
+              <button className="btn" disabled={busy} onClick={onSend}><Icon name="send" size={14} />Mark sent</button>
             )}
-            {inv.status !== "Paid" && (
-              <button className="btn btn-primary" onClick={onMarkPaid}><Icon name="check" size={14} />Mark paid</button>
+            {(inv.status === "sent" || inv.status === "overdue") && (
+              <button className="btn btn-primary" disabled={busy} onClick={onMarkPaid}><Icon name="check" size={14} />Mark paid</button>
             )}
-            <button className="btn" onClick={onDownload}><Icon name="file" size={14} />Download PDF</button>
+            {(inv.status === "draft" || inv.status === "sent" || inv.status === "overdue") && (
+              <button className="btn" disabled={busy} onClick={onVoid}><Icon name="x" size={14} />Void</button>
+            )}
+            {inv.status === "paid" && (
+              <span className="bill-action-muted">Settled {billFmtDate(inv.paidAt)}</span>
+            )}
+            {inv.status === "void" && (
+              <span className="bill-action-muted">Voided, no further action</span>
+            )}
           </div>
         </div>
       </aside>
@@ -14160,421 +18415,233 @@ function InvoiceDetailPanel({ inv, vatRate, onClose, onMarkPaid, onSend, onDownl
 }
 
 /* ============================================================
-   Tabs
-   ============================================================ */
-function QuotesTab({ quotes, vatRate, onNew, onSend, onConvert, onMarkDeclined }) {
-  return (
-    <React.Fragment>
-      <div className="toolbar" style={{ marginBottom:12 }}>
-        <div style={{ fontSize:13, color:"var(--ink-3)" }}>
-          {quotes.length} quote{quotes.length === 1 ? "" : "s"} · {quotes.filter((q) => q.status === "Sent").length} awaiting response
-        </div>
-        <button className="btn btn-primary" style={{ marginLeft:"auto" }} onClick={onNew}>
-          <Icon name="plus" size={15} />New quote
-        </button>
-      </div>
-      <div className="card">
-        <div className="bill-table-head bill-q-head">
-          <div>Number</div><div>Customer · site</div><div>Summary</div><div>Total</div><div>Status</div><div>Date</div><div />
-        </div>
-        {quotes.map((q) => {
-          const subtotal = sumLines(q.items);
-          const total    = subtotal * (1 + vatRate / 100);
-          const cust     = billCustomer(q.customer);
-          return (
-            <div className="bill-table-row bill-q-row" key={q.id}>
-              <div className="bill-id">{q.id}</div>
-              <div>
-                <div className="bill-cust">{cust.name}</div>
-                <div className="bill-cust-sub"><Icon name="mapPin" size={10} />{cust.site}</div>
-              </div>
-              <div className="bill-summary">{q.summary}</div>
-              <div className="bill-amount">{fmtEur(total)}</div>
-              <div><Pill tone={QUOTE_STATUS_TONE[q.status]} dot>{q.status}</Pill></div>
-              <div className="bill-date">{q.date}</div>
-              <div className="bill-actions">
-                {q.status === "Draft" && (
-                  <button className="btn btn-sm btn-primary" onClick={() => onSend(q.id)}>
-                    <Icon name="send" size={12} />Send
-                  </button>
-                )}
-                {q.status === "Sent" && (
-                  <button className="btn btn-sm" onClick={() => onMarkDeclined(q.id)}>
-                    Mark declined
-                  </button>
-                )}
-                {q.status === "Accepted" && (
-                  <button className="btn btn-sm btn-primary" onClick={() => onConvert(q.id)}>
-                    <Icon name="arrowRight" size={12} />Convert to invoice
-                  </button>
-                )}
-                {q.status === "Declined" && (
-                  <span className="bill-action-muted">No further action</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </React.Fragment>
-  );
-}
-
-function InvoicesTab({ invoices, vatRate, onNew, onOpen, onMarkPaid, onSend }) {
-  return (
-    <React.Fragment>
-      <div className="toolbar" style={{ marginBottom:12 }}>
-        <div style={{ fontSize:13, color:"var(--ink-3)" }}>
-          {invoices.length} invoice{invoices.length === 1 ? "" : "s"} · {invoices.filter((i) => i.status === "Overdue").length} overdue
-        </div>
-        <button className="btn btn-primary" style={{ marginLeft:"auto" }} onClick={onNew}>
-          <Icon name="plus" size={15} />New invoice
-        </button>
-      </div>
-      <div className="card">
-        <div className="bill-table-head bill-inv-head">
-          <div>Number</div><div>Customer</div><div>Summary</div><div>Amount</div><div>Status</div><div>Due</div><div />
-        </div>
-        {invoices.map((inv) => {
-          const subtotal = sumLines(inv.items);
-          const total    = subtotal * (1 + vatRate / 100);
-          const cust     = billCustomer(inv.customer);
-          return (
-            <div className="bill-table-row bill-inv-row" key={inv.id} onClick={() => onOpen(inv.id)}>
-              <div className="bill-id">{inv.id}</div>
-              <div>
-                <div className="bill-cust">{cust.name}</div>
-                <div className="bill-cust-sub"><Icon name="mapPin" size={10} />{cust.site}</div>
-              </div>
-              <div className="bill-summary">{inv.summary}</div>
-              <div className="bill-amount">{fmtEur(total)}</div>
-              <div><Pill tone={INV_STATUS_TONE[inv.status]} dot>{inv.status}</Pill></div>
-              <div className="bill-date">{inv.due}</div>
-              <div className="bill-actions" onClick={(e) => e.stopPropagation()}>
-                {inv.status === "Draft" && (
-                  <button className="btn btn-sm" onClick={() => onSend(inv.id)}>
-                    <Icon name="send" size={12} />Send
-                  </button>
-                )}
-                {inv.status !== "Paid" && inv.status !== "Draft" && (
-                  <button className="btn btn-sm btn-primary" onClick={() => onMarkPaid(inv.id)}>
-                    <Icon name="check" size={12} />Mark paid
-                  </button>
-                )}
-                {inv.status === "Paid" && (
-                  <span className="bill-action-muted">Paid {inv.paidDate}</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </React.Fragment>
-  );
-}
-
-function SettingsTab({ integrations, onToggleIntegration, vatRate, setVat, prefix, setPrefix }) {
-  return (
-    <div className="bill-settings">
-      <div className="card card-pad">
-        <div className="settings-group-label">Accounting integrations</div>
-        <p style={{ fontSize:13, color:"var(--ink-2)", margin:"0 0 14px", lineHeight:1.55, maxWidth:520 }}>
-          Connect HazardLink to your accounting package so invoices, customers and payments sync automatically.
-        </p>
-        <div className="integration-grid">
-          {integrations.map((i) => (
-            <div key={i.id} className={"integration-card" + (i.connected ? " on" : "")}>
-              <div className="integration-head">
-                <div className="integration-tile bill-int-tile" style={{ color:i.color }}>{i.letter}</div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div className="integration-name">{i.name}</div>
-                  <div className="integration-desc">{i.desc}</div>
-                </div>
-                <button className={"toggle" + (i.connected ? " on" : "")} onClick={() => onToggleIntegration(i.id)}>
-                  <span className="toggle-knob" />
-                </button>
-              </div>
-              <div className="integration-foot">
-                {i.connected ? <Icon name="checkCircle" size={12} /> : <Icon name="link" size={12} />}
-                <span>{i.connected ? "Connected · last synced " + i.lastSync : "Not connected"}</span>
-                {i.connected && (
-                  <button className="btn btn-sm" style={{ marginLeft:"auto" }}><Icon name="activity" size={12} />Sync now</button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="card card-pad">
-        <div className="settings-group-label">VAT &amp; numbering</div>
-        <div className="settings-row-grid">
-          <div className="settings-field">
-            <label>Standard VAT rate</label>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <input className="dv-input" type="number" min="0" max="100" step="0.5"
-                value={vatRate} onChange={(e) => setVat(Number(e.target.value))}
-                style={{ maxWidth: 140 }} />
-              <span style={{ fontSize:13, color:"var(--ink-3)" }}>% — applied to every line item subtotal</span>
-            </div>
-          </div>
-          <div className="settings-field">
-            <label>Invoice number prefix</label>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <input className="dv-input" value={prefix} onChange={(e) => setPrefix(e.target.value)}
-                style={{ maxWidth: 140 }} />
-              <span style={{ fontSize:13, color:"var(--ink-3)" }}>e.g. {prefix}-2075, {prefix}-2076…</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card card-pad">
-        <div className="settings-group-label">Payment details on invoices</div>
-        <div className="settings-row-grid">
-          <div className="settings-field">
-            <label>Trading name</label>
-            <input className="dv-input" defaultValue="HazardLink Operations Ltd." />
-          </div>
-          <div className="settings-field">
-            <label>VAT number</label>
-            <input className="dv-input" defaultValue="IE 3456789KW" />
-          </div>
-          <div className="settings-field">
-            <label>IBAN</label>
-            <input className="dv-input" defaultValue="IE32 AIBK 9311 1234 5678 90" />
-          </div>
-          <div className="settings-field">
-            <label>BIC</label>
-            <input className="dv-input" defaultValue="AIBKIE2D" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
    Main view
    ============================================================ */
 function BillingView({ go }) {
   const { site } = React.useContext(SiteContext);
-  const [tab,       setTab]       = React.useState("quotes");
-  const [quotes,    setQuotes]    = React.useState(SEED_QUOTES);
-  const [invoices,  setInvoices]  = React.useState(SEED_INVOICES);
-  const [integrations, setIntegrations] = React.useState(SEED_INTEGRATIONS);
-  const [vatRate,   setVatRate]   = React.useState(VAT_DEFAULT);
-  const [prefix,    setPrefix]    = React.useState("INV");
-  const [builder,   setBuilder]   = React.useState(null); // { kind, prefill }
+  const [invoices,  setInvoices]  = React.useState(null); // null loading | false error | [rows]
+  const [status,    setStatus]    = React.useState(0);
+  const [builder,   setBuilder]   = React.useState(false);
   const [openInvId, setOpenInvId] = React.useState(null);
+  const [busyId,    setBusyId]    = React.useState(null);
   const { showToast, toastNode } = useViewToast();
 
-  /* Site scope — quotes/invoices inherit the customer's site */
-  const scopedQuotes   = site ? quotes  .filter((q) => billCustomer(q.customer).site === site.name) : quotes;
-  const scopedInvoices = site ? invoices.filter((i) => billCustomer(i.customer).site === site.name) : invoices;
+  const refresh = React.useCallback(() => {
+    return hlApi("/invoices").then(({ ok, status: st, b }) => {
+      if (!ok) { setStatus(st); setInvoices(false); return; }
+      setInvoices((b && b.invoices) || []);
+    }).catch(() => setInvoices(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
 
-  /* ---- KPI metrics ---- */
-  const outstanding = scopedInvoices
-    .filter((i) => i.status === "Sent" || i.status === "Overdue")
-    .reduce((s, i) => s + sumLines(i.items) * (1 + vatRate / 100), 0);
-  const overdue = scopedInvoices
-    .filter((i) => i.status === "Overdue")
-    .reduce((s, i) => s + sumLines(i.items) * (1 + vatRate / 100), 0);
-  const paidThisMonth = scopedInvoices
-    .filter((i) => i.status === "Paid")
-    .reduce((s, i) => s + sumLines(i.items) * (1 + vatRate / 100), 0);
-  const quotesAwaiting = scopedQuotes.filter((q) => q.status === "Sent").length;
+  const rows = Array.isArray(invoices) ? invoices : [];
 
-  /* ---- Mutations ---- */
-  const nextQuoteId = () => "Q-" + (3015 + quotes.filter((q) => q.id.startsWith("Q-")).length - SEED_QUOTES.length);
-  const nextInvId   = () => prefix + "-" + (2075 + invoices.filter((i) => i.id.startsWith(prefix + "-")).length - SEED_INVOICES.length);
+  /* Site scope — invoices carry an optional buildingId. Scoped, we show only
+     the ones tied to this site and say how many are hidden. */
+  const scoped = site ? rows.filter((i) => i.buildingId === site.id) : rows;
+  const hiddenByScope = site ? rows.length - scoped.length : 0;
 
-  const saveQuote = (q) => {
-    const newQ = { id: nextQuoteId(), ...q };
-    setQuotes((qs) => [newQ, ...qs]);
-    setBuilder(null);
-    showToast(`Quote ${newQ.id} ${q.status === "Sent" ? "sent" : "saved as draft"}`);
+  /* ---- KPI metrics, summed from the real rows (cents) ---- */
+  const sumWhere = (pred) => scoped.filter(pred).reduce((s, i) => s + (Number(i.amountCents) || 0), 0);
+  const isOut = (i) => i.status === "sent" || i.status === "overdue";
+  const thisMonth = (iso) => {
+    if (!iso) return false;
+    const d = new Date(iso), n = new Date();
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth();
   };
-  const saveInvoice = (inv) => {
-    const newI = { id: nextInvId(), ...inv };
-    setInvoices((is) => [newI, ...is]);
-    setBuilder(null);
-    showToast(`Invoice ${newI.id} ${inv.status === "Sent" ? "sent" : "saved as draft"}`);
-  };
+  const outstanding   = sumWhere(isOut);
+  const overdueTotal  = sumWhere((i) => i.status === "overdue");
+  const paidThisMonth = sumWhere((i) => i.status === "paid" && thisMonth(i.paidAt));
+  const outCount      = scoped.filter(isOut).length;
+  const overdueCount  = scoped.filter((i) => i.status === "overdue").length;
+  const paidMonthCount = scoped.filter((i) => i.status === "paid" && thisMonth(i.paidAt)).length;
+  const draftCount    = scoped.filter((i) => i.status === "draft").length;
 
-  const sendQuote = (id) => {
-    setQuotes((qs) => qs.map((q) => q.id === id ? { ...q, status:"Sent" } : q));
-    showToast("Quote sent to customer");
+  /* ---- Real status moves ---- */
+  const patchStatus = (id, newStatus, okMsg) => {
+    setBusyId(id);
+    hlApi("/invoices/" + id, { method: "PATCH", body: { status: newStatus } })
+      .then(({ ok, status: st }) => {
+        if (!ok) {
+          showToast(st === 403 || st === 401
+            ? "You need the billing permission to change invoices."
+            : "Could not update the invoice. Try again.");
+          return;
+        }
+        showToast(okMsg);
+        refresh();
+      })
+      .catch(() => showToast("Could not reach the backend. Try again."))
+      .finally(() => setBusyId(null));
   };
-  const acceptQuote = (id) => {
-    setQuotes((qs) => qs.map((q) => q.id === id ? { ...q, status:"Accepted" } : q));
-  };
-  const declineQuote = (id) => {
-    setQuotes((qs) => qs.map((q) => q.id === id ? { ...q, status:"Declined" } : q));
-    showToast("Quote marked as declined");
-  };
-  const convertToInvoice = (qid) => {
-    const q = quotes.find((x) => x.id === qid);
-    if (!q) return;
-    setBuilder({
-      kind:"invoice",
-      prefill:{
-        customer: q.customer,
-        summary:  q.summary,
-        items:    q.items.map((it) => ({ ...it })),
-        notes:    q.notes,
-        due:      "04 Jul 2026",
-      },
-      sourceQuoteId: qid,
-    });
+  const sendInvoice = (inv) => patchStatus(inv.id, "sent", "Invoice " + inv.number + " marked sent");
+  const markPaid    = (inv) => patchStatus(inv.id, "paid", "Invoice " + inv.number + " marked paid");
+  const voidInvoice = (inv) => {
+    if (!window.confirm("Void " + inv.number + "? It stays on the register but no longer counts in the totals.")) return;
+    patchStatus(inv.id, "void", "Invoice " + inv.number + " voided");
   };
 
-  const sendInvoice = (id) => {
-    setInvoices((is) => is.map((i) => i.id === id ? { ...i, status:"Sent" } : i));
-    showToast("Invoice sent");
-  };
-  const markPaid = (id) => {
-    setInvoices((is) => is.map((i) => i.id === id
-      ? { ...i, status:"Paid", paidDate: todayLabel(), method:"Bank transfer (AIB)" }
-      : i));
-    showToast("Invoice marked paid");
-  };
-  const downloadPdf = () => showToast("PDF queued for download");
+  const openInv = rows.find((i) => i.id === openInvId);
 
-  const toggleIntegration = (id) => {
-    setIntegrations((ints) => ints.map((i) => i.id === id
-      ? { ...i, connected: !i.connected, lastSync: !i.connected ? "Just now" : i.lastSync }
-      : i));
-  };
+  const head = (
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">Billing</h1>
+        <p className="page-desc">Your organisation's live invoice register. A sent invoice past its due date flips to overdue by itself each day.</p>
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        {/* Live export — pulls the org's real invoices from the backend as a
+            Xero/Sage-importable CSV (hlDownloadCsv defined in the Reports view). */}
+        <button className="btn" onClick={() => hlDownloadCsv("/invoices/export.csv", "invoices.csv")}>
+          <Icon name="file" size={15} />Export CSV (Xero/Sage)
+        </button>
+        <button className="btn btn-primary" onClick={() => setBuilder(true)}>
+          <Icon name="plus" size={15} />New invoice
+        </button>
+      </div>
+    </div>
+  );
 
-  /* For demo realism, also auto-accept any quote that's currently 'Sent'
-     when the user opens the convert flow. (Keep it simple — show Accept
-     buttons on Sent quotes too via a small inline gesture.) */
-
-  const openInv = invoices.find((i) => i.id === openInvId);
+  if (invoices === null) {
+    return (
+      <div className="content-inner">{head}
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading your invoices…</div>
+      </div>
+    );
+  }
+  if (invoices === false) {
+    return (
+      <div className="content-inner">{head}
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          {status === 403 || status === 401
+            ? "Billing needs admin or supervisor access with the billing permission turned on."
+            : "Could not load the invoices. Refresh to try again."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-inner">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Billing</h1>
-          <p className="page-desc">Quotes and invoices for everything HazardLink delivers — synced to your accounting package. VAT at {vatRate}% across the Republic.</p>
-        </div>
-        <div style={{ display:"flex", gap:8 }}>
-          {/* Live export — pulls the org's real invoices from the backend as a
-              Xero/Sage-importable CSV (hlDownloadCsv defined in the Reports view). */}
-          <button className="btn" onClick={() => hlDownloadCsv("/invoices/export.csv", "invoices.csv")}>
-            <Icon name="file" size={15} />Export CSV (Xero/Sage)
-          </button>
-          {tab === "quotes" && (
-            <button className="btn btn-primary" onClick={() => setBuilder({ kind:"quote" })}>
-              <Icon name="plus" size={15} />New quote
-            </button>
-          )}
-          {tab === "invoices" && (
-            <button className="btn btn-primary" onClick={() => setBuilder({ kind:"invoice" })}>
-              <Icon name="plus" size={15} />New invoice
-            </button>
-          )}
-        </div>
-      </div>
+      {head}
 
-      {/* KPI tiles */}
+      {/* KPI tiles — summed from the live rows */}
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:"var(--accent-soft)", color:"var(--accent)" }}><Icon name="creditCard" size={16} /></div>
             <span className="kpi-label">Outstanding unpaid</span>
           </div>
-          <div className="kpi-val">{fmtEur(outstanding)}</div>
-          <div className="kpi-foot">across {invoices.filter((i) => i.status === "Sent" || i.status === "Overdue").length} invoices</div>
+          <div className="kpi-val">{fmtCents(outstanding)}</div>
+          <div className="kpi-foot">across {outCount} invoice{outCount === 1 ? "" : "s"}</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:"var(--crit-soft)", color:"var(--crit)" }}><Icon name="alertTri" size={16} /></div>
             <span className="kpi-label">Overdue total</span>
           </div>
-          <div className="kpi-val">{fmtEur(overdue)}</div>
-          <div className="kpi-foot">{invoices.filter((i) => i.status === "Overdue").length} overdue customer{invoices.filter((i) => i.status === "Overdue").length === 1 ? "" : "s"}</div>
+          <div className="kpi-val">{fmtCents(overdueTotal)}</div>
+          <div className="kpi-foot">{overdueCount} overdue invoice{overdueCount === 1 ? "" : "s"}</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:"var(--ok-soft)", color:"var(--ok)" }}><Icon name="checkCircle" size={16} /></div>
             <span className="kpi-label">Paid this month</span>
           </div>
-          <div className="kpi-val">{fmtEur(paidThisMonth)}</div>
-          <div className="kpi-foot">{invoices.filter((i) => i.status === "Paid").length} invoices settled</div>
+          <div className="kpi-val">{fmtCents(paidThisMonth)}</div>
+          <div className="kpi-foot">{paidMonthCount} invoice{paidMonthCount === 1 ? "" : "s"} settled</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
             <div className="kpi-ico" style={{ background:"var(--maint-soft)", color:"var(--maint)" }}><Icon name="edit" size={16} /></div>
-            <span className="kpi-label">Quotes awaiting</span>
+            <span className="kpi-label">Drafts</span>
           </div>
-          <div className="kpi-val">{quotesAwaiting}</div>
-          <div className="kpi-foot">sent quotes pending response</div>
+          <div className="kpi-val">{draftCount}</div>
+          <div className="kpi-foot">not sent to a customer yet</div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="tabs" style={{ marginTop:6 }}>
-        {[
-          { id:"quotes",   label:`Quotes (${quotes.length})` },
-          { id:"invoices", label:`Invoices (${invoices.length})` },
-          { id:"settings", label:"Settings" },
-        ].map((t) => (
-          <button key={t.id} className={"tab-btn" + (tab === t.id ? " on" : "")}
-            onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
+      <div className="toolbar" style={{ marginBottom:12, marginTop:6 }}>
+        <div style={{ fontSize:13, color:"var(--ink-3)" }}>
+          {scoped.length} invoice{scoped.length === 1 ? "" : "s"} · {overdueCount} overdue
+          {hiddenByScope > 0 && (
+            <span> · {hiddenByScope} more not tied to {site.name} hidden by the site filter</span>
+          )}
+        </div>
       </div>
 
-      {tab === "quotes" && (
-        <QuotesTab quotes={scopedQuotes} vatRate={vatRate}
-          onNew={() => setBuilder({ kind:"quote" })}
-          onSend={sendQuote}
-          onConvert={convertToInvoice}
-          onMarkDeclined={declineQuote} />
-      )}
-      {tab === "invoices" && (
-        <InvoicesTab invoices={scopedInvoices} vatRate={vatRate}
-          onNew={() => setBuilder({ kind:"invoice" })}
-          onOpen={setOpenInvId}
-          onMarkPaid={markPaid}
-          onSend={sendInvoice} />
-      )}
-      {tab === "settings" && (
-        <SettingsTab integrations={integrations} onToggleIntegration={toggleIntegration}
-          vatRate={vatRate} setVat={setVatRate} prefix={prefix} setPrefix={setPrefix} />
-      )}
+      <div className="card">
+        <div className="bill-table-head bill-inv-head">
+          <div>Number</div><div>Customer</div><div>Notes</div><div>Amount</div><div>Status</div><div>Due</div><div />
+        </div>
+        {scoped.length === 0 && (
+          <div style={{ padding:"40px 20px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>
+            {rows.length === 0
+              ? "No invoices yet. Raise your first one and it lands here with an automatic INV number."
+              : "No invoices for this site. Clear the site filter to see the rest."}
+          </div>
+        )}
+        {scoped.map((inv) => {
+          const siteName = billSiteName(inv.buildingId);
+          const busy = busyId === inv.id;
+          return (
+            <div className="bill-table-row bill-inv-row" key={inv.id} onClick={() => setOpenInvId(inv.id)}>
+              <div className="bill-id">{inv.number}</div>
+              <div>
+                <div className="bill-cust">{inv.customerName || "—"}</div>
+                <div className="bill-cust-sub"><Icon name="mapPin" size={10} />{siteName || "No site"}</div>
+              </div>
+              <div className="bill-summary">{inv.notes || "—"}</div>
+              <div className="bill-amount">{fmtCents(inv.amountCents, inv.currency)}</div>
+              <div>{billStatusPill(inv.status)}</div>
+              <div className="bill-date">{billFmtDate(inv.dueAt)}</div>
+              <div className="bill-actions" onClick={(e) => e.stopPropagation()}>
+                {inv.status === "draft" && (
+                  <button className="btn btn-sm" disabled={busy} onClick={() => sendInvoice(inv)}>
+                    <Icon name="send" size={12} />Mark sent
+                  </button>
+                )}
+                {(inv.status === "sent" || inv.status === "overdue") && (
+                  <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => markPaid(inv)}>
+                    <Icon name="check" size={12} />Mark paid
+                  </button>
+                )}
+                {inv.status === "paid" && (
+                  <span className="bill-action-muted">Paid {billFmtDate(inv.paidAt)}</span>
+                )}
+                {inv.status === "void" && (
+                  <span className="bill-action-muted">Void</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="card card-pad" style={{ marginTop:16, color:"var(--ink-3)", fontSize:13, lineHeight:1.55 }}>
+        Quotes and accounting sync (Xero, Sage, QuickBooks) are not wired to the live backend yet, so those
+        tabs are folded away rather than filled with demo data. The invoices above, the totals and the CSV
+        export are all live.
+      </div>
 
       {builder && (
-        <DocBuilderModal
-          kind={builder.kind}
-          prefill={builder.prefill}
-          vatRate={vatRate}
-          onClose={() => setBuilder(null)}
-          onSave={(payload) => {
-            if (builder.kind === "quote") saveQuote(payload);
-            else {
-              saveInvoice(payload);
-              if (builder.sourceQuoteId) {
-                /* Mark the source quote as converted (kept Accepted but
-                   action button hidden because no longer the latest). */
-                acceptQuote(builder.sourceQuoteId);
-              }
-            }
+        <InvoiceModal
+          onClose={() => setBuilder(false)}
+          onSaved={(inv, st) => {
+            setBuilder(false);
+            showToast("Invoice " + ((inv && inv.number) || "") + (st === "sent" ? " created and marked sent" : " saved as draft"));
+            refresh();
           }}
         />
       )}
       {openInv && (
         <InvoiceDetailPanel
           inv={openInv}
-          vatRate={vatRate}
+          busy={busyId === openInv.id}
           onClose={() => setOpenInvId(null)}
-          onSend={() => { sendInvoice(openInv.id); }}
-          onMarkPaid={() => { markPaid(openInv.id); }}
-          onDownload={downloadPdf} />
+          onSend={() => sendInvoice(openInv)}
+          onMarkPaid={() => markPaid(openInv)}
+          onVoid={() => voidInvoice(openInv)} />
       )}
       {toastNode}
     </div>
@@ -17816,6 +21883,8 @@ function HorizBars({ data, color, max }) {
 function LineSparkline({ data, color }) {
   color = color || "var(--accent)";
   if (!data || data.length < 2) return null;
+  /* Unique gradient id per colour so two sparklines on one page keep their own fill. */
+  const gid = "lg-" + String(color).replace(/[^a-zA-Z0-9]/g, "");
   const vals = data.map((d) => d.v);
   const max = Math.max(...vals);
   const min = Math.min(...vals);
@@ -17833,7 +21902,7 @@ function LineSparkline({ data, color }) {
   return (
     <svg viewBox={"0 0 " + W + " " + H} preserveAspectRatio="none" style={{ width:"100%", height:120 }}>
       <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.18" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
@@ -17841,7 +21910,7 @@ function LineSparkline({ data, color }) {
       {[0.25, 0.5, 0.75].map((t, i) => (
         <line key={i} x1={padL} y1={padT + t * h} x2={W - padR} y2={padT + t * h} stroke="var(--line)" strokeWidth=".5" />
       ))}
-      <path d={areaPath} fill="url(#lg)" />
+      <path d={areaPath} fill={"url(#" + gid + ")"} />
       <path d={linePath} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => (
         <circle key={i} cx={p.x} cy={p.y} r="2.5" fill={color} />
@@ -17856,50 +21925,199 @@ function LineSparkline({ data, color }) {
   );
 }
 
+/* ── Live report helpers ──────────────────────────────────────────────
+   Everything on this page is computed from real backend rows:
+     GET /reports/spills?from&to      per-alert response and clear times
+     GET /analytics/zone-heatmap      per-zone spill counts
+     GET /analytics/responders        per-person acknowledgement counts
+   Charts with no live source say so instead of showing invented numbers. */
+
+const RPT_PERIODS = {
+  month:   { days: 30,  buckets: 6,  label: "last 30 days" },
+  quarter: { days: 90,  buckets: 6,  label: "last 90 days" },
+  year:    { days: 365, buckets: 12, label: "last 12 months" },
+};
+const RPT_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function rptMedian(nums) {
+  const v = nums.filter((n) => typeof n === "number" && isFinite(n)).sort((a, b) => a - b);
+  if (v.length === 0) return null;
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+}
+
+function rptFmtDur(sec) {
+  if (sec == null || !isFinite(sec)) return "—";
+  if (sec < 60) return Math.round(sec) + "s";
+  if (sec < 5940) return Math.round(sec / 60) + "m";
+  return (sec / 3600).toFixed(1) + "h";
+}
+
+function rptDayLabel(ms) {
+  const d = new Date(ms);
+  return d.getDate() + " " + RPT_MONTHS[d.getMonth()];
+}
+
+/* Split the period into equal buckets and drop each row in by openedAt.
+   Returns [{ startMs, count, closeSecs: [..] }]. */
+function rptBucketise(rows, fromMs, toMs, nBuckets) {
+  const span = Math.max(1, toMs - fromMs);
+  const buckets = Array.from({ length: nBuckets }, (_, i) => ({
+    startMs: fromMs + (span / nBuckets) * i, count: 0, closeSecs: [],
+  }));
+  for (const r of rows) {
+    const t = new Date(r.openedAt).getTime();
+    if (!isFinite(t)) continue;
+    let i = Math.floor(((t - fromMs) / span) * nBuckets);
+    if (i < 0) i = 0;
+    if (i > nBuckets - 1) i = nBuckets - 1;
+    buckets[i].count += 1;
+    if (typeof r.resolutionSeconds === "number") buckets[i].closeSecs.push(r.resolutionSeconds);
+  }
+  return buckets;
+}
+
+function RptEmpty({ children }) {
+  return (
+    <div style={{ padding:"26px 10px", textAlign:"center", color:"var(--ink-3)", fontSize:13, lineHeight:1.55 }}>
+      {children}
+    </div>
+  );
+}
+
 function ReportsView({ go }) {
   const { site } = React.useContext(SiteContext);
   const [period, setPeriod] = React.useState("month");
-  const r = HL.reportData;
+  const [data, setData] = React.useState(null); // null loading | {error,status} | {spills,zones,responders}
+  const seq = React.useRef(0);
 
-  /* When scoped to a single site, keep only that site's row in the per-site charts. */
-  const shortName = site ? site.name.split(/[\s,]/)[0] : null;
-  const filterRows = (rows) => site
-    ? rows.filter((row) => row.l.toLowerCase().includes(shortName.toLowerCase()))
-    : rows;
-  const pmCompliance = filterRows(r.pmCompliance);
-  const cleanScores  = filterRows(r.cleanScores);
+  const cfg = RPT_PERIODS[period];
+  const toMs = Date.now();
+  const fromMs = toMs - cfg.days * 86400000;
+  const fromIso = new Date(fromMs).toISOString();
+  const toIso = new Date(toMs).toISOString();
+
+  React.useEffect(() => {
+    const mySeq = ++seq.current;
+    setData(null);
+    const qs = "?from=" + encodeURIComponent(fromIso) + "&to=" + encodeURIComponent(toIso);
+    Promise.all([
+      hlApi("/reports/spills" + qs),
+      hlApi("/analytics/zone-heatmap?days=" + cfg.days),
+      hlApi("/analytics/responders?days=" + cfg.days),
+    ]).then(([sp, hm, rs]) => {
+      if (seq.current !== mySeq) return;
+      if (!sp.ok) { setData({ error: true, status: sp.status }); return; }
+      setData({
+        spills: (sp.b && sp.b.spills) || [],
+        zones: hm.ok && hm.b ? (hm.b.zones || []) : null,           // null = that call failed
+        responders: rs.ok && rs.b ? (rs.b.responders || []) : null,
+      });
+    }).catch(() => { if (seq.current === mySeq) setData({ error: true, status: 0 }); });
+  }, [period]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Header (title, period toggle, export buttons) renders in every state. */
+  const head = (
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">Reports</h1>
+        <p className="page-desc">
+          {site
+            ? <React.Fragment>Live spill response figures for <b>{site.name}</b>, {cfg.label}. Every number comes from your real alert history.</React.Fragment>
+            : "Live spill response figures across all sites, " + cfg.label + ". Every number comes from your real alert history."}
+        </p>
+      </div>
+      <div style={{ display:"flex", gap:10 }}>
+        <div className="seg">
+          {[["month","This month"],["quarter","This quarter"],["year","This year"]].map(([v,l]) => (
+            <button key={v} className={period === v ? "on" : ""} onClick={() => setPeriod(v)}>{l}</button>
+          ))}
+        </div>
+        <button className="btn" onClick={hlOpenAuditPack}>
+          <Icon name="shield" size={15} />Audit pack
+        </button>
+        <button className="btn" onClick={() => hlDownloadCsv("/reports/energy.csv", "energy-readings.csv")}>
+          <Icon name="file" size={15} />Energy CSV
+        </button>
+        <button className="btn"
+          onClick={() => hlDownloadCsv(
+            "/reports/compliance.pdf?from=" + encodeURIComponent(fromIso) + "&to=" + encodeURIComponent(toIso),
+            "compliance-report.pdf")}>
+          <Icon name="file" size={15} />Compliance PDF
+        </button>
+      </div>
+    </div>
+  );
+
+  if (data === null) {
+    return (
+      <div className="content-inner">{head}
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Building your reports from live data…</div>
+      </div>
+    );
+  }
+  if (data.error) {
+    return (
+      <div className="content-inner">{head}
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          {data.status === 403 || data.status === 401
+            ? "Reports are for supervisors and admins. Ask an admin if you need access."
+            : "Could not load the report data. Refresh to try again."}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Site scoping over the real rows ── */
+  const spills = site ? data.spills.filter((r) => r.buildingName === site.name) : data.spills;
+  const zones = data.zones == null ? null
+    : (site ? data.zones.filter((z) => z.buildingId === site.id) : data.zones);
+
+  /* ── Stat strip, computed from the rows ── */
+  const medAck   = rptMedian(spills.map((r) => r.responseSeconds));
+  const medClear = rptMedian(spills.map((r) => r.resolutionSeconds));
+  const topZone  = zones && zones.length ? [...zones].sort((a, b) => b.spillCount - a.spillCount)[0] : null;
+  const busiest  = topZone && topZone.spillCount > 0 ? topZone.zoneName : "—";
+  const stats = [
+    { n: String(spills.length), l: "Alerts logged" },
+    { n: rptFmtDur(medAck),     l: "Median time to acknowledge" },
+    { n: rptFmtDur(medClear),   l: "Median time to clear" },
+    { n: busiest,               l: "Busiest zone (spills)", shrink: busiest.length > 9 },
+  ];
+
+  /* ── Chart data ── */
+  const zoneBars = zones == null ? null
+    : zones.filter((z) => z.spillCount > 0)
+        .sort((a, b) => b.spillCount - a.spillCount)
+        .slice(0, 6)
+        .map((z) => ({ l: z.zoneName + " · " + z.floorName, v: z.spillCount }));
+
+  const responderBars = data.responders == null ? null
+    : data.responders.filter((r) => r.ackCount > 0)
+        .slice(0, 6)
+        .map((r) => ({ l: r.userName, v: r.ackCount }));
+
+  const buckets = rptBucketise(spills, fromMs, toMs, cfg.buckets);
+  const thin = (i) => cfg.buckets > 8 && i % 2 === 1; // year view: label every other point
+  const trend = buckets.map((b, i) => ({ l: thin(i) ? "" : rptDayLabel(b.startMs), v: b.count }));
+  const anySpills = spills.length > 0;
+  const clearTrend = buckets
+    .filter((b) => b.closeSecs.length > 0)
+    .map((b, i, arr) => ({
+      l: (arr.length > 8 && i % 2 === 1) ? "" : rptDayLabel(b.startMs),
+      v: Math.round(b.closeSecs.reduce((s, n) => s + n, 0) / b.closeSecs.length / 60),
+    }));
+
+  const emptyNote = "No spill data for this period yet. This chart builds up as alerts come in.";
 
   return (
     <div className="content-inner">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Reports</h1>
-          <p className="page-desc">
-            {site
-              ? <React.Fragment>Cleaning, maintenance and security at <b>{site.name}</b> — ready to share with the client.</React.Fragment>
-              : "Cleaning, maintenance and security across all sites — ready to share with clients and stakeholders."}
-          </p>
-        </div>
-        <div style={{ display:"flex", gap:10 }}>
-          <div className="seg">
-            {[["month","This month"],["quarter","This quarter"],["year","This year"]].map(([v,l]) => (
-              <button key={v} className={period === v ? "on" : ""} onClick={() => setPeriod(v)}>{l}</button>
-            ))}
-          </div>
-          <button className="btn" onClick={hlOpenAuditPack}>
-            <Icon name="shield" size={15} />Audit pack
-          </button>
-          <button className="btn" onClick={() => hlDownloadCsv("/reports/energy.csv", "energy-readings.csv")}>
-            <Icon name="file" size={15} />Energy CSV
-          </button>
-          <button className="btn"><Icon name="file" size={15} />Export PDF</button>
-        </div>
-      </div>
+      {head}
 
       <div className="stat-strip">
-        {r.summary.map((s, i) => (
+        {stats.map((s, i) => (
           <div className="stat-box card" key={i}>
-            <div className="n">{s.n}</div>
+            <div className="n" style={s.shrink ? { fontSize:18, lineHeight:"34px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" } : undefined}>{s.n}</div>
             <div className="l">{s.l}</div>
           </div>
         ))}
@@ -17907,27 +22125,52 @@ function ReportsView({ go }) {
 
       <div className="report-grid">
         <div className="card chart-card">
-          <div className="chart-title">PM compliance{site ? " — " + site.name : " by site"}</div>
-          <div className="chart-sub">Planned maintenance completed on time this period (%)</div>
-          <HorizBars data={pmCompliance} color="var(--ok)" max={100} />
+          <div className="chart-title">Spills by zone{site ? " — " + site.name : ""}</div>
+          <div className="chart-sub">Spill alerts per zone, {cfg.label}. Repeat offenders point at a root cause.</div>
+          {zoneBars == null
+            ? <RptEmpty>Could not load the zone breakdown. Refresh to try again.</RptEmpty>
+            : zoneBars.length === 0
+              ? <RptEmpty>{emptyNote}</RptEmpty>
+              : <HorizBars data={zoneBars} color="var(--secure)" />}
         </div>
 
         <div className="card chart-card">
-          <div className="chart-title">Mean time to repair (MTTR)</div>
-          <div className="chart-sub">Average calendar days from fault logged to work order closed</div>
-          <LineSparkline data={r.mttr} color="var(--accent)" />
+          <div className="chart-title">Alert trend</div>
+          <div className="chart-sub">Alerts opened over the {cfg.label}{site ? " at " + site.name : ""}</div>
+          {anySpills
+            ? <LineSparkline data={trend} color="var(--accent)" />
+            : <RptEmpty>{emptyNote}</RptEmpty>}
         </div>
 
         <div className="card chart-card">
-          <div className="chart-title">Cleaning scores{site ? " — " + site.name : " by site"}</div>
-          <div className="chart-sub">Average inspection score across all rounds this period (%)</div>
-          <HorizBars data={cleanScores} color="var(--clean)" max={100} />
+          <div className="chart-title">Time to clear</div>
+          <div className="chart-sub">Average minutes from alert opened to closed{site ? ", " + site.name : ""}</div>
+          {clearTrend.length >= 2
+            ? <LineSparkline data={clearTrend} color="var(--clean)" />
+            : <RptEmpty>{anySpills ? "Not enough closed alerts in this period to draw a trend yet." : emptyNote}</RptEmpty>}
         </div>
 
         <div className="card chart-card">
-          <div className="chart-title">Incidents by type</div>
-          <div className="chart-sub">Total incidents logged{site ? " at " + site.name : " across all sites"} this period</div>
-          <HorizBars data={r.incidentsByType} color="var(--secure)" />
+          <div className="chart-title">Alerts acknowledged by responder</div>
+          <div className="chart-sub">Who picked up alerts this period{site ? " (leaderboard is org-wide, all sites)" : ""}</div>
+          {responderBars == null
+            ? <RptEmpty>Could not load the responder figures. Refresh to try again.</RptEmpty>
+            : responderBars.length === 0
+              ? <RptEmpty>{emptyNote}</RptEmpty>
+              : <HorizBars data={responderBars} color="var(--ok)" />}
+        </div>
+      </div>
+
+      <div className="report-grid" style={{ marginTop:16 }}>
+        <div className="card chart-card" style={{ opacity:.8 }}>
+          <div className="chart-title">PM compliance</div>
+          <div className="chart-sub">Planned maintenance completed on time</div>
+          <RptEmpty>Not wired to live data yet. The backend has no planned-maintenance reporting endpoint, so nothing is shown rather than made-up figures.</RptEmpty>
+        </div>
+        <div className="card chart-card" style={{ opacity:.8 }}>
+          <div className="chart-title">Cleaning scores</div>
+          <div className="chart-sub">Average inspection score across rounds</div>
+          <RptEmpty>Not wired to live data yet. The backend has no inspection scoring endpoint, so nothing is shown rather than made-up figures.</RptEmpty>
         </div>
       </div>
     </div>
@@ -17938,7 +22181,7 @@ Object.assign(window, { ReportsView, HorizBars, LineSparkline, hlAuthedFetch, hl
 
 /* ════════════════════ asset_50_fbe6ef22.js ════════════════════ */
 ;
-/* HazardLink — Audit log */
+/* HazardLink — Audit log (live, from GET /admin/audit-log) */
 
 const AUDIT_ACTION_META = {
   created:      { tone:"accent", icon:"plus" },
@@ -17959,56 +22202,196 @@ const AUDIT_ACTION_META = {
   uploaded:     { tone:"accent", icon:"plus" },
 };
 
+/* Kept (empty) because the demo export is referenced elsewhere. The view below
+   reads the live backend, never this. */
 const AUDIT_ENTRIES = [];
 
-const AUDIT_ACTION_TYPES   = ["All actions","created","updated","deleted","approved","declined","resolved","acknowledged","invited","deactivated","exported","scanned","signed_in"];
-const AUDIT_DATE_RANGES    = ["Today","Last 7 days","Last 30 days","All time"];
+const AUDIT_DATE_RANGES = ["Today", "Last 7 days", "Last 30 days", "All time"];
+const AUD_PAGE = 200;
 
-function _matchesDateRange(entry, range) {
+/* Map a raw backend action ("invoice.create", "user.login", …) onto a chip
+   tone + icon. Unknown verbs fall back to a neutral chip; the raw text is
+   always shown, so nothing is hidden by the mapping. */
+function audVerbMeta(action) {
+  const a = String(action || "").toLowerCase();
+  const has = (s) => a.indexOf(s) !== -1;
+  if (has("delet") || has("eras"))                 return AUDIT_ACTION_META.deleted;
+  if (has("deactivat"))                            return AUDIT_ACTION_META.deactivated;
+  if (has("invite_accepted") || has("accept"))     return AUDIT_ACTION_META.approved;
+  if (has("invit"))                                return AUDIT_ACTION_META.invited;
+  if (has("creat") || has("register"))             return AUDIT_ACTION_META.created;
+  if (has("login") || has("signed_in"))            return AUDIT_ACTION_META.signed_in;
+  if (has("declin"))                               return AUDIT_ACTION_META.declined;
+  if (has("export"))                               return AUDIT_ACTION_META.exported;
+  if (has("send") || has("sent") || has("dispatch")) return AUDIT_ACTION_META.exported;
+  if (has("updat") || has("chang") || has("permission")) return AUDIT_ACTION_META.updated;
+  return AUDIT_ACTION_META.viewed;
+}
+
+function audDayLabel(dt) {
+  const startOf = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+  const diff = Math.round((startOf(new Date()) - startOf(dt)) / 86400000);
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  const dows = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const mons = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return dows[dt.getDay()] + " " + dt.getDate() + " " + mons[dt.getMonth()] + (diff > 300 ? " " + dt.getFullYear() : "");
+}
+
+function audMetaSummary(metadata) {
+  if (metadata == null) return "";
+  if (typeof metadata === "string") return metadata.slice(0, 140);
+  try {
+    const parts = Object.entries(metadata).slice(0, 4).map(([k, v]) =>
+      k + ": " + (typeof v === "object" ? JSON.stringify(v) : String(v)));
+    return parts.join(" · ").slice(0, 140);
+  } catch (e) { return ""; }
+}
+
+function audInitials(name) {
+  return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+
+/* Shape one backend row into what the table renders. */
+function audShape(e) {
+  const dt = e.at ? new Date(e.at) : new Date();
+  const two = (n) => (n < 10 ? "0" : "") + n;
+  const name = e.actorName || e.actorEmail || "System";
+  return {
+    id: e.id,
+    ts: dt.getTime(),
+    t: two(dt.getHours()) + ":" + two(dt.getMinutes()),
+    dayLabel: audDayLabel(dt),
+    user: name,
+    email: e.actorEmail || "",
+    sub: e.actorUserId ? (e.actorEmail || "") : "Automatic",
+    isSystem: !e.actorUserId,
+    initials: e.actorUserId ? audInitials(name) : "SY",
+    action: e.action || "event",
+    targetType: e.targetType || "—",
+    target: e.targetId ? String(e.targetId).slice(0, 8) : "—",
+    detail: audMetaSummary(e.metadata),
+    at: e.at || "",
+  };
+}
+
+function audMatchesRange(entry, range) {
   if (range === "All time") return true;
-  if (range === "Today")    return entry.date === "Today";
-  if (range === "Last 7 days") return ["Today","Yesterday","2 days ago","3 days ago","4 days ago","5 days ago","6 days ago"].includes(entry.date);
-  return true;
+  if (range === "Today") {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    return entry.ts >= start.getTime();
+  }
+  const days = range === "Last 7 days" ? 7 : 30;
+  return entry.ts >= Date.now() - days * 86400000;
+}
+
+/* Client-side CSV of the (filtered) live rows currently on screen. */
+function audExportCsv(rows) {
+  const esc = (v) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const header = "at,actor,actor_email,action,target_type,target_id,detail";
+  const body = rows.map((e) =>
+    [e.at, e.user, e.email, e.action, e.targetType, e.target, e.detail].map(esc).join(",")).join("\n");
+  const blob = new Blob([header + "\n" + body + "\n"], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "audit-log.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 function AuditLogView({ go }) {
+  const [rows,   setRows]   = React.useState(null); // null loading | false error | [entries]
+  const [status, setStatus] = React.useState(0);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+
   const [range,  setRange]  = React.useState("Last 7 days");
   const [user,   setUser]   = React.useState("All users");
   const [act,    setAct]    = React.useState("All actions");
   const [query,  setQuery]  = React.useState("");
 
-  const users = ["All users", ...Array.from(new Set(AUDIT_ENTRIES.map((e) => e.user))).sort()];
+  const fetchPage = React.useCallback((offset) => {
+    return hlApi("/admin/audit-log?limit=" + AUD_PAGE + "&offset=" + offset).then(({ ok, status: st, b }) => {
+      if (!ok) { setStatus(st); if (offset === 0) setRows(false); return; }
+      const batch = ((b && b.entries) || []).map(audShape);
+      setHasMore(batch.length === AUD_PAGE);
+      setRows((prev) => (offset === 0 || !Array.isArray(prev)) ? batch : prev.concat(batch));
+    }).catch(() => { if (offset === 0) setRows(false); });
+  }, []);
 
-  const filtered = AUDIT_ENTRIES.filter((e) => {
-    if (!_matchesDateRange(e, range)) return false;
+  React.useEffect(() => { fetchPage(0); }, [fetchPage]);
+
+  const loaded = Array.isArray(rows) ? rows : [];
+  const loadMore = () => {
+    setLoadingMore(true);
+    fetchPage(loaded.length).finally(() => setLoadingMore(false));
+  };
+
+  const users   = ["All users", ...Array.from(new Set(loaded.map((e) => e.user))).sort()];
+  const actions = ["All actions", ...Array.from(new Set(loaded.map((e) => e.action))).sort()];
+
+  const filtered = loaded.filter((e) => {
+    if (!audMatchesRange(e, range)) return false;
     if (user !== "All users" && e.user !== user) return false;
     if (act  !== "All actions" && e.action !== act) return false;
     if (query.trim()) {
       const q = query.toLowerCase();
-      if (![e.target, e.detail, e.user, e.targetType].some((s) => s && s.toLowerCase().includes(q))) return false;
+      if (![e.target, e.detail, e.user, e.email, e.targetType, e.action].some((s) => s && s.toLowerCase().includes(q))) return false;
     }
     return true;
   });
 
-  // Group by date
+  // Group by day (rows arrive newest first from the backend)
   const grouped = filtered.reduce((m, e) => {
-    (m[e.dateLabel] = m[e.dateLabel] || []).push(e);
+    (m[e.dayLabel] = m[e.dayLabel] || []).push(e);
     return m;
   }, {});
 
-  const grid = "70px 220px 130px 1fr 110px";
+  const grid = "70px 220px 150px 1fr 110px";
+
+  const head = (
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">Audit log</h1>
+        <p className="page-desc">Every recorded change on your organisation: who did what, when and on which record. Straight from the live backend.</p>
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        <button className="btn" disabled={filtered.length === 0} style={{ opacity: filtered.length === 0 ? .5 : 1 }}
+          onClick={() => filtered.length > 0 && audExportCsv(filtered)}>
+          <Icon name="send" size={15} />Export CSV
+        </button>
+      </div>
+    </div>
+  );
+
+  if (rows === null) {
+    return (
+      <div className="content-inner">{head}
+        <div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading the audit log…</div>
+      </div>
+    );
+  }
+  if (rows === false) {
+    return (
+      <div className="content-inner">{head}
+        <div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>
+          {status === 403 || status === 401
+            ? "The audit log is admin only. Sign in as an admin to see it."
+            : "Could not load the audit log. Refresh to try again."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-inner">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Audit log</h1>
-          <p className="page-desc">Every change across HazardLink — who did what, when and on which record. Tamper-evident, exportable.</p>
-        </div>
-        <div style={{ display:"flex", gap:8 }}>
-          <button className="btn"><Icon name="send" size={15} />Export CSV</button>
-        </div>
-      </div>
+      {head}
 
       <div className="card audit-filter-bar">
         <div className="audit-filter">
@@ -18026,7 +22409,7 @@ function AuditLogView({ go }) {
         <div className="audit-filter">
           <label>Action</label>
           <select className="dv-input" value={act} onChange={(e) => setAct(e.target.value)}>
-            {AUDIT_ACTION_TYPES.map((a) => <option key={a} value={a}>{a === "signed_in" ? "signed in" : a}</option>)}
+            {actions.map((a) => <option key={a} value={a}>{a === "All actions" ? a : a.replace(/[._]/g, " ")}</option>)}
           </select>
         </div>
         <div className="audit-filter grow">
@@ -18034,7 +22417,7 @@ function AuditLogView({ go }) {
           <div className="audit-search">
             <Icon name="search" size={14} />
             <input className="dv-input" value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="ID, target, detail, user…" />
+              placeholder="ID, action, detail, user…" />
           </div>
         </div>
         <div className="audit-filter">
@@ -18047,10 +22430,11 @@ function AuditLogView({ go }) {
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", margin:"16px 4px 10px" }}>
         <div style={{ fontSize:13, color:"var(--ink-3)" }}>
-          {filtered.length} of {AUDIT_ENTRIES.length} entries
+          {filtered.length} of {loaded.length} loaded entries
+          {hasMore ? " · older entries not loaded yet" : ""}
         </div>
         <div style={{ fontSize:11.5, color:"var(--ink-3)", fontFamily:"var(--mono)" }}>
-          newest first
+          newest first · filters apply to loaded entries
         </div>
       </div>
 
@@ -18062,7 +22446,12 @@ function AuditLogView({ go }) {
           <div>Target & detail</div>
           <div>Type</div>
         </div>
-        {filtered.length === 0 && (
+        {loaded.length === 0 && (
+          <div style={{ padding:"40px 20px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>
+            Nothing in the audit log yet. Invites, permission changes, invoices and sign-ins land here as they happen.
+          </div>
+        )}
+        {loaded.length > 0 && filtered.length === 0 && (
           <div style={{ padding:"40px 20px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>
             No entries match these filters.
           </div>
@@ -18071,26 +22460,25 @@ function AuditLogView({ go }) {
           <React.Fragment key={dayLabel}>
             <div className="audit-day-sep">{dayLabel}</div>
             {entries.map((e) => {
-              const meta = AUDIT_ACTION_META[e.action] || AUDIT_ACTION_META.viewed;
-              const isSystem = e.role === "System" || e.role === "Sensor" || e.user === "AI agent";
+              const meta = audVerbMeta(e.action);
               return (
                 <div className="wo-row audit-row" style={{ gridTemplateColumns:grid }} key={e.id}>
                   <div className="audit-time">{e.t}</div>
                   <div className="audit-user">
-                    <div className={"audit-av" + (isSystem ? " audit-av-sys" : "")}>{e.initials}</div>
+                    <div className={"audit-av" + (e.isSystem ? " audit-av-sys" : "")}>{e.initials}</div>
                     <div>
                       <div className="audit-user-nm">{e.user}</div>
-                      <div className="audit-user-rl">{e.role}</div>
+                      <div className="audit-user-rl">{e.sub}</div>
                     </div>
                   </div>
                   <div>
                     <span className={"audit-act audit-act-" + meta.tone}>
-                      <Icon name={meta.icon} size={11} />{e.action.replace("_", " ")}
+                      <Icon name={meta.icon} size={11} />{e.action.replace(/[._]/g, " ")}
                     </span>
                   </div>
                   <div className="audit-target">
                     <span className="audit-target-id">{e.target}</span>
-                    <div className="audit-target-detail">{e.detail}</div>
+                    <div className="audit-target-detail">{e.detail || "—"}</div>
                   </div>
                   <div className="audit-type">{e.targetType}</div>
                 </div>
@@ -18098,6 +22486,13 @@ function AuditLogView({ go }) {
             })}
           </React.Fragment>
         ))}
+        {hasMore && (
+          <div style={{ padding:"14px", textAlign:"center", borderTop:"1px solid var(--line)" }}>
+            <button className="btn" disabled={loadingMore} style={{ opacity: loadingMore ? .6 : 1 }} onClick={loadMore}>
+              <Icon name="chevronDown" size={14} />{loadingMore ? "Loading…" : "Load older entries"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -18107,48 +22502,251 @@ Object.assign(window, { AuditLogView, AUDIT_ENTRIES });
 
 /* ════════════════════ asset_27_143ec2a4.js ════════════════════ */
 ;
-/* HazardLink — Users (admin) */
+/* HazardLink — Users (admin) — live, wired to the backend */
 
 const ROLE_META = {
   "admin":       { label:"Admin",       tone:"secure" },
   "supervisor":  { label:"Supervisor",  tone:"accent" },
+  "cleaner":     { label:"Field staff", tone:"muted"  },
+  /* legacy key kept so older references keep working */
   "field staff": { label:"Field staff", tone:"muted"  },
 };
 
 const STATUS_META_USERS = {
-  "active":       { label:"Active",       tone:"ok" },
-  "invited":      { label:"Invite sent",  tone:"accent" },
-  "on-leave":     { label:"On leave",     tone:"warn" },
-  "deactivated":  { label:"Deactivated",  tone:"muted" },
+  "active":       { label:"Active",           tone:"ok" },
+  "invited":      { label:"Invited, pending", tone:"accent" },
+  "on-leave":     { label:"On leave",         tone:"warn" },
+  "deactivated":  { label:"Deactivated",      tone:"muted" },
 };
 
 const HL_USERS_INITIAL = [];
 
 const SITE_OPTIONS = ["All sites"];
 
+/* ---------- Live data helpers ---------- */
+
+function usersInitialsOf(nameOrEmail) {
+  return (nameOrEmail || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+
+function usersFmtDay(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return d.getDate() + " " + m[d.getMonth()] + " " + d.getFullYear();
+}
+
+/* Real status from the real fields: deactivatedAt beats everything, then a
+   pending invite (invitedAt set, inviteAcceptedAt not), otherwise active. */
+function usersStatusOf(u) {
+  if (u.deactivatedAt) return "deactivated";
+  if (u.invitedAt && !u.inviteAcceptedAt) return "invited";
+  return "active";
+}
+
+function mapApiUser(u) {
+  return {
+    id: u.id,
+    name: u.name || u.email,
+    email: u.email,
+    role: u.role,
+    onDuty: !!u.onDuty,
+    status: usersStatusOf(u),
+    invitedAt: u.invitedAt || null,
+    inviteAcceptedAt: u.inviteAcceptedAt || null,
+    initials: usersInitialsOf(u.name || u.email),
+  };
+}
+
+function usersInviteError(status, b) {
+  const code = b && b.error;
+  if (status === 409 || code === "email_taken") return "That email already has an account in this organisation.";
+  if (status === 403) return "Only admins can invite users.";
+  if (status === 400) return "Check the name and the email address.";
+  return "Could not send the invite. Try again.";
+}
+
+/* ===========================================================
+   Invite modal — real POST /users (invite mode). The backend
+   emails a one-time accept link; if the email cannot be sent
+   it hands back the raw link so the admin can pass it on.
+   =========================================================== */
+function InviteUserModal({ onClose, onInvited }) {
+  const [name, setName]     = React.useState("");
+  const [email, setEmail]   = React.useState("");
+  const [role, setRole]     = React.useState("cleaner");
+  const [busy, setBusy]     = React.useState(false);
+  const [error, setError]   = React.useState(null);
+  const [done, setDone]     = React.useState(null); // { email, emailSent, inviteUrl }
+  const [copied, setCopied] = React.useState(false);
+
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const canSubmit = name.trim() !== "" && emailOk && !busy;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    setBusy(true); setError(null);
+    hlApi("/users", { method:"POST", body:{
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      role,
+      sendInvite: true,
+    }}).then(({ ok, status, b }) => {
+      setBusy(false);
+      if (!ok) { setError(usersInviteError(status, b)); return; }
+      setDone({
+        email: email.trim().toLowerCase(),
+        emailSent: !!(b && b.emailSent),
+        inviteUrl: (b && b.inviteUrl) || null,
+      });
+      onInvited && onInvited();
+    }).catch(() => { setBusy(false); setError("Could not reach the server. Try again."); });
+  };
+
+  const copyLink = () => {
+    if (!done || !done.inviteUrl) return;
+    const mark = () => { setCopied(true); setTimeout(() => setCopied(false), 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(done.inviteUrl).then(mark).catch(() => {});
+    }
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="mh-ico"><Icon name="send" size={18} /></div>
+          <div>
+            <h3>Invite a new user</h3>
+            <p>They get an email with a secure link to set their own password. The link lasts 14 days.</p>
+          </div>
+          <button className="icon-btn close" onClick={onClose}><Icon name="x" size={18} /></button>
+        </div>
+        <div className="modal-body">
+          {!done ? (
+            <div className="ai-fields">
+              <div className="ai-field">
+                <label>Full name</label>
+                <input className="dv-input" type="text" value={name}
+                  onChange={(e) => setName(e.target.value)} placeholder="e.g. Aoife Byrne" />
+              </div>
+              <div className="ai-field">
+                <label>Email address</label>
+                <input className="dv-input" type="email" value={email}
+                  onChange={(e) => setEmail(e.target.value)} placeholder="name@company.ie" />
+              </div>
+              <div className="ai-field">
+                <label>Role</label>
+                <select className="dv-input" value={role} onChange={(e) => setRole(e.target.value)}>
+                  <option value="cleaner">Field staff (mobile-first, day-to-day work)</option>
+                  <option value="supervisor">Supervisor (site-level access)</option>
+                  <option value="admin">Admin (full system access)</option>
+                </select>
+              </div>
+              {error && (
+                <div style={{ fontSize:13, color:"var(--crit)", display:"flex", alignItems:"center", gap:6 }}>
+                  <Icon name="alertCircle" size={14} />{error}
+                </div>
+              )}
+            </div>
+          ) : done.emailSent ? (
+            <div style={{ textAlign:"center", padding:"12px 0" }}>
+              <div className="mic-orb" style={{ width:72, height:72 }}><Icon name="checkCircle" size={28} /></div>
+              <h3 style={{ margin:"16px 0 4px", fontSize:17, fontFamily:"var(--font-head)" }}>Invite emailed to {done.email}</h3>
+              <p style={{ fontSize:13, color:"var(--ink-2)", margin:"0 auto", maxWidth:380, lineHeight:1.55 }}>
+                They show as Invited, pending until they open the link and set a password. You can resend it from their profile.
+              </p>
+            </div>
+          ) : (
+            <div style={{ padding:"6px 0" }}>
+              <div style={{ textAlign:"center", marginBottom:14 }}>
+                <div className="mic-orb" style={{ width:64, height:64, margin:"0 auto" }}><Icon name="alertTri" size={24} /></div>
+                <h3 style={{ margin:"14px 0 4px", fontSize:16, fontFamily:"var(--font-head)" }}>Account created, but the email did not send</h3>
+                <p style={{ fontSize:13, color:"var(--ink-2)", margin:"0 auto", maxWidth:400, lineHeight:1.55 }}>
+                  Copy the invite link below and pass it on yourself. It lasts 14 days.
+                </p>
+              </div>
+              {done.inviteUrl ? (
+                <div style={{ display:"flex", gap:8 }}>
+                  <input className="dv-input" readOnly value={done.inviteUrl}
+                    onFocus={(e) => e.target.select()}
+                    style={{ flex:1, fontFamily:"var(--mono)", fontSize:12 }} />
+                  <button className="btn" onClick={copyLink}><Icon name="link" size={14} />{copied ? "Copied" : "Copy"}</button>
+                </div>
+              ) : (
+                <p style={{ fontSize:12.5, color:"var(--ink-3)", textAlign:"center" }}>
+                  No link came back either. Open the person's profile and use Resend invite.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="modal-foot">
+          {!done ? (
+            <React.Fragment>
+              <button className="btn" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" disabled={!canSubmit}
+                style={{ opacity: canSubmit ? 1 : .5 }} onClick={submit}>
+                <Icon name="send" size={15} />{busy ? "Sending…" : "Send invite"}
+              </button>
+            </React.Fragment>
+          ) : (
+            <button className="btn btn-primary" onClick={onClose}>Done</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ===========================================================
    List view
    =========================================================== */
 function UsersView({ go }) {
-  const [users,  setUsers]  = React.useState(HL_USERS_INITIAL);
+  const [users,  setUsers]  = React.useState(null); // null loading | false error | "forbidden" | [users]
   const [filter, setFilter] = React.useState("All");
   const [query,  setQuery]  = React.useState("");
   const [openId, setOpenId] = React.useState(null);
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const { showToast, toastNode } = useViewToast();
 
-  if (openId) {
-    const u = users.find((x) => x.id === openId);
-    if (!u) { setOpenId(null); return null; }
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const isAdmin = me.role === "admin";
+
+  const refresh = React.useCallback(() => {
+    return hlApi("/users").then(({ ok, status, b }) => {
+      if (!ok) { setUsers(status === 403 ? "forbidden" : false); return; }
+      setUsers(((b && b.users) || []).map(mapApiUser));
+    }).catch(() => setUsers(false));
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const list = Array.isArray(users) ? users : [];
+  const openUser = openId ? list.find((x) => x.id === openId) : null;
+  React.useEffect(() => {
+    if (openId && Array.isArray(users) && !openUser) setOpenId(null);
+  }, [openId, users, openUser]);
+
+  if (users === null) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Loading users…</div></div>;
+  }
+  if (users === "forbidden") {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--ink-3)", fontSize:13.5 }}>Only admins and supervisors can view the user list.</div></div>;
+  }
+  if (users === false) {
+    return <div className="content-inner"><div className="card card-pad" style={{ color:"var(--warn)", fontSize:13.5 }}>Could not load users. Refresh to try again.</div></div>;
+  }
+
+  if (openUser) {
     return (
       <React.Fragment>
         <UserDetail
-          user={u}
+          user={openUser}
+          me={me}
           onBack={() => setOpenId(null)}
-          onSave={(patch) => { setUsers((all) => all.map((x) => x.id === u.id ? { ...x, ...patch } : x)); showToast("User updated"); }}
-          onResend={() => showToast("Invite resent to " + u.email)}
-          onDeactivate={() => { setUsers((all) => all.map((x) => x.id === u.id ? { ...x, status:"deactivated", lastActive:"just now" } : x)); showToast(u.name + " deactivated"); }}
-          onReactivate={() => { setUsers((all) => all.map((x) => x.id === u.id ? { ...x, status:"active", lastActive:"just now" } : x)); showToast(u.name + " reactivated"); }}
+          onChanged={refresh}
+          showToast={showToast}
         />
         {toastNode}
       </React.Fragment>
@@ -18160,23 +22758,23 @@ function UsersView({ go }) {
     if (filter === "All")          return u.status !== "deactivated";
     if (filter === "Admins")       return u.role === "admin";
     if (filter === "Supervisors")  return u.role === "supervisor";
-    if (filter === "Field staff")  return u.role === "field staff";
+    if (filter === "Field staff")  return u.role === "cleaner";
     if (filter === "Inactive")     return u.status === "deactivated" || u.status === "invited";
     return true;
   };
   const matchQuery = (u) => {
     if (!query.trim()) return true;
     const q = query.toLowerCase();
-    return [u.name, u.email, u.sites].some((s) => s && s.toLowerCase().includes(q));
+    return [u.name, u.email].some((s) => s && s.toLowerCase().includes(q));
   };
 
-  const rows = users.filter(matchTab).filter(matchQuery);
+  const rows = list.filter(matchTab).filter(matchQuery);
 
   const counts = {
-    total: users.filter((u) => u.status !== "deactivated").length,
-    admins: users.filter((u) => u.role === "admin" && u.status !== "deactivated").length,
-    supervisors: users.filter((u) => u.role === "supervisor" && u.status !== "deactivated").length,
-    field: users.filter((u) => u.role === "field staff" && u.status !== "deactivated").length,
+    total: list.filter((u) => u.status !== "deactivated").length,
+    admins: list.filter((u) => u.role === "admin" && u.status !== "deactivated").length,
+    supervisors: list.filter((u) => u.role === "supervisor" && u.status !== "deactivated").length,
+    field: list.filter((u) => u.role === "cleaner" && u.status !== "deactivated").length,
   };
 
   const grid = "44px 1.2fr 1.2fr 160px 200px 130px 130px 24px";
@@ -18192,34 +22790,20 @@ function UsersView({ go }) {
           <button className="btn" onClick={() => { window.__settingsInitialTab = "roles"; go("settings"); }}>
             <Icon name="lock" size={14} />Manage roles &amp; permissions
           </button>
-          <button className="btn btn-primary" onClick={() => setInviteOpen(true)}>
+          <button className="btn btn-primary"
+            onClick={() => { if (!isAdmin) { showToast("Only admins can invite users."); return; } setInviteOpen(true); }}
+            style={{ opacity: isAdmin ? 1 : .6 }}
+            title={isAdmin ? undefined : "Only admins can invite users"}>
             <Icon name="plus" size={15} />Invite user
           </button>
         </div>
       </div>
 
       {inviteOpen && (
-        <SimpleAddModal
-          title="Invite a new user"
-          subtitle="They'll get an email with a link to set up their account."
-          icon="send"
-          submitLabel="Send invite" submitIcon="send"
-          successTitle="Invite sent"
-          successCopy="They'll appear in the users list as 'Invite sent' until they accept."
-          fields={[
-            { id:"email",  label:"Email address",  type:"email",  placeholder:"name@hazardlink.ie" },
-            { id:"role",   label:"Role",           type:"select", default:"field staff", options:["admin","supervisor","field staff"] },
-            { id:"sites",  label:"Sites",          type:"select", default:"All sites",   options:SITE_OPTIONS },
-            { id:"note",   label:"Welcome note (optional)", type:"textarea", rows:3, placeholder:"Welcome to the team!", required:false },
-          ]}
-          onSubmit={(vals) => {
-            const id = "u-new-" + Date.now();
-            const initials = vals.email.split("@")[0].slice(0,2).toUpperCase();
-            const name = vals.email.split("@")[0].split(/[._]/).map((p) => p[0].toUpperCase() + p.slice(1)).join(" ");
-            setUsers((all) => [{ id, name, email:vals.email, role:vals.role, sites:vals.sites, lastActive:"never", status:"invited", initials, joined:"just now", mfa:false, manager:"—", phone:"—" }, ...all]);
-            showToast("Invite sent to " + vals.email);
-          }}
-          onClose={() => setInviteOpen(false)} />
+        <InviteUserModal
+          onClose={() => setInviteOpen(false)}
+          onInvited={refresh}
+        />
       )}
 
       <div className="kpi-row" style={{ gridTemplateColumns:"repeat(4,1fr)" }}>
@@ -18264,32 +22848,35 @@ function UsersView({ go }) {
           <div>Email</div>
           <div>Role</div>
           <div>Sites</div>
-          <div>Last active</div>
+          <div>On duty</div>
           <div>Status</div>
           <div></div>
         </div>
         {rows.length === 0 && (
           <div style={{ padding:"40px 20px", textAlign:"center", color:"var(--ink-3)", fontSize:13.5 }}>
-            No users match this view.
+            {list.length === 0 ? "No users yet. Invite your team to get started." : "No users match this view."}
           </div>
         )}
         {rows.map((u) => {
-          const role = ROLE_META[u.role];
+          const role = ROLE_META[u.role] || { label:u.role, tone:"muted" };
           const status = STATUS_META_USERS[u.status];
+          const sub = u.status === "invited"
+            ? (usersFmtDay(u.invitedAt) ? "Invited " + usersFmtDay(u.invitedAt) : "Invite sent")
+            : (usersFmtDay(u.inviteAcceptedAt) ? "Joined " + usersFmtDay(u.inviteAcceptedAt) : null);
           return (
             <div className="wo-row" key={u.id} style={{ gridTemplateColumns:grid }} onClick={() => setOpenId(u.id)}>
               <div className="staff-av-row">{u.initials}</div>
               <div>
                 <div className="wo-title" style={{ fontSize:13.5 }}>{u.name}</div>
-                <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2 }}>{u.mfa ? "MFA on" : "MFA off"} · joined {u.joined}</div>
+                {sub && <div style={{ fontSize:11.5, color:"var(--ink-3)", marginTop:2 }}>{sub}</div>}
               </div>
               <div style={{ fontSize:13, color:"var(--ink-2)", fontFamily:"var(--mono)", fontVariantNumeric:"tabular-nums", overflow:"hidden", textOverflow:"ellipsis" }}>{u.email}</div>
               <div><Pill tone={role.tone} dot>{role.label}</Pill></div>
               <div style={{ fontSize:12.5, color:"var(--ink-2)" }}>
                 <Icon name="mapPin" size={11} style={{ verticalAlign:"middle", marginRight:4, color:"var(--ink-3)" }} />
-                {u.sites}
+                All sites
               </div>
-              <div style={{ fontSize:12.5, color:"var(--ink-3)" }}>{u.lastActive}</div>
+              <div style={{ fontSize:12.5, color: u.onDuty ? "var(--ok)" : "var(--ink-3)" }}>{u.onDuty ? "On duty" : "Off duty"}</div>
               <div><Pill tone={status.tone} dot>{status.label}</Pill></div>
               <Icon name="chevronRight" size={16} />
             </div>
@@ -18305,15 +22892,74 @@ function UsersView({ go }) {
 /* ===========================================================
    User detail (full page)
    =========================================================== */
-function UserDetail({ user, onBack, onSave, onResend, onDeactivate, onReactivate }) {
-  const [role, setRole]   = React.useState(user.role);
-  const [sites, setSites] = React.useState(user.sites);
-  const dirty = role !== user.role || sites !== user.sites;
+function UserDetail({ user, me, onBack, onChanged, showToast }) {
+  const isAdmin = me.role === "admin";
+  const isSelf  = !!me.email && me.email === user.email;
 
-  const roleMeta   = ROLE_META[user.role];
+  const [busy, setBusy]             = React.useState(null); // "resend" | "deactivate"
+  const [inviteLink, setInviteLink] = React.useState(null);
+  const [copied, setCopied]         = React.useState(false);
+  const [mfa, setMfa]               = React.useState(null); // self only: null loading | false error | { enrolled }
+
+  React.useEffect(() => {
+    if (!isSelf) return;
+    let alive = true;
+    hlApi("/auth/2fa/status")
+      .then(({ ok, b }) => { if (alive) setMfa(ok && b ? b : false); })
+      .catch(() => { if (alive) setMfa(false); });
+    return () => { alive = false; };
+  }, [isSelf, user.id]);
+
+  const roleMeta   = ROLE_META[user.role] || { label:user.role, tone:"muted" };
   const statusMeta = STATUS_META_USERS[user.status];
 
-  const activity = [];
+  const handleResend = () => {
+    if (!isAdmin) { showToast("Only admins can resend invites."); return; }
+    setBusy("resend"); setInviteLink(null);
+    hlApi("/users/" + user.id + "/resend-invite", { method:"POST" })
+      .then(({ ok, status, b }) => {
+        setBusy(null);
+        if (!ok) {
+          if (status === 409 && b && b.error === "already_accepted") { showToast("They have already accepted, nothing to resend."); onChanged(); return; }
+          if (status === 409 && b && b.error === "deactivated") { showToast("This account is deactivated, so the invite cannot be resent."); return; }
+          if (status === 403) { showToast("Only admins can resend invites."); return; }
+          if (status === 404) { showToast("That user no longer exists."); onChanged(); return; }
+          showToast("Could not resend the invite. Try again.");
+          return;
+        }
+        if (b && b.emailSent) { showToast("Invite re-emailed to " + user.email); }
+        else { showToast("The email could not be sent. Copy the link below instead."); setInviteLink((b && b.inviteUrl) || null); }
+        onChanged();
+      })
+      .catch(() => { setBusy(null); showToast("Could not reach the server. Try again."); });
+  };
+
+  const handleDeactivate = () => {
+    if (isSelf) { showToast("You cannot deactivate your own account."); return; }
+    if (!window.confirm("Deactivate " + user.name + "? They will no longer be able to sign in.")) return;
+    setBusy("deactivate");
+    hlApi("/users/" + user.id + "/deactivate", { method:"POST" })
+      .then(({ ok, status }) => {
+        setBusy(null);
+        if (!ok) { showToast(status === 403 ? "You do not have permission to deactivate users." : "Could not deactivate. Try again."); return; }
+        showToast(user.name + " deactivated");
+        onChanged();
+      })
+      .catch(() => { setBusy(null); showToast("Could not reach the server. Try again."); });
+  };
+
+  const copyInviteLink = () => {
+    if (!inviteLink) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(inviteLink)
+        .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
+        .catch(() => showToast("Copy failed. Select the link and copy it manually."));
+    }
+  };
+
+  const joinedLine = user.status === "invited"
+    ? (usersFmtDay(user.invitedAt) ? "Invited " + usersFmtDay(user.invitedAt) : null)
+    : (usersFmtDay(user.inviteAcceptedAt) ? "Joined " + usersFmtDay(user.inviteAcceptedAt) : null);
 
   return (
     <div className="content-inner">
@@ -18328,49 +22974,95 @@ function UserDetail({ user, onBack, onSave, onResend, onDeactivate, onReactivate
           <div className="staff-prof-sub">
             <span style={{ fontFamily:"var(--mono)", fontSize:13 }}>{user.email}</span>
             <span className="sp-sep" />
-            <span>Manager: {user.manager}</span>
-            <span className="sp-sep" />
-            <span>Joined {user.joined}</span>
+            <span>{user.onDuty ? "On duty now" : "Off duty"}</span>
+            {joinedLine && (
+              <React.Fragment>
+                <span className="sp-sep" />
+                <span>{joinedLine}</span>
+              </React.Fragment>
+            )}
           </div>
         </div>
         <Pill tone={statusMeta.tone} dot>{statusMeta.label}</Pill>
         {user.status === "invited" && (
-          <button className="btn" onClick={onResend}><Icon name="send" size={14} />Resend invite</button>
+          <button className="btn" onClick={handleResend} disabled={busy === "resend"}>
+            <Icon name="send" size={14} />{busy === "resend" ? "Sending…" : "Resend invite"}
+          </button>
         )}
         {user.status === "deactivated"
-          ? <button className="btn btn-primary" onClick={onReactivate}><Icon name="check" size={14} />Reactivate</button>
-          : <button className="btn btn-decline" onClick={onDeactivate}><Icon name="x" size={14} />Deactivate</button>}
+          ? <button className="btn" disabled
+              title="Reactivation is not available yet. There is no backend endpoint to restore a deactivated account."
+              style={{ opacity:.55, cursor:"not-allowed" }}>
+              <Icon name="check" size={14} />Reactivate
+            </button>
+          : <button className="btn btn-decline" onClick={handleDeactivate} disabled={busy === "deactivate"}>
+              <Icon name="x" size={14} />{busy === "deactivate" ? "Working…" : "Deactivate"}
+            </button>}
       </div>
+
+      {inviteLink && (
+        <div className="card card-pad" style={{ marginBottom:18 }}>
+          <div className="panel-label">Invite link</div>
+          <div style={{ fontSize:12.5, color:"var(--ink-2)", margin:"6px 0 10px", lineHeight:1.55 }}>
+            The invite email could not be sent, so pass this link on yourself. It expires in 14 days and only works once.
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <input className="dv-input" readOnly value={inviteLink}
+              onFocus={(e) => e.target.select()}
+              style={{ flex:1, fontFamily:"var(--mono)", fontSize:12 }} />
+            <button className="btn" onClick={copyInviteLink}><Icon name="link" size={14} />{copied ? "Copied" : "Copy"}</button>
+          </div>
+        </div>
+      )}
 
       <div className="det-grid">
         <div className="card card-pad">
           <div className="panel-label">Access</div>
           <div className="ai-field">
             <label>Role</label>
-            <select className="dv-input" value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="admin">Admin — full system access</option>
-              <option value="supervisor">Supervisor — site-level access</option>
-              <option value="field staff">Field staff — mobile-only</option>
+            <select className="dv-input" value={user.role} disabled>
+              <option value="admin">Admin (full system access)</option>
+              <option value="supervisor">Supervisor (site-level access)</option>
+              <option value="cleaner">Field staff (mobile-first)</option>
             </select>
+            <div className="ai-hint">Changing another user's role is not available yet. The backend has no endpoint for it.</div>
           </div>
           <div className="ai-field" style={{ marginTop:12 }}>
             <label>Sites</label>
-            <select className="dv-input" value={sites} onChange={(e) => setSites(e.target.value)}>
+            <select className="dv-input" value="All sites" disabled>
               {SITE_OPTIONS.map((s) => <option key={s}>{s}</option>)}
             </select>
+            <div className="ai-hint">Everyone in the organisation sees every site. Per-site access is not built yet.</div>
           </div>
           <div className="info-row" style={{ marginTop:16 }}><span className="k">Current role</span><span className="v"><Pill tone={roleMeta.tone} dot>{roleMeta.label}</Pill></span></div>
-          <div className="info-row"><span className="k">Phone</span><span className="v" style={{ fontFamily:"var(--mono)" }}>{user.phone}</span></div>
+          {usersFmtDay(user.invitedAt) && (
+            <div className="info-row"><span className="k">Invited</span><span className="v">{usersFmtDay(user.invitedAt)}</span></div>
+          )}
+          {usersFmtDay(user.inviteAcceptedAt) && (
+            <div className="info-row"><span className="k">Invite accepted</span><span className="v">{usersFmtDay(user.inviteAcceptedAt)}</span></div>
+          )}
           <div className="info-row" style={{ borderBottom:"none" }}>
             <span className="k">Two-factor</span>
-            <span className="v"><Pill tone={user.mfa ? "ok" : "warn"} dot>{user.mfa ? "MFA enabled" : "MFA off"}</Pill></span>
+            <span className="v">
+              {isSelf
+                ? (mfa === null
+                    ? <span style={{ color:"var(--ink-3)", fontSize:12.5 }}>Checking…</span>
+                    : mfa && mfa.enrolled
+                      ? <Pill tone="ok" dot>MFA enabled</Pill>
+                      : <Pill tone="warn" dot>MFA off</Pill>)
+                : <span style={{ color:"var(--ink-3)", fontSize:12.5 }}>Only visible to the account owner</span>}
+            </span>
           </div>
+          {user.status === "deactivated" && (
+            <div className="ai-hint" style={{ marginTop:10 }}>
+              Reactivating an account is not available yet. The backend has no endpoint to restore a deactivated user.
+            </div>
+          )}
           <div style={{ display:"flex", gap:10, marginTop:18 }}>
             <button className="btn" style={{ flex:1 }} onClick={onBack}>Cancel</button>
-            <button className="btn btn-primary"
-              disabled={!dirty}
-              style={{ flex:1, opacity: dirty ? 1 : .55 }}
-              onClick={() => onSave({ role, sites })}>
+            <button className="btn btn-primary" disabled
+              style={{ flex:1, opacity:.55, cursor:"not-allowed" }}
+              title="Nothing here is editable yet. Role and site changes need backend endpoints that do not exist.">
               <Icon name="check" size={14} />Save changes
             </button>
           </div>
@@ -18378,8 +23070,11 @@ function UserDetail({ user, onBack, onSave, onResend, onDeactivate, onReactivate
 
         <div className="card card-pad">
           <div className="panel-label">Recent activity</div>
-          <div className="stepper" style={{ marginTop:6 }}>
-            {activity.map((a, i) => <Step s={a} key={i} />)}
+          <div style={{ padding:"26px 8px", textAlign:"center" }}>
+            <div style={{ fontWeight:700, fontSize:13.5, color:"var(--ink-2)", marginBottom:4 }}>No activity recorded yet</div>
+            <div style={{ fontSize:12.5, color:"var(--ink-3)", lineHeight:1.55, maxWidth:320, margin:"0 auto" }}>
+              Sign-ins and changes to this account will show here once per-user activity tracking is added.
+            </div>
           </div>
         </div>
       </div>
@@ -19238,7 +23933,13 @@ Object.assign(window, { SettingsView });
 
 /* ════════════════════ asset_20_33637aaf.js ════════════════════ */
 ;
-/* HazardLink — Notifications page (feed + preferences). */
+/* HazardLink — Notifications page (live feed + delivery preferences).
+   Feed comes from useNotifs (shared with the topbar bell). Preferences read
+   and save through the real backend:
+     GET /notifications/preferences
+     PUT /notifications/preferences   { eventType, inApp?, email?, sms? }
+   The WhatsApp column is display-only for now: the PUT endpoint does not
+   accept a whatsapp field yet, and in-app is always on server-side. */
 
 function NotifTypeChip({ type, on, onClick, count }) {
   if (type === null || type === "all") {
@@ -19262,79 +23963,136 @@ function NotifTypeChip({ type, on, onClick, count }) {
   );
 }
 
-function PrefMatrix({ prefs, setPref, resetPrefs, showToast }) {
+/* The matrix has four channel columns (the CSS default is three), hence the
+   inline grid override on every row. */
+const PREF_GRID = { gridTemplateColumns: "1.4fr repeat(4, 1fr)" };
+
+function PrefMatrix({ showToast }) {
+  const [prefs, setPrefs]   = React.useState(null);  // Record<eventType, {inApp,email,sms,whatsapp}>
+  const [err, setErr]       = React.useState(null);
+  const [saving, setSaving] = React.useState({});    // "eventType:channel" → true
+
+  const load = React.useCallback(() => {
+    setErr(null);
+    hlApi("/notifications/preferences").then(({ ok, status, b }) => {
+      if (ok && b && b.preferences) setPrefs(b.preferences);
+      else setErr(status === 401 ? "Sign in to manage preferences." : "Could not load preferences (HTTP " + status + ").");
+    }).catch(() => setErr("Network error while loading preferences."));
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  const setChannel = (eventType, channel, val, label) => {
+    const key = eventType + ":" + channel;
+    setSaving((s) => ({ ...s, [key]: true }));
+    hlApi("/notifications/preferences", { method: "PUT", body: { eventType, [channel]: !!val } })
+      .then(({ ok, status, b }) => {
+        setSaving((s) => { const n = { ...s }; delete n[key]; return n; });
+        if (ok && b && b.prefs) {
+          setPrefs((p) => ({ ...(p || {}), [eventType]: b.prefs }));
+          showToast(label + ": " + channel + (val ? " on" : " off"));
+        } else {
+          showToast("Could not save (HTTP " + status + ")");
+        }
+      })
+      .catch(() => {
+        setSaving((s) => { const n = { ...s }; delete n[key]; return n; });
+        showToast("Network error, change not saved");
+      });
+  };
+
+  // Known catalogue first (in our order), then any extra types the API returns.
+  const rowTypes = React.useMemo(() => {
+    if (!prefs) return [];
+    const known = NOTIF_EVENT_TYPES.filter((t) => prefs[t.id]);
+    const extra = Object.keys(prefs)
+      .filter((k) => !NOTIF_EVENT_TYPES.some((t) => t.id === k))
+      .sort()
+      .map((k) => ({ id: k, label: k, cat: "system" }));
+    return known.concat(extra);
+  }, [prefs]);
+
   return (
     <div className="card pref-card">
       <div className="pref-head">
         <div>
           <h3>Notification preferences</h3>
-          <p>Pick which event types reach you, and how. Channel rates billed against your Brevo and Twilio accounts.</p>
+          <p>Pick which event types reach you on each channel. Changes save straight away.</p>
         </div>
-        <button className="btn" onClick={() => { resetPrefs(); showToast("Preferences reset to defaults"); }}>
-          <Icon name="rotateCw" size={14} />Reset to defaults
-        </button>
       </div>
 
-      <div className="pref-matrix">
-        <div className="pref-mrow pref-mhead">
-          <div className="pref-mtype">Event type</div>
-          {NOTIF_CHANNELS.map((c) => (
-            <div key={c.id} className="pref-mcell pref-mcol-head">
-              <span className="pref-col-ico"><Icon name={c.icon} size={13} /></span>
-              <div>
-                <div className="pref-col-lbl">{c.label}</div>
-                <div className="pref-col-sub">{c.sub}</div>
-              </div>
-            </div>
-          ))}
+      {!prefs && !err && (
+        <div className="notif-empty notif-empty-page">
+          <Icon name="rotateCw" size={26} />
+          <div>Loading preferences</div>
+          <small>Fetching your channel settings from the server.</small>
         </div>
-        {NOTIF_TYPE_ORDER.map((tk) => {
-          const m = NOTIF_TYPES[tk];
-          const p = prefs[tk] || {};
-          return (
-            <div className="pref-mrow" key={tk}>
-              <div className="pref-mtype">
-                <span className="pref-mtype-ico" style={{ background: m.soft, color: m.color }}>
-                  <Icon name={m.icon} size={13} />
-                </span>
-                <span>{m.label}</span>
-              </div>
-              {NOTIF_CHANNELS.map((c) => (
-                <div className="pref-mcell" key={c.id}>
-                  <Toggle on={!!p[c.id]} onChange={(v) => {
-                    setPref(tk, c.id, v);
-                    showToast(v ? `${m.label} → ${c.label} on` : `${m.label} → ${c.label} off`);
-                  }} />
+      )}
+      {err && !prefs && (
+        <div className="notif-empty notif-empty-page">
+          <Icon name="alertTri" size={26} />
+          <div>Could not load preferences</div>
+          <small>{err}</small>
+          <button className="btn" onClick={load} style={{ marginTop: 8 }}>
+            <Icon name="rotateCw" size={13} />Try again
+          </button>
+        </div>
+      )}
+
+      {prefs && (
+        <div className="pref-matrix">
+          <div className="pref-mrow pref-mhead" style={PREF_GRID}>
+            <div className="pref-mtype">Event type</div>
+            {NOTIF_CHANNELS.map((c) => (
+              <div key={c.id} className="pref-mcell pref-mcol-head">
+                <span className="pref-col-ico"><Icon name={c.icon} size={13} /></span>
+                <div>
+                  <div className="pref-col-lbl">{c.label}</div>
+                  <div className="pref-col-sub">{c.sub}</div>
                 </div>
-              ))}
-            </div>
-          );
-        })}
-      </div>
+              </div>
+            ))}
+          </div>
+          {rowTypes.map((t) => {
+            const m = NOTIF_TYPES[t.cat] || NOTIF_TYPES.system;
+            const p = prefs[t.id] || {};
+            return (
+              <div className="pref-mrow" key={t.id} style={PREF_GRID}>
+                <div className="pref-mtype">
+                  <span className="pref-mtype-ico" style={{ background: m.soft, color: m.color }}>
+                    <Icon name={m.icon} size={13} />
+                  </span>
+                  <span>{t.label}</span>
+                </div>
+                {NOTIF_CHANNELS.map((c) => (
+                  <div className="pref-mcell" key={c.id}
+                    title={c.locked
+                      ? "In-app is always on, so the bell never misses anything"
+                      : undefined}>
+                    <Toggle on={!!p[c.id]}
+                      disabled={!!c.locked || !!saving[t.id + ":" + c.id]}
+                      onChange={(v) => setChannel(t.id, c.id, v, t.label)} />
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="pref-foot">
         <Icon name="info" size={12} />
-        <span>Critical safety events (spills, lone-worker, incidents) always bypass quiet hours.</span>
+        <span>In-app is always on, so the bell never misses anything. Email and SMS follow the switches above.</span>
+      </div>
+      <div className="pref-foot">
+        <Icon name="info" size={12} />
+        <span>WhatsApp choices save now and start delivering once SMS (Twilio) is configured.</span>
       </div>
     </div>
   );
 }
 
-function ActionPill({ action, onClick }) {
-  if (!action) return null;
-  const tone = action.tone || "muted";
-  return (
-    <button className={"notif-action notif-action-" + tone}
-      onClick={(e) => { e.stopPropagation(); onClick && onClick(); }}>
-      <Icon name={action.icon || "arrowRight"} size={12} />
-      {action.label}
-    </button>
-  );
-}
-
 function NotificationsView({ go }) {
-  const { items, readSet, prefs, unreadCount,
-          markRead, markUnread, markAllRead, setPref, resetPrefs } = useNotifs();
+  const { items, readSet, unreadCount, markRead, markAllRead, loading, error, refresh } = useNotifs();
   const { showToast, toastNode } = useViewToast();
 
   const [typeFilter, setTypeFilter] = React.useState("all"); // all | spills | maintenance | ...
@@ -19361,14 +24119,10 @@ function NotificationsView({ go }) {
     markRead(n.id);
     if (go && n.view) go(n.view);
   };
-  const doAction = (n) => {
-    markRead(n.id);
-    showToast(`${n.action.label} — ${n.title.replace(/\s+—.*$/, "")}`);
-  };
 
   const renderRow = (n) => {
     const unread = !readSet.has(n.id);
-    const m = NOTIF_TYPES[n.type];
+    const m = NOTIF_TYPES[n.type] || NOTIF_TYPES.system;
     return (
       <div key={n.id} className={"feed-row" + (unread ? " unread" : "")}>
         <button className="feed-row-main" onClick={() => openItem(n)}>
@@ -19393,12 +24147,12 @@ function NotificationsView({ go }) {
           </span>
         </button>
         <div className="feed-row-actions">
-          <ActionPill action={n.action} onClick={() => doAction(n)} />
-          <button className="feed-readtoggle"
-            title={unread ? "Mark as read" : "Mark as unread"}
-            onClick={() => unread ? markRead(n.id) : markUnread(n.id)}>
-            <Icon name={unread ? "check" : "rotateCw"} size={13} />
-          </button>
+          {unread && (
+            <button className="feed-readtoggle" title="Mark as read"
+              onClick={() => markRead(n.id)}>
+              <Icon name="check" size={13} />
+            </button>
+          )}
         </div>
       </div>
     );
@@ -19409,7 +24163,7 @@ function NotificationsView({ go }) {
       <div className="page-head">
         <div>
           <h1 className="page-title">Notifications</h1>
-          <p className="page-desc">Every alert the system has fired at you — filterable, actionable, and tuned by event type and channel.</p>
+          <p className="page-desc">Every alert the system has sent to you, filterable by event type, with delivery channels tuned below.</p>
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="btn" onClick={() => { markAllRead(); showToast("All notifications marked read"); }}
@@ -19425,8 +24179,8 @@ function NotificationsView({ go }) {
             <div className="kpi-ico" style={{ background:softBg("crit"), color:solid("crit") }}><Icon name="bell" size={16} /></div>
             <span className="kpi-label">Unread</span>
           </div>
-          <div className="kpi-val">{unreadCount}<small>/{items.length}</small></div>
-          <div className="kpi-foot">across all event types</div>
+          <div className="kpi-val">{unreadCount}</div>
+          <div className="kpi-foot">across your whole feed</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
@@ -19434,7 +24188,7 @@ function NotificationsView({ go }) {
             <span className="kpi-label">Today</span>
           </div>
           <div className="kpi-val">{items.filter((n) => n.bucket === "today").length}</div>
-          <div className="kpi-foot">in the last 12 hours</div>
+          <div className="kpi-foot">arrived since midnight</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
@@ -19442,15 +24196,15 @@ function NotificationsView({ go }) {
             <span className="kpi-label">Critical</span>
           </div>
           <div className="kpi-val">{items.filter((n) => n.severity === "crit").length}</div>
-          <div className="kpi-foot">spills, lone-worker, incidents</div>
+          <div className="kpi-foot">escalated spills and lone workers</div>
         </div>
         <div className="kpi">
           <div className="kpi-top">
-            <div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="send" size={16} /></div>
-            <span className="kpi-label">Delivered last 24h</span>
+            <div className="kpi-ico" style={{ background:softBg("accent"), color:solid("accent") }}><Icon name="clock" size={16} /></div>
+            <span className="kpi-label">Last received</span>
           </div>
-          <div className="kpi-val">0</div>
-          <div className="kpi-foot">in-app · email · sms</div>
+          <div className="kpi-val">{items.length > 0 ? items[0].time : "None"}</div>
+          <div className="kpi-foot">{items.length > 0 ? "newest item in your feed" : "nothing in your feed yet"}</div>
         </div>
       </div>
 
@@ -19475,12 +24229,39 @@ function NotificationsView({ go }) {
         </div>
       </div>
 
+      {error && items.length > 0 && (
+        <div className="card" style={{ padding:"10px 14px", marginBottom:12, display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ color:"var(--crit)", display:"flex" }}><Icon name="alertTri" size={14} /></span>
+          <span style={{ fontSize:13 }}>{error} Showing the last loaded feed.</span>
+          <button className="btn" style={{ marginLeft:"auto" }} onClick={refresh}>
+            <Icon name="rotateCw" size={13} />Retry
+          </button>
+        </div>
+      )}
+
       <div className="card notif-feed-card">
-        {filtered.length === 0 && (
+        {loading && items.length === 0 && !error && (
+          <div className="notif-empty notif-empty-page">
+            <Icon name="rotateCw" size={28} />
+            <div>Loading your feed</div>
+            <small>Fetching the latest notifications from the server.</small>
+          </div>
+        )}
+        {error && items.length === 0 && (
+          <div className="notif-empty notif-empty-page">
+            <Icon name="alertTri" size={28} />
+            <div>Could not load notifications</div>
+            <small>{error}</small>
+            <button className="btn" onClick={refresh} style={{ marginTop: 8 }}>
+              <Icon name="rotateCw" size={13} />Try again
+            </button>
+          </div>
+        )}
+        {!loading && !error && filtered.length === 0 && (
           <div className="notif-empty notif-empty-page">
             <Icon name="checkCircle" size={28} />
             <div>Nothing to show here</div>
-            <small>Try a different filter — or you really are all caught up.</small>
+            <small>Try a different filter, or you really are all caught up.</small>
           </div>
         )}
         {today.length > 0 && (
@@ -19497,7 +24278,7 @@ function NotificationsView({ go }) {
         )}
       </div>
 
-      <PrefMatrix prefs={prefs} setPref={setPref} resetPrefs={resetPrefs} showToast={showToast} />
+      <PrefMatrix showToast={showToast} />
 
       {toastNode}
     </div>

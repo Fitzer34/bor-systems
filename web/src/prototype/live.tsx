@@ -87,6 +87,96 @@ async function loadOrg() {
       });
   } catch { /* leave contractors empty */ }
 
+  // Live spill alerts — drive the dashboard banner, KPI, live feed and the
+  // sidebar count. Escalation countdown approximates from elapsed time.
+  try {
+    const r: any = await api("/alerts/active");
+    const now = Date.now();
+    out.spillAlerts = (r.alerts || [])
+      .filter((a: any) => a.kind !== "planned_cleaning")
+      .map((a: any) => {
+        const opened = new Date(a.openedAt).getTime();
+        const elapsedSec = Math.max(0, Math.round((now - opened) / 1000));
+        const mins = Math.floor(elapsedSec / 60);
+        return {
+          id: "SP-" + String(a.id).slice(0, 4).toUpperCase(),
+          realId: a.id,
+          site: a.floorName || "Site",
+          siteShort: a.floorName || "",
+          location: a.zoneName || "Sensor location",
+          hanger: String(a.hangerId || "").slice(0, 6).toUpperCase(),
+          state: a.status === "acknowledged" ? "acknowledged" : "new",
+          severity: "medium",
+          raisedAt: new Date(a.openedAt).toTimeString().slice(0, 5),
+          since: mins < 1 ? "now" : mins < 60 ? mins + "m" : Math.floor(mins / 60) + "h",
+          escalateInSec: Math.max(0, 300 - elapsedSec),
+          escalateTotal: 300,
+          liveStatus: a.status === "acknowledged" ? "Acknowledged, being handled" : "Sign deployed",
+          liveStatusTone: a.status === "acknowledged" ? "muted" : "warn",
+        };
+      });
+  } catch { /* leave spills empty */ }
+
+  // Work orders — dashboard KPIs + sidebar count (full board lives in the view).
+  try {
+    const r: any = await api("/jobs");
+    const statusLabel = (s: string) =>
+      s === "done" || s === "completed" || s === "closed" ? "Done"
+      : s === "in_progress" ? "In progress"
+      : s === "tendering" ? "Tendering"
+      : s === "awarded" || s === "scheduled" ? "Scheduled"
+      : "Open";
+    out.workOrders = (r.jobs || []).map((j: any) => ({
+      id: j.number || "WO-" + String(j.id).slice(0, 4).toUpperCase(),
+      realId: j.id,
+      title: j.title || "Job",
+      asset: j.assetName || "",
+      site: j.buildingName || "",
+      priority: j.priority ? j.priority.charAt(0).toUpperCase() + j.priority.slice(1) : "Medium",
+      status: statusLabel(String(j.status || "logged")),
+      statusTone: "accent",
+      assignee: j.contractorName || "Unassigned",
+      initials: "—",
+      source: j.source || "",
+    }));
+  } catch { /* staff-only; leave empty */ }
+
+  // PPM tasks (minimal shape) — powers the sidebar overdue badge.
+  try {
+    const r: any = await api("/ppms");
+    const today = new Date().toISOString().slice(0, 10);
+    out.ppmTasks = (r.ppms || [])
+      .filter((p: any) => p.active !== false)
+      .map((p: any) => ({
+        id: p.id,
+        site: (p.building && p.building.name) || "",
+        status: p.nextDueDate && p.nextDueDate < today ? "overdue" : "ok",
+      }));
+  } catch { /* staff-only; leave empty */ }
+
+  // Devices grouped per building — powers the sidebar offline count.
+  try {
+    const [hr, gr]: any[] = await Promise.all([api("/hangers"), api("/gateways")]);
+    const byBuilding: Record<string, { name: string; devices: any[] }> = {};
+    const put = (bName: string, dev: any) => {
+      const key = bName || "Unassigned";
+      (byBuilding[key] = byBuilding[key] || { name: key, devices: [] }).devices.push(dev);
+    };
+    const fresh = (iso: string | null | undefined, mins: number) =>
+      !!iso && Date.now() - new Date(iso).getTime() < mins * 60_000;
+    for (const row of hr.hangers || []) {
+      const h = row.hanger || row;
+      put(row.buildingName || row.building || "", {
+        id: h.id, kind: "hanger",
+        online: (h.status || "") !== "offline",
+      });
+    }
+    for (const g of gr.gateways || []) {
+      put(g.buildingName || "", { id: g.id, kind: "gateway", online: fresh(g.lastSeenAt, 15) });
+    }
+    out.deviceBuildings = Object.values(byBuilding);
+  } catch { /* leave devices empty */ }
+
   return out;
 }
 
@@ -96,6 +186,8 @@ export function PrototypeAppLive() {
     queryKey: ["hl-org-data"],
     queryFn: loadOrg,
     staleTime: 10_000,
+    // Live spills/jobs/devices refresh without a manual reload.
+    refetchInterval: 20_000,
   });
 
   // Mutate HL synchronously before <App/> renders. Idempotent, so it is safe to

@@ -108,6 +108,7 @@ export default async function notificationsRoutes(app: FastifyInstance): Promise
     inApp: z.boolean().optional(),
     email: z.boolean().optional(),
     sms: z.boolean().optional(),
+    whatsapp: z.boolean().optional(),
   });
 
   app.put("/notifications/preferences", { preHandler: [app.authenticate] }, async (req, reply) => {
@@ -118,6 +119,7 @@ export default async function notificationsRoutes(app: FastifyInstance): Promise
       inApp: parsed.data.inApp,
       email: parsed.data.email,
       sms: parsed.data.sms,
+      whatsapp: parsed.data.whatsapp,
     });
     return { eventType: parsed.data.eventType, prefs };
   });
