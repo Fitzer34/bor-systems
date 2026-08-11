@@ -1684,7 +1684,8 @@ function Sidebar({ view, go, counts }) {
   const pinnedTop = [
     { id: "dashboard", label: "Dashboard",      icon: "grid" },
     { id: "assistant", label: "Ask HazardLink", icon: "sparkles" },
-  ];
+  ].filter((n) => n.id !== "assistant"
+    || (((typeof HL !== "undefined" && HL.orgFeatures) || {}).assistant !== false));
   // Kept so older references don't break; no longer rendered separately.
   const pinnedDevices = null;
 
@@ -1752,9 +1753,22 @@ function Sidebar({ view, go, counts }) {
     },
   ];
 
+  // Per-org feature flags (Settings → Modules) — the client-tailoring seam.
+  // A module an org switched off disappears from the nav entirely. Defaults
+  // to everything on when the flags haven't loaded.
+  const feats = (typeof HL !== "undefined" && HL.orgFeatures) || {};
+  const featOn = (key) => !key || feats[key] !== false;
+  const GROUP_FEATURE = { clean: "cleaning", maint: "maintenance", secure: "security" };
+  const ITEM_FEATURE = {
+    sds: "sds", compliance: "compliance", slas: "slas", permits: "permits",
+    clientportal: "portal", billing: "billing", timesheets: "timesheets", forms: "forms",
+    assistant: "assistant",
+  };
+
   // Permission-filter each group and drop any group with no visible items.
   const visibleGroups = groups
-    .map((g) => ({ ...g, visibleItems: g.items.filter((n) => canSee(n.id)) }))
+    .filter((g) => featOn(GROUP_FEATURE[g.id]))
+    .map((g) => ({ ...g, visibleItems: g.items.filter((n) => canSee(n.id) && featOn(ITEM_FEATURE[n.id])) }))
     .filter((g) => g.visibleItems.length > 0);
 
   const activeGroupId = (visibleGroups.find((g) =>
@@ -17481,6 +17495,93 @@ function AssetsView({ go, onScan, pendingScan, onConsumeScan }) {
 /* ===========================================================
    Full-page Asset Detail — real fields, real history, real QR link
    =========================================================== */
+
+/* Place the asset on a floor plan. The pin is what the contractor
+   magic-link page shows, so "where is it?" answers itself. */
+function AssetPlanCard({ asset, showToast, refresh }) {
+  const a = asset;
+  const [floors, setFloors] = React.useState(null);
+  const [floorId, setFloorId] = React.useState(a.floorId || "");
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!a.buildingId) { setFloors([]); return; }
+    hlApi("/buildings/" + a.buildingId + "/floors").then(({ ok, b }) => {
+      setFloors(ok && b ? (b.floors || b || []) : []);
+    }).catch(() => setFloors([]));
+  }, [a.buildingId]);
+
+  const floor = (floors || []).find((f) => f.id === (floorId || a.floorId));
+  const hasPin = a.posX != null && a.posY != null;
+
+  const place = (e) => {
+    if (busy || !floor) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    setBusy(true);
+    hlApi("/assets/" + a.id + "/position", { method: "PATCH", body: { posX: x, posY: y, floorId: floor.id } })
+      .then(({ ok }) => {
+        if (ok) { showToast("Pinned. Contractors now see this spot on their job link."); refresh(); }
+        else showToast("Could not save the pin. Check your access.");
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const clearPin = () => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/assets/" + a.id + "/position", { method: "PATCH", body: { posX: null, posY: null } })
+      .then(({ ok }) => { if (ok) { showToast("Pin removed."); refresh(); } })
+      .finally(() => setBusy(false));
+  };
+
+  if (!a.buildingId) return null;
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h3>Location on floor plan</h3>
+        {hasPin && <button className="btn btn-sm" onClick={clearPin} disabled={busy}>Remove pin</button>}
+      </div>
+      <div className="card-pad" style={{ paddingTop: 0 }}>
+        {floors === null ? (
+          <p className="muted" style={{ fontSize: 13 }}>Loading floors…</p>
+        ) : floors.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>No floors with plans on this site yet. Upload one under Floor plans, then pin this asset.</p>
+        ) : (
+          <>
+            <select className="dv-input" value={floorId || a.floorId || ""} onChange={(e) => setFloorId(e.target.value)} style={{ marginBottom: 8 }}>
+              <option value="">Pick a floor…</option>
+              {floors.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+            {floor && floor.floorPlanUrl ? (
+              <div style={{ position: "relative", cursor: "crosshair", borderRadius: 8, overflow: "hidden", border: "1px solid var(--line)" }}
+                   onClick={place} title="Tap the plan where this asset sits">
+                <img src={floor.floorPlanUrl} alt={"Floor plan of " + floor.name} style={{ width: "100%", display: "block" }} />
+                {hasPin && (a.floorId === floor.id) && (
+                  <div style={{ position: "absolute", left: (a.posX * 100) + "%", top: (a.posY * 100) + "%",
+                                transform: "translate(-50%, -100%)", pointerEvents: "none" }}>
+                    <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#ef4444",
+                                  border: "2px solid #fff", boxShadow: "0 1px 4px rgba(0,0,0,.4)", margin: "0 auto" }} />
+                  </div>
+                )}
+              </div>
+            ) : floor ? (
+              <p className="muted" style={{ fontSize: 13 }}>That floor has no plan image yet. Upload one under Floor plans.</p>
+            ) : (
+              <p className="muted" style={{ fontSize: 13 }}>Pick the floor this asset is on, then tap the plan to drop the pin.</p>
+            )}
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              The pin travels with every work order on this asset: the contractor's quote link shows the plan with the exact spot marked.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AssetDetail({ asset, siteName, jobs, jobsFailed, meters, onBack, refresh, showToast, go }) {
   const a = asset;
   const [modal, setModal]   = React.useState(null); // "service" | "wo"
@@ -17615,6 +17716,8 @@ function AssetDetail({ asset, siteName, jobs, jobsFailed, meters, onBack, refres
               <span style={{ fontSize:11.5, color:"var(--ink-3)" }}>1 poor · 5 excellent, saves to the register</span>
             </div>
           </div>
+
+          <AssetPlanCard asset={a} showToast={showToast} refresh={refresh} />
 
           <div className="card">
             <div className="card-head">
@@ -25149,6 +25252,7 @@ const SETTINGS_TABS = [
   { id:"security",     label:"Account & security",  icon:"lock" },
   { id:"billing",      label:"Billing",             icon:"creditCard" },
   { id:"integrations", label:"Integrations",        icon:"link" },
+  { id:"modules",      label:"Modules",             icon:"grid" },
 ];
 
 /* ===========================================================
@@ -25770,6 +25874,107 @@ function TeamsWebhookCard({ showToast }) {
 /* ===========================================================
    View shell
    =========================================================== */
+
+/* ===========================================================
+   Modules — per-organisation feature flags. The client-tailoring
+   seam: switch off what this client doesn't use and it vanishes
+   from the sidebar and dashboards for everyone in the org.
+   =========================================================== */
+const MODULE_META = [
+  { key: "cleaning",    label: "Cleaning",           desc: "Spill alerts, rounds, scheduling, devices" },
+  { key: "maintenance", label: "Maintenance",        desc: "Work orders, PPM, assets, parts, meters" },
+  { key: "security",    label: "Security",           desc: "Patrols, incidents, visitors" },
+  { key: "timesheets",  label: "Timesheets",         desc: "Clock in and out, approvals, payroll export" },
+  { key: "forms",       label: "Forms",              desc: "Checklists and audits built for this org" },
+  { key: "permits",     label: "Permits to work",    desc: "Hot works, height, confined space" },
+  { key: "compliance",  label: "Compliance",         desc: "Statutory register and certificates" },
+  { key: "slas",        label: "SLAs",               desc: "Response and resolution targets" },
+  { key: "portal",      label: "Client portal",      desc: "Read-only links for building clients" },
+  { key: "billing",     label: "Billing",            desc: "Invoices and exports" },
+  { key: "sds",         label: "Safety sheets",      desc: "Chemical safety data sheets" },
+  { key: "assistant",   label: "Ask HazardLink",     desc: "The assistant, grounded in this org's data" },
+];
+
+function ModulesSettings({ showToast }) {
+  const isAdmin = ((typeof HL !== "undefined" && HL.currentUser) || {}).role === "admin";
+  const [flags, setFlags] = React.useState(null);
+  const [error, setError] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    setError(false);
+    hlApi("/settings/features").then(({ ok, b }) => {
+      if (ok && b && b.features) setFlags(b.features);
+      else setError(true);
+    }).catch(() => setError(true));
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  const toggle = (key) => {
+    if (!isAdmin || !flags || busy) return;
+    const next = { ...flags, [key]: !(flags[key] !== false) };
+    setBusy(true);
+    hlApi("/settings/features", { method: "PUT", body: { features: next } }).then(({ ok, b }) => {
+      setBusy(false);
+      if (ok && b && b.features) {
+        setFlags(b.features);
+        if (typeof HL !== "undefined") HL.orgFeatures = b.features;
+        showToast(next[key] ? "Module switched on." : "Module switched off. It leaves the sidebar for everyone in this organisation.");
+      } else {
+        showToast("Could not save. Try again.");
+      }
+    }).catch(() => { setBusy(false); showToast("Could not save. Try again."); });
+  };
+
+  if (error) return (
+    <div className="card"><div className="card-body">
+      <p className="muted">Couldn't load the module settings.</p>
+      <button className="btn" onClick={load}>Try again</button>
+    </div></div>
+  );
+  if (!flags) return <div className="card"><div className="card-body"><p className="muted">Loading modules…</p></div></div>;
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div>
+          <div className="card-title">Modules</div>
+          <div className="card-sub">
+            {isAdmin
+              ? "Tailor HazardLink to this organisation. Anything switched off disappears from the sidebar and dashboards for every user."
+              : "What this organisation has switched on. An admin can change these."}
+          </div>
+        </div>
+      </div>
+      <div className="card-body" style={{ display: "grid", gap: 10 }}>
+        {MODULE_META.map((m) => {
+          const on = flags[m.key] !== false;
+          return (
+            <div key={m.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                                      padding: "10px 12px", border: "1px solid var(--line)", borderRadius: 10 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{m.label}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{m.desc}</div>
+              </div>
+              <button
+                className={"btn" + (on ? " btn-primary" : "")}
+                disabled={!isAdmin || busy}
+                title={isAdmin ? "" : "Admins change modules"}
+                onClick={() => toggle(m.key)}>
+                {on ? "On" : "Off"}
+              </button>
+            </div>
+          );
+        })}
+        <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+          Need something HazardLink doesn't do yet? Custom fields live in Forms, and bespoke modules can be
+          built per client. Talk to us and we scope it.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function SettingsView({ go }) {
   // Allow other views (e.g. Users) to deep-link straight to a tab by stashing
   // window.__settingsInitialTab before navigating here.
@@ -25805,6 +26010,7 @@ function SettingsView({ go }) {
       {tab === "security"     && <SecuritySettings         showToast={showToast} />}
       {tab === "billing"      && <BillingSettings          showToast={showToast} />}
       {tab === "integrations" && <IntegrationsSettings     showToast={showToast} />}
+      {tab === "modules"      && <ModulesSettings          showToast={showToast} />}
 
       {toastNode}
     </div>

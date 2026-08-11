@@ -47,6 +47,7 @@ import slaRoutes from "./routes/slas.js";
 import formRoutes from "./routes/forms.js";
 import portalRoutes from "./routes/portal.js";
 import certRoutes from "./routes/certs.js";
+import featureRoutes from "./routes/features.js";
 import { startEscalationTimer } from "./services/escalation-timer.js";
 import { startAntiTheftWatcher } from "./services/anti-theft.js";
 import { startSignConditionWatcher } from "./services/sign-condition.js";
@@ -198,7 +199,7 @@ async function main(): Promise<void> {
     reply.code(status).send({ error: err.message || "internal_error" });
   });
 
-  app.get("/health", async () => ({ ok: true, version: "0.6.1-certs-consolidated" }));
+  app.get("/health", async () => ({ ok: true, version: "0.6.2-tailoring" }));
 
   await app.register(authRoutes);
   await app.register(twoFactorRoutes);
@@ -239,6 +240,7 @@ async function main(): Promise<void> {
   await app.register(formRoutes);
   await app.register(portalRoutes);
   await app.register(certRoutes);
+  await app.register(featureRoutes);
 
   startEscalationTimer();
   startAntiTheftWatcher();

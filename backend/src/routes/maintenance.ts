@@ -607,6 +607,28 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
     return reply.code(201).send(created);
   });
 
+  // Place (or clear) the asset's pin on a floor plan. Fractions 0..1 of the
+  // plan image; optionally moves the asset to that floor at the same time.
+  app.patch("/assets/:id/position", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
+    const parsed = z.object({
+      posX: z.number().min(0).max(1).nullable(),
+      posY: z.number().min(0).max(1).nullable(),
+      floorId: z.string().uuid().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [row] = await db.update(schema.assets)
+      .set({
+        posX: parsed.data.posX,
+        posY: parsed.data.posY,
+        ...(parsed.data.floorId ? { floorId: parsed.data.floorId } : {}),
+      })
+      .where(and(eq(schema.assets.id, (req.params as { id: string }).id), eq(schema.assets.organisationId, c.orgId)))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return { asset: row };
+  });
+
   app.patch("/assets/:id", { preHandler: [app.authenticate, staff] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = assetBody.partial().extend({ retired: z.boolean().optional() }).safeParse(req.body);

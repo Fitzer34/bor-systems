@@ -8,16 +8,58 @@ import { apiUrl } from "../lib/api";
  * + earliest start date. White-label booking-page style.
  */
 
+interface QuoteLocation {
+  assetName: string;
+  assetSerial: string | null;
+  assetMake: string | null;
+  assetModel: string | null;
+  floorName: string | null;
+  floorPlanUrl: string | null;
+  pin: { x: number; y: number } | null;
+}
+
 interface QuoteInfo {
   orgName: string;
   contractorName: string | null;
   jobTitle: string;
   jobDescription: string | null;
   buildingName: string | null;
+  location: QuoteLocation | null;
   status: string;
   amountCents: number | null;
   proposedStartDate: string | null;
   canSubmit: boolean;
+}
+
+/** The floor plan with the asset pin — shows the contractor exactly where the
+ *  fault is before they set foot on site. */
+function LocationCard({ loc }: { loc: QuoteLocation }) {
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden">
+      <div className="px-3 py-2.5 bg-slate-50 border-b border-slate-200">
+        <div className="text-sm font-medium text-slate-800">{loc.assetName}</div>
+        <div className="text-xs text-slate-500 mt-0.5">
+          {[loc.assetMake, loc.assetModel].filter(Boolean).join(" ")}
+          {loc.assetSerial ? ` · Serial ${loc.assetSerial}` : ""}
+          {loc.floorName ? ` · ${loc.floorName}` : ""}
+        </div>
+      </div>
+      {loc.floorPlanUrl && loc.pin ? (
+        <div className="relative">
+          <img src={loc.floorPlanUrl} alt={`Floor plan${loc.floorName ? ` of ${loc.floorName}` : ""}`} className="w-full block" />
+          <div
+            className="absolute -translate-x-1/2 -translate-y-full"
+            style={{ left: `${loc.pin.x * 100}%`, top: `${loc.pin.y * 100}%` }}
+          >
+            <div className="w-5 h-5 rounded-full bg-red-500 border-2 border-white shadow-lg animate-pulse mx-auto" />
+            <div className="text-[10px] font-bold text-white bg-red-500 rounded px-1.5 py-0.5 mt-0.5 shadow">HERE</div>
+          </div>
+        </div>
+      ) : loc.floorPlanUrl ? (
+        <img src={loc.floorPlanUrl} alt={`Floor plan${loc.floorName ? ` of ${loc.floorName}` : ""}`} className="w-full block" />
+      ) : null}
+    </div>
+  );
 }
 
 export function QuoteSubmit() {
@@ -99,6 +141,7 @@ export function QuoteSubmit() {
                 {info.jobDescription && (
                   <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 whitespace-pre-wrap">{info.jobDescription}</div>
                 )}
+                {info.location && <LocationCard loc={info.location} />}
                 {info.status === "submitted" && <p className="text-sm text-emerald-700">You've already quoted — you can update it below until it's decided.</p>}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Your price (€)</label>

@@ -41,6 +41,13 @@ function initialsOf(name: string): string {
 async function loadOrg() {
   const out: any = {};
 
+  // Per-org feature flags — the client-tailoring seam. The sidebar and
+  // dashboards hide modules an org has switched off (Settings → Modules).
+  try {
+    const r: any = await api("/settings/features");
+    out.orgFeatures = r.features || {};
+  } catch { /* default: everything on */ }
+
   // Sites (the backend models them as "buildings"). Drives the dashboard Sites
   // card, the site picker and the portfolio view.
   try {

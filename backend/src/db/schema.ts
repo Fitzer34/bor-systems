@@ -4,6 +4,7 @@ import {
   uuid,
   text,
   integer,
+  real,
   smallint,
   boolean,
   timestamp,
@@ -939,6 +940,8 @@ export const assets = pgTable(
     expectedLifeYears: smallint("expected_life_years"),
     warrantyExpiry: date("warranty_expiry"),
     conditionScore: smallint("condition_score"), // 1 (poor) .. 5 (excellent)
+    posX: real("pos_x"), // pin on the floor plan, fraction 0..1
+    posY: real("pos_y"),
     criticality: assetCriticality("criticality").notNull().default("medium"),
     purchaseCostCents: integer("purchase_cost_cents"),
     replacementCostCents: integer("replacement_cost_cents"),

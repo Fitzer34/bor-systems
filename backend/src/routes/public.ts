@@ -462,12 +462,42 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
       const [b] = await db.select({ name: schema.buildings.name }).from(schema.buildings).where(eq(schema.buildings.id, job.buildingId)).limit(1);
       buildingName = b?.name ?? null;
     }
+    // Where exactly the fault is: the job's asset, and — when the asset is
+    // pinned on a floor plan — the plan image plus the pin so the contractor
+    // sees the spot before they ever set foot on site.
+    let location: {
+      assetName: string; assetSerial: string | null; assetMake: string | null; assetModel: string | null;
+      floorName: string | null; floorPlanUrl: string | null; pin: { x: number; y: number } | null;
+    } | null = null;
+    if (job?.assetId) {
+      const [a] = await db.select().from(schema.assets).where(eq(schema.assets.id, job.assetId)).limit(1);
+      if (a) {
+        let floorName: string | null = null;
+        let floorPlanUrl: string | null = null;
+        if (a.floorId) {
+          const [f] = await db.select({ name: schema.floors.name, floorPlanUrl: schema.floors.floorPlanUrl })
+            .from(schema.floors).where(eq(schema.floors.id, a.floorId)).limit(1);
+          floorName = f?.name ?? null;
+          floorPlanUrl = f?.floorPlanUrl ?? null;
+        }
+        location = {
+          assetName: a.name,
+          assetSerial: a.serial,
+          assetMake: a.make,
+          assetModel: a.model,
+          floorName,
+          floorPlanUrl,
+          pin: a.posX != null && a.posY != null ? { x: a.posX, y: a.posY } : null,
+        };
+      }
+    }
     return {
       orgName: org?.name ?? "Maintenance",
       contractorName: con?.name ?? null,
       jobTitle: job?.title ?? "Maintenance work",
       jobDescription: job?.description ?? null,
       buildingName,
+      location,
       status: q.status,
       amountCents: q.amountCents,
       proposedStartDate: q.proposedStartDate,
