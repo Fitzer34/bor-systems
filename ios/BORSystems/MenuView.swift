@@ -94,46 +94,13 @@ struct MenuView: View {
                     }
                 }
 
-                // Management — maintenance work lives behind the maintenance
-                // module; device + user management behind their action keys.
-                if caps.hasManagementHub {
-                    Section("Manage") {
-                        if caps.canManageDevices {
-                            NavigationLink { GatewaysView() } label: { Label("Gateways", systemImage: "wifi.router") }
-                            NavigationLink { HangersView() } label: { Label("Hangers", systemImage: "antenna.radiowaves.left.and.right") }
-                        }
-                        if caps.canSeeMaintenance {
-                            NavigationLink { MaintenanceJobsView() } label: { Label("Maintenance jobs", systemImage: "hammer") }
-                            NavigationLink { MetersView() } label: { Label("Meters", systemImage: "gauge") }
-                            NavigationLink { PPMsView() } label: { Label("PPMs", systemImage: "wrench.and.screwdriver") }
-                        }
-                        if caps.canSeeCompliance {
-                            NavigationLink { CompetencyView() } label: { Label("Competency", systemImage: "checkmark.seal") }
-                        }
-                        if caps.canManageUsers {
-                            NavigationLink { UsersView() } label: { Label("Users", systemImage: "person.3") }
-                        }
-                        if caps.canSeeOperations {
-                            NavigationLink { ScheduleView() } label: { Label("Schedule", systemImage: "calendar") }
-                        }
-                    }
-
-                    if caps.canSeeInsights {
-                        Section("Insights") {
-                            NavigationLink { MaintenanceKpisView() } label: { Label("Maintenance KPIs", systemImage: "chart.line.uptrend.xyaxis") }
-                            NavigationLink { ReportsView() } label: { Label("Reports", systemImage: "chart.bar") }
-                            NavigationLink { NotificationsLogView() } label: { Label("Notifications log", systemImage: "bell.badge") }
-                            if caps.canSeeAdmin {
-                                NavigationLink { AuditLogView() } label: { Label("Audit log", systemImage: "doc.text.magnifyingglass") }
-                            }
-                        }
-                    }
-
-                    if caps.canSeeAdmin {
-                        Section("System") {
-                            NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape") }
-                        }
-                    }
+                // The full feature tree (Manage / Insights / System) lives in the
+                // sidebar now — open it with the round button, same layout as
+                // the web app. More keeps the personal bits.
+                Section {
+                    Text("Looking for Maintenance, Compliance, Timesheets or Settings? Open the sidebar with the round button at the bottom left.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section {
