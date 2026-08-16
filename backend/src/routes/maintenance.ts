@@ -17,6 +17,7 @@ import { and, eq, desc, inArray, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import { sendEmail } from "../services/notifications.js";
+import { createAndSendDocket } from "./dockets.js";
 import { isAiConfigured, draftScopeOfWorks, rankQuotes, suggestImprovements } from "../services/ai.js";
 import { toCsv, csvFilename } from "../services/csv.js";
 import { requirePermission } from "../services/permissions.js";
@@ -433,6 +434,9 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
         ? `Awarded €${(chosen.amountCents! / 100).toFixed(0)} (€${(overCheapest / 100).toFixed(0)} over cheapest) — ${parsed.data.reason}`
         : `Awarded €${((chosen.amountCents ?? 0) / 100).toFixed(0)} (cheapest)`,
     );
+    // The completion docket travels with the award: minted and emailed to the
+    // winning contractor automatically, so proof-of-work needs no chasing.
+    void createAndSendDocket(c.orgId, id, chosen.contractorId);
     return { ok: true };
   });
 

@@ -64,6 +64,7 @@ const BASE_DEFAULTS: Record<string, Omit<ChannelPrefs, "whatsapp">> = {
   "permit.decided":    { inApp: true, email: true,  sms: false },
   "portal.request":    { inApp: true, email: true,  sms: false },
   "compliance.overdue": { inApp: true, email: true, sms: false },
+  "docket.submitted":  { inApp: true, email: true,  sms: false },
 };
 
 export const DEFAULT_PREFS: Record<string, ChannelPrefs> = Object.fromEntries(

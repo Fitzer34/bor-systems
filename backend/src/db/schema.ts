@@ -1418,3 +1418,42 @@ export const clientPortals = pgTable(
   }),
 );
 
+
+/// Completion dockets — the contractor's no-login proof-of-work record
+/// (migration 0044). Submitting can auto-complete the job (outcome 'fixed'
+/// + photo evidence) and spawn a follow-up job + quote request when the
+/// contractor flags further repairs and offers to quote.
+export const jobDockets = pgTable(
+  "job_dockets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    jobId: uuid("job_id").references(() => maintenanceJobs.id, { onDelete: "cascade" }).notNull(),
+    contractorId: uuid("contractor_id").references(() => contractors.id, { onDelete: "set null" }),
+    token: text("token").notNull(),
+    status: text("status").notNull().default("sent"), // sent|submitted
+    outcome: text("outcome"), // fixed|temporary_fix|not_completed
+    backInService: boolean("back_in_service"),
+    workDone: text("work_done"),
+    parts: jsonb("parts").notNull().default([]),
+    arrivedTime: text("arrived_time"),
+    leftTime: text("left_time"),
+    furtherRepairs: boolean("further_repairs"),
+    furtherDetails: text("further_details"),
+    furtherUrgency: text("further_urgency"),
+    wantsQuote: boolean("wants_quote"),
+    safetyConcerns: text("safety_concerns"),
+    methodConfirmed: boolean("method_confirmed"),
+    signedName: text("signed_name"),
+    signatureDataUrl: text("signature_data_url"),
+    media: jsonb("media").notNull().default([]),
+    followupJobId: uuid("followup_job_id").references(() => maintenanceJobs.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex("job_dockets_token_idx").on(t.token),
+    jobIdx: index("job_dockets_job_idx").on(t.jobId),
+  }),
+);

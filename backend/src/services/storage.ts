@@ -99,6 +99,14 @@ export async function uploadComplianceDoc(input: UploadInput): Promise<UploadRes
  * Staff certification documents (SafePass, Manual Handling, First Aid, …)
  * attached to competency records. PDF or image.
  */
+/**
+ * Docket evidence — before/after photos and short videos uploaded by the
+ * contractor from the no-login completion docket.
+ */
+export async function uploadDocketMedia(input: UploadInput): Promise<UploadResult> {
+  return uploadInternal(input, "dockets");
+}
+
 export async function uploadCertDoc(input: UploadInput): Promise<UploadResult> {
   return uploadInternal(input, "staff-certs");
 }
