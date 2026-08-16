@@ -91,7 +91,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
         LEFT JOIN alerts a
           ON a.hanger_id = h.id
           AND a.organisation_id = ${c.orgId}
-          AND a.opened_at >= ${since}
+          AND a.opened_at >= ${since.toISOString()}
           AND a.kind = 'spill'
         WHERE z.organisation_id = ${c.orgId}
         GROUP BY z.id, z.name, f.id, f.name, b.id
@@ -132,7 +132,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
           COUNT(*)::int AS spill_count
         FROM alerts a
         WHERE a.organisation_id = ${c.orgId}
-          AND a.opened_at >= ${since}
+          AND a.opened_at >= ${since.toISOString()}
           AND a.kind = 'spill'
         GROUP BY date_trunc('day', a.opened_at)
         ORDER BY day
@@ -178,7 +178,7 @@ export default async function analyticsRoutes(app: FastifyInstance): Promise<voi
         LEFT JOIN alerts a
           ON (a.acknowledged_by = u.id OR a.closed_by = u.id)
           AND a.organisation_id = u.organisation_id
-          AND a.opened_at >= ${since}
+          AND a.opened_at >= ${since.toISOString()}
         WHERE u.organisation_id = ${c.orgId}
           AND u.deactivated_at IS NULL
         GROUP BY u.id, u.name

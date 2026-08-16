@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { config } from "../config.js";
 import { eventBus } from "../services/event-bus.js";
 
 interface JwtPayload {
@@ -33,6 +34,14 @@ export default async function eventsRoutes(app: FastifyInstance): Promise<void> 
     reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
     reply.raw.setHeader("Connection", "keep-alive");
     reply.raw.setHeader("X-Accel-Buffering", "no"); // disable proxy buffering (Render)
+    // Raw writes bypass @fastify/cors, so mirror its policy here or the
+    // browser silently kills the stream (EventSource has no error detail).
+    const origin = (req.headers.origin as string | undefined) || "";
+    const allowed = config.CORS_ORIGINS === "*"
+      ? "*"
+      : config.CORS_ORIGINS.split(",").map((s) => s.trim()).includes(origin) ? origin : null;
+    if (allowed) reply.raw.setHeader("Access-Control-Allow-Origin", allowed);
+    reply.raw.setHeader("Vary", "Origin");
     reply.raw.flushHeaders?.();
 
     // Initial hello — tells the client the stream is alive.
