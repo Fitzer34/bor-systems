@@ -9170,6 +9170,82 @@ function Maintenance({ go, workOrders, openWO, flashId, onCreate }) {
   );
 }
 
+
+/* Completion docket panel on the work-order side rail: shows every docket
+   sent for this job (with status + link) and lets staff send or resend one.
+   Dockets also go out automatically when the job is awarded. */
+function DocketPanel({ jobId, jobStatus, showToast }) {
+  const [dockets, setDockets] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    hlApi("/jobs/" + jobId + "/dockets")
+      .then(({ ok, b }) => setDockets(ok && b && b.dockets ? b.dockets : []))
+      .catch(() => setDockets([]));
+  }, [jobId]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const send = () => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/jobs/" + jobId + "/docket", { method: "POST" })
+      .then(({ ok, b }) => {
+        if (!ok) { showToast("Could not send the docket. Try again."); return; }
+        showToast(b && b.emailed ? "Docket emailed to the contractor." : "Docket link created. Copy it from the list below.");
+        load();
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const copy = (url) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => showToast("Docket link copied."))
+        .catch(() => window.prompt("Copy this link:", url));
+    } else window.prompt("Copy this link:", url);
+  };
+
+  const relevant = jobStatus === "awarded" || jobStatus === "scheduled" || jobStatus === "in_progress" || jobStatus === "completed";
+  if (!relevant && (!dockets || dockets.length === 0)) return null;
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h3>Completion docket</h3>
+        <button className="btn btn-sm" onClick={send} disabled={busy}>
+          {dockets && dockets.length ? "Resend" : "Send docket"}
+        </button>
+      </div>
+      <div className="card-pad" style={{ paddingTop: 0 }}>
+        {dockets === null ? (
+          <div style={{ color: "var(--ink-3)", fontSize: 13 }}>Loading…</div>
+        ) : dockets.length === 0 ? (
+          <div style={{ color: "var(--ink-3)", fontSize: 13 }}>
+            None sent yet. One goes out automatically with the award email, or send one now.
+          </div>
+        ) : (
+          dockets.map((d) => (
+            <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                                     gap: 8, padding: "7px 0", borderBottom: "1px solid var(--line)" }}>
+              <div>
+                <Pill tone={d.status === "submitted" ? "ok" : "muted"}>
+                  {d.status === "submitted" ? "Submitted" : "Waiting"}
+                </Pill>
+                <span style={{ fontSize: 12, color: "var(--ink-3)", marginLeft: 8 }}>
+                  {d.status === "submitted"
+                    ? (d.outcome === "fixed" ? "Fixed" : d.outcome === "temporary_fix" ? "Temporary fix" : "Not completed")
+                      + (d.signedName ? " · " + d.signedName : "")
+                    : "sent " + String(d.sentAt || "").slice(0, 10)}
+                </span>
+              </div>
+              <button className="btn btn-sm" onClick={() => copy(d.url)}>Copy link</button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function WorkOrder({ go }) {
   // The board stashes the picked job id before navigating (same pattern as
   // window.__settingsInitialTab). Direct visits without an id get an honest
@@ -9466,6 +9542,8 @@ function WorkOrder({ go }) {
         </div>
 
         <div className="detail-side">
+          <DocketPanel jobId={jobId} jobStatus={job.status} showToast={showToast} />
+
           <div className="card">
             <div className="card-head"><h3>Lifecycle</h3></div>
             <div className="card-pad">
