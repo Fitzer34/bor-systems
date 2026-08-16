@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { chatComplete, isAiAvailable, aiProvider } from "./ai-provider.js";
 
 /**
  * Claude-powered maintenance helpers:
@@ -32,7 +33,17 @@ function getClient(): Anthropic {
 }
 
 export function isAiConfigured(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY;
+  return isAiAvailable();
+}
+
+/** Strip markdown fences / stray prose around a JSON object (free-tier models
+ *  sometimes wrap despite instructions) and parse. */
+function parseJsonLoose<T>(raw: string): T {
+  const t = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  try { return JSON.parse(t) as T; } catch { /* fall through */ }
+  const m = t.match(/\{[\s\S]*\}/);
+  if (m) return JSON.parse(m[0]) as T;
+  throw new Error("ai_bad_json");
 }
 
 function textOf(msg: Anthropic.Message): string {
@@ -69,13 +80,7 @@ export async function draftScopeOfWorks(input: {
     .filter(Boolean)
     .join("\n");
 
-  const msg = await c.messages.create({
-    model: MODEL_FAST,
-    max_tokens: 1500,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
-  return textOf(msg);
+  return chatComplete({ tier: "fast", system, user, maxTokens: 1500 });
 }
 
 // ─── 2. Quote ranking ────────────────────────────────────────────────────────
@@ -144,14 +149,8 @@ export async function rankQuotes(input: {
     additionalProperties: false,
   } as const;
 
-  const msg = await c.messages.create({
-    model: MODEL_FAST,
-    max_tokens: 1200,
-    system,
-    output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
-    messages: [{ role: "user", content: user }],
-  });
-  return JSON.parse(textOf(msg)) as QuoteRanking;
+  const raw = await chatComplete({ tier: "fast", system, user, maxTokens: 1200, jsonSchema: schema as Record<string, unknown> });
+  return parseJsonLoose<QuoteRanking>(raw);
 }
 
 // ─── 3. Voice / free-text → structured work request ──────────────────────────
@@ -208,14 +207,8 @@ export async function parseWorkRequest(input: {
     additionalProperties: false,
   };
 
-  const msg = await c.messages.create({
-    model: MODEL_FAST,
-    max_tokens: 800,
-    system,
-    output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
-    messages: [{ role: "user", content: user }],
-  });
-  return JSON.parse(textOf(msg)) as WorkRequestParse;
+  const raw = await chatComplete({ tier: "fast", system, user, maxTokens: 800, jsonSchema: schema as Record<string, unknown> });
+  return parseJsonLoose<WorkRequestParse>(raw);
 }
 
 // ─── 4. Incident triage ──────────────────────────────────────────────────────
@@ -257,14 +250,8 @@ export async function triageIncident(input: {
     additionalProperties: false,
   };
 
-  const msg = await c.messages.create({
-    model: MODEL_FAST,
-    max_tokens: 600,
-    system,
-    output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
-    messages: [{ role: "user", content: user }],
-  });
-  return JSON.parse(textOf(msg)) as IncidentTriage;
+  const raw = await chatComplete({ tier: "fast", system, user, maxTokens: 600, jsonSchema: schema as Record<string, unknown> });
+  return parseJsonLoose<IncidentTriage>(raw);
 }
 
 // ─── 5. Asset history summary ────────────────────────────────────────────────
@@ -297,13 +284,7 @@ export async function summariseAssetHistory(input: {
     : "(no incidents on file)";
   const user = `Asset: ${input.assetName}\n\nMaintenance jobs:\n${jobLines}\n\nIncidents:\n${incLines}`;
 
-  const msg = await c.messages.create({
-    model: MODEL_FAST,
-    max_tokens: 700,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
-  return textOf(msg);
+  return chatComplete({ tier: "fast", system, user, maxTokens: 700 });
 }
 
 // ─── 7. Continuous-improvement suggestions ──────────────────────────────────
@@ -348,14 +329,8 @@ export async function suggestImprovements(input: { summary: string }): Promise<I
     required: ["suggestions"],
     additionalProperties: false,
   } as const;
-  const msg = await c.messages.create({
-    model: MODEL_FAST,
-    max_tokens: 1500,
-    system,
-    output_config: { format: { type: "json_schema", schema: schema as Record<string, unknown> } },
-    messages: [{ role: "user", content: input.summary }],
-  });
-  return (JSON.parse(textOf(msg)) as { suggestions: ImprovementSuggestion[] }).suggestions;
+  const raw = await chatComplete({ tier: "fast", system, user: input.summary, maxTokens: 1500, jsonSchema: schema as Record<string, unknown> });
+  return parseJsonLoose<{ suggestions: ImprovementSuggestion[] }>(raw).suggestions;
 }
 
 // ─── 6. Data assistant (ask-your-data, tool-using) ───────────────────────────

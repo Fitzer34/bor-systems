@@ -18,6 +18,7 @@ import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
 import { sendEmail } from "../services/notifications.js";
 import { createAndSendDocket } from "./dockets.js";
+import { aiProvider, aiCallsToday } from "../services/ai-provider.js";
 import { isAiConfigured, draftScopeOfWorks, rankQuotes, suggestImprovements } from "../services/ai.js";
 import { toCsv, csvFilename } from "../services/csv.js";
 import { requirePermission } from "../services/permissions.js";
@@ -1008,7 +1009,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
   // ─── AI helpers (Claude) ───────────────────────────────────────────────────
   // Gated on ANTHROPIC_API_KEY — the web only shows the buttons when configured.
   app.get("/ai/status", { preHandler: [app.authenticate, staff] }, async () => {
-    return { configured: isAiConfigured() };
+    return { configured: isAiConfigured(), provider: aiProvider(), assistant: aiProvider() === "anthropic", budget: aiCallsToday() };
   });
 
   // Continuous improvement — AI reads the reliability data and proposes actions.
