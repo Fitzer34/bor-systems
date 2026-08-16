@@ -294,7 +294,7 @@ function ScannerModal({ onClose, onResolve, defaultTarget }) {
             onClick={() => runScan(primaryTarget)}
             disabled={phase !== "idle"}>
             <Icon name={phase === "scanning" ? "scan" : phase === "found" ? "checkCircle" : "scan"} size={15} />
-            {phase === "scanning" ? "Scanning…" : phase === "found" ? "Found — opening…" : "Simulate scan"}
+            {phase === "scanning" ? "Scanning…" : phase === "found" ? "Found. Opening…" : "Simulate scan"}
           </button>
 
           {phase === "idle" && (
@@ -21706,7 +21706,7 @@ function ComplianceView({ go }) {
       buildingId: item.buildingId || undefined,
     }}).then(({ ok, status, b }) => {
       if (!ok || !b || !b.id) { failToast(status, "raise work orders"); return; }
-      showToast("Work order raised — it's in Work orders");
+      showToast("Work order raised. It's in Work orders now");
     });
   };
 
@@ -21793,7 +21793,7 @@ function ComplianceView({ go }) {
           <div className="empty-ico"><Icon name="shield" size={28} /></div>
           <h3>No compliance items yet</h3>
           <p>{canManage
-            ? "Add your statutory checks — fire alarm service, EICR, gas cert, legionella, lift LOLER — and track their due dates and certificates here."
+            ? "Add your statutory checks: fire alarm service, EICR, gas safety, legionella, lift LOLER. Track their due dates and certificates here."
             : "A supervisor or admin adds the statutory checks, then this register tracks their due dates and certificates."}</p>
           {canManage && (
             <button className="btn btn-primary" style={{ marginTop:14 }} onClick={() => setModal({ add:true })}>
@@ -22137,7 +22137,7 @@ function SLAsView({ go }) {
       <div className="page-head">
         <div>
           <h1 className="page-title">SLAs</h1>
-          <p className="page-desc">Each work order runs two clocks set by its priority: response, from logging to the first real action, and resolution, from logging to completion. Everything below is measured from your real work orders in the window you pick.</p>
+          <p className="page-desc">Response and resolution targets by priority, measured from your real work orders in the window you pick.</p>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10, flex:"none" }}>
           <div className="seg">
