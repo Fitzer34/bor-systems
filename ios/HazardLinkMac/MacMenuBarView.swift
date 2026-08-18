@@ -12,7 +12,7 @@ struct MacMenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Image(systemName: "shield.fill").foregroundStyle(Color.accentColor)
+                Image("Logo").resizable().scaledToFit().frame(width: 18, height: 18).clipShape(RoundedRectangle(cornerRadius: 4))
                 Text("HazardLink").font(.headline)
                 Spacer()
                 if auth.user != nil {

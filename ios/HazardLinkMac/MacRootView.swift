@@ -375,7 +375,7 @@ struct MacLoginView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "shield.fill").font(.system(size: 36)).foregroundStyle(Color.accentColor)
+            Image("Logo").resizable().scaledToFit().frame(width: 72, height: 72).clipShape(RoundedRectangle(cornerRadius: 16))
             Text("HazardLink").font(.title.weight(.bold))
             Text("Sign in").foregroundStyle(.secondary)
             TextField("Email", text: $email)
