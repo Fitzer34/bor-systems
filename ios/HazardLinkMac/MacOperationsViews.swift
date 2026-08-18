@@ -26,7 +26,7 @@ struct MacSlasView: View {
                     Text("Response and resolution targets by priority, measured from your real work orders.").foregroundStyle(.secondary)
                     Spacer()
                     Picker("Window", selection: $days) { Text("7 days").tag(7); Text("30 days").tag(30); Text("90 days").tag(90) }
-                        .pickerStyle(.segmented).frame(width: 240)
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 240)
                 }
                 if let e = errorText { retryView(e) { Task { await load() } }.frame(height: 120) }
                 else if let d = data {
@@ -548,7 +548,7 @@ struct MacAutomationsView: View {
                     .foregroundStyle(.secondary)
                 ForEach(items, id: \.0) { it in
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: it.1).frame(width: 26).foregroundStyle(Color.accentColor)
+                        Image(systemName: it.1).font(.title3).frame(width: 30).foregroundStyle(.primary).symbolRenderingMode(.hierarchical)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(it.0).font(.headline)
                             Text(it.2).font(.callout).foregroundStyle(.secondary)
