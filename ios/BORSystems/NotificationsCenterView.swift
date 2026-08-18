@@ -52,7 +52,7 @@ struct NotificationsCenterView: View {
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button("Mark all read") {
                     Task { await store.markAllRead() }
                 }

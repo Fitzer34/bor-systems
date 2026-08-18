@@ -215,10 +215,15 @@ struct TwoFactorView: View {
     /// Decode the backend's `data:image/png;base64,…` QR string into an Image.
     private func qrImage(from dataUrl: String) -> Image? {
         guard let commaIdx = dataUrl.firstIndex(of: ","),
-              let data = Data(base64Encoded: String(dataUrl[dataUrl.index(after: commaIdx)...])),
-              let ui = UIImage(data: data)
+              let data = Data(base64Encoded: String(dataUrl[dataUrl.index(after: commaIdx)...]))
         else { return nil }
+        #if canImport(UIKit)
+        guard let ui = UIImage(data: data) else { return nil }
         return Image(uiImage: ui)
+        #else
+        guard let ns = NSImage(data: data) else { return nil }
+        return Image(nsImage: ns)
+        #endif
     }
 }
 

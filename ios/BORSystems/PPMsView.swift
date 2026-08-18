@@ -36,7 +36,7 @@ struct PPMsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if canEdit {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button { showCreate = true } label: { Image(systemName: "plus") }
                 }
             }
@@ -167,14 +167,14 @@ struct PPMEditView: View {
         .navigationTitle(isEdit ? "Edit PPM" : "Add PPM")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button { Task { await save() } } label: {
                     if saving { ProgressView() } else { Text(isEdit ? "Save" : "Add").bold() }
                 }
                 .disabled(saving || title.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             if !isEdit {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
             }

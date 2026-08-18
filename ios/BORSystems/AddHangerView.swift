@@ -87,7 +87,7 @@ struct AddDeviceView: View {
             .navigationTitle(navTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         manager.cancel()
                         dismiss()
@@ -810,7 +810,7 @@ struct WiFiQRScannerSheet: View {
             .navigationTitle("Scan Wi-Fi code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { onResult(nil) }
                         .foregroundStyle(.white)
                 }

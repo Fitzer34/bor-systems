@@ -31,7 +31,7 @@ struct UsersView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if auth.user?.role == .admin {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button { showCreate = true } label: { Image(systemName: "plus") }
                 }
             }
@@ -147,7 +147,7 @@ private struct CreateUserSheet: View {
             }
             .navigationTitle("Invite staff")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
     }
 

@@ -46,7 +46,9 @@ final class AuthStore: ObservableObject {
         // Drop the in-memory WiFi password the device-setup wizard caches so
         // the next user on a shared device doesn't inherit it. SSID isn't
         // sensitive so we leave it.
+        #if os(iOS)
         WiFiSession.clear()
+        #endif
         syncWatch()  // pushes signedOut=true to the watch
     }
 
@@ -54,9 +56,11 @@ final class AuthStore: ObservableObject {
     /// app can call the backend directly. Called on every login / logout /
     /// bootstrap; the system de-dupes identical contexts.
     private func syncWatch() {
+        #if os(iOS)
         WatchSync.shared.push(
             token: APIClient.shared.token,
             apiBase: AppConfig.apiBaseURL)
+        #endif
     }
 
     func setOnDuty(_ onDuty: Bool) async {

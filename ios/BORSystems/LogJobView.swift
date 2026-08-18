@@ -60,8 +60,8 @@ struct LogJobView: View {
             .navigationTitle("Log a job")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
                     Button("Log") { Task { await create() } }
                         .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || creating)
                         .bold()

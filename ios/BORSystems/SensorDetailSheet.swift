@@ -79,7 +79,7 @@ struct SensorDetailSheet: View {
             .navigationTitle("Sensor")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button("Done") { dismiss() }
                 }
             }

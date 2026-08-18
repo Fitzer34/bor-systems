@@ -51,6 +51,7 @@ struct AlertDetailView: View {
                 // sign. Useful while responding, so we show it until the alert
                 // is closed. Falls back to the floor plan if no tag is paired
                 // or the phone has no UWB chip (handled inside FindSignView).
+                #if os(iOS)
                 if alert.status != .closed {
                     NavigationLink {
                         FindSignView(alertId: alert.id, zoneName: alert.zoneName, hangerId: alert.hangerId)
@@ -63,6 +64,12 @@ struct AlertDetailView: View {
                     .background(Color.green, in: RoundedRectangle(cornerRadius: 10))
                     .foregroundStyle(.white)
                 }
+                #else
+                if alert.status != .closed {
+                    Text("Precision sign-finding uses the phone's UWB. Open this alert in the iPhone app to walk to the sign.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                #endif
 
                 if alert.status == .open {
                     Button {

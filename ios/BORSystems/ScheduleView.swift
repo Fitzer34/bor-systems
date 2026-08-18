@@ -46,7 +46,7 @@ struct ScheduleView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !isReadOnly {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button { showCreate = true } label: { Image(systemName: "plus") }
                 }
             }
@@ -298,7 +298,7 @@ struct ShiftEditorSheet: View {
             }
             .navigationTitle(existing == nil ? "New shift" : "Edit shift")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .task { await loadInitial() }
         }
     }

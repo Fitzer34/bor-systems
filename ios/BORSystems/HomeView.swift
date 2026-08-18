@@ -77,14 +77,14 @@ struct HomeView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     if let user = auth.user {
                         DutySwitch(isOn: user.onDuty) { newValue in
                             Task { await auth.setOnDuty(newValue) }
                         }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         showProfile = true
                     } label: {

@@ -50,7 +50,7 @@ struct HangersView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if auth.user?.role == .admin {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     // Hangers are LoRa-only — they don't do BLE/WiFi onboarding.
                     // Registration is purely "type the DevEUI shown on the OLED
                     // + pick a zone", so the + button goes straight there
@@ -426,7 +426,7 @@ struct HangerDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if canEdit {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task { await save() }
                     } label: {
@@ -439,10 +439,21 @@ struct HangerDetailView: View {
         }
         .task { await bootstrap() }
         .sheet(isPresented: $showTrackerScan) {
+            #if os(iOS)
             TrackerAssignSheet(hangerId: hanger.id) { assigned in
                 tracker = assigned
                 onChange()
             }
+            #else
+            VStack(spacing: 12) {
+                Text("Assign a tracker from the iPhone app").font(.headline)
+                Text("Scanning a UWB tracker needs the phone's radio. Open this hanger in HazardLink on iPhone to assign one.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Button("Close") { showTrackerScan = false }
+            }
+            .padding(24)
+            .frame(width: 360)
+            #endif
         }
         .alert("Decommission this hanger?", isPresented: $showDecommissionConfirm) {
             Button("Decommission", role: .destructive) {
@@ -776,7 +787,7 @@ struct GatewayDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if isAdmin {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task { await save() }
                     } label: {
@@ -1062,7 +1073,7 @@ struct RegisterHangerSheet: View {
             .navigationTitle("Register hanger")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
             .task { buildings = (try? await APIClient.shared.buildings()) ?? [] }
             .onAppear { scanner.start() }

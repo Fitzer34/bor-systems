@@ -41,11 +41,11 @@ struct MaintenanceJobsView: View {
         .navigationTitle("Maintenance")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button { sheet = .log } label: { Image(systemName: "plus") }
                     .accessibilityLabel("Log a job")
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button { Task { await exportCsv() } } label: {
                     if exporting { ProgressView() } else { Image(systemName: "square.and.arrow.up") }
                 }
@@ -144,6 +144,7 @@ struct ShareItem: Identifiable {
     var id: String { url.absoluteString }
 }
 
+#if canImport(UIKit)
 /// Thin SwiftUI bridge to `UIActivityViewController` — the system share sheet,
 /// which lets the user save the CSV to Files, AirDrop or email it, etc.
 struct ActivityView: UIViewControllerRepresentable {
@@ -153,3 +154,16 @@ struct ActivityView: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
+#else
+/// macOS: the system share picker, anchored to the view.
+struct ActivityView: NSViewRepresentable {
+    let items: [Any]
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            let picker = NSSharingServicePicker(items: items)
+            picker.show(relativeTo: nsView.bounds, of: nsView, preferredEdge: .minY)
+        }
+    }
+}
+#endif

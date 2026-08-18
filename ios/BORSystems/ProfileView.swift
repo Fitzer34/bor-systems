@@ -173,7 +173,7 @@ struct ProfileSheet: View {
         NavigationStack {
             ProfileView()
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .primaryAction) {
                         Button("Done") { dismiss() }
                     }
                 }

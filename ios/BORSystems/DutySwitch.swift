@@ -23,7 +23,7 @@ struct DutySwitch: View {
             ZStack(alignment: .leading) {
                 // Track
                 Capsule()
-                    .fill(isOn ? Color.green : Color(.systemGray3))
+                    .fill(isOn ? Color.green : Color.gray.opacity(0.45))
                     .overlay(
                         Capsule().strokeBorder(.white.opacity(0.5), lineWidth: 1),
                     )

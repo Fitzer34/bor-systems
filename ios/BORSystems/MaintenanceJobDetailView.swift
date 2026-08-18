@@ -122,8 +122,8 @@ struct MaintenanceJobDetailView: View {
             .navigationTitle("Schedule job")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { showSchedule = false } }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showSchedule = false } }
+                ToolbarItem(placement: .primaryAction) {
                     Button("Save") {
                         showSchedule = false
                         Task { await act { try await APIClient.shared.scheduleJob(jobId, startAtISO: isoFormatter.string(from: scheduleDate)) } }
