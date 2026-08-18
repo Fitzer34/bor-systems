@@ -3,35 +3,52 @@ import SwiftUI
 /// The Mac window: sidebar (disciplines with their sub-features) → content.
 /// Mirrors the web sidebar and the iPhone drawer, laid out for a desk.
 enum MacSection: String, CaseIterable, Identifiable {
+    // Pinned
+    case dashboard, assistant
     // Cleaning
-    case alerts, floorPlans, dispatch, schedule, gateways, hangers
+    case alerts, floorPlans, dispatch, schedule, inspections, sds, gateways, hangers
     // Maintenance
-    case overview, workOrders, ppms, meters, compliance, permits, competency
+    case overview, workOrders, ppms, assets, parts, meters, contractors, compliance, slas, permits, competency
+    // Security
+    case security, visitors
     // Business & admin
-    case timesheets, leave, forms, users, reports, notificationsLog, auditLog, settings, profile
+    case timesheets, leave, forms, users, reports, portals, billing, automations, notificationsLog, auditLog, settings, profile
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .dashboard: return "Dashboard"
+        case .assistant: return "Ask HazardLink"
         case .alerts: return "Spill alerts"
         case .floorPlans: return "Floor plans"
         case .dispatch: return "Dispatch"
         case .schedule: return "Scheduling"
+        case .inspections: return "Rounds & inspections"
+        case .sds: return "Safety sheets"
         case .gateways: return "Gateways"
         case .hangers: return "Hangers"
         case .overview: return "Overview"
         case .workOrders: return "Work orders"
         case .ppms: return "PPM schedule"
+        case .assets: return "Assets"
+        case .parts: return "Parts and inventory"
         case .meters: return "Meters"
+        case .contractors: return "Contractors"
         case .compliance: return "Compliance"
+        case .slas: return "SLAs"
         case .permits: return "Permits"
         case .competency: return "Competency"
+        case .security: return "Patrols & incidents"
+        case .visitors: return "Visitors"
         case .timesheets: return "Timesheets"
         case .leave: return "Team & leave"
         case .forms: return "Forms"
         case .users: return "Users"
         case .reports: return "Reports"
+        case .portals: return "Client portal"
+        case .billing: return "Billing"
+        case .automations: return "Automations"
         case .notificationsLog: return "Notifications log"
         case .auditLog: return "Audit log"
         case .settings: return "Settings"
@@ -41,24 +58,37 @@ enum MacSection: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .dashboard: return "square.grid.2x2"
+        case .assistant: return "sparkles"
         case .alerts: return "bell.badge"
         case .floorPlans: return "map"
         case .dispatch: return "paperplane"
         case .schedule: return "calendar"
+        case .inspections: return "checklist"
+        case .sds: return "flask"
         case .gateways: return "wifi.router"
         case .hangers: return "antenna.radiowaves.left.and.right"
         case .overview: return "chart.line.uptrend.xyaxis"
         case .workOrders: return "hammer"
         case .ppms: return "arrow.triangle.2.circlepath"
+        case .assets: return "shippingbox"
+        case .parts: return "cube.box"
         case .meters: return "gauge"
+        case .contractors: return "person.text.rectangle"
         case .compliance: return "checkmark.shield"
+        case .slas: return "timer"
         case .permits: return "flag"
         case .competency: return "checkmark.seal"
+        case .security: return "shield.lefthalf.filled"
+        case .visitors: return "person.badge.clock"
         case .timesheets: return "clock"
         case .leave: return "person.2"
         case .forms: return "doc.text"
         case .users: return "person.3"
         case .reports: return "chart.bar"
+        case .portals: return "link"
+        case .billing: return "creditcard"
+        case .automations: return "bolt.badge.automatic"
         case .notificationsLog: return "bell.badge"
         case .auditLog: return "doc.text.magnifyingglass"
         case .settings: return "gearshape"
@@ -70,6 +100,8 @@ enum MacSection: String, CaseIterable, Identifiable {
     /// rest use letters that don't clash with system menus.
     var shortcut: KeyEquivalent {
         switch self {
+        case .dashboard: return "0"
+        case .assistant: return "j"
         case .alerts: return "1"
         case .floorPlans: return "2"
         case .dispatch: return "3"
@@ -79,6 +111,17 @@ enum MacSection: String, CaseIterable, Identifiable {
         case .ppms: return "7"
         case .timesheets: return "8"
         case .leave: return "9"
+        case .inspections: return "e"
+        case .sds: return "s"
+        case .assets: return "a"
+        case .parts: return "b"
+        case .contractors: return "c"
+        case .slas: return "t"
+        case .security: return "x"
+        case .visitors: return "v"
+        case .portals: return "w"
+        case .billing: return "z"
+        case .automations: return "o"
         case .gateways: return "g"
         case .hangers: return "h"
         case .meters: return "m"
@@ -97,24 +140,37 @@ enum MacSection: String, CaseIterable, Identifiable {
 
     @ViewBuilder var view: some View {
         switch self {
+        case .dashboard: MacDashboardView()
+        case .assistant: MacAssistantView()
         case .alerts: HomeView()
         case .floorPlans: MapView()
         case .dispatch: DispatchSendView()
         case .schedule: ScheduleView()
+        case .inspections: MacInspectionsView()
+        case .sds: MacSdsView()
         case .gateways: GatewaysView()
         case .hangers: HangersView()
         case .overview: MaintenanceKpisView()
         case .workOrders: MaintenanceJobsView()
         case .ppms: PPMsView()
+        case .assets: MacAssetsView()
+        case .parts: MacPartsView()
         case .meters: MetersView()
+        case .contractors: MacContractorsView()
         case .compliance: ComplianceView()
+        case .slas: MacSlasView()
         case .permits: PermitsView()
         case .competency: CompetencyView()
+        case .security: MacSecurityView()
+        case .visitors: MacVisitorsView()
         case .timesheets: TimesheetsView()
         case .leave: LeaveView()
         case .forms: FormsView()
         case .users: UsersView()
         case .reports: ReportsView()
+        case .portals: MacPortalsView()
+        case .billing: MacBillingView()
+        case .automations: MacAutomationsView()
         case .notificationsLog: NotificationsLogView()
         case .auditLog: AuditLogView()
         case .settings: SettingsView()
@@ -128,7 +184,7 @@ struct MacRootView: View {
     @EnvironmentObject var notifications: NotificationsStore
     @EnvironmentObject var alerts: MacAlertWatcher
 
-    @State private var selection: MacSection? = .alerts
+    @State private var selection: MacSection? = .dashboard
     @State private var showNotifications = false
 
     var body: some View {
@@ -166,10 +222,16 @@ struct MacRootView: View {
         return NavigationSplitView {
             List(selection: $selection) {
                 Section {
+                    row(.dashboard)
+                    row(.assistant)
+                }
+                Section {
                     row(.alerts, badge: alerts.openSpills)
                     row(.floorPlans)
                     row(.dispatch)
                     row(.schedule)
+                    row(.inspections)
+                    row(.sds)
                     if caps.canManageDevices {
                         row(.gateways)
                         row(.hangers)
@@ -183,13 +245,24 @@ struct MacRootView: View {
                         row(.overview)
                         row(.workOrders)
                         row(.ppms)
+                        row(.assets)
+                        row(.parts)
                         row(.meters)
+                        row(.contractors)
                         row(.compliance)
+                        row(.slas)
                         row(.permits)
                         if caps.canSeeCompliance { row(.competency) }
                     } header: {
                         groupHeader("Maintenance", icon: "wrench.and.screwdriver.fill", tint: Color(red: 0.98, green: 0.75, blue: 0.14))
                     }
+                }
+
+                Section {
+                    row(.security)
+                    row(.visitors)
+                } header: {
+                    groupHeader("Security", icon: "shield.lefthalf.filled", tint: Color(red: 0.51, green: 0.55, blue: 0.97))
                 }
 
                 Section {
@@ -199,6 +272,9 @@ struct MacRootView: View {
                     if caps.canManageUsers { row(.users) }
                     if caps.canSeeInsights {
                         row(.reports)
+                        row(.portals)
+                        row(.billing)
+                        row(.automations)
                         row(.notificationsLog)
                     }
                     if caps.canSeeAdmin {
