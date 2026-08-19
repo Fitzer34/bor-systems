@@ -760,4 +760,59 @@ extension APIClient {
     func updateEmail(_ email: String) async throws {
         let _: EmptyResponse = try await request("/users/me", method: "PATCH", body: UpdateEmailBody(email: email))
     }
+
+    /// Authenticated multipart upload of one file under form field "file",
+    /// plus optional extra text fields. Used for floor plans, photos and
+    /// documents. Same auth/refresh/error handling as `request`.
+    func upload<T: Decodable>(
+        _ path: String,
+        fileData: Data,
+        filename: String,
+        mimeType: String,
+        fields: [String: String] = [:]
+    ) async throws -> T {
+        let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: ["/"])
+        let suffix = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: base + suffix) else {
+            throw APIError.transport(URLError(.badURL))
+        }
+        let boundary = "hl-" + UUID().uuidString
+        var body = Data()
+        for (k, v) in fields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(k)\"\r\n\r\n".data(using: .utf8)!)
+            body.append(v.data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = body
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw APIError.transport(error)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.transport(URLError(.badServerResponse))
+        }
+        if let refreshed = http.value(forHTTPHeaderField: "X-Refreshed-Token"), !refreshed.isEmpty {
+            self.token = refreshed
+        }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        if T.self == EmptyResponse.self { return EmptyResponse() as! T }
+        do { return try decoder.decode(T.self, from: data) } catch { throw APIError.decode(error) }
+    }
 }

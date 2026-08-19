@@ -143,7 +143,7 @@ enum MacSection: String, CaseIterable, Identifiable {
         case .dashboard: MacDashboardView()
         case .assistant: MacAssistantView()
         case .alerts: HomeView()
-        case .floorPlans: MapView()
+        case .floorPlans: MacFloorPlansView()
         case .dispatch: DispatchSendView()
         case .schedule: ScheduleView()
         case .inspections: MacInspectionsView()
