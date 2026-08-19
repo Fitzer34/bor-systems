@@ -26845,13 +26845,16 @@ function FloorPlanView({ go }) {
   const litZoneIds = React.useMemo(() => {
     const s = new Set();
     alerts.forEach((a) => {
-      if (a.kind === "planned_cleaning" || a.status === "closed") return;
+      // Lifted = a spill alert that's still open or being handled. Planned
+      // cleaning and sign-replacement notes don't light the pin; same rule
+      // as the iPhone and Mac apps.
+      if ((a.kind || "spill") !== "spill" || a.status === "closed") return;
       const z = a.zoneId || (hangerById[a.hangerId] || {}).zoneId;
       if (z) s.add(z);
     });
     return s;
   }, [alerts, hangerById]);
-  const alertForZone = (zid) => alerts.find((a) => (a.zoneId || (hangerById[a.hangerId] || {}).zoneId) === zid && a.status !== "closed" && a.kind !== "planned_cleaning");
+  const alertForZone = (zid) => alerts.find((a) => (a.zoneId || (hangerById[a.hangerId] || {}).zoneId) === zid && a.status !== "closed" && (a.kind || "spill") === "spill");
 
   /* ── Actions ───────────────────────────────────────────── */
   const planClick = (e) => {
