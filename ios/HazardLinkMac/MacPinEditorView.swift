@@ -276,8 +276,11 @@ struct MacPinEditorView: View {
                                 }
                             }
                             if isAdmin {
-                                if unplacedHangers.isEmpty {
-                                    Text("Every registered sign is already on a pin. Register more under Devices.")
+                                if hangers.isEmpty {
+                                    Text("No signs registered yet. Register one under Hangers, then assign it here.")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                } else if unplacedHangers.isEmpty {
+                                    Text("Every registered sign is already on a pin. Register more under Hangers.")
                                         .font(.caption2).foregroundStyle(.secondary)
                                 } else {
                                     HStack {
