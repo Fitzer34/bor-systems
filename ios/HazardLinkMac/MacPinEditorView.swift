@@ -23,6 +23,7 @@ struct MacPinEditorView: View {
     @State private var loading = true
     @State private var selectedZoneId: String?
     @State private var pendingPin: CGPoint?          // per-mille, awaiting a name
+    @State private var placingZoneId: String?        // existing zone (e.g. created on the phone) being put on the plan
     @State private var pendingName = ""
     @State private var renameText = ""
     @State private var assignHangerId = ""
@@ -39,9 +40,13 @@ struct MacPinEditorView: View {
                 Image(systemName: "mappin.and.ellipse").foregroundStyle(Color.accentColor)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("\(siteName) · \(floor.name)").font(.headline)
-                    Text(isAdmin ? "Click the plan where a sign lives to place a pin. Drag a pin to move it."
-                                 : "Pins show where each sign lives. An admin can place or move them.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    if let pid = placingZoneId, let z = zones.first(where: { $0.id == pid }) {
+                        Text("Click the plan where \(z.name) lives.").font(.caption).foregroundStyle(Color.accentColor)
+                    } else {
+                        Text(isAdmin ? "Click the plan where a sign lives to place a pin. Drag a pin to move it."
+                                     : "Pins show where each sign lives. An admin can place or move them.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 legend
@@ -147,6 +152,11 @@ struct MacPinEditorView: View {
                     guard isAdmin, size.width > 0, size.height > 0 else { return }
                     let px = Int((p.x / size.width * scale).rounded()).clamped(0, 1000)
                     let py = Int((p.y / size.height * scale).rounded()).clamped(0, 1000)
+                    if let pid = placingZoneId, let z = zones.first(where: { $0.id == pid }) {
+                        placingZoneId = nil
+                        Task { await moveZone(z, x: px, y: py); selectedZoneId = z.id; showToast("\(z.name) is now on the plan.") }
+                        return
+                    }
                     pendingPin = CGPoint(x: px, y: py)
                     pendingName = ""
                     selectedZoneId = nil
@@ -154,7 +164,7 @@ struct MacPinEditorView: View {
                 }
                 .cursorCrosshair(isAdmin)
 
-            ForEach(zones) { z in
+            ForEach(zones.filter { $0.pinX != nil && $0.pinY != nil }) { z in
                 let (x, y) = currentPos(z)
                 pinView(z)
                     .position(x: CGFloat(x) / scale * size.width, y: CGFloat(y) / scale * size.height)
@@ -247,6 +257,20 @@ struct MacPinEditorView: View {
                                 Text(label).font(.callout.weight(.medium))
                                 Spacer()
                             }
+                            if z.pinX == nil || z.pinY == nil {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Not on the plan yet").font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                                    Text("This location was added without a spot on the plan (for example from the phone during sign setup). A lift here still raises an alert, but nobody can see where on the floor it is.")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                    if isAdmin && floor.floorPlanUrl != nil {
+                                        Button(placingZoneId == z.id ? "Click the plan…" : "Place on plan") { placingZoneId = z.id; pendingPin = nil }
+                                            .buttonStyle(.borderedProminent).controlSize(.small)
+                                            .disabled(placingZoneId == z.id)
+                                    }
+                                }
+                                .padding(8)
+                                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                            }
                             if isAdmin {
                                 HStack {
                                     TextField("Pin name", text: $renameText).textFieldStyle(.roundedBorder)
@@ -322,7 +346,7 @@ struct MacPinEditorView: View {
                 }
                 ForEach(zones) { z in
                     let (c, l) = zoneState(z)
-                    Button { selectedZoneId = z.id; renameText = z.name; pendingPin = nil } label: {
+                    Button { selectedZoneId = z.id; renameText = z.name; pendingPin = nil; if placingZoneId != z.id { placingZoneId = nil } } label: {
                         HStack(spacing: 8) {
                             Circle().fill(c).frame(width: 9, height: 9)
                             VStack(alignment: .leading, spacing: 1) {
@@ -330,7 +354,7 @@ struct MacPinEditorView: View {
                                 Text(l).font(.caption2).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if z.pinX == nil { Text("not placed").font(.caption2).foregroundStyle(.orange) }
+                            if z.pinX == nil || z.pinY == nil { Text("not on plan").font(.caption2.weight(.semibold)).foregroundStyle(.orange) }
                         }
                         .padding(6)
                         .background(selectedZoneId == z.id ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 6))

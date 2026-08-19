@@ -26789,6 +26789,7 @@ function FloorPlanView({ go }) {
   const [busy, setBusy] = React.useState(false);
 
   const [mode, setMode] = React.useState("view"); // view | place
+  const [placingZoneId, setPlacingZoneId] = React.useState(null); // existing zone (e.g. created on the phone) being put on the plan
   const [selZone, setSelZone] = React.useState(null);
   const [newZoneAt, setNewZoneAt] = React.useState(null); // {x,y} pending placement
   const [newZoneName, setNewZoneName] = React.useState("");
@@ -26860,9 +26861,15 @@ function FloorPlanView({ go }) {
   const planClick = (e) => {
     if (mode !== "place" || !imgRef.current || busy) return;
     const r = imgRef.current.getBoundingClientRect();
-    const x = Math.round(((e.clientX - r.left) / r.width) * FP_SCALE);
-    const y = Math.round(((e.clientY - r.top) / r.height) * FP_SCALE);
-    setNewZoneAt({ x: Math.max(0, Math.min(FP_SCALE, x)), y: Math.max(0, Math.min(FP_SCALE, y)) });
+    const x = Math.max(0, Math.min(FP_SCALE, Math.round(((e.clientX - r.left) / r.width) * FP_SCALE)));
+    const y = Math.max(0, Math.min(FP_SCALE, Math.round(((e.clientY - r.top) / r.height) * FP_SCALE)));
+    if (placingZoneId) {
+      const z = zones.find((q) => q.id === placingZoneId);
+      setPlacingZoneId(null); setMode("view");
+      if (z) { moveZone(z, x, y); setSelZone(z.id); showToast(z.name + " is now on the plan."); }
+      return;
+    }
+    setNewZoneAt({ x, y });
     setNewZoneName("");
     setSelZone(null);
   };
@@ -27060,8 +27067,8 @@ function FloorPlanView({ go }) {
               {floor && isAdmin && (
                 <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
                   {floor.floorPlanUrl && (
-                    <button className={"btn" + (mode === "place" ? " btn-primary" : "")} onClick={() => { setMode(mode === "place" ? "view" : "place"); setNewZoneAt(null); }}>
-                      {mode === "place" ? "Click the plan where the sign lives…" : "+ Place a pin"}
+                    <button className={"btn" + (mode === "place" ? " btn-primary" : "")} onClick={() => { setMode(mode === "place" ? "view" : "place"); setNewZoneAt(null); setPlacingZoneId(null); }}>
+                      {mode === "place" ? (placingZoneId ? "Click the plan where " + ((zones.find((q) => q.id === placingZoneId) || {}).name || "this pin") + " lives…" : "Click the plan where the sign lives…") : "+ Place a pin"}
                     </button>
                   )}
                   {floor.floorPlanUrl && <button className="btn" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}>Replace plan</button>}
@@ -27127,6 +27134,15 @@ function FloorPlanView({ go }) {
                       )}
                     </div>
 
+                    {(selected.pinX == null || selected.pinY == null) && (
+                      <div style={{ background: "color-mix(in oklch, var(--warn) 12%, transparent)", border: "1px solid color-mix(in oklch, var(--warn) 35%, transparent)", borderRadius: 10, padding: 10, fontSize: 12.5 }}>
+                        <div style={{ fontWeight: 700, color: "var(--warn)" }}>Not on the plan yet</div>
+                        <div className="muted" style={{ marginTop: 2 }}>This location was added without a spot on the plan (for example from the phone during sign setup). A lift here still raises an alert, but nobody can see where on the floor it is.</div>
+                        {isAdmin && floor.floorPlanUrl && (
+                          <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => { setPlacingZoneId(selected.id); setMode("place"); setNewZoneAt(null); }}>Place on plan</button>
+                        )}
+                      </div>
+                    )}
                     {isAdmin && <button className="btn" style={{ color: "var(--crit)" }} onClick={() => deleteZone(selected)}>Remove pin</button>}
                   </div>
                 </div>
@@ -27154,6 +27170,7 @@ function FloorPlanView({ go }) {
                   <button key={z.id} className={"nav-item" + (selZone === z.id ? " active" : "")} style={{ width: "100%", justifyContent: "flex-start" }} onClick={() => setSelZone(z.id)}>
                     <i className={"pin-dot " + (litZoneIds.has(z.id) ? "deployed" : (hangersByZone[z.id] || []).length ? "cleared" : "")} style={!litZoneIds.has(z.id) && !(hangersByZone[z.id] || []).length ? { background: "var(--ink-3)" } : {}} />
                     <span style={{ marginLeft: 8 }}>{z.name}</span>
+                    {(z.pinX == null || z.pinY == null) && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: "var(--warn)" }}>not on plan</span>}
                     <span className="muted" style={{ marginLeft: "auto", fontSize: 11.5 }}>{(hangersByZone[z.id] || []).length} sign{(hangersByZone[z.id] || []).length === 1 ? "" : "s"}</span>
                   </button>
                 ))}
