@@ -7403,7 +7403,7 @@ function PlanEditor({ site, floor, siteId, sites, onClose, onSave }) {
 /* ============================================================
    Main view
    ============================================================ */
-function FloorPlanView({ go }) {
+function FloorPlanViewDemo({ go }) {
   const D = useSiteData();
   const { site: globalSite } = React.useContext(SiteContext);
 
@@ -7648,7 +7648,7 @@ function FloorPlanView({ go }) {
   );
 }
 
-Object.assign(window, { FloorPlanView });
+Object.assign(window, { FloorPlanViewDemo });
 
 /* ════════════════════ asset_44_6aa8b35f.js ════════════════════ */
 ;
@@ -26750,5 +26750,435 @@ function shade(hex) {
 }
 
 /* self-mount stripped — host app mounts <App/> */
+
+/* ════════════════════ asset_52_f100b1a7.js ════════════════════ */
+;
+/* ============================================================
+   Floor plans — LIVE. Replaces the prototype FloorPlanView, which
+   ran on demo HL.floorPlanSites with local-only pins.
+
+   The core HazardLink loop: a smart wet-floor sign (hanger) is
+   assigned to a ZONE, a zone is a PIN on the floor plan (pinX/pinY,
+   integers 0..1000 of the image), and a lifted sign lights its
+   zone's pin red and pulsing until the spill is closed.
+
+   Data: /buildings, /buildings/:id/floors, /floors/:id/zones,
+         /hangers, /alerts/active. Writes: POST/PATCH/DELETE zones,
+         PATCH /hangers/:id {zoneId}, POST /floors/:id/floor-plan.
+   ============================================================ */
+
+const FP_SCALE = 1000; // pins are stored as per-mille of the image
+
+function fpAuthHeaders() {
+  const t = (typeof localStorage !== "undefined" && localStorage.getItem("bor.token")) || "";
+  return t ? { Authorization: "Bearer " + t } : {};
+}
+
+function FloorPlanView({ go }) {
+  const { showToast, toastNode } = useViewToast();
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const isAdmin = me.role === "admin";
+
+  const [buildings, setBuildings] = React.useState(null); // null loading | false error | []
+  const [buildingId, setBuildingId] = React.useState("");
+  const [floors, setFloors] = React.useState([]);
+  const [floorId, setFloorId] = React.useState("");
+  const [zones, setZones] = React.useState([]);
+  const [hangers, setHangers] = React.useState([]);
+  const [alerts, setAlerts] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+
+  const [mode, setMode] = React.useState("view"); // view | place
+  const [selZone, setSelZone] = React.useState(null);
+  const [newZoneAt, setNewZoneAt] = React.useState(null); // {x,y} pending placement
+  const [newZoneName, setNewZoneName] = React.useState("");
+  const [showAddFloor, setShowAddFloor] = React.useState(false);
+  const [newFloorName, setNewFloorName] = React.useState("");
+  const fileRef = React.useRef(null);
+  const imgRef = React.useRef(null);
+
+  /* ── Loaders ───────────────────────────────────────────── */
+  const loadBuildings = React.useCallback(() => {
+    hlApi("/buildings").then(({ ok, b }) => {
+      if (!ok || !b) { setBuildings(false); return; }
+      const list = b.buildings || [];
+      setBuildings(list);
+      setBuildingId((cur) => cur && list.some((x) => x.id === cur) ? cur : (list[0] ? list[0].id : ""));
+    }).catch(() => setBuildings(false));
+  }, []);
+
+  const loadFloors = React.useCallback((bid) => {
+    if (!bid) { setFloors([]); setFloorId(""); return; }
+    hlApi("/buildings/" + bid + "/floors").then(({ ok, b }) => {
+      const list = ok && b ? (b.floors || []).slice().sort((a, c) => a.orderIndex - c.orderIndex) : [];
+      setFloors(list);
+      setFloorId((cur) => cur && list.some((x) => x.id === cur) ? cur
+        : ((list.find((f) => f.floorPlanUrl) || list[0] || {}).id || ""));
+    }).catch(() => setFloors([]));
+  }, []);
+
+  const loadZones = React.useCallback((fid) => {
+    if (!fid) { setZones([]); return; }
+    hlApi("/floors/" + fid + "/zones").then(({ ok, b }) => setZones(ok && b ? (b.zones || []) : [])).catch(() => setZones([]));
+  }, []);
+
+  const loadLive = React.useCallback(() => {
+    hlApi("/hangers").then(({ ok, b }) => setHangers(ok && b ? (b.hangers || []) : [])).catch(() => {});
+    hlApi("/alerts/active").then(({ ok, b }) => setAlerts(ok && b ? (b.alerts || []) : [])).catch(() => {});
+  }, []);
+
+  React.useEffect(() => { loadBuildings(); loadLive(); }, [loadBuildings, loadLive]);
+  React.useEffect(() => { loadFloors(buildingId); }, [buildingId, loadFloors]);
+  React.useEffect(() => { loadZones(floorId); setSelZone(null); setNewZoneAt(null); }, [floorId, loadZones]);
+  React.useEffect(() => { const t = setInterval(loadLive, 15000); return () => clearInterval(t); }, [loadLive]);
+
+  const building = (buildings || []).find((b) => b.id === buildingId);
+  const floor = floors.find((f) => f.id === floorId);
+
+  /* ── Derived: which zones are lit (lifted sign = open/acknowledged spill) */
+  const hangerById = React.useMemo(() => {
+    const m = {}; hangers.forEach((row) => { const h = row.hanger || row; m[h.id] = h; }); return m;
+  }, [hangers]);
+  const hangersByZone = React.useMemo(() => {
+    const m = {}; hangers.forEach((row) => { const h = row.hanger || row; if (h.zoneId) (m[h.zoneId] = m[h.zoneId] || []).push(h); }); return m;
+  }, [hangers]);
+  const litZoneIds = React.useMemo(() => {
+    const s = new Set();
+    alerts.forEach((a) => {
+      if (a.kind === "planned_cleaning" || a.status === "closed") return;
+      const z = a.zoneId || (hangerById[a.hangerId] || {}).zoneId;
+      if (z) s.add(z);
+    });
+    return s;
+  }, [alerts, hangerById]);
+  const alertForZone = (zid) => alerts.find((a) => (a.zoneId || (hangerById[a.hangerId] || {}).zoneId) === zid && a.status !== "closed" && a.kind !== "planned_cleaning");
+
+  /* ── Actions ───────────────────────────────────────────── */
+  const planClick = (e) => {
+    if (mode !== "place" || !imgRef.current || busy) return;
+    const r = imgRef.current.getBoundingClientRect();
+    const x = Math.round(((e.clientX - r.left) / r.width) * FP_SCALE);
+    const y = Math.round(((e.clientY - r.top) / r.height) * FP_SCALE);
+    setNewZoneAt({ x: Math.max(0, Math.min(FP_SCALE, x)), y: Math.max(0, Math.min(FP_SCALE, y)) });
+    setNewZoneName("");
+    setSelZone(null);
+  };
+
+  const createZone = () => {
+    if (!newZoneAt || !floorId || busy) return;
+    const name = newZoneName.trim() || ("Zone " + (zones.length + 1));
+    setBusy(true);
+    hlApi("/floors/" + floorId + "/zones", { method: "POST", body: { name, pinX: newZoneAt.x, pinY: newZoneAt.y } })
+      .then(({ ok, b }) => {
+        if (!ok) { showToast("Could not add the zone. Admins place pins."); return; }
+        showToast(name + " pinned. Assign a sign to it from the panel.");
+        setNewZoneAt(null); setMode("view"); loadZones(floorId);
+        if (b && b.zone) setSelZone(b.zone.id);
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const moveZone = (z, x, y) => {
+    if (busy) return;
+    setBusy(true);
+    hlApi("/zones/" + z.id, { method: "PATCH", body: { pinX: x, pinY: y } })
+      .then(({ ok }) => { if (ok) { loadZones(floorId); } else showToast("Could not move the pin."); })
+      .finally(() => setBusy(false));
+  };
+
+  const renameZone = (z, name) => {
+    const n = String(name || "").trim();
+    if (!n || n === z.name) return;
+    hlApi("/zones/" + z.id, { method: "PATCH", body: { name: n } }).then(({ ok }) => { if (ok) loadZones(floorId); });
+  };
+
+  const deleteZone = (z) => {
+    if (!window.confirm("Remove the pin \"" + z.name + "\"? Signs assigned to it become unplaced.")) return;
+    hlApi("/zones/" + z.id, { method: "DELETE" }).then(({ ok }) => {
+      if (ok) { showToast("Pin removed."); setSelZone(null); loadZones(floorId); loadLive(); }
+      else showToast("Could not remove the pin.");
+    });
+  };
+
+  const assignHanger = (hangerId, zoneId) => {
+    hlApi("/hangers/" + hangerId + "/relocate", { method: "POST", body: { zoneId } }).then(({ ok }) => {
+      if (ok) { showToast(zoneId ? "Sign assigned to this pin." : "Sign unassigned."); loadLive(); }
+      else showToast("Could not update the sign.");
+    });
+  };
+
+  const uploadPlan = (file) => {
+    if (!file || !floorId) return;
+    if (!/^image\/(png|jpeg)$/.test(file.type)) { showToast("Floor plans must be PNG or JPEG."); return; }
+    setBusy(true);
+    const fd = new FormData(); fd.append("file", file);
+    fetch((window.HL_API_BASE || "/api") + "/floors/" + floorId + "/floor-plan", { method: "POST", headers: fpAuthHeaders(), body: fd })
+      .then((r) => { if (!r.ok) throw new Error(String(r.status)); showToast("Plan uploaded."); loadFloors(buildingId); })
+      .catch((e) => showToast(String(e.message) === "403" ? "Only admins can upload plans." : "Upload failed. Try again."))
+      .finally(() => setBusy(false));
+  };
+
+  const addFloorNamed = (name) => {
+    const n = String(name || "").trim();
+    if (!n || !buildingId) return;
+    hlApi("/buildings/" + buildingId + "/floors", { method: "POST", body: { name: n, orderIndex: floors.length } })
+      .then(({ ok, b }) => {
+        if (!ok) { showToast("Could not add the floor."); return; }
+        setNewFloorName("");
+        loadFloors(buildingId);
+        if (b && b.floor) setFloorId(b.floor.id);
+        showToast(n + " added. Upload its plan, then place pins.");
+      });
+  };
+
+  /* ── Drag-to-move pins (admin) ─────────────────────────── */
+  const dragRef = React.useRef(null);
+  const onPinMouseDown = (z) => (e) => {
+    if (!isAdmin || mode === "place") return;
+    e.preventDefault(); e.stopPropagation();
+    dragRef.current = { id: z.id, moved: false };
+    const move = (ev) => {
+      if (!dragRef.current || !imgRef.current) return;
+      dragRef.current.moved = true;
+      const r = imgRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(FP_SCALE, Math.round(((ev.clientX - r.left) / r.width) * FP_SCALE)));
+      const y = Math.max(0, Math.min(FP_SCALE, Math.round(((ev.clientY - r.top) / r.height) * FP_SCALE)));
+      setZones((zs) => zs.map((q) => q.id === z.id ? { ...q, pinX: x, pinY: y } : q));
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up);
+      const d = dragRef.current; dragRef.current = null;
+      if (d && d.moved) {
+        setZones((zs) => { const q = zs.find((k) => k.id === z.id); if (q) moveZone(q, q.pinX, q.pinY); return zs; });
+      }
+    };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+  };
+
+  /* ── Render ────────────────────────────────────────────── */
+  const lit = litZoneIds.size;
+  const unplacedHangers = hangers.map((r) => r.hanger || r).filter((h) => !h.zoneId);
+  const selected = zones.find((z) => z.id === selZone);
+
+  return (
+    <div className="content-inner">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Floor plans</h1>
+          <p className="page-desc">Where your smart signs live. Each pin is a zone with a sign on it; a lifted sign turns its pin red until the spill is closed.</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <select className="dv-input" value={buildingId} onChange={(e) => setBuildingId(e.target.value)} style={{ minWidth: 180 }}>
+            {(buildings || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {!buildings || buildings.length === 0 ? <option value="">No sites yet</option> : null}
+          </select>
+          {isAdmin && buildingId && <button className="btn" onClick={() => setShowAddFloor(true)}>+ Add floor</button>}
+        </div>
+      </div>
+
+      {buildings === null && <div className="card card-pad"><p className="muted">Loading sites…</p></div>}
+      {buildings === false && <div className="card card-pad"><p className="muted">Couldn't load sites.</p><button className="btn" onClick={loadBuildings}>Try again</button></div>}
+      {buildings && buildings.length === 0 && (
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>No sites yet</div>
+          <div style={{ fontSize: 13.5, color: "var(--ink-3)" }}>Add a site under Settings → Sites, then upload its floor plans and place your signs.</div>
+        </div>
+      )}
+
+      {buildings && buildings.length > 0 && (
+        <React.Fragment>
+          {/* Floor tabs */}
+          <div className="tabs" style={{ marginBottom: 12 }}>
+            {floors.map((f) => (
+              <button key={f.id} className={"tab-btn" + (f.id === floorId ? " on" : "")} onClick={() => setFloorId(f.id)}>
+                {f.name}{!f.floorPlanUrl ? " · no plan" : ""}
+              </button>
+            ))}
+            {floors.length === 0 && <span className="muted" style={{ fontSize: 13 }}>No floors on {building ? building.name : "this site"} yet.</span>}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 16, alignItems: "start" }}>
+            {/* Plan canvas */}
+            <div className="card" style={{ padding: 12 }}>
+              <div className="fp-bar" style={{ marginBottom: 10 }}>
+                <span className="fp-bar-label">{floor ? floor.name : "Pick a floor"}</span>
+                <div className="fp-legend">
+                  <span className="fp-lg"><i className="pin-dot deployed" />Lifted <b>{lit}</b></span>
+                  <span className="fp-lg"><i className="pin-dot cleared" />On rack <b>{Math.max(0, zones.filter((z) => (hangersByZone[z.id] || []).length).length - lit)}</b></span>
+                  <span className="fp-lg"><i className="pin-dot" style={{ background: "var(--ink-3)" }} />No sign <b>{zones.filter((z) => !(hangersByZone[z.id] || []).length).length}</b></span>
+                </div>
+              </div>
+
+              {floor && floor.floorPlanUrl ? (
+                <div style={{ position: "relative", cursor: mode === "place" ? "crosshair" : "default", borderRadius: 10, overflow: "hidden", border: "1px solid var(--line)" }}
+                     onClick={planClick}>
+                  <img ref={imgRef} src={floor.floorPlanUrl} alt={"Floor plan of " + floor.name} style={{ width: "100%", display: "block", userSelect: "none" }} draggable={false} />
+                  {zones.filter((z) => z.pinX != null && z.pinY != null).map((z) => {
+                    const isLit = litZoneIds.has(z.id);
+                    const hasSign = (hangersByZone[z.id] || []).length > 0;
+                    const isSel = selZone === z.id;
+                    return (
+                      <div key={z.id}
+                           onMouseDown={onPinMouseDown(z)}
+                           onClick={(e) => { e.stopPropagation(); if (mode !== "place") setSelZone(z.id); }}
+                           title={z.name}
+                           style={{ position: "absolute", left: (z.pinX / FP_SCALE * 100) + "%", top: (z.pinY / FP_SCALE * 100) + "%",
+                                    transform: "translate(-50%,-50%)", cursor: isAdmin ? "grab" : "pointer" }}>
+                        <div style={{
+                          width: isSel ? 22 : 18, height: isSel ? 22 : 18, borderRadius: "50%",
+                          background: isLit ? "var(--crit)" : hasSign ? "var(--ok)" : "var(--ink-3)",
+                          border: "2.5px solid #fff", boxShadow: isLit ? "0 0 0 6px color-mix(in oklch, var(--crit) 28%, transparent)" : "0 1px 4px rgba(0,0,0,.35)",
+                          animation: isLit ? "fpPulse 1.2s ease-in-out infinite" : "none",
+                        }} />
+                        <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 3, whiteSpace: "nowrap",
+                                      fontSize: 10.5, fontWeight: 700, color: "#fff", background: "rgba(15,23,42,.75)", borderRadius: 5, padding: "1px 6px" }}>
+                          {z.name}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {newZoneAt && (
+                    <div style={{ position: "absolute", left: (newZoneAt.x / FP_SCALE * 100) + "%", top: (newZoneAt.y / FP_SCALE * 100) + "%", transform: "translate(-50%,-50%)" }}>
+                      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "var(--accent)", border: "2.5px solid #fff", boxShadow: "0 0 0 6px color-mix(in oklch, var(--accent) 30%, transparent)" }} />
+                    </div>
+                  )}
+                  <style>{"@keyframes fpPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}"}</style>
+                </div>
+              ) : floor ? (
+                <div style={{ border: "1.5px dashed var(--line)", borderRadius: 10, padding: "56px 24px", textAlign: "center" }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>No plan for {floor.name} yet</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 12 }}>Upload a PNG or JPEG of the floor, then place a pin wherever a sign lives.</div>
+                  {isAdmin && <button className="btn btn-primary" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}>Upload plan</button>}
+                </div>
+              ) : (
+                <div style={{ padding: "40px 0", textAlign: "center" }} className="muted">Add a floor to get started.</div>
+              )}
+
+              {floor && isAdmin && (
+                <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  {floor.floorPlanUrl && (
+                    <button className={"btn" + (mode === "place" ? " btn-primary" : "")} onClick={() => { setMode(mode === "place" ? "view" : "place"); setNewZoneAt(null); }}>
+                      {mode === "place" ? "Click the plan where the sign lives…" : "+ Place a pin"}
+                    </button>
+                  )}
+                  {floor.floorPlanUrl && <button className="btn" onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}>Replace plan</button>}
+                  <input ref={fileRef} type="file" accept="image/png,image/jpeg" hidden onChange={(e) => { uploadPlan(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+                  {floor.floorPlanUrl && zones.length > 0 && <span className="muted" style={{ fontSize: 12 }}>Drag a pin to move it.</span>}
+                </div>
+              )}
+
+              {newZoneAt && (
+                <div className="card card-pad" style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>Name this pin</span>
+                  <input className="dv-input" autoFocus placeholder="e.g. Main entrance, Aisle 4, Kitchen" value={newZoneName}
+                         onChange={(e) => setNewZoneName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createZone(); }} style={{ minWidth: 240 }} />
+                  <button className="btn btn-primary" onClick={createZone} disabled={busy}>Add pin</button>
+                  <button className="btn" onClick={() => { setNewZoneAt(null); setMode("view"); }}>Cancel</button>
+                </div>
+              )}
+            </div>
+
+            {/* Side panel */}
+            <div style={{ display: "grid", gap: 12 }}>
+              {selected ? (
+                <div className="card">
+                  <div className="card-head">
+                    <h3 style={{ margin: 0 }}>{selected.name}</h3>
+                    <button className="btn btn-sm" onClick={() => setSelZone(null)}>Close</button>
+                  </div>
+                  <div className="card-pad" style={{ paddingTop: 0, display: "grid", gap: 10 }}>
+                    {(() => { const a = alertForZone(selected.id); return a ? (
+                      <div style={{ background: "color-mix(in oklch, var(--crit) 12%, transparent)", border: "1px solid color-mix(in oklch, var(--crit) 35%, transparent)", borderRadius: 10, padding: 10 }}>
+                        <div style={{ fontWeight: 700, color: "var(--crit)", fontSize: 13 }}>Sign lifted · {a.status === "acknowledged" ? "being handled" : "awaiting response"}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>since {new Date(a.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                        <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => go("spills")}>Open in Spill alerts</button>
+                      </div>
+                    ) : <div className="muted" style={{ fontSize: 12.5 }}>No spill on this pin right now.</div>; })()}
+
+                    {isAdmin && (
+                      <label style={{ fontSize: 12, color: "var(--ink-3)" }}>Pin name
+                        <input className="dv-input" defaultValue={selected.name} onBlur={(e) => renameZone(selected, e.target.value)} style={{ marginTop: 4 }} />
+                      </label>
+                    )}
+
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--ink-3)", marginBottom: 6 }}>Signs on this pin</div>
+                      {(hangersByZone[selected.id] || []).length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No sign assigned yet.</div>}
+                      {(hangersByZone[selected.id] || []).map((h) => (
+                        <div key={h.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{h.name || ("Sign " + String(h.devEui || h.id).slice(-6).toUpperCase())}</div>
+                            <div className="muted" style={{ fontSize: 11.5 }}>{h.status || "registered"}{h.batteryPct != null ? " · " + h.batteryPct + "%" : ""}</div>
+                          </div>
+                          {isAdmin && <button className="btn btn-sm" onClick={() => assignHanger(h.id, null)}>Unassign</button>}
+                        </div>
+                      ))}
+                      {isAdmin && unplacedHangers.length > 0 && (
+                        <select className="dv-input" defaultValue="" onChange={(e) => { if (e.target.value) { assignHanger(e.target.value, selected.id); e.target.value = ""; } }} style={{ marginTop: 8 }}>
+                          <option value="">Assign a sign to this pin…</option>
+                          {unplacedHangers.map((h) => <option key={h.id} value={h.id}>{h.name || ("Sign " + String(h.devEui || h.id).slice(-6).toUpperCase())}</option>)}
+                        </select>
+                      )}
+                      {isAdmin && unplacedHangers.length === 0 && (hangersByZone[selected.id] || []).length === 0 && (
+                        <div className="muted" style={{ fontSize: 12 }}>No unplaced signs. Register one under Devices, then assign it here.</div>
+                      )}
+                    </div>
+
+                    {isAdmin && <button className="btn" style={{ color: "var(--crit)" }} onClick={() => deleteZone(selected)}>Remove pin</button>}
+                  </div>
+                </div>
+              ) : (
+                <div className="card card-pad">
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>How it works</div>
+                  <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                    1. Upload the floor's plan.<br />
+                    2. Place a pin where each wet-floor sign lives.<br />
+                    3. Assign the sign (registered under Devices) to its pin.<br />
+                    When a sign is lifted, its pin turns red here, on the phone and in the menu bar until the spill is closed.
+                  </div>
+                  {unplacedHangers.length > 0 && (
+                    <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--warn)", fontWeight: 600 }}>
+                      {unplacedHangers.length} registered sign{unplacedHangers.length === 1 ? "" : "s"} not placed on any plan yet. Click a pin to assign.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="card card-pad">
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--ink-3)", marginBottom: 6 }}>Pins on {floor ? floor.name : "this floor"}</div>
+                {zones.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>None yet.</div>}
+                {zones.map((z) => (
+                  <button key={z.id} className={"nav-item" + (selZone === z.id ? " active" : "")} style={{ width: "100%", justifyContent: "flex-start" }} onClick={() => setSelZone(z.id)}>
+                    <i className={"pin-dot " + (litZoneIds.has(z.id) ? "deployed" : (hangersByZone[z.id] || []).length ? "cleared" : "")} style={!litZoneIds.has(z.id) && !(hangersByZone[z.id] || []).length ? { background: "var(--ink-3)" } : {}} />
+                    <span style={{ marginLeft: 8 }}>{z.name}</span>
+                    <span className="muted" style={{ marginLeft: "auto", fontSize: 11.5 }}>{(hangersByZone[z.id] || []).length} sign{(hangersByZone[z.id] || []).length === 1 ? "" : "s"}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </React.Fragment>
+      )}
+
+      {showAddFloor && (
+        <SimpleAddModal
+          title={"Add a floor to " + (building ? building.name : "this site")}
+          subtitle="Name the floor, then upload its plan and place your sign pins."
+          icon="layers"
+          fields={[{ id: "name", label: "Floor name", placeholder: "e.g. Ground floor", required: true }]}
+          submitLabel="Add floor"
+          successTitle="Floor added"
+          successCopy="Upload its plan, then place a pin wherever a sign lives."
+          onClose={() => setShowAddFloor(false)}
+          onSubmit={(vals) => { setNewFloorName(String(vals.name || "")); addFloorNamed(String(vals.name || "")); }}
+        />
+      )}
+
+      {toastNode}
+    </div>
+  );
+}
+
+Object.assign(window, { FloorPlanView });
 
 export { App };

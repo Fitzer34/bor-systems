@@ -278,6 +278,33 @@ extension APIClient {
         return res.zone
     }
 
+    /// Create a zone already pinned on the plan. pinX/pinY are per-mille
+    /// (0..1000) of the plan image, the same units every client renders.
+    struct CreatePinnedZoneBody: Encodable { let name: String; let pinX: Int; let pinY: Int }
+    func createZone(floorId: String, name: String, pinX: Int, pinY: Int) async throws -> Zone {
+        let res: CreateZoneResponse = try await request(
+            "/floors/\(floorId)/zones", method: "POST", body: CreatePinnedZoneBody(name: name, pinX: pinX, pinY: pinY)
+        )
+        return res.zone
+    }
+
+    /// Move or rename a zone pin. Nil leaves a field unchanged.
+    struct ZonePatchBody: Encodable { let name: String?; let pinX: Int?; let pinY: Int? }
+    func updateZone(_ id: String, name: String? = nil, pinX: Int? = nil, pinY: Int? = nil) async throws {
+        struct R: Decodable { let zone: Zone? }
+        let _: R = try await request("/zones/\(id)", method: "PATCH", body: ZonePatchBody(name: name, pinX: pinX, pinY: pinY))
+    }
+
+    func deleteZone(_ id: String) async throws {
+        let _: EmptyResponse = try await request("/zones/\(id)", method: "DELETE")
+    }
+
+    /// Take a sign off its pin without deleting it.
+    func unassignHanger(_ id: String) async throws {
+        struct B: Encodable { let zoneId: String? }
+        let _: EmptyResponse = try await request("/hangers/\(id)/relocate", method: "POST", body: B(zoneId: nil))
+    }
+
     // MARK: Users / dispatch sending (admin/supervisor)
 
     func users() async throws -> [UserRow] {

@@ -141,7 +141,8 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
     { preHandler: [app.authenticate, requireRole(["admin", "supervisor"])] },
     async (req, reply) => {
       const { id } = req.params as { id: string };
-      const body = z.object({ zoneId: z.string().uuid() }).safeParse(req.body);
+      // zoneId null = take the sign off the plan (unassign) without deleting it.
+      const body = z.object({ zoneId: z.string().uuid().nullable() }).safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: "invalid_input" });
       const c = ctx(req);
       await db.update(schema.hangers).set({ zoneId: body.data.zoneId })

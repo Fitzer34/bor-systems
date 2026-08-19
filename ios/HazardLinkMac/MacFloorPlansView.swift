@@ -3,9 +3,10 @@ import UniformTypeIdentifiers
 
 /// Floor plans on the Mac: the managing view. Pick a site, see its floors,
 /// upload or replace each floor's plan image (file picker or drag-and-drop),
-/// add floors. The live sensor/alert overlay stays in the shared MapView,
-/// reachable via "Open live view". Admin-only for uploads, as the backend
-/// enforces; everyone can browse.
+/// add floors, and open the pin editor to mark where each wet-floor sign
+/// lives (MacPinEditorView). The live sensor/alert overlay stays in the shared
+/// MapView, reachable via "Open live view". Admin-only for uploads and pins,
+/// as the backend enforces; everyone can browse.
 
 private struct NewFloorBody: Encodable { let name: String; let orderIndex: Int }
 private struct UploadResponse: Decodable { let url: String }
@@ -26,6 +27,8 @@ struct MacFloorPlansView: View {
     @State private var dropTarget: String?
     @State private var showAddSite = false
     @State private var newSiteName = ""
+    @State private var pinEditorFloor: Floor?
+    @State private var zoneCounts: [String: Int] = [:]
 
     private var isAdmin: Bool { auth.user?.role == .admin }
 
@@ -102,6 +105,12 @@ struct MacFloorPlansView: View {
             }
             .padding(20)
         }
+        .sheet(item: $pinEditorFloor) { f in
+            MacPinEditorView(floor: f, siteName: buildingName, isAdmin: isAdmin) {
+                pinEditorFloor = nil
+                Task { await loadZoneCounts() }
+            }
+        }
         .sheet(isPresented: $showLive) {
             VStack(spacing: 0) {
                 HStack {
@@ -170,9 +179,16 @@ struct MacFloorPlansView: View {
                     Button(f.floorPlanUrl == nil ? "Upload plan" : "Replace plan") { pickFile(for: f) }
                         .disabled(busyFloor != nil)
                 }
+                Button { pinEditorFloor = f } label: {
+                    Label(isAdmin ? "Sign pins" : "View pins", systemImage: "mappin.and.ellipse")
+                }
+                .disabled(f.floorPlanUrl == nil)
+                .help(f.floorPlanUrl == nil ? "Upload the plan first" : "Place pins where each wet-floor sign lives")
                 Spacer()
                 if f.floorPlanUrl != nil {
-                    Text("Plan on file").font(.caption).foregroundStyle(.green)
+                    let n = zoneCounts[f.id] ?? 0
+                    Text(n == 0 ? "No pins yet" : "\(n) pin\(n == 1 ? "" : "s")")
+                        .font(.caption).foregroundStyle(n == 0 ? .orange : .green)
                 } else {
                     Text("No plan").font(.caption).foregroundStyle(.secondary)
                 }
@@ -273,6 +289,15 @@ struct MacFloorPlansView: View {
         if let r: FloorsResponse = try? await APIClient.shared.request("/buildings/\(selectedBuilding)/floors") {
             floors = r.floors
         }
+        await loadZoneCounts()
+    }
+
+    private func loadZoneCounts() async {
+        var counts: [String: Int] = [:]
+        for f in floors {
+            if let z = try? await APIClient.shared.zones(floorId: f.id) { counts[f.id] = z.count }
+        }
+        zoneCounts = counts
     }
 
     private func showToast(_ t: String) {
