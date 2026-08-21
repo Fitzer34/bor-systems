@@ -15,6 +15,7 @@
  *   GET    /time/export.csv?from&to  staff payroll export (entries + totals)
  */
 import type { FastifyInstance } from "fastify";
+import { audit } from "../services/audit.js";
 import { z } from "zod";
 import { and, eq, gte, isNull, lt, lte } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
@@ -240,6 +241,7 @@ export default async function timesheetRoutes(app: FastifyInstance): Promise<voi
       .set({ status: "approved", approvedBy: c.sub, approvedAt: new Date() })
       .where(eq(schema.timeEntries.id, id))
       .returning();
+    audit(c.orgId, c.sub, "timesheet.approved", "time_entry", id, { userId: existing.userId });
     return { entry: row };
   });
 

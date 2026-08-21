@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { audit } from "../services/audit.js";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
@@ -147,6 +148,7 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     const buf = await file.toBuffer();
     const { url } = await uploadFloorPlan({ filename: file.filename, mimetype: file.mimetype, body: buf });
     await db.update(schema.floors).set({ floorPlanUrl: url }).where(eq(schema.floors.id, id));
+    audit(c.orgId, c.sub, "floor_plan.uploaded", "floor", id, { filename: file.filename });
     return { url };
   });
 
@@ -168,6 +170,7 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
     if (!(await assertFloorInOrg(id, c.orgId))) return reply.code(404).send({ error: "not_found" });
     const [zone] = await db.insert(schema.zones).values({ organisationId: c.orgId, floorId: id, ...body.data }).returning();
+    if (zone) audit(c.orgId, c.sub, "zone.created", "zone", zone.id, { name: zone.name, floorId: id });
     return { zone };
   });
 
@@ -197,6 +200,7 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     const c = ctx(req);
     if (!(await assertZoneInOrg(id, c.orgId))) return reply.code(404).send({ error: "not_found" });
     await db.delete(schema.zones).where(eq(schema.zones.id, id));
+    audit(c.orgId, c.sub, "zone.deleted", "zone", id);
     return { ok: true };
   });
 }

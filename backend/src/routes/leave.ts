@@ -13,6 +13,7 @@
  * admins + supervisors through the notification centre.
  */
 import type { FastifyInstance } from "fastify";
+import { audit } from "../services/audit.js";
 import { z } from "zod";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
@@ -140,6 +141,7 @@ export default async function leaveRoutes(app: FastifyInstance): Promise<void> {
       .set({ status: next, decidedBy: c.sub, decidedAt: new Date() })
       .where(eq(schema.leaveRequests.id, id))
       .returning();
+    audit(c.orgId, c.sub, "leave." + next, "leave_request", id, { userId: row.userId, type: row.type });
 
     if ((next === "approved" || next === "declined") && row.userId !== c.sub) {
       try {

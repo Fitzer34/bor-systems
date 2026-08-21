@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { audit } from "../services/audit.js";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
@@ -126,6 +127,7 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
             audibleAlarmEnabled: body.data.audibleAlarmEnabled,
           })
           .returning();
+        if (created) audit(c.orgId, c.sub, "sign.registered", "hanger", created.id, { devEui: created.devEui });
         return { hanger: created };
       } catch (err: any) {
         if (String(err).includes("hangers_dev_eui_unique")) {
@@ -147,6 +149,7 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
       const c = ctx(req);
       await db.update(schema.hangers).set({ zoneId: body.data.zoneId })
         .where(and(eq(schema.hangers.id, id), eq(schema.hangers.organisationId, c.orgId)));
+      audit(c.orgId, c.sub, body.data.zoneId ? "sign.assigned" : "sign.unassigned", "hanger", id, { zoneId: body.data.zoneId });
       return { ok: true };
     },
   );

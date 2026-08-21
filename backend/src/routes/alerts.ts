@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { audit } from "../services/audit.js";
 import { z } from "zod";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
@@ -50,6 +51,7 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
       .returning({ id: schema.alerts.id });
     if (!result[0]) return reply.code(409).send({ error: "already_acknowledged_or_closed" });
     eventBus.publish(c.orgId, { type: "alert.acknowledged", alertId: id });
+    audit(c.orgId, c.sub, "spill.acknowledged", "alert", id);
     return { ok: true };
   });
 
@@ -168,6 +170,7 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
         await notifyEmail(ctxN);
       }
     }
+    audit(c.orgId, c.sub, "spill.closed", "alert", id, { reason: body.data.reason });
     return { ok: true };
   });
 }

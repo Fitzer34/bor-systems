@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { audit } from "../services/audit.js";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
@@ -75,6 +76,7 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
         photoUrl: b.photoUrl || null,
       })
       .returning();
+    if (row) audit(c.orgId, c.sub, "incident.reported", "incident", row.id, { title: row.title, severity: row.severity });
     return reply.code(201).send({ incident: row });
   });
 
@@ -113,6 +115,7 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
       .where(and(eq(schema.securityIncidents.id, id), eq(schema.securityIncidents.organisationId, c.orgId)))
       .returning();
     if (!row) return reply.code(404).send({ error: "not_found" });
+    if (b.status === "resolved") audit(c.orgId, c.sub, "incident.resolved", "incident", id, { title: row.title });
     return { incident: row };
   });
 

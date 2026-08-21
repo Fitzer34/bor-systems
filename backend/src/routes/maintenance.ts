@@ -11,6 +11,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import { audit } from "../services/audit.js";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { and, eq, desc, inArray, isNull, or } from "drizzle-orm";
@@ -192,6 +193,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .returning();
     if (!job) return reply.code(500).send({ error: "create_failed" });
     await logJobEvent(c.orgId, job.id, "logged", c.sub, parsed.data.title);
+    audit(c.orgId, c.sub, "work_order.created", "job", job.id, { title: job.title, priority: job.priority });
     return reply.code(201).send(job);
   });
 
@@ -492,6 +494,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .returning();
     if (!job) return reply.code(404).send({ error: "not_found" });
     await logJobEvent(c.orgId, id, "completed", c.sub, body.data.completionNote?.trim() || undefined);
+    audit(c.orgId, c.sub, "work_order.completed", "job", id, { title: job.title });
     return { ok: true };
   });
 
@@ -507,6 +510,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .returning();
     if (!job) return reply.code(404).send({ error: "not_found" });
     await logJobEvent(c.orgId, id, "cancelled", c.sub, body.data.reason?.trim() || undefined);
+    audit(c.orgId, c.sub, "work_order.cancelled", "job", id, { title: job.title });
     return { ok: true };
   });
 
@@ -609,6 +613,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .insert(schema.assets)
       .values({ organisationId: c.orgId, reportToken: randomBytes(16).toString("hex"), ...parsed.data })
       .returning();
+    if (created) audit(c.orgId, c.sub, "asset.created", "asset", created.id, { name: created.name });
     return reply.code(201).send(created);
   });
 

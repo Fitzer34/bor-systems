@@ -28,6 +28,7 @@
  *     GET/PUT /settings/integrations              Teams incoming-webhook URL
  */
 import type { FastifyInstance } from "fastify";
+import { audit } from "../services/audit.js";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { and, desc, eq, gte, inArray, lte, or } from "drizzle-orm";
@@ -441,6 +442,7 @@ export default async function growthRoutes(app: FastifyInstance): Promise<void> 
       expectedAt: b.expectedAt ? new Date(b.expectedAt) : null,
       signedInAt: b.signInNow ? new Date() : null,
     }).returning();
+    if (row) audit(c.orgId, c.sub, b.signInNow ? "visitor.signed_in" : "visitor.expected", "visitor", row.id, { name: row.name });
     return { visitor: row };
   });
 
@@ -453,6 +455,7 @@ export default async function growthRoutes(app: FastifyInstance): Promise<void> 
       .where(and(eq(schema.visitors.id, id), eq(schema.visitors.organisationId, c.orgId)))
       .returning();
     if (!row) return reply.code(404).send({ error: "not_found" });
+    audit(c.orgId, c.sub, "visitor.signed_in", "visitor", id, { name: row.name });
     return { visitor: row };
   });
 
@@ -465,6 +468,7 @@ export default async function growthRoutes(app: FastifyInstance): Promise<void> 
       .where(and(eq(schema.visitors.id, id), eq(schema.visitors.organisationId, c.orgId)))
       .returning();
     if (!row) return reply.code(404).send({ error: "not_found" });
+    audit(c.orgId, c.sub, "visitor.signed_out", "visitor", id, { name: row.name });
     return { visitor: row };
   });
 

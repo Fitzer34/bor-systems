@@ -200,7 +200,7 @@ async function main(): Promise<void> {
     reply.code(status).send({ error: err.message || "internal_error" });
   });
 
-  app.get("/health", async () => ({ ok: true, version: "0.7.4-assistant-live" }));
+  app.get("/health", async () => ({ ok: true, version: "0.7.5-audit-trail" }));
 
   await app.register(authRoutes);
   await app.register(twoFactorRoutes);
