@@ -360,7 +360,8 @@ export async function runDataAssistant(input: {
     "Answer the user's question about THEIR data by calling the tools — maintenance jobs, security incidents, assets, and live counts. " +
     "Always fetch with tools before answering; never invent ids, names, dates, counts, or statuses. " +
     "Be concise and specific — cite real job titles, asset names, dates, and numbers from the results. " +
-    "If the tools return nothing relevant, say so plainly and suggest what you could look up instead. Use short markdown.";
+    "If the tools return nothing relevant, say so plainly and suggest what you could look up instead. " +
+    "Format for a small chat bubble: short sentences and simple dash bullets only. Bold sparingly. Never markdown tables, headings, or code blocks — the apps render plain text.";
 
   // Loose typing on the SDK message/tool shapes keeps the tool-use round-trip
   // simple; the structured calls elsewhere stay strictly typed.

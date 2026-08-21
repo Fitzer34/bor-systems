@@ -19101,6 +19101,27 @@ function SourceChips({ sources }) {
 /* ============================================================
    Message bubbles
    ============================================================ */
+
+/* Render the provider's light markdown honestly: **bold**, "- " bullets,
+   paragraphs. Plain string manipulation — no HTML injection. */
+function AiRichText({ text }) {
+  const bold = (line, k) => {
+    const parts = String(line).split(/\*\*([^*]+)\*\*/g);
+    return parts.map((seg, i) => (i % 2 === 1 ? <strong key={k + "-" + i}>{seg}</strong> : seg));
+  };
+  const lines = String(text || "").split("\n");
+  const out = []; let bullets = [];
+  const flush = (k) => { if (bullets.length) { out.push(<ul key={"ul"+k} style={{ margin:"6px 0 6px 18px", padding:0 }}>{bullets}</ul>); bullets = []; } };
+  lines.forEach((ln, i) => {
+    const m = ln.match(/^\s*[-•]\s+(.*)$/);
+    if (m) { bullets.push(<li key={"li"+i} style={{ margin:"2px 0" }}>{bold(m[1], i)}</li>); return; }
+    flush(i);
+    if (ln.trim()) out.push(<div key={"p"+i} style={{ margin: i === 0 ? 0 : "6px 0 0" }}>{bold(ln, i)}</div>);
+  });
+  flush("end");
+  return <React.Fragment>{out}</React.Fragment>;
+}
+
 function UserMsg({ msg }) {
   return (
     <div className="as-msg as-msg-user">
@@ -19132,7 +19153,7 @@ function AIMsg({ msg, onSrc, onConfirmWO, onDeclineWO, onSpeak, speakingId }) {
             </div>
           ) : (
             <React.Fragment>
-              {msg.text}
+              <AiRichText text={msg.text} />
               {onSpeak && !msg.draftWO && (
                 <button className={"as-speak-mini" + (isSpeaking ? " on" : "")}
                   onClick={() => onSpeak(msg.id, msg.text)}
@@ -19246,7 +19267,7 @@ function AssistantView({ go }) {
 
   React.useEffect(() => () => {
     if (speakTimer.current) clearTimeout(speakTimer.current);
-    if (micTimer.current)   clearInterval(micTimer.current);
+    try { micTimer.current && micTimer.current.stop && micTimer.current.stop(); } catch {}
   }, []);
 
   React.useEffect(() => {
@@ -19281,12 +19302,28 @@ function AssistantView({ go }) {
     setMessages((ms) => [...ms, userMsg, thinking]);
     setInput("");
     setBusy(true);
-    setTimeout(() => {
-      const r = respondTo(text);
-      const aiMsg = { id: uid + 1, role:"ai", text: r.text, sources: r.sources, nogo: r.nogo, draftWO: r.draftWO };
-      setMessages((ms) => ms.map((m) => m.id === uid + 1 ? aiMsg : m));
-      setBusy(false);
-    }, 700 + Math.random() * 500);
+    hlApi("/ai/ask", { method: "POST", body: { question: text } })
+      .then(({ ok, status, b }) => {
+        let aiMsg;
+        if (ok && b && b.answer) {
+          aiMsg = { id: uid + 1, role:"ai", text: b.answer,
+            sources:[{ kind:"meta", id:"answered from your records", go:null, tone:"ok" }] };
+        } else if (status === 503) {
+          aiMsg = { id: uid + 1, role:"ai", nogo: true,
+            text:"The assistant isn't switched on for this organisation yet — there's no AI provider configured on the server, and I won't make answers up. Everything else in HazardLink keeps working without it.",
+            sources:[{ kind:"meta", id:"assistant not configured", go:null, tone:"muted" }] };
+        } else if (status === 429) {
+          aiMsg = { id: uid + 1, role:"ai", nogo: true,
+            text:"The assistant has hit today's usage cap, so I'm pausing rather than running up a bill. It resets tomorrow; everything else keeps working.",
+            sources:[{ kind:"meta", id:"daily cap reached", go:null, tone:"muted" }] };
+        } else {
+          aiMsg = { id: uid + 1, role:"ai", nogo: true,
+            text:"I couldn't reach the assistant just now. Your question wasn't lost — try sending it again in a moment.",
+            sources:[{ kind:"meta", id:"request failed", go:null, tone:"muted" }] };
+        }
+        setMessages((ms) => ms.map((m) => m.id === uid + 1 ? aiMsg : m));
+      })
+      .finally(() => setBusy(false));
   };
 
   const confirmWO = (msgId, wo) => {
@@ -19302,29 +19339,21 @@ function AssistantView({ go }) {
 
   /* Inline mic — fills the textarea word-by-word from a rotating bank.
      User reviews + edits before pressing Send. No overlay, no popup. */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
   const startMic = () => {
-    if (micState === "listening") {
-      /* tap-again → stop early, leave what was typed in the box */
-      if (micTimer.current) clearInterval(micTimer.current);
-      setMicState("idle");
-      return;
-    }
-    const q = MIC_QUESTIONS[cycleIdx % MIC_QUESTIONS.length];
-    setCycleIdx(cycleIdx + 1);
-    setInput("");
+    if (!SR) return;
+    if (micState === "listening") { try { micTimer.current && micTimer.current.stop(); } catch {} setMicState("idle"); return; }
+    const rec = new SR();
+    micTimer.current = rec;
+    rec.lang = "en-IE"; rec.interimResults = true; rec.continuous = false;
     setMicState("listening");
-    const words = q.split(/\s+/);
-    let i = 0;
-    micTimer.current = setInterval(() => {
-      if (i >= words.length) {
-        clearInterval(micTimer.current);
-        setTimeout(() => setMicState("idle"), 350);
-        return;
-      }
-      const w = words[i];
-      setInput((cur) => (cur ? cur + " " : "") + w);
-      i++;
-    }, 120);
+    rec.onresult = (e) => {
+      const said = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
+      if (said) setInput(said);
+    };
+    rec.onerror = () => setMicState("idle");
+    rec.onend = () => setMicState("idle");
+    try { rec.start(); } catch { setMicState("idle"); }
   };
 
   return (
@@ -19415,11 +19444,11 @@ function AssistantView({ go }) {
                   <span className="as-listen-dot" />Listening…
                 </span>
               )}
-              <button className={"as-mic-btn" + (micState === "listening" ? " as-mic-btn-on" : "")}
+              {SR && <button className={"as-mic-btn" + (micState === "listening" ? " as-mic-btn-on" : "")}
                 onClick={startMic}
                 title={micState === "listening" ? "Tap to stop" : "Tap to talk — we'll type it for you"}>
                 <Icon name="mic" size={14} />
-              </button>
+              </button>}
               <button className="btn btn-primary as-send-btn"
                 onClick={() => send()}
                 disabled={busy || !input.trim()}
