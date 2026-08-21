@@ -6,7 +6,8 @@ import SwiftUI
 /// Tab rows switch the tab bar; everything else opens full screen.
 
 enum DrawerDestination: String, Identifiable, CaseIterable {
-    case gateways, hangers
+    case sites, gateways, hangers
+    case incidents, visitors
     case maintenanceOverview, workOrders, ppms, meters
     case compliance, permits, competency
     case timesheets, leave, forms
@@ -16,6 +17,9 @@ enum DrawerDestination: String, Identifiable, CaseIterable {
 
     @ViewBuilder var view: some View {
         switch self {
+        case .sites: SitesView()
+        case .incidents: IncidentsView()
+        case .visitors: VisitorsView()
         case .gateways: GatewaysView()
         case .hangers: HangersView()
         case .maintenanceOverview: MaintenanceKpisView()
@@ -76,6 +80,7 @@ struct SideMenuView: View {
 
                 // Pinned essentials
                 tabRow("Dashboard", icon: "square.grid.2x2", tab: 0)
+                Button { open(.sites) } label: { row("Sites", icon: "building.2") }
                 Button { open(.profile) } label: { row("My profile", icon: "person.crop.circle") }
                 Button { selectedTab = 4; close() } label: {
                     HStack {
@@ -120,9 +125,11 @@ struct SideMenuView: View {
 
                 // ── Security ─────────────────────────────────────────
                 group("security", label: "Security", icon: "shield.lefthalf.filled", tint: securityTint) {
+                    Button { open(.incidents) } label: { row("Incidents", icon: "exclamationmark.shield") }
+                    Button { open(.visitors) } label: { row("Visitors", icon: "person.badge.clock") }
                     tabRow("Dispatch board", icon: "paperplane", tab: 2)
                     tabRow("Guard schedule", icon: "calendar", tab: 3)
-                    Text("Patrols, incidents and visitors are on the web app for now.")
+                    Text("Patrol routes stay on the web app for now.")
                         .font(.caption2).foregroundStyle(.secondary)
                         .padding(.leading, 40).padding(.vertical, 2)
                 }
