@@ -27,11 +27,14 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
         zoneName: schema.zones.name,
         floorId: schema.floors.id,
         floorName: schema.floors.name,
+        buildingId: schema.buildings.id,
+        buildingName: schema.buildings.name,
       })
       .from(schema.alerts)
       .leftJoin(schema.hangers, eq(schema.hangers.id, schema.alerts.hangerId))
       .leftJoin(schema.zones, eq(schema.zones.id, schema.hangers.zoneId))
       .leftJoin(schema.floors, eq(schema.floors.id, schema.zones.floorId))
+      .leftJoin(schema.buildings, eq(schema.buildings.id, schema.floors.buildingId))
       .where(and(eq(schema.alerts.organisationId, c.orgId), isNull(schema.alerts.closedAt)))
       .orderBy(desc(schema.alerts.openedAt));
     return { alerts: rows };

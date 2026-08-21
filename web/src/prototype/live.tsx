@@ -108,8 +108,9 @@ async function loadOrg() {
         return {
           id: "SP-" + String(a.id).slice(0, 4).toUpperCase(),
           realId: a.id,
-          site: a.floorName || "Site",
-          siteShort: a.floorName || "",
+          site: a.buildingName || a.floorName || "Site",
+          siteId: a.buildingId || null,
+          siteShort: a.buildingName || a.floorName || "",
           location: a.zoneName || "Sensor location",
           hanger: String(a.hangerId || "").slice(0, 6).toUpperCase(),
           state: a.status === "acknowledged" ? "acknowledged" : "new",

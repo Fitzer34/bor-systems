@@ -1676,6 +1676,7 @@ function Sidebar({ view, go, counts }) {
   const activeId =
     view === "wo"   ? "maintenance" :
     view === "user" ? "users"       :
+    view === "site" ? "portfolio"   :
     view;
 
   // Two fixed rows, then THE three parts of the product — Cleaning,
@@ -1683,6 +1684,7 @@ function Sidebar({ view, go, counts }) {
   // business/admin drawer underneath. A brand-new customer sees six rows.
   const pinnedTop = [
     { id: "dashboard", label: "Dashboard",      icon: "grid" },
+    { id: "portfolio", label: "Sites",          icon: "layers" },
     { id: "assistant", label: "Ask HazardLink", icon: "sparkles" },
   ].filter((n) => n.id !== "assistant"
     || (((typeof HL !== "undefined" && HL.orgFeatures) || {}).assistant !== false));
@@ -3472,7 +3474,7 @@ function PortfolioCard({ site, info, counts, onOpen }) {
   );
 }
 
-function PortfolioView({ go }) {
+function PortfolioViewDemo({ go }) {
   const { setSite } = React.useContext(SiteContext);
   const sites = HL.sites;
 
@@ -3768,12 +3770,12 @@ function SiteCol({ label, empty, children, count }) {
 /* ===========================================================
    SiteView — focused dashboard for a single site
    =========================================================== */
-function SiteView({ go }) {
+function SiteViewDemo({ go }) {
   const { site } = React.useContext(SiteContext);
   const D = useSiteData();
 
   // Fallback: no site picked → portfolio
-  if (!site) return <PortfolioView go={go} />;
+  if (!site) return <PortfolioViewDemo go={go} />;
 
   const info = SITE_INFO[site.id] || {};
 
@@ -3993,7 +3995,7 @@ function SiteView({ go }) {
   );
 }
 
-Object.assign(window, { SiteView, PortfolioView, SITE_INFO });
+Object.assign(window, { SiteViewDemo, PortfolioViewDemo, SITE_INFO });
 
 /* ════════════════════ asset_10_c5c6d183.js ════════════════════ */
 ;
@@ -27229,5 +27231,401 @@ function FloorPlanView({ go }) {
 }
 
 Object.assign(window, { FloorPlanView });
+
+/* ════════════════════ asset_53_a3e51c02.js ════════════════════ */
+;
+/* HazardLink — live Sites structure (overrides the demo PortfolioView/SiteView
+   in asset_08 by export order, the same pattern asset_52 uses for the floor
+   plan).
+
+   The shape Owen asked for: the estate first — every site with its key
+   numbers — then one site's page, broken down by discipline: Cleaning,
+   Maintenance, Security. Everything on both screens is a live count from
+   GET /sites/overview plus the real entity lists filtered to the site.
+   No photos, no invented managers or square footage. */
+
+const SV_SCOPES = [
+  { id: "overview",    label: "Overview",    icon: "grid" },
+  { id: "cleaning",    label: "Cleaning",    icon: "droplet", tint: "#0d9488" },
+  { id: "maintenance", label: "Maintenance", icon: "wrench",  tint: "#b45309" },
+  { id: "security",    label: "Security",    icon: "shield",  tint: "#4338ca" },
+];
+
+function svAuthed() { return !!localStorage.getItem("bor.token"); }
+
+/* One estate card: the site's name, its live status, and a three-discipline
+   count strip. Red only when something is genuinely open. */
+function EstateCard({ s, onOpen }) {
+  const tone = s.openSpills > 0 ? "crit" : (s.urgentJobs > 0 || s.openIncidents > 0) ? "warn" : "ok";
+  const toneLabel = tone === "crit" ? "Live spill" : tone === "warn" ? "Needs attention" : "Operational";
+  return (
+    <button className="portfolio-card" onClick={() => onOpen(s)}>
+      <div className="pc-body" style={{ paddingTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className={"pc-status-dot " + (tone === "ok" ? "ok" : "warn")}
+                style={tone === "crit" ? { background: "var(--crit)" } : {}} />
+          <h3 className="pc-name" style={{ margin: 0 }}>{s.buildingName}</h3>
+          <span className="muted" style={{ marginLeft: "auto", fontSize: 11.5 }}>{toneLabel}</span>
+        </div>
+        <div className="pc-loc" style={{ marginTop: 4 }}>
+          <Icon name="layers" size={12} />
+          {s.floors} floor{s.floors === 1 ? "" : "s"}
+          {s.floorsWithPlan < s.floors ? " · " + (s.floors - s.floorsWithPlan) + " missing a plan" : s.floors > 0 ? " · plans on file" : ""}
+        </div>
+        <div className="pc-counts" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
+          <div className="pc-count">
+            <div className={"pc-n" + (s.openSpills > 0 ? " is-crit" : "")}>{s.openSpills}</div>
+            <div className="pc-l">Live spills</div>
+          </div>
+          <div className="pc-count">
+            <div className={"pc-n" + (s.openJobs > 0 ? " is-maint" : "")}>{s.openJobs}</div>
+            <div className="pc-l">Open jobs</div>
+          </div>
+          <div className="pc-count">
+            <div className={"pc-n" + (s.openIncidents > 0 ? " is-warn" : "")}>{s.openIncidents}</div>
+            <div className="pc-l">Incidents</div>
+          </div>
+        </div>
+      </div>
+      <div className="pc-foot">
+        <span>
+          {s.hangers} sign{s.hangers === 1 ? "" : "s"} · {s.staffOnClock} on the clock · {s.visitorsOnSite} visitor{s.visitorsOnSite === 1 ? "" : "s"} on site
+        </span>
+        <span className="pc-arrow"><Icon name="arrowRight" size={14} /></span>
+      </div>
+    </button>
+  );
+}
+
+function PortfolioView({ go }) {
+  const { setSite } = React.useContext(SiteContext);
+  const [data, setData] = React.useState(null);   // null loading | false error | {sites,totals}
+  const [showAdd, setShowAdd] = React.useState(false);
+  const { showToast, toastNode } = useViewToast();
+  const isAdmin = ((HL.currentUser || {}).role || "") === "admin";
+
+  const load = React.useCallback(() => {
+    hlApi("/sites/overview").then(({ ok, b }) => setData(ok && b ? b : false));
+  }, []);
+  React.useEffect(() => { if (svAuthed()) load(); }, [load]);
+  React.useEffect(() => {
+    if (!svAuthed()) return;
+    const t = setInterval(load, 20000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const openSite = (s) => {
+    setSite({ id: s.buildingId, name: s.buildingName, loc: "", status: s.openSpills > 0 ? "crit" : "ok", open: s.openSpills });
+    go("site");
+  };
+
+  const T = (data && data.totals) || {};
+  const sites = (data && data.sites) || [];
+
+  return (
+    <div className="content-inner">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Your sites</h1>
+          <p className="page-desc">The whole estate at a glance. Open a site for its detail and the Cleaning, Maintenance and Security breakdown.</p>
+        </div>
+        {isAdmin && (
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}><Icon name="plus" size={15} />Add a site</button>
+        )}
+      </div>
+
+      {data === null && <div className="card card-pad muted">Loading the estate…</div>}
+      {data === false && <div className="card card-pad">Could not load the sites overview. Check your connection and reload.</div>}
+
+      {data && (
+        <React.Fragment>
+          <div className="kpi-row" style={{ gridTemplateColumns: "repeat(5,1fr)" }}>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("muted"), color: solid("muted") }}><Icon name="layers" size={16} /></div><span className="kpi-label">Sites</span></div>
+              <div className="kpi-val">{T.sites || 0}</div>
+              <div className="kpi-foot">{T.hangers || 0} smart signs across the estate</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("crit"), color: solid("crit") }}><Icon name="alertTri" size={16} /></div><span className="kpi-label">Live spills</span></div>
+              <div className="kpi-val" style={{ color: (T.openSpills || 0) > 0 ? "var(--crit)" : "var(--ok)" }}>{T.openSpills || 0}</div>
+              <div className="kpi-foot">{(T.openSpills || 0) > 0 ? "signs on the floor now" : "every site clear"}</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("maint"), color: solid("maint") }}><Icon name="wrench" size={16} /></div><span className="kpi-label">Open work orders</span></div>
+              <div className="kpi-val">{T.openJobs || 0}</div>
+              <div className="kpi-foot">{T.urgentJobs || 0} urgent · {T.overduePpms || 0} PPM overdue</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("warn"), color: solid("warn") }}><Icon name="shield" size={16} /></div><span className="kpi-label">Open incidents</span></div>
+              <div className="kpi-val" style={{ color: (T.openIncidents || 0) > 0 ? "var(--warn)" : "var(--ok)" }}>{T.openIncidents || 0}</div>
+              <div className="kpi-foot">across all sites</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-top"><div className="kpi-ico" style={{ background: softBg("ok"), color: solid("ok") }}><Icon name="users" size={16} /></div><span className="kpi-label">People on site</span></div>
+              <div className="kpi-val">{(T.staffOnClock || 0) + (T.visitorsOnSite || 0)}</div>
+              <div className="kpi-foot">{T.staffOnClock || 0} staff on the clock · {T.visitorsOnSite || 0} visitors</div>
+            </div>
+          </div>
+
+          {sites.length === 0 ? (
+            <div className="card card-pad" style={{ textAlign: "center", padding: 40 }}>
+              <h3 style={{ margin: "0 0 6px" }}>No sites yet</h3>
+              <p className="muted" style={{ margin: 0 }}>
+                {isAdmin ? "Add your first site, then its floors, plans and sign pins." : "An admin adds sites from here or the Floor plans screen."}
+              </p>
+            </div>
+          ) : (
+            <div className="portfolio-grid">
+              {sites.map((s) => <EstateCard key={s.buildingId} s={s} onOpen={openSite} />)}
+            </div>
+          )}
+        </React.Fragment>
+      )}
+
+      {showAdd && (
+        <SimpleAddModal
+          title="Add a site"
+          subtitle="A site is a building your team looks after. Floors, plans and sign pins hang off it."
+          icon="layers"
+          fields={[{ id: "name", label: "Site name", placeholder: "e.g. Main Street Office", required: true }]}
+          submitLabel="Add site"
+          successTitle="Site added"
+          successCopy="Now add its floors and upload the plans under Floor plans."
+          onClose={() => setShowAdd(false)}
+          onSubmit={(v) => {
+            hlApi("/buildings", { method: "POST", body: { name: String(v.name || "").trim() } })
+              .then(({ ok }) => { if (ok) { load(); } else showToast("Could not add the site. Admins only."); });
+          }}
+        />
+      )}
+      {toastNode}
+    </div>
+  );
+}
+
+/* ── Site page ─────────────────────────────────────────────── */
+
+function SvListRow({ icon, tone, title, meta, right }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+      <div className="kpi-ico" style={{ background: softBg(tone), color: solid(tone), width: 28, height: 28 }}>
+        <Icon name={icon} size={14} />
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        {meta && <div className="muted" style={{ fontSize: 12 }}>{meta}</div>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function SvSectionCard({ tint, icon, title, desc, stats, children, actions }) {
+  return (
+    <div className="card" style={{ borderTop: "3px solid " + tint }}>
+      <div className="card-head" style={{ alignItems: "flex-start" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className="kpi-ico" style={{ background: tint + "1f", color: tint }}><Icon name={icon} size={16} /></div>
+          <div>
+            <h3 style={{ margin: 0 }}>{title}</h3>
+            <div className="muted" style={{ fontSize: 12 }}>{desc}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>{actions}</div>
+      </div>
+      <div className="card-pad" style={{ paddingTop: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(" + stats.length + ",1fr)", gap: 8, margin: "6px 0 10px" }}>
+          {stats.map((st, i) => (
+            <div key={i} style={{ background: "var(--surface-2)", borderRadius: 10, padding: "8px 10px" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: st.tone ? "var(--" + st.tone + ")" : "var(--ink)" }}>{st.n}</div>
+              <div className="muted" style={{ fontSize: 11.5 }}>{st.l}</div>
+            </div>
+          ))}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SiteView({ go }) {
+  const { site, setSite } = React.useContext(SiteContext);
+  const [ov, setOv] = React.useState(null);        // /sites/overview row for this site
+  const [spills, setSpills] = React.useState([]);
+  const [jobs, setJobs] = React.useState([]);
+  const [incidents, setIncidents] = React.useState([]);
+  const [visitors, setVisitors] = React.useState([]);
+  const [scope, setScope] = React.useState("overview");
+
+  const load = React.useCallback(() => {
+    if (!site || !svAuthed()) return;
+    hlApi("/sites/overview").then(({ ok, b }) => {
+      if (!ok || !b) { setOv(false); return; }
+      setOv((b.sites || []).find((s) => s.buildingId === site.id) || false);
+    });
+    hlApi("/alerts/active").then(({ ok, b }) => {
+      if (ok && b) setSpills((b.alerts || []).filter((a) => a.buildingId === site.id && a.kind !== "planned_cleaning"));
+    });
+    hlApi("/jobs").then(({ ok, b }) => {
+      if (ok && b) setJobs((b.jobs || []).filter((j) => j.buildingId === site.id));
+    });
+    hlApi("/incidents").then(({ ok, b }) => {
+      if (ok && b) setIncidents((b.incidents || []).filter((i) => i.buildingId === site.id));
+    });
+    hlApi("/visitors").then(({ ok, b }) => {
+      if (ok && b) setVisitors((b.visitors || []).filter((v) => v.buildingId === site.id));
+    });
+  }, [site && site.id]);
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    const t = setInterval(load, 20000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  if (!site) return <PortfolioView go={go} />;
+
+  const openJobs = jobs.filter((j) => j.status !== "completed" && j.status !== "cancelled");
+  const openInc = incidents.filter((i) => i.status !== "resolved");
+  const onSiteVisitors = visitors.filter((v) => v.signedInAt && !v.signedOutAt);
+  const spillTone = spills.length > 0 ? "crit" : "ok";
+  const R = ov || {};
+
+  const jumpBtn = (label, view) => (
+    <button key={view} className="btn btn-sm" onClick={() => go(view)}>{label}</button>
+  );
+
+  const cleaningBody = (
+    <React.Fragment>
+      {spills.length === 0
+        ? <div className="muted" style={{ fontSize: 12.5 }}>No live spills. Every sign at {site.name} is on its rack.</div>
+        : spills.map((a) => (
+            <SvListRow key={a.id} icon="alertTri" tone="crit"
+              title={"Sign lifted — " + (a.zoneName || "sensor location")}
+              meta={(a.floorName || "") + " · since " + new Date(a.openedAt).toTimeString().slice(0, 5) + (a.status === "acknowledged" ? " · being handled" : " · awaiting response")}
+              right={<button className="btn btn-sm" onClick={() => go("spills")}>Open</button>} />
+          ))}
+    </React.Fragment>
+  );
+
+  const maintBody = (
+    <React.Fragment>
+      {openJobs.length === 0
+        ? <div className="muted" style={{ fontSize: 12.5 }}>No open work orders at this site.</div>
+        : openJobs.slice(0, 5).map((j) => (
+            <SvListRow key={j.id} icon="wrench" tone={j.priority === "routine" ? "muted" : "warn"}
+              title={j.title}
+              meta={(j.priority || "routine") + " · " + (j.status || "logged").replace(/_/g, " ")}
+              right={<button className="btn btn-sm" onClick={() => go("maintenance")}>Open</button>} />
+          ))}
+      {openJobs.length > 5 && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{openJobs.length - 5} more on the work order board.</div>}
+    </React.Fragment>
+  );
+
+  const secBody = (
+    <React.Fragment>
+      {openInc.length === 0
+        ? <div className="muted" style={{ fontSize: 12.5 }}>No open incidents at this site.</div>
+        : openInc.slice(0, 4).map((i) => (
+            <SvListRow key={i.id} icon="shield" tone={i.severity === "high" || i.severity === "critical" ? "crit" : "warn"}
+              title={i.title}
+              meta={(i.severity || "medium") + " · " + (i.status || "open")}
+              right={<button className="btn btn-sm" onClick={() => go("security")}>Open</button>} />
+          ))}
+      {onSiteVisitors.length > 0 && (
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+          On site now: {onSiteVisitors.slice(0, 4).map((v) => v.name).join(", ")}{onSiteVisitors.length > 4 ? " +" + (onSiteVisitors.length - 4) : ""}
+        </div>
+      )}
+    </React.Fragment>
+  );
+
+  return (
+    <div className="content-inner">
+      {/* Hero — everything on it is a live number */}
+      <div className="site-hero card" style={{ display: "block" }}>
+        <div className="card-pad" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div className="kpi-ico" style={{ width: 44, height: 44, background: softBg(spillTone), color: solid(spillTone) }}>
+            <Icon name="mapPin" size={22} />
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <h1 className="page-title" style={{ margin: 0 }}>{site.name}</h1>
+              {spills.length > 0
+                ? <Pill tone="crit"><span className="blip" />{spills.length} live spill{spills.length === 1 ? "" : "s"}</Pill>
+                : <Pill tone="ok" dot>Operational</Pill>}
+            </div>
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
+              {(R.floors || 0)} floor{(R.floors || 0) === 1 ? "" : "s"} · {(R.hangers || 0)} smart sign{(R.hangers || 0) === 1 ? "" : "s"} ({R.hangersOnline || 0} online) · {(R.staffOnClock || 0)} staff on the clock · {(R.visitorsOnSite || 0)} visitor{(R.visitorsOnSite || 0) === 1 ? "" : "s"} on site
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => { setSite(null); go("portfolio"); }}><Icon name="layers" size={14} />All sites</button>
+            <button className="btn btn-primary" onClick={() => go("floorplan")}><Icon name="mapPin" size={14} />Floor plan</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Discipline scope switch */}
+      <div style={{ display: "flex", gap: 6, margin: "14px 0" }}>
+        {SV_SCOPES.map((s) => (
+          <button key={s.id}
+            className={"btn" + (scope === s.id ? " btn-primary" : "")}
+            style={scope === s.id && s.tint ? { background: s.tint, borderColor: s.tint } : {}}
+            onClick={() => setScope(s.id)}>
+            <Icon name={s.icon} size={14} />{s.label}
+          </button>
+        ))}
+      </div>
+
+      {(scope === "overview" || scope === "cleaning") && (
+        <SvSectionCard tint="#0d9488" icon="droplet" title="Cleaning"
+          desc="Wet-floor signs, spills and plans at this site"
+          stats={[
+            { n: spills.length, l: "Live spills", tone: spills.length > 0 ? "crit" : "ok" },
+            { n: R.hangers || 0, l: "Smart signs" },
+            { n: R.hangersOnline || 0, l: "Online" },
+            { n: (R.floorsWithPlan || 0) + "/" + (R.floors || 0), l: "Plans on file" },
+          ]}
+          actions={[jumpBtn("Spill alerts", "spills"), jumpBtn("Floor plans", "floorplan"), jumpBtn("Devices", "devices")]}>
+          {cleaningBody}
+        </SvSectionCard>
+      )}
+
+      {(scope === "overview" || scope === "maintenance") && (
+        <div style={{ marginTop: 14 }}>
+          <SvSectionCard tint="#b45309" icon="wrench" title="Maintenance"
+            desc="Work orders, PPM and assets at this site"
+            stats={[
+              { n: openJobs.length, l: "Open work orders" },
+              { n: R.urgentJobs || 0, l: "Urgent", tone: (R.urgentJobs || 0) > 0 ? "warn" : undefined },
+              { n: R.overduePpms || 0, l: "PPM overdue", tone: (R.overduePpms || 0) > 0 ? "warn" : undefined },
+              { n: R.assets || 0, l: "Assets" },
+            ]}
+            actions={[jumpBtn("Work orders", "maintenance"), jumpBtn("PPM", "ppm"), jumpBtn("Assets", "assets")]}>
+            {maintBody}
+          </SvSectionCard>
+        </div>
+      )}
+
+      {(scope === "overview" || scope === "security") && (
+        <div style={{ marginTop: 14 }}>
+          <SvSectionCard tint="#4338ca" icon="shield" title="Security"
+            desc="Incidents, patrols and visitors at this site"
+            stats={[
+              { n: openInc.length, l: "Open incidents", tone: openInc.length > 0 ? "warn" : undefined },
+              { n: onSiteVisitors.length, l: "Visitors on site" },
+              { n: R.staffOnClock || 0, l: "Staff on the clock" },
+              { n: R.gateways || 0, l: "Gateways" },
+            ]}
+            actions={[jumpBtn("Incidents", "security"), jumpBtn("Visitors", "visitors")]}>
+            {secBody}
+          </SvSectionCard>
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { PortfolioView, SiteView });
 
 export { App };
