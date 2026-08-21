@@ -4,7 +4,7 @@ import SwiftUI
 /// Mirrors the web sidebar and the iPhone drawer, laid out for a desk.
 enum MacSection: String, CaseIterable, Identifiable {
     // Pinned
-    case dashboard, assistant
+    case dashboard, sites, assistant
     // Cleaning
     case alerts, floorPlans, dispatch, schedule, inspections, sds, gateways, hangers
     // Maintenance
@@ -19,6 +19,7 @@ enum MacSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .dashboard: return "Dashboard"
+        case .sites: return "Sites"
         case .assistant: return "Ask HazardLink"
         case .alerts: return "Spill alerts"
         case .floorPlans: return "Floor plans"
@@ -59,6 +60,7 @@ enum MacSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .dashboard: return "square.grid.2x2"
+        case .sites: return "building.2"
         case .assistant: return "sparkles"
         case .alerts: return "bell.badge"
         case .floorPlans: return "map"
@@ -102,6 +104,7 @@ enum MacSection: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "0"
         case .assistant: return "j"
+        case .sites: return "i"
         case .alerts: return "1"
         case .floorPlans: return "2"
         case .dispatch: return "3"
@@ -141,6 +144,7 @@ enum MacSection: String, CaseIterable, Identifiable {
     @ViewBuilder var view: some View {
         switch self {
         case .dashboard: MacDashboardView()
+        case .sites: MacSitesView(goTo: { NotificationCenter.default.post(name: .macGoToSection, object: $0) })
         case .assistant: MacAssistantView()
         case .alerts: HomeView()
         case .floorPlans: MacFloorPlansView()
@@ -223,6 +227,7 @@ struct MacRootView: View {
             List(selection: $selection) {
                 Section {
                     row(.dashboard)
+                    row(.sites)
                     row(.assistant)
                 }
                 Section {
