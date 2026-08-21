@@ -342,6 +342,18 @@ object ApiClient {
         return res.sites
     }
 
+    suspend fun sitesOverview(): SitesOverviewResponse = request("/sites/overview")
+
+    suspend fun incidents(): List<Incident> = request<IncidentsResponse>("/incidents").incidents
+    suspend fun reportIncident(body: NewIncidentBody): IncidentResponse = post("/incidents", body)
+    suspend fun setIncidentStatus(id: String, status: String): IncidentResponse =
+        patch("/incidents/" + id, IncidentPatchBody(status))
+
+    suspend fun visitors(): List<Visitor> = request<VisitorsResponse>("/visitors").visitors
+    suspend fun addVisitor(body: NewVisitorBody): VisitorResponse = post("/visitors", body)
+    suspend fun visitorSignIn(id: String): VisitorResponse = request("/visitors/" + id + "/sign-in", method = "POST")
+    suspend fun visitorSignOut(id: String): VisitorResponse = request("/visitors/" + id + "/sign-out", method = "POST")
+
     // ─── Sign-tag lookup (Find Sign UWB) ────────────────────────────
 
     @kotlinx.serialization.Serializable

@@ -41,6 +41,8 @@ import com.borsystems.app.ui.schedule.ScheduleScreen
 import com.borsystems.app.ui.settings.SettingsScreen
 import com.borsystems.app.ui.setup.HangerSetupScreen
 import com.borsystems.app.ui.sites.SitesScreen
+import com.borsystems.app.ui.security.IncidentsScreen
+import com.borsystems.app.ui.security.VisitorsScreen
 import com.borsystems.app.ui.users.UsersScreen
 
 /**
@@ -148,6 +150,8 @@ fun MainScaffold() {
                 )
             }
             composable("sites")             { Guard(caps, Module.OPERATIONS, requireStaff = true, nav = nav) { SitesScreen() } }
+            composable("incidents")         { IncidentsScreen(onBack = { nav.popBackStack() }) }
+            composable("visitors")          { VisitorsScreen(onBack = { nav.popBackStack() }) }
             composable("profile")           { ProfileScreen(nav) }
             composable("profile/edit")      { EditProfileScreen(onBack = { nav.popBackStack() }) }
             composable("security")          { SecurityScreen(onBack = { nav.popBackStack() }) }

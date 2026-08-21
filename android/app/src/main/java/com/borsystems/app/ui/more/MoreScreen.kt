@@ -113,7 +113,9 @@ private fun sections(
             add(MoreItemSpec(Icons.Default.Map, "Floor plans") { nav.navigate("floor-plans") })
         }
         if (caps.isStaff && caps.can(Module.OPERATIONS)) {
-            add(MoreItemSpec(Icons.Default.LocationCity, "Sites overview") { nav.navigate("sites") })
+            add(MoreItemSpec(Icons.Default.LocationCity, "Sites") { nav.navigate("sites") })
+            add(MoreItemSpec(Icons.Default.Report, "Incidents") { nav.navigate("incidents") })
+            add(MoreItemSpec(Icons.Default.Badge, "Visitors") { nav.navigate("visitors") })
         }
     }
 

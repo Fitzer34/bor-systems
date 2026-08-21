@@ -562,3 +562,106 @@ data class LoneWorkerSession(
 
 @Serializable
 data class LoneWorkerSessionsResponse(val sessions: List<LoneWorkerSession>)
+
+// ─── Estate overview (GET /sites/overview) ─────────────────────────
+@Serializable
+data class SiteOverview(
+    val buildingId: String,
+    val buildingName: String,
+    val floors: Int,
+    val floorsWithPlan: Int,
+    val zones: Int,
+    val hangers: Int,
+    val hangersOnline: Int,
+    val gateways: Int,
+    val openSpills: Int,
+    val openJobs: Int,
+    val urgentJobs: Int,
+    val overduePpms: Int,
+    val assets: Int,
+    val openIncidents: Int,
+    val visitorsOnSite: Int,
+    val staffOnClock: Int,
+)
+
+@Serializable
+data class SiteOverviewTotals(
+    val sites: Int,
+    val openSpills: Int,
+    val openJobs: Int,
+    val urgentJobs: Int,
+    val overduePpms: Int,
+    val openIncidents: Int,
+    val visitorsOnSite: Int,
+    val staffOnClock: Int,
+    val hangers: Int,
+    val hangersOnline: Int,
+)
+
+@Serializable
+data class SitesOverviewResponse(val sites: List<SiteOverview>, val totals: SiteOverviewTotals)
+
+// ─── Security incidents ─────────────────────────────────────────────
+@Serializable
+data class IncidentBuildingRef(val id: String, val name: String)
+
+@Serializable
+data class Incident(
+    val id: String,
+    val title: String,
+    val kind: String? = null,
+    val severity: String,
+    val status: String,
+    val description: String? = null,
+    val createdAt: String? = null,
+    val building: IncidentBuildingRef? = null,
+)
+
+@Serializable
+data class IncidentsResponse(val incidents: List<Incident>)
+
+@Serializable
+data class NewIncidentBody(
+    val title: String,
+    val severity: String,
+    val kind: String? = null,
+    val description: String? = null,
+    val buildingId: String? = null,
+)
+
+@Serializable
+data class IncidentPatchBody(val status: String)
+
+@Serializable
+data class IncidentResponse(val incident: Incident? = null)
+
+// ─── Visitors ───────────────────────────────────────────────────────
+@Serializable
+data class Visitor(
+    val id: String,
+    val name: String,
+    val company: String? = null,
+    val host: String? = null,
+    val purpose: String? = null,
+    val badge: String? = null,
+    val expectedAt: String? = null,
+    val signedInAt: String? = null,
+    val signedOutAt: String? = null,
+)
+
+@Serializable
+data class VisitorsResponse(val visitors: List<Visitor>)
+
+@Serializable
+data class NewVisitorBody(
+    val name: String,
+    val company: String? = null,
+    val host: String? = null,
+    val purpose: String? = null,
+    val buildingId: String? = null,
+    val expectedAt: String? = null,
+    val signInNow: Boolean,
+)
+
+@Serializable
+data class VisitorResponse(val visitor: Visitor? = null)
