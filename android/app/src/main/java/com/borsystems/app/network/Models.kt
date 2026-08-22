@@ -647,3 +647,101 @@ data class NewVisitorBody(
 
 @Serializable
 data class VisitorResponse(val visitor: Visitor? = null)
+
+// ─── Timesheets ─────────────────────────────────────────────────────
+@Serializable
+data class TimeEntry(
+    val id: String,
+    val userId: String,
+    val userName: String? = null,
+    val buildingName: String? = null,
+    val clockInAt: String,
+    val clockOutAt: String? = null,
+    val breakMinutes: Int = 0,
+    val status: String = "open",   // open | pending | approved
+    val note: String? = null,
+    val hours: Double? = null,
+)
+
+@Serializable data class TimeEntriesResponse(val entries: List<TimeEntry>)
+@Serializable data class TimeOpenEntry(val id: String, val clockInAt: String)
+@Serializable data class TimeStatusResponse(val open: TimeOpenEntry? = null)
+@Serializable data class ClockInBody(val buildingId: String? = null)
+@Serializable data class ClockOutBody(val breakMinutes: Int = 0)
+@Serializable data class TimeEntryResponse(val entry: TimeEntry? = null)
+
+// ─── Leave ──────────────────────────────────────────────────────────
+@Serializable
+data class LeaveRow(
+    val id: String,
+    val userId: String,
+    val type: String,       // annual | sick | unpaid | other
+    val startsOn: String,
+    val endsOn: String,
+    val note: String? = null,
+    val status: String,     // pending | approved | declined | cancelled
+)
+
+@Serializable data class LeaveListResponse(val leave: List<LeaveRow>)
+@Serializable data class LeaveCreateBody(val userId: String? = null, val type: String, val startsOn: String, val endsOn: String, val note: String? = null)
+@Serializable data class LeaveDecideBody(val status: String)
+@Serializable data class LeaveOneResponse(val leave: LeaveRow? = null)
+
+// ─── Forms ──────────────────────────────────────────────────────────
+@Serializable
+data class FormField(
+    val id: String,
+    val label: String,
+    val type: String,          // text | textarea | number | select | checkbox | date
+    val required: Boolean? = null,
+    val options: List<String>? = null,
+)
+
+@Serializable
+data class FormTpl(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val fields: List<FormField>,
+    val active: Boolean = true,
+    val submissionCount: Int? = null,
+)
+
+@Serializable data class FormsListResponse(val forms: List<FormTpl>)
+
+// ─── Permits ────────────────────────────────────────────────────────
+@Serializable
+data class PermitRow(
+    val id: String,
+    val type: String,
+    val typeLabel: String? = null,
+    val description: String,
+    val buildingName: String? = null,
+    val contractorName: String? = null,
+    val startsAt: String,
+    val endsAt: String,
+    val status: String,   // requested | approved | active | closed | rejected | cancelled
+)
+
+@Serializable data class PermitsListResponse(val permits: List<PermitRow>)
+@Serializable data class NewPermitBody(val type: String, val description: String, val buildingId: String? = null, val startsAt: String, val endsAt: String)
+@Serializable data class PermitActionBody(val action: String)
+@Serializable data class PermitOneResponse(val permit: PermitRow? = null)
+
+// ─── Compliance register ────────────────────────────────────────────
+@Serializable
+data class ComplianceItem(
+    val id: String,
+    val name: String,
+    val category: String,
+    val buildingName: String? = null,
+    val frequencyMonths: Int,
+    val lastDoneOn: String? = null,
+    val nextDueOn: String? = null,
+    val contractorName: String? = null,
+    val status: String,   // overdue | due_soon | ok | unscheduled
+)
+
+@Serializable data class ComplianceListResponse(val items: List<ComplianceItem>)
+@Serializable data class ComplianceCompleteBody(val doneOn: String)
+@Serializable data class ComplianceItemResponse(val item: ComplianceItem? = null)

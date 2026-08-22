@@ -116,6 +116,11 @@ private fun sections(
             add(MoreItemSpec(Icons.Default.LocationCity, "Sites") { nav.navigate("sites") })
             add(MoreItemSpec(Icons.Default.Report, "Incidents") { nav.navigate("incidents") })
             add(MoreItemSpec(Icons.Default.Badge, "Visitors") { nav.navigate("visitors") })
+            add(MoreItemSpec(Icons.Default.Schedule, "Timesheets") { nav.navigate("timesheets") })
+            add(MoreItemSpec(Icons.Default.BeachAccess, "Leave") { nav.navigate("leave") })
+            add(MoreItemSpec(Icons.Default.Assignment, "Forms") { nav.navigate("forms") })
+            add(MoreItemSpec(Icons.Default.Flag, "Permits") { nav.navigate("permits") })
+            add(MoreItemSpec(Icons.Default.Verified, "Compliance") { nav.navigate("compliance") })
         }
     }
 

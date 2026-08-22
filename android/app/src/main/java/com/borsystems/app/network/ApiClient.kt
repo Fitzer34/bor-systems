@@ -109,6 +109,11 @@ object ApiClient {
         body: B,
     ): T = requestImpl(path, "PATCH", json.encodeToString(kotlinx.serialization.serializer<B>(), body))
 
+    /** POST a pre-built JSON string (mixed-type payloads like form answers). */
+    suspend fun postRawJson(path: String, bodyJson: String) {
+        requestImpl<kotlinx.serialization.json.JsonObject>(path, "POST", bodyJson)
+    }
+
     private suspend inline fun <reified T> requestImpl(
         path: String,
         method: String,
@@ -343,6 +348,28 @@ object ApiClient {
     }
 
     suspend fun sitesOverview(): SitesOverviewResponse = request("/sites/overview")
+
+    suspend fun timeStatus(): TimeStatusResponse = request("/time/status")
+    suspend fun timeEntries(from: String, to: String): TimeEntriesResponse =
+        request("/time/entries?from=" + from + "&to=" + to)
+    suspend fun clockIn(buildingId: String?): TimeEntryResponse = post("/time/clock-in", ClockInBody(buildingId))
+    suspend fun clockOut(breakMinutes: Int): TimeEntryResponse = post("/time/clock-out", ClockOutBody(breakMinutes))
+    suspend fun approveTimeEntry(id: String): TimeEntryResponse = request("/time/entries/" + id + "/approve", method = "POST")
+
+    suspend fun leave(): List<LeaveRow> = request<LeaveListResponse>("/leave").leave
+    suspend fun createLeave(body: LeaveCreateBody): LeaveOneResponse = post("/leave", body)
+    suspend fun decideLeave(id: String, status: String): LeaveOneResponse = patch("/leave/" + id, LeaveDecideBody(status))
+
+    suspend fun forms(): List<FormTpl> = request<FormsListResponse>("/forms").forms
+    suspend fun submitForm(id: String, bodyJson: String): Unit = postRawJson("/forms/" + id + "/submissions", bodyJson)
+
+    suspend fun permits(): List<PermitRow> = request<PermitsListResponse>("/permits").permits
+    suspend fun requestPermit(body: NewPermitBody): PermitOneResponse = post("/permits", body)
+    suspend fun permitAction(id: String, action: String): PermitOneResponse = patch("/permits/" + id, PermitActionBody(action))
+
+    suspend fun complianceItems(): List<ComplianceItem> = request<ComplianceListResponse>("/compliance").items
+    suspend fun completeCompliance(id: String, doneOn: String): ComplianceItemResponse =
+        post("/compliance/" + id + "/complete", ComplianceCompleteBody(doneOn))
 
     suspend fun reportIncident(body: NewIncidentBody): IncidentResponse = post("/incidents", body)
     suspend fun setIncidentStatus(id: String, status: String): IncidentResponse =

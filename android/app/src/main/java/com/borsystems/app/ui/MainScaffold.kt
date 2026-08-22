@@ -43,6 +43,11 @@ import com.borsystems.app.ui.setup.HangerSetupScreen
 import com.borsystems.app.ui.sites.SitesScreen
 import com.borsystems.app.ui.security.IncidentsScreen
 import com.borsystems.app.ui.security.VisitorsScreen
+import com.borsystems.app.ui.business.TimesheetsScreen
+import com.borsystems.app.ui.business.LeaveScreen
+import com.borsystems.app.ui.business.FormsScreen
+import com.borsystems.app.ui.business.PermitsScreen
+import com.borsystems.app.ui.business.ComplianceScreen
 import com.borsystems.app.ui.users.UsersScreen
 
 /**
@@ -152,6 +157,11 @@ fun MainScaffold() {
             composable("sites")             { Guard(caps, Module.OPERATIONS, requireStaff = true, nav = nav) { SitesScreen() } }
             composable("incidents")         { IncidentsScreen(onBack = { nav.popBackStack() }) }
             composable("visitors")          { VisitorsScreen(onBack = { nav.popBackStack() }) }
+            composable("timesheets")        { TimesheetsScreen(onBack = { nav.popBackStack() }) }
+            composable("leave")             { LeaveScreen(onBack = { nav.popBackStack() }) }
+            composable("forms")             { FormsScreen(onBack = { nav.popBackStack() }) }
+            composable("permits")           { PermitsScreen(onBack = { nav.popBackStack() }) }
+            composable("compliance")        { ComplianceScreen(onBack = { nav.popBackStack() }) }
             composable("profile")           { ProfileScreen(nav) }
             composable("profile/edit")      { EditProfileScreen(onBack = { nav.popBackStack() }) }
             composable("security")          { SecurityScreen(onBack = { nav.popBackStack() }) }
