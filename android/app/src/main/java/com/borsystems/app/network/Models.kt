@@ -601,25 +601,7 @@ data class SiteOverviewTotals(
 @Serializable
 data class SitesOverviewResponse(val sites: List<SiteOverview>, val totals: SiteOverviewTotals)
 
-// ─── Security incidents ─────────────────────────────────────────────
-@Serializable
-data class IncidentBuildingRef(val id: String, val name: String)
-
-@Serializable
-data class Incident(
-    val id: String,
-    val title: String,
-    val kind: String? = null,
-    val severity: String,
-    val status: String,
-    val description: String? = null,
-    val createdAt: String? = null,
-    val building: IncidentBuildingRef? = null,
-)
-
-@Serializable
-data class IncidentsResponse(val incidents: List<Incident>)
-
+// ─── Security incidents: report + status (list model lives above) ───
 @Serializable
 data class NewIncidentBody(
     val title: String,
@@ -633,7 +615,7 @@ data class NewIncidentBody(
 data class IncidentPatchBody(val status: String)
 
 @Serializable
-data class IncidentResponse(val incident: Incident? = null)
+data class IncidentResponse(val incident: SecurityIncident? = null)
 
 // ─── Visitors ───────────────────────────────────────────────────────
 @Serializable

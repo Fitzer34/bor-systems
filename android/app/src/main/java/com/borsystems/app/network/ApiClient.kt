@@ -344,7 +344,6 @@ object ApiClient {
 
     suspend fun sitesOverview(): SitesOverviewResponse = request("/sites/overview")
 
-    suspend fun incidents(): List<Incident> = request<IncidentsResponse>("/incidents").incidents
     suspend fun reportIncident(body: NewIncidentBody): IncidentResponse = post("/incidents", body)
     suspend fun setIncidentStatus(id: String, status: String): IncidentResponse =
         patch("/incidents/" + id, IncidentPatchBody(status))

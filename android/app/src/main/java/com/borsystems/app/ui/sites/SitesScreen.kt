@@ -107,7 +107,7 @@ private fun Estate(d: SitesOverviewResponse, onOpen: (SiteOverview) -> Unit) {
             }
         }
         items(d.sites, key = { it.buildingId }) { s ->
-            Card(Modifier.fillMaxWidth(), onClick = { onOpen(s) }) {
+            Card(onClick = { onOpen(s) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StatusDot(s)

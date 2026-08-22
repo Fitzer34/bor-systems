@@ -13,9 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.borsystems.app.auth.AuthStore
+import com.borsystems.app.network.UserRole
 import com.borsystems.app.network.ApiClient
 import com.borsystems.app.network.Building
-import com.borsystems.app.network.Incident
+import com.borsystems.app.network.SecurityIncident
 import com.borsystems.app.network.NewIncidentBody
 import kotlinx.coroutines.launch
 
@@ -28,14 +29,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun IncidentsScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var incidents by remember { mutableStateOf<List<Incident>?>(null) }
+    var incidents by remember { mutableStateOf<List<SecurityIncident>?>(null) }
     var failed by remember { mutableStateOf(false) }
     var showReport by remember { mutableStateOf(false) }
     val user by AuthStore.user.collectAsState()
-    val isStaff = user?.role in listOf("admin", "supervisor")
+    val isStaff = user?.role == UserRole.admin || user?.role == UserRole.supervisor
 
     suspend fun load() {
-        try { incidents = ApiClient.incidents(); failed = false }
+        try { incidents = ApiClient.securityIncidents(); failed = false }
         catch (_: Exception) { if (incidents == null) failed = true }
     }
     LaunchedEffect(Unit) { load() }
@@ -96,7 +97,7 @@ fun IncidentsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun IncidentCard(i: Incident, canResolve: Boolean, onResolve: () -> Unit) {
+private fun IncidentCard(i: SecurityIncident, canResolve: Boolean, onResolve: () -> Unit) {
     val sev = when (i.severity) {
         "critical", "high" -> Color(0xFFD32F2F)
         "medium" -> Color(0xFFF57C00)
