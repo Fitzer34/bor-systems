@@ -115,7 +115,8 @@ async function loadOrg() {
         return {
           id: "SP-" + String(a.id).slice(0, 4).toUpperCase(),
           realId: a.id,
-          site: a.buildingName || a.floorName || "Site",
+          // Empty when the sign isn't on a plan yet: unattributed, never hidden by a scope.
+          site: a.buildingName || a.floorName || "",
           siteId: a.buildingId || null,
           siteShort: a.buildingName || a.floorName || "",
           location: a.zoneName || "Sensor location",
