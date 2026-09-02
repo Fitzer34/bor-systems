@@ -5265,7 +5265,7 @@ function CleaningRounds({ site, buildings, showToast }) {
   React.useEffect(() => { refresh(); }, [refresh]);
 
   const cpList = Array.isArray(cps)
-    ? cps.filter((c) => (site ? c.building && c.building.id === site.id : true))
+    ? cps.filter((c) => (site ? !c.building || c.building.id === site.id : true))
     : [];
   const scanList = Array.isArray(scans)
     ? scans.filter((s) => (site ? s.buildingName === site.name : true)).slice(0, 6)
@@ -5450,7 +5450,7 @@ function CleaningView({ go }) {
   }
 
   const all = Array.isArray(insps)
-    ? insps.filter((i) => (site ? i.buildingId === site.id : true))
+    ? insps.filter((i) => (site ? !i.buildingId || i.buildingId === site.id : true))
     : [];
   const tabs = ["All", "Passed", "Minor issues", "Needs work"];
   const inBand = (i, t) => {
@@ -12438,7 +12438,7 @@ function TimesheetsView({ go }) {
   /* Site scope — the active site filters the whole view, so KPIs, the
      table, weekly totals and counts all match the picker. */
   const list = Array.isArray(entries) ? entries : [];
-  const scoped = site ? list.filter((e) => (e.buildingName || "") === site.name) : list;
+  const scoped = site ? list.filter((e) => !e.buildingName || e.buildingName === site.name) : list;
 
   const filtered = scoped.filter((e) => {
     if (filter === "All") return true;
@@ -17538,7 +17538,7 @@ function AssetsView({ go, onScan, pendingScan, onConsumeScan }) {
 
   /* ---------- list branch ---------- */
   const visible = site
-    ? loaded.assets.filter((x) => x.buildingId === site.id || bName(x.buildingId) === site.name)
+    ? loaded.assets.filter((x) => !x.buildingId || x.buildingId === site.id || bName(x.buildingId) === site.name)
     : loaded.assets;
 
   const categoryOptions = Array.from(new Set(
@@ -26853,7 +26853,7 @@ function App() {
     }
   }, [me.id, siteCount]);
 
-  const matchSite = (siteName) => !site || siteName === site.name;
+  const matchSite = (siteName) => !site || !siteName || siteName === site.name;
   const openCount   = workOrders.filter((w) => w.status !== "Done" && matchSite(w.site)).length;
   const liveSpills  = HL.spillAlerts.filter((a) => a.state === "new" && matchSite(a.site)).length;
   const offlineDev  = HL.deviceBuildings.filter((b) => matchSite(b.name)).flatMap((b) => b.devices).filter((d) => !d.online).length;
@@ -27671,13 +27671,13 @@ function SiteView({ go }) {
       if (ok && b) setSpills((b.alerts || []).filter((a) => a.buildingId === site.id && a.kind !== "planned_cleaning"));
     });
     hlApi("/jobs", { unscoped: true }).then(({ ok, b }) => {
-      if (ok && b) setJobs((b.jobs || []).filter((j) => (j.buildingId == null || j.buildingId === site.id)));
+      if (ok && b) setJobs((b.jobs || []).filter((j) => j.buildingId === site.id));
     });
     hlApi("/incidents", { unscoped: true }).then(({ ok, b }) => {
-      if (ok && b) setIncidents((b.incidents || []).filter((i) => (i.buildingId == null || i.buildingId === site.id)));
+      if (ok && b) setIncidents((b.incidents || []).filter((i) => i.buildingId === site.id));
     });
     hlApi("/visitors", { unscoped: true }).then(({ ok, b }) => {
-      if (ok && b) setVisitors((b.visitors || []).filter((v) => (v.buildingId == null || v.buildingId === site.id)));
+      if (ok && b) setVisitors((b.visitors || []).filter((v) => v.buildingId === site.id));
     });
   }, [site && site.id]);
   React.useEffect(() => { load(); }, [load]);
