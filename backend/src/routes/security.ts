@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds, scopeRows } from "../services/site-membership.js";
 
 // A checkpoint's QR points here — a no-login scan page (reuses the magic-link
 // pattern). Guards open it by scanning, confirm, and the scan is logged.
@@ -48,11 +49,12 @@ export default async function securityRoutes(app: FastifyInstance): Promise<void
       .leftJoin(schema.buildings, eq(schema.buildings.id, schema.securityIncidents.buildingId))
       .where(eq(schema.securityIncidents.organisationId, c.orgId))
       .orderBy(desc(schema.securityIncidents.createdAt));
+    const scope = await visibleSiteIds(c.orgId, c.sub, c.role);
     return {
-      incidents: rows.map((r) => ({
+      incidents: scopeRows(rows.map((r) => ({
         ...r.security_incidents,
         building: r.buildings?.id ? { id: r.buildings.id, name: r.buildings.name } : null,
-      })),
+      })), scope),
     };
   });
 

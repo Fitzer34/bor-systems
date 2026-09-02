@@ -59,7 +59,14 @@ async function loadOrg() {
       status: s.openAlerts > 0 ? "warn" : "ok",
       open: s.openAlerts || 0,
     }));
-  } catch { /* leave sites empty */ }
+  } catch {
+    // Field staff can't read /sites/summary; fall back to the plain building
+    // list so the picker and landing still know their sites.
+    try {
+      const r: any = await api("/buildings");
+      out.sites = (r.buildings || []).map((b: any) => ({ id: b.id, name: b.name, loc: "", status: "ok", open: 0 }));
+    } catch { /* leave sites empty */ }
+  }
 
   // Contractors — drives the Contractor accreditation view (asset_41). The
   // backend row is flat (no per-staff cert data yet), so map defensively into

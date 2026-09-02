@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import argon2 from "argon2";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { userSiteIds } from "../services/site-membership.js";
 import { validatePassword } from "../services/password-policy.js";
 
 const loginSchema = z.object({
@@ -113,6 +114,9 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
         phoneE164: user.phoneE164,
         organisationId: user.organisationId,
         organisationName: org?.name ?? "",
+        // Site membership travels with the login so the client can scope and
+        // land correctly without a second round trip.
+        siteIds: await userSiteIds(user.organisationId, user.id),
       },
     });
   });
@@ -175,6 +179,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
           onDuty: result.admin.onDuty,
           organisationId: result.org.id,
           organisationName: result.org.name,
+          siteIds: [],
         },
       });
     } catch (err: any) {

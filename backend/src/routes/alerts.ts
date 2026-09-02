@@ -6,6 +6,7 @@ import { db, schema } from "../db/client.js";
 import { closeAlertForHanger } from "../services/alert-flow.js";
 import { notifyEmail, notifyPush } from "../services/notifications.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds, scopeRows } from "../services/site-membership.js";
 import { eventBus } from "../services/event-bus.js";
 import { uploadClosePhoto } from "../services/storage.js";
 
@@ -37,7 +38,10 @@ export default async function alertRoutes(app: FastifyInstance): Promise<void> {
       .leftJoin(schema.buildings, eq(schema.buildings.id, schema.floors.buildingId))
       .where(and(eq(schema.alerts.organisationId, c.orgId), isNull(schema.alerts.closedAt)))
       .orderBy(desc(schema.alerts.openedAt));
-    return { alerts: rows };
+    // Alerts from signs not yet placed on a plan have no building and stay
+    // visible to everyone: a spill nobody can see is the one failure mode
+    // this product exists to prevent.
+    return { alerts: scopeRows(rows, await visibleSiteIds(c.orgId, c.sub, c.role)) };
   });
 
   app.post("/alerts/:id/acknowledge", { preHandler: [app.authenticate] }, async (req, reply) => {

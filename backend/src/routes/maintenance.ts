@@ -17,6 +17,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, desc, inArray, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds, scopeRows } from "../services/site-membership.js";
 import { sendEmail } from "../services/notifications.js";
 import { createAndSendDocket } from "./dockets.js";
 import { aiProvider, aiCallsToday } from "../services/ai-provider.js";
@@ -127,7 +128,7 @@ export default async function maintenanceRoutes(app: FastifyInstance): Promise<v
       .from(schema.maintenanceJobs)
       .where(eq(schema.maintenanceJobs.organisationId, c.orgId))
       .orderBy(desc(schema.maintenanceJobs.createdAt));
-    return { jobs: rows };
+    return { jobs: scopeRows(rows, await visibleSiteIds(c.orgId, c.sub, c.role)) };
   });
 
   // Work-order register as CSV (newest first) — drives the "Export CSV" button

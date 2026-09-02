@@ -130,9 +130,12 @@ async function tick(): Promise<void> {
         lte(schema.securityIncidents.createdAt, incCutoff),
       ));
     for (const i of staleIncidents) {
-      await db.update(schema.securityIncidents).set({ escalatedAt: new Date() }).where(eq(schema.securityIncidents.id, i.id));
+      // Claim first (concurrency guard), tell people, and only then stamp the
+      // record — so a crash mid-way retries next tick instead of marking an
+      // incident escalated that nobody heard about.
       if (!(await dedupKeyFired(org.id, "incident.escalated", i.id))) continue;
       const recipients = await staffForBuilding(org.id, i.buildingId, ["admin", "supervisor"]);
+      let told = 0;
       for (const userId of recipients) {
         try {
           await createNotification({
@@ -141,9 +144,13 @@ async function tick(): Promise<void> {
             body: `A ${i.severity} incident has sat at open for ${INCIDENT_ESCALATE_MINUTES} minutes with nobody investigating.`,
             entityType: "incident", entityId: i.id,
           });
-        } catch { /* best effort */ }
+          told++;
+        } catch (err) { console.warn("incident escalation notify failed", i.id, (err as any)?.message); }
       }
-      eventBus.publish(org.id, { type: "incident.escalated", incidentId: i.id } as any);
+      if (told > 0 || recipients.length === 0) {
+        await db.update(schema.securityIncidents).set({ escalatedAt: new Date() }).where(eq(schema.securityIncidents.id, i.id));
+        eventBus.publish(org.id, { type: "incident.escalated", incidentId: i.id } as any);
+      }
     }
 
     // Permit nudge — a request nobody has approved or rejected in a day.
@@ -158,9 +165,9 @@ async function tick(): Promise<void> {
         lte(schema.permits.createdAt, permitCutoff),
       ));
     for (const p of stalePermits) {
-      await db.update(schema.permits).set({ nudgedAt: new Date() }).where(eq(schema.permits.id, p.id));
       if (!(await dedupKeyFired(org.id, "permit.stale", p.id))) continue;
       const recipients = await staffForBuilding(org.id, p.buildingId, ["admin", "supervisor"]);
+      let told = 0;
       for (const userId of recipients) {
         try {
           await createNotification({
@@ -169,7 +176,11 @@ async function tick(): Promise<void> {
             body: `${p.type.replace(/_/g, " ")} — "${p.description.slice(0, 80)}" has waited ${PERMIT_NUDGE_HOURS} hours. Approve or reject it.`,
             entityType: "permit", entityId: p.id,
           });
-        } catch { /* best effort */ }
+          told++;
+        } catch (err) { console.warn("permit nudge notify failed", p.id, (err as any)?.message); }
+      }
+      if (told > 0 || recipients.length === 0) {
+        await db.update(schema.permits).set({ nudgedAt: new Date() }).where(eq(schema.permits.id, p.id));
       }
     }
 

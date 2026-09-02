@@ -50,11 +50,13 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
         // online continuously regardless.)
         const onlineCutoff = new Date(now - 26 * 60 * 60 * 1000);
 
-        // 1. Buildings in this org.
-        const buildings = await db
+        // 1. Buildings in this org, limited to the caller's sites when assigned.
+        const summaryScope = await visibleSiteIds(c.orgId, c.sub, c.role);
+        const buildings = (await db
           .select({ id: schema.buildings.id, name: schema.buildings.name })
           .from(schema.buildings)
-          .where(eq(schema.buildings.organisationId, c.orgId));
+          .where(eq(schema.buildings.organisationId, c.orgId)))
+          .filter((b) => !summaryScope || summaryScope.includes(b.id));
 
         if (buildings.length === 0) return { sites: [] };
 
@@ -235,6 +237,9 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
           const r = rows.get(bId);
           if (r) f(r);
         };
+        // Totals must match the site list a restricted user can see. Rows with
+        // no building are org-wide and only count when nothing is filtered.
+        const counts = (bId: string | null) => (scope ? !!(bId && rows.has(bId)) : true);
 
         // Floors / zones / hangers chain (same walk as /sites/summary).
         const floors = await db
@@ -263,11 +268,10 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
           .where(eq(schema.hangers.organisationId, c.orgId));
         const hangerToBuilding = new Map<string, string>();
         for (const h of hangers) {
-          totals.hangers++;
           const online = h.status === "active" && h.lastSeenAt && h.lastSeenAt.getTime() >= onlineCutoff.getTime();
-          if (online) totals.hangersOnline++;
           const b = h.zoneId ? zoneToBuilding.get(h.zoneId) ?? null : null;
           if (b) hangerToBuilding.set(h.id, b);
+          if (counts(b)) { totals.hangers++; if (online) totals.hangersOnline++; }
           bump(b, (r) => { r.hangers++; if (online) r.hangersOnline++; });
         }
         const gateways = await db
@@ -285,8 +289,9 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
             .where(and(inArray(schema.alerts.hangerId, hangerIds), isNull(schema.alerts.closedAt)));
           for (const a of alerts) {
             if (a.kind !== "spill") continue;
-            totals.openSpills++;
-            bump(hangerToBuilding.get(a.hangerId) ?? null, (r) => { r.openSpills++; });
+            const b = hangerToBuilding.get(a.hangerId) ?? null;
+            if (counts(b)) totals.openSpills++;
+            bump(b, (r) => { r.openSpills++; });
           }
         }
 
@@ -297,9 +302,8 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
           .where(eq(schema.maintenanceJobs.organisationId, c.orgId));
         for (const j of jobs) {
           if (j.status === "completed" || j.status === "cancelled") continue;
-          totals.openJobs++;
           const urgent = j.priority === "urgent" || j.priority === "emergency";
-          if (urgent) totals.urgentJobs++;
+          if (counts(j.buildingId)) { totals.openJobs++; if (urgent) totals.urgentJobs++; }
           bump(j.buildingId, (r) => { r.openJobs++; if (urgent) r.urgentJobs++; });
         }
         const ppms = await db
@@ -309,7 +313,7 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
         for (const p of ppms) {
           if (p.active === false) continue;
           if (p.nextDueDate && String(p.nextDueDate) < today) {
-            totals.overduePpms++;
+            if (counts(p.buildingId)) totals.overduePpms++;
             bump(p.buildingId, (r) => { r.overduePpms++; });
           }
         }
@@ -326,7 +330,7 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
           .where(eq(schema.securityIncidents.organisationId, c.orgId));
         for (const i of incidents) {
           if (i.status === "resolved") continue;
-          totals.openIncidents++;
+          if (counts(i.buildingId)) totals.openIncidents++;
           bump(i.buildingId, (r) => { r.openIncidents++; });
         }
         const visitors = await db
@@ -335,7 +339,7 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
           .where(eq(schema.visitors.organisationId, c.orgId));
         for (const v of visitors) {
           if (!v.signedInAt || v.signedOutAt) continue;
-          totals.visitorsOnSite++;
+          if (counts(v.buildingId)) totals.visitorsOnSite++;
           bump(v.buildingId, (r) => { r.visitorsOnSite++; });
         }
         const onClock = await db
@@ -343,7 +347,7 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
           .from(schema.timeEntries)
           .where(and(eq(schema.timeEntries.organisationId, c.orgId), isNull(schema.timeEntries.clockOutAt)));
         for (const t of onClock) {
-          totals.staffOnClock++;
+          if (counts(t.buildingId)) totals.staffOnClock++;
           bump(t.buildingId, (r) => { r.staffOnClock++; });
         }
 

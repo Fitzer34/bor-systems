@@ -16,6 +16,7 @@ import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds, scopeRows } from "../services/site-membership.js";
 import { createNotification, notifyOrgRole } from "../services/notification-centre.js";
 
 const PERMIT_TYPES = ["hot_works", "working_at_height", "confined_space", "electrical", "asbestos", "excavation", "general"] as const;
@@ -50,13 +51,14 @@ export default async function permitRoutes(app: FastifyInstance): Promise<void> 
       .where(and(...conds))
       .orderBy(desc(schema.permits.createdAt))
       .limit(500);
+    const scope = await visibleSiteIds(c.orgId, c.sub, c.role);
     return {
-      permits: rows.map((r) => ({
+      permits: scopeRows(rows.map((r) => ({
         ...r.permit,
         buildingName: r.buildingName,
         requestedByName: r.requestedByName,
         typeLabel: TYPE_LABEL[r.permit.type] || r.permit.type,
-      })),
+      })), scope),
     };
   });
 

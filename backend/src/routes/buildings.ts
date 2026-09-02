@@ -4,6 +4,7 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds, scopeRows } from "../services/site-membership.js";
 import { uploadFloorPlan } from "../services/storage.js";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
@@ -33,7 +34,9 @@ async function assertZoneInOrg(zoneId: string, orgId: string): Promise<boolean> 
 export default async function buildingRoutes(app: FastifyInstance): Promise<void> {
   app.get("/buildings", { preHandler: [app.authenticate] }, async (req) => {
     const c = ctx(req);
-    return { buildings: await db.select().from(schema.buildings).where(eq(schema.buildings.organisationId, c.orgId)) };
+    const scope = await visibleSiteIds(c.orgId, c.sub, c.role);
+    const all = await db.select().from(schema.buildings).where(eq(schema.buildings.organisationId, c.orgId));
+    return { buildings: scope ? all.filter((b) => scope.includes(b.id)) : all };
   });
 
   app.post("/buildings", { preHandler: [app.authenticate, requireRole(["admin"])] }, async (req, reply) => {
@@ -79,9 +82,11 @@ export default async function buildingRoutes(app: FastifyInstance): Promise<void
     return { building: updated };
   });
 
-  app.get("/buildings/:id/floors", { preHandler: [app.authenticate] }, async (req) => {
+  app.get("/buildings/:id/floors", { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const c = ctx(req);
+    const scope = await visibleSiteIds(c.orgId, c.sub, c.role);
+    if (scope && !scope.includes(id)) return reply.code(404).send({ error: "not_found" });
     const rows = await db.select().from(schema.floors)
       .where(and(eq(schema.floors.buildingId, id), eq(schema.floors.organisationId, c.orgId)));
     return { floors: rows };

@@ -15,6 +15,7 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds, scopeRows } from "../services/site-membership.js";
 import { uploadComplianceDoc } from "../services/storage.js";
 
 const requireStaff = async (req: any, reply: any) => {
@@ -64,12 +65,15 @@ export default async function complianceRoutes(app: FastifyInstance): Promise<vo
       .where(eq(schema.complianceItems.organisationId, c.orgId))
       .orderBy(schema.complianceItems.nextDueOn)
       .limit(1000);
-    const items = rows.map((r) => ({
+    // Membership: a restricted user sees their sites' items (plus org-wide
+    // items with no building); the header counts follow the visible set.
+    const scope = await visibleSiteIds(c.orgId, c.sub, c.role);
+    const items = scopeRows(rows.map((r) => ({
       ...r.item,
       buildingName: r.buildingName,
       contractorName: r.contractorName,
       status: statusOf(r.item.nextDueOn),
-    }));
+    })), scope);
     const counts = { total: items.length, ok: 0, due_soon: 0, overdue: 0, unscheduled: 0 };
     for (const i of items) counts[i.status] += 1;
     return { items, counts };

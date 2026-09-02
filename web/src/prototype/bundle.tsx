@@ -6055,8 +6055,8 @@ function SpillsView({ go }) {
       title: (h && h.name) || row.zoneName || "Unassigned hanger",
       zoneName: row.zoneName || null,
       floorName: row.floorName || null,
-      siteId: b ? b.id : null,
-      siteName: b ? b.name : null,
+      siteId: row.buildingId || (b ? b.id : null),
+      siteName: row.buildingName || (b ? b.name : null),
       hangerLabel: h ? h.name || h.devEui : null,
       locationNote: (h && h.locationNote) || null,
     };
@@ -20026,9 +20026,12 @@ function hlApi(path, opts) {
    When a site is picked in the top bar every section shows only that site.
    Rather than teaching each of 30 views about scope, GET responses are
    filtered here: any top-level array whose rows carry a buildingId keeps
-   only rows for the scoped site. Rows with no buildingId (org-wide items)
-   are hidden too — scoped means "this site", nothing else. Views that must
-   see the whole estate pass { unscoped: true }. */
+   only rows for the scoped site. Rows with NO buildingId are org-wide (a
+   job logged without a site, a sign not yet pinned to a plan) and stay
+   visible — hiding a spill because its sign isn't on a plan yet would be
+   the one failure this product exists to prevent. Views that must see the
+   whole estate pass { unscoped: true }. The server enforces membership
+   on its own; this is the per-site view on top. */
 function hlScopeSiteId() { return window.HL_SCOPE_SITE_ID || null; }
 function hlScopeResponse(b) {
   const sid = hlScopeSiteId();
@@ -20038,7 +20041,7 @@ function hlScopeResponse(b) {
   for (const k of Object.keys(b)) {
     const v = b[k];
     if (Array.isArray(v) && v.length && v.some((row) => row && typeof row === "object" && ("buildingId" in row))) {
-      out[k] = v.filter((row) => row && row.buildingId === sid);
+      out[k] = v.filter((row) => row && (row.buildingId == null || row.buildingId === sid));
       touched = true;
     } else {
       out[k] = v;
@@ -26769,7 +26772,16 @@ function App() {
   // Site scope. Persisted per browser so a supervisor's site sticks across
   // reloads; mirrored onto window so hlApi can filter without React.
   const [site, setSiteState]        = React.useState(() => {
-    try { const raw = localStorage.getItem("bor.scopeSite"); return raw ? JSON.parse(raw) : null; } catch { return null; }
+    try {
+      const raw = localStorage.getItem("bor.scopeSite");
+      const s = raw ? JSON.parse(raw) : null;
+      // A remembered scope this user may no longer see is dropped before
+      // anything fetches with it.
+      const u = (typeof HL !== "undefined" && HL.currentUser) || {};
+      const mine = Array.isArray(u.siteIds) ? u.siteIds : [];
+      if (s && u.role && u.role !== "admin" && mine.length && !mine.includes(s.id)) { localStorage.removeItem("bor.scopeSite"); return null; }
+      return s;
+    } catch { return null; }
   });
   const setSite = React.useCallback((s) => {
     setSiteState(s);
@@ -26836,8 +26848,8 @@ function App() {
       setSite(mySites[0]);
       go(me.role === "supervisor" ? "site" : "dashboard");
     } else if (mySites.length > 1 && me.role === "supervisor") {
-      setSite(null);
-      go("portfolio");
+      // Several sites: a remembered, still-allowed site wins; otherwise the estate.
+      if (site && mine.includes(site.id)) go("site"); else go("portfolio");
     }
   }, [me.id, siteCount]);
 
@@ -27837,7 +27849,7 @@ function SiteView({ go }) {
           onClose={() => setAction(null)}
           onSubmit={(v) => {
             hlApi("/jobs", { method: "POST", body: { title: String(v.title || "").trim(), description: String(v.description || "").trim() || undefined, priority: v.priority || "routine", buildingId: site.id } })
-              .then(({ ok }) => { if (ok) load(); else showToast("Could not log the work order."); });
+              .then(({ ok }) => { if (ok) load(); else { setAction(null); showToast("Could not log the work order. Check your access and try again."); } });
           }}
         />
       )}
@@ -27857,7 +27869,7 @@ function SiteView({ go }) {
           onClose={() => setAction(null)}
           onSubmit={(v) => {
             hlApi("/incidents", { method: "POST", body: { title: String(v.title || "").trim(), severity: v.severity || "medium", description: String(v.description || "").trim() || null, buildingId: site.id } })
-              .then(({ ok }) => { if (ok) load(); else showToast("Could not report the incident."); });
+              .then(({ ok }) => { if (ok) load(); else { setAction(null); showToast("Could not report the incident. Check your access and try again."); } });
           }}
         />
       )}
@@ -27877,7 +27889,7 @@ function SiteView({ go }) {
           onClose={() => setAction(null)}
           onSubmit={(v) => {
             hlApi("/visitors", { method: "POST", body: { name: String(v.name || "").trim(), company: String(v.company || "").trim() || undefined, host: String(v.host || "").trim() || undefined, buildingId: site.id, expectedAt: new Date().toISOString() } })
-              .then(({ ok }) => { if (ok) load(); else showToast("Could not book the visitor."); });
+              .then(({ ok }) => { if (ok) load(); else { setAction(null); showToast("Could not book the visitor. Check your access and try again."); } });
           }}
         />
       )}

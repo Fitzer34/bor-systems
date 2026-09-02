@@ -200,7 +200,7 @@ async function main(): Promise<void> {
     reply.code(status).send({ error: err.message || "internal_error" });
   });
 
-  app.get("/health", async () => ({ ok: true, version: "0.7.7-multisite-workflow" }));
+  app.get("/health", async () => ({ ok: true, version: "0.7.8-multisite-fixes" }));
 
   await app.register(authRoutes);
   await app.register(twoFactorRoutes);

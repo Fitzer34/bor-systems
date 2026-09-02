@@ -34,6 +34,7 @@ import { randomBytes } from "node:crypto";
 import { and, desc, eq, gte, inArray, lte, or } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds, scopeRows } from "../services/site-membership.js";
 import { requirePermission } from "../services/permissions.js";
 import { sendEmail, sendEmailToUser } from "../services/notifications.js";
 import { uploadContractorDoc } from "../services/storage.js";
@@ -413,7 +414,7 @@ export default async function growthRoutes(app: FastifyInstance): Promise<void> 
     ];
     if (q.data.buildingId) conds.push(eq(schema.visitors.buildingId, q.data.buildingId));
     const rows = await db.select().from(schema.visitors).where(and(...conds)).orderBy(desc(schema.visitors.createdAt)).limit(500);
-    return { visitors: rows };
+    return { visitors: scopeRows(rows, await visibleSiteIds(c.orgId, c.sub, c.role)) };
   });
 
   const visitorBody = z.object({

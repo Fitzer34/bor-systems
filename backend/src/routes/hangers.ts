@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds, scopeRows } from "../services/site-membership.js";
 import { requirePermission } from "../services/permissions.js";
 
 /**
@@ -69,11 +70,15 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
       if (!cur || gSeen > curSeen) gatewayByBuilding.set(g.buildingId, g);
     }
 
+    const scope = await visibleSiteIds(c.orgId, c.sub, c.role);
     return {
-      hangers: rows.map((r) => {
+      hangers: scopeRows(rows.map((r) => {
         const gw = r.buildingId ? gatewayByBuilding.get(r.buildingId) ?? null : null;
         return {
           ...r.hanger,
+          // Which site this sign lives at (via its pin's floor). Null until
+          // it's placed on a plan. Lets clients scope the device list.
+          buildingId: r.buildingId ?? null,
           // lastLiftedAt is on the hanger row (stamped on lift events).
           // No per-hanger RSSI exists on the device; surface the resolved
           // gateway's RSSI as the best-available signal proxy, else null.
@@ -85,7 +90,7 @@ export default async function hangerRoutes(app: FastifyInstance): Promise<void> 
             ? { id: r.tagId, bleUuid: r.tagBle, batteryPct: r.tagBattery, lastSeenAt: r.tagSeen }
             : null,
         };
-      }),
+      }), scope),
     };
   });
 

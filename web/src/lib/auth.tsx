@@ -22,6 +22,8 @@ export interface CurrentUser {
    * fall back to a role-derived default (see lib/permissions.tsx).
    */
   permissions?: Record<string, boolean>;
+  /** Sites this user is assigned to. Empty = unrestricted. */
+  siteIds?: string[];
 }
 
 export type LoginResult =
