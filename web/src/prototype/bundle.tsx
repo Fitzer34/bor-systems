@@ -6079,7 +6079,7 @@ function SpillsView({ go }) {
     locationNote: null,
   });
 
-  const inSite = (a) => !site || a.siteId === site.id || (a.siteName && a.siteName === site.name);
+  const inSite = (a) => !site || (!a.siteId && !a.siteName) || a.siteId === site.id || (a.siteName && a.siteName === site.name);
   const liveRows      = (Array.isArray(active) ? active : []).map(composeActive);
   const scopedLive    = site && floorSite.loaded ? liveRows.filter(inSite) : liveRows;
   const resolvedRows  = (Array.isArray(resolved) ? resolved : []).map(composeResolved);
@@ -9018,7 +9018,7 @@ function Maintenance({ go, workOrders, openWO, flashId, onCreate }) {
   };
 
   const all = Array.isArray(jobs) ? jobs : [];
-  const scoped = site ? all.filter((j) => j.buildingId === site.id) : all;
+  const scoped = site ? all.filter((j) => (j.buildingId == null || j.buildingId === site.id)) : all;
 
   const tabs = ["All", "Open", "In progress", "Tendering", "Done"];
   const bucketOf = (j) => (WO_STATUS_META[j.status] || {}).bucket;
@@ -19788,7 +19788,7 @@ function BillingView({ go }) {
 
   /* Site scope — invoices carry an optional buildingId. Scoped, we show only
      the ones tied to this site and say how many are hidden. */
-  const scoped = site ? rows.filter((i) => i.buildingId === site.id) : rows;
+  const scoped = site ? rows.filter((i) => (i.buildingId == null || i.buildingId === site.id)) : rows;
   const hiddenByScope = site ? rows.length - scoped.length : 0;
 
   /* ---- KPI metrics, summed from the real rows (cents) ---- */
@@ -22952,7 +22952,7 @@ function PermitsView({ go }) {
   React.useEffect(() => { refresh(); }, [refresh]);
 
   const rows = Array.isArray(permits) ? permits : [];
-  const scoped = site ? rows.filter((p) => p.buildingId === site.id) : rows;
+  const scoped = site ? rows.filter((p) => (p.buildingId == null || p.buildingId === site.id)) : rows;
 
   const tabs = [
     { id:"all",       label:"All" },
@@ -24222,7 +24222,7 @@ function ReportsView({ go }) {
   /* ── Site scoping over the real rows ── */
   const spills = site ? data.spills.filter((r) => r.buildingName === site.name) : data.spills;
   const zones = data.zones == null ? null
-    : (site ? data.zones.filter((z) => z.buildingId === site.id) : data.zones);
+    : (site ? data.zones.filter((z) => (z.buildingId == null || z.buildingId === site.id)) : data.zones);
 
   /* ── Stat strip, computed from the rows ── */
   const medAck   = rptMedian(spills.map((r) => r.responseSeconds));
@@ -27665,19 +27665,19 @@ function SiteView({ go }) {
     if (!site || !svAuthed()) return;
     hlApi("/sites/overview", { unscoped: true }).then(({ ok, b }) => {
       if (!ok || !b) { setOv(false); return; }
-      setOv((b.sites || []).find((s) => s.buildingId === site.id) || false);
+      setOv((b.sites || []).find((s) => (s.buildingId == null || s.buildingId === site.id)) || false);
     });
     hlApi("/alerts/active", { unscoped: true }).then(({ ok, b }) => {
       if (ok && b) setSpills((b.alerts || []).filter((a) => a.buildingId === site.id && a.kind !== "planned_cleaning"));
     });
     hlApi("/jobs", { unscoped: true }).then(({ ok, b }) => {
-      if (ok && b) setJobs((b.jobs || []).filter((j) => j.buildingId === site.id));
+      if (ok && b) setJobs((b.jobs || []).filter((j) => (j.buildingId == null || j.buildingId === site.id)));
     });
     hlApi("/incidents", { unscoped: true }).then(({ ok, b }) => {
-      if (ok && b) setIncidents((b.incidents || []).filter((i) => i.buildingId === site.id));
+      if (ok && b) setIncidents((b.incidents || []).filter((i) => (i.buildingId == null || i.buildingId === site.id)));
     });
     hlApi("/visitors", { unscoped: true }).then(({ ok, b }) => {
-      if (ok && b) setVisitors((b.visitors || []).filter((v) => v.buildingId === site.id));
+      if (ok && b) setVisitors((b.visitors || []).filter((v) => (v.buildingId == null || v.buildingId === site.id)));
     });
   }, [site && site.id]);
   React.useEffect(() => { load(); }, [load]);
