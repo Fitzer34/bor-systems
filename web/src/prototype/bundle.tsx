@@ -1929,7 +1929,10 @@ function SitePicker({ go }) {
 
   React.useEffect(() => { if (!open) setQuery(""); }, [open]);
 
-  const sites = HL.sites;
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const mine = (me.role !== "admin" && Array.isArray(me.siteIds) && me.siteIds.length) ? me.siteIds : null;
+  const sites = mine ? HL.sites.filter((s) => mine.includes(s.id)) : HL.sites;
+  const restricted = !!mine;
   const totalOpen = sites.reduce((s, x) => s + siteOpenCount(x.name), 0);
   const q = query.trim().toLowerCase();
   const filteredSites = q
@@ -1951,7 +1954,7 @@ function SitePicker({ go }) {
     <div className="site-picker" ref={ref}>
       <button className="site-select site-select-btn" onClick={() => setOpen((o) => !o)}>
         <Icon name="mapPin" size={15} />
-        <span className="sp-label">{site ? site.name : "All sites"}</span>
+        <span className="sp-label">{site ? site.name : (restricted ? "My sites" : "All sites")}</span>
         {site && <span className="sp-loc">{site.loc}</span>}
         <Icon name="chevronDown" size={14} />
       </button>
@@ -1972,8 +1975,8 @@ function SitePicker({ go }) {
             <button className={"site-menu-row" + (!site ? " on" : "")} onClick={pickAll}>
               <div className="sm-ico sm-ico-all"><Icon name="layers" size={14} /></div>
               <div className="sm-body">
-                <div className="sm-name">All sites · portfolio</div>
-                <div className="sm-loc">Every location combined</div>
+                <div className="sm-name">{restricted ? "My sites · overview" : "All sites · portfolio"}</div>
+                <div className="sm-loc">{restricted ? "The " + sites.length + " site" + (sites.length === 1 ? "" : "s") + " you're assigned to" : "Every location combined"}</div>
               </div>
               <div className="sm-count">{`${totalOpen} open`}</div>
               {!site && <Icon name="check" size={14} />}
@@ -5770,7 +5773,42 @@ function SpillCard({ a, ackMinutes, busy, onAck, onResolve, onFloorPlan }) {
             </button>
           </div>
         )}
+        <RaiseJobFromSpill a={a} />
       </div>
+    </div>
+  );
+}
+
+/* Cleaning → Maintenance in one tap. A lifted sign is often the first sign of
+   a fault (a dripping unit, a blocked drain). This logs a work order against
+   the spill's site with the location already filled in, so nobody has to
+   retype it in the maintenance board. Real POST /jobs; shows the result. */
+function RaiseJobFromSpill({ a }) {
+  const [state, setState] = React.useState("idle"); // idle | busy | done | failed
+  const isStaff = ["admin", "supervisor"].includes(((typeof HL !== "undefined" && HL.currentUser) || {}).role || "");
+  if (!isStaff) return null;
+  const where = [a.siteName, a.floorName, a.zoneName].filter(Boolean).join(" · ");
+  const raise = () => {
+    if (state === "busy" || state === "done") return;
+    setState("busy");
+    hlApi("/jobs", { method: "POST", body: {
+      title: "Follow-up from spill" + (a.zoneName ? " at " + a.zoneName : ""),
+      description: "Raised from spill " + a.shortId + (where ? " (" + where + ")" : "") + ". Check for a fault causing the wet floor (leak, blocked drain, faulty unit).",
+      priority: "routine",
+      buildingId: a.siteId || undefined,
+    } }).then(({ ok }) => setState(ok ? "done" : "failed"));
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12.5 }}>
+      <button className="btn btn-sm" onClick={raise} disabled={state === "busy" || state === "done"}>
+        <Icon name="wrench" size={13} />
+        {state === "busy" ? "Logging…" : state === "done" ? "Work order logged" : "Raise a work order"}
+      </button>
+      <span className="muted">
+        {state === "done" ? "It's on the maintenance board" + (a.siteName ? " for " + a.siteName : "") + "."
+          : state === "failed" ? "Could not log it. Try again."
+          : "If the wet floor points to a fault, hand it to maintenance without retyping where."}
+      </span>
     </div>
   );
 }
@@ -14648,6 +14686,31 @@ function RollCallModal({ onSite, onClose }) {
 /* ============================================================
    Main view
    ============================================================ */
+/* Visitor → Security in one tap. If someone on site causes a problem the
+   guard logs it straight into the incident log with the visitor and site
+   already filled in. Real POST /incidents. Staff only. */
+function LogIncidentForVisitor({ v }) {
+  const [state, setState] = React.useState("idle");
+  const isStaff = ["admin", "supervisor"].includes(((typeof HL !== "undefined" && HL.currentUser) || {}).role || "");
+  if (!isStaff) return null;
+  const log = () => {
+    if (state !== "idle") return;
+    setState("busy");
+    hlApi("/incidents", { method: "POST", body: {
+      title: "Visitor incident: " + v.name,
+      kind: "visitor",
+      severity: "medium",
+      description: "Logged from the visitor sheet." + (v.company ? " Company: " + v.company + "." : "") + (v.host ? " Host: " + v.host + "." : ""),
+      buildingId: v.buildingId || null,
+    } }).then(({ ok }) => setState(ok ? "done" : "idle"));
+  };
+  return (
+    <button className="btn btn-sm" onClick={log} disabled={state !== "idle"} title="Log a security incident about this visitor">
+      <Icon name="shield" size={12} />{state === "busy" ? "…" : state === "done" ? "Incident logged" : "Incident"}
+    </button>
+  );
+}
+
 function VisitorsView({ go }) {
   const { site } = React.useContext(SiteContext);
   const [tab, setTab]       = React.useState("onsite");
@@ -14851,7 +14914,8 @@ function VisitorsView({ go }) {
                   <div>{v.badge ? <span className="vm-badge-pill"><Icon name="award" size={11} />{v.badge}</span> : <span style={{ color: "var(--ink-3)" }}>—</span>}</div>
                   <div style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: "var(--ink-2)" }}>{vmFmtTime(v.signedInAt)}</div>
                   <div className="wo-site" style={{ fontSize: 12.5 }}>{vmBuildingName(v.buildingId)}</div>
-                  <div style={{ textAlign: "right" }}>
+                  <div style={{ textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    <LogIncidentForVisitor v={v} />
                     <button className="btn btn-sm" disabled={busyId === v.id} onClick={() => signOut(v)}>
                       <Icon name="arrowRight" size={12} />{busyId === v.id ? "…" : "Sign out"}
                     </button>
@@ -19947,14 +20011,42 @@ function hlApi(path, opts) {
   opts = opts || {};
   const headers = { authorization: "Bearer " + (localStorage.getItem("bor.token") || "") };
   if (opts.body) headers["content-type"] = "application/json";
+  const method = opts.method || (opts.body ? "POST" : "GET");
   return fetch((window.HL_API_BASE || "/api") + path, {
-    method: opts.method || (opts.body ? "POST" : "GET"),
+    method,
     headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   }).then((r) =>
-    r.json().then((b) => ({ ok: r.ok, status: r.status, b })).catch(() => ({ ok: r.ok, status: r.status, b: null }))
+    r.json().then((b) => ({ ok: r.ok, status: r.status, b: method === "GET" && !opts.unscoped ? hlScopeResponse(b) : b }))
+      .catch(() => ({ ok: r.ok, status: r.status, b: null }))
   );
 }
+
+/* ── Site scope ─────────────────────────────────────────────────────────
+   When a site is picked in the top bar every section shows only that site.
+   Rather than teaching each of 30 views about scope, GET responses are
+   filtered here: any top-level array whose rows carry a buildingId keeps
+   only rows for the scoped site. Rows with no buildingId (org-wide items)
+   are hidden too — scoped means "this site", nothing else. Views that must
+   see the whole estate pass { unscoped: true }. */
+function hlScopeSiteId() { return window.HL_SCOPE_SITE_ID || null; }
+function hlScopeResponse(b) {
+  const sid = hlScopeSiteId();
+  if (!sid || !b || typeof b !== "object" || Array.isArray(b)) return b;
+  let touched = false;
+  const out = {};
+  for (const k of Object.keys(b)) {
+    const v = b[k];
+    if (Array.isArray(v) && v.length && v.some((row) => row && typeof row === "object" && ("buildingId" in row))) {
+      out[k] = v.filter((row) => row && row.buildingId === sid);
+      touched = true;
+    } else {
+      out[k] = v;
+    }
+  }
+  return touched ? out : b;
+}
+Object.assign(window, { hlScopeSiteId, hlScopeResponse });
 
 /* ── Built-in automations — LIVE, wired to the backend ──────────────────────
    These run on the org right now (escalation timers, reminder jobs). The
@@ -24612,7 +24704,72 @@ function mapApiUser(u) {
     invitedAt: u.invitedAt || null,
     inviteAcceptedAt: u.inviteAcceptedAt || null,
     initials: usersInitialsOf(u.name || u.email),
+    siteIds: Array.isArray(u.siteIds) ? u.siteIds : [],
   };
+}
+
+/* Which sites this person belongs to. Admins are on every site by nature;
+   for supervisors and field staff the ticked sites decide what they see and
+   where they land. No ticks = unrestricted (the way everyone was before). */
+function UserSitesEditor({ user, isAdmin, onChanged, showToast }) {
+  const sites = (typeof HL !== "undefined" && HL.sites) || [];
+  const [picked, setPicked] = React.useState(() => new Set(user.siteIds || []));
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { setPicked(new Set(user.siteIds || [])); }, [user.id, (user.siteIds || []).join(",")]);
+  const dirty = (() => {
+    const a = [...picked].sort().join(","), b = [...(user.siteIds || [])].sort().join(",");
+    return a !== b;
+  })();
+  const toggle = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const save = () => {
+    if (!dirty || busy) return;
+    setBusy(true);
+    hlApi("/users/" + user.id + "/sites", { method: "PUT", body: { buildingIds: [...picked] } })
+      .then(({ ok, status }) => {
+        setBusy(false);
+        if (!ok) { showToast(status === 403 ? "Only admins can change site access." : "Could not save site access."); return; }
+        showToast(picked.size === 0 ? user.name + " now sees every site" : user.name + " is scoped to " + picked.size + " site" + (picked.size === 1 ? "" : "s"));
+        onChanged();
+      })
+      .catch(() => { setBusy(false); showToast("Could not reach the server. Try again."); });
+  };
+  if (user.role === "admin") {
+    return (
+      <div className="ai-field" style={{ marginTop:12 }}>
+        <label>Sites</label>
+        <div className="ai-hint">Admins see every site. Change the role to scope someone to particular sites.</div>
+      </div>
+    );
+  }
+  return (
+    <div className="ai-field" style={{ marginTop:12 }}>
+      <label>Sites</label>
+      {sites.length === 0 ? (
+        <div className="ai-hint">No sites yet. Add them under Sites first.</div>
+      ) : (
+        <div style={{ display:"grid", gap:6 }}>
+          {sites.map((s) => (
+            <label key={s.id} style={{ display:"flex", alignItems:"center", gap:8, fontSize:13.5, cursor: isAdmin ? "pointer" : "default" }}>
+              <input type="checkbox" checked={picked.has(s.id)} disabled={!isAdmin || busy} onChange={() => toggle(s.id)} />
+              {s.name}
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="ai-hint">
+        {picked.size === 0
+          ? "No sites ticked: they see every site. Tick sites to scope what they see and where they land."
+          : user.role === "supervisor"
+            ? (picked.size === 1 ? "They land on this site's page, scoped to it." : "They land on the estate showing only these sites.")
+            : "They land on the dashboard scoped to " + (picked.size === 1 ? "this site." : "their sites.")}
+      </div>
+      {isAdmin && (
+        <button className="btn btn-sm" style={{ marginTop:8 }} onClick={save} disabled={!dirty || busy}>
+          <Icon name="check" size={13} />{busy ? "Saving…" : "Save site access"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function usersInviteError(status, b) {
@@ -25125,13 +25282,7 @@ function UserDetail({ user, me, onBack, onChanged, showToast }) {
                   : "Only admins can change roles."}
             </div>
           </div>
-          <div className="ai-field" style={{ marginTop:12 }}>
-            <label>Sites</label>
-            <select className="dv-input" value="All sites" disabled>
-              {SITE_OPTIONS.map((s) => <option key={s}>{s}</option>)}
-            </select>
-            <div className="ai-hint">Everyone in the organisation sees every site. Per-site access is not built yet.</div>
-          </div>
+          <UserSitesEditor user={user} isAdmin={isAdmin} onChanged={onChanged} showToast={showToast} />
           <div className="info-row" style={{ marginTop:16 }}><span className="k">Current role</span><span className="v"><Pill tone={roleMeta.tone} dot>{roleMeta.label}</Pill></span></div>
           {usersFmtDay(user.invitedAt) && (
             <div className="info-row"><span className="k">Invited</span><span className="v">{usersFmtDay(user.invitedAt)}</span></div>
@@ -26615,7 +26766,17 @@ function App() {
   const [pendingScan, setPendingScan] = React.useState(null); // { kind, id, ts }
   const [toast, setToast]           = React.useState(null);
   const [flashId, setFlashId]       = React.useState(null);
-  const [site, setSite]             = React.useState(null);
+  // Site scope. Persisted per browser so a supervisor's site sticks across
+  // reloads; mirrored onto window so hlApi can filter without React.
+  const [site, setSiteState]        = React.useState(() => {
+    try { const raw = localStorage.getItem("bor.scopeSite"); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  });
+  const setSite = React.useCallback((s) => {
+    setSiteState(s);
+    try { s ? localStorage.setItem("bor.scopeSite", JSON.stringify({ id: s.id, name: s.name, loc: s.loc || "" })) : localStorage.removeItem("bor.scopeSite"); } catch {}
+    window.HL_SCOPE_SITE_ID = s ? s.id : null;
+  }, []);
+  window.HL_SCOPE_SITE_ID = site ? site.id : null;
   const [team, setTeam]             = React.useState(() =>
     (typeof readDefaultTeam === "function" ? readDefaultTeam() : null)
   );
@@ -26651,6 +26812,34 @@ function App() {
     setView(v);
     requestAnimationFrame(() => document.querySelector(".content")?.scrollTo(0, 0));
   };
+
+  /* Landing. Role and site membership decide where a session starts:
+       admin                          → dashboard (estate-wide, whatever scope they last used)
+       supervisor, one site           → that site's page, scoped
+       supervisor, several sites      → the estate, showing only their sites
+       field staff, one site          → dashboard scoped to their site
+     Runs once per tab session so a reload doesn't yank people around. */
+  const me = (typeof HL !== "undefined" && HL.currentUser) || {};
+  const siteCount = (typeof HL !== "undefined" && HL.sites ? HL.sites.length : 0);
+  React.useEffect(() => {
+    if (!me.id || siteCount === 0) return;
+    let landed = false;
+    try { landed = sessionStorage.getItem("bor.landed") === me.id; } catch {}
+    if (landed) return;
+    try { sessionStorage.setItem("bor.landed", me.id); } catch {}
+    const mine = Array.isArray(me.siteIds) ? me.siteIds : [];
+    const mySites = HL.sites.filter((s) => mine.includes(s.id));
+    // A persisted scope that this user is no longer allowed to see gets cleared.
+    if (site && me.role !== "admin" && mine.length && !mine.includes(site.id)) setSite(null);
+    if (me.role === "admin") return;
+    if (mySites.length === 1) {
+      setSite(mySites[0]);
+      go(me.role === "supervisor" ? "site" : "dashboard");
+    } else if (mySites.length > 1 && me.role === "supervisor") {
+      setSite(null);
+      go("portfolio");
+    }
+  }, [me.id, siteCount]);
 
   const matchSite = (siteName) => !site || siteName === site.name;
   const openCount   = workOrders.filter((w) => w.status !== "Done" && matchSite(w.site)).length;
@@ -27305,7 +27494,7 @@ function PortfolioView({ go }) {
   const isAdmin = ((HL.currentUser || {}).role || "") === "admin";
 
   const load = React.useCallback(() => {
-    hlApi("/sites/overview").then(({ ok, b }) => setData(ok && b ? b : false));
+    hlApi("/sites/overview", { unscoped: true }).then(({ ok, b }) => setData(ok && b ? b : false));
   }, []);
   React.useEffect(() => { if (svAuthed()) load(); }, [load]);
   React.useEffect(() => {
@@ -27456,23 +27645,26 @@ function SiteView({ go }) {
   const [incidents, setIncidents] = React.useState([]);
   const [visitors, setVisitors] = React.useState([]);
   const [scope, setScope] = React.useState("overview");
+  const [action, setAction] = React.useState(null); // "job" | "incident" | "visitor"
+  const { showToast, toastNode } = useViewToast();
+  const isStaff = ["admin", "supervisor"].includes(((HL.currentUser || {}).role) || "");
 
   const load = React.useCallback(() => {
     if (!site || !svAuthed()) return;
-    hlApi("/sites/overview").then(({ ok, b }) => {
+    hlApi("/sites/overview", { unscoped: true }).then(({ ok, b }) => {
       if (!ok || !b) { setOv(false); return; }
       setOv((b.sites || []).find((s) => s.buildingId === site.id) || false);
     });
-    hlApi("/alerts/active").then(({ ok, b }) => {
+    hlApi("/alerts/active", { unscoped: true }).then(({ ok, b }) => {
       if (ok && b) setSpills((b.alerts || []).filter((a) => a.buildingId === site.id && a.kind !== "planned_cleaning"));
     });
-    hlApi("/jobs").then(({ ok, b }) => {
+    hlApi("/jobs", { unscoped: true }).then(({ ok, b }) => {
       if (ok && b) setJobs((b.jobs || []).filter((j) => j.buildingId === site.id));
     });
-    hlApi("/incidents").then(({ ok, b }) => {
+    hlApi("/incidents", { unscoped: true }).then(({ ok, b }) => {
       if (ok && b) setIncidents((b.incidents || []).filter((i) => i.buildingId === site.id));
     });
-    hlApi("/visitors").then(({ ok, b }) => {
+    hlApi("/visitors", { unscoped: true }).then(({ ok, b }) => {
       if (ok && b) setVisitors((b.visitors || []).filter((v) => v.buildingId === site.id));
     });
   }, [site && site.id]);
@@ -27563,6 +27755,12 @@ function SiteView({ go }) {
             <button className="btn btn-primary" onClick={() => go("floorplan")}><Icon name="mapPin" size={14} />Floor plan</button>
           </div>
         </div>
+        {/* Act here, not just read: every record lands on this site. */}
+        <div className="card-pad" style={{ paddingTop: 0, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {isStaff && <button className="btn btn-sm" onClick={() => setAction("job")}><Icon name="wrench" size={13} />Log work order here</button>}
+          {isStaff && <button className="btn btn-sm" onClick={() => setAction("incident")}><Icon name="shield" size={13} />Report incident here</button>}
+          <button className="btn btn-sm" onClick={() => setAction("visitor")}><Icon name="users" size={13} />Book a visitor here</button>
+        </div>
       </div>
 
       {/* Discipline scope switch */}
@@ -27622,6 +27820,68 @@ function SiteView({ go }) {
           </SvSectionCard>
         </div>
       )}
+
+      {action === "job" && (
+        <SimpleAddModal
+          title={"Log a work order at " + site.name}
+          subtitle="Logs the fault against this site. You can tender it to contractors from the work order."
+          icon="wrench"
+          fields={[
+            { id: "title", label: "What needs doing", placeholder: "e.g. Leak under the sink in the first-floor kitchen", required: true },
+            { id: "description", label: "Details (optional)", type: "textarea", placeholder: "Anything a contractor would need to know", required: false },
+            { id: "priority", label: "Priority", type: "select", options: ["routine", "urgent", "emergency"], default: "routine" },
+          ]}
+          submitLabel="Log work order"
+          successTitle="Work order logged"
+          successCopy={"It's on the board for " + site.name + "."}
+          onClose={() => setAction(null)}
+          onSubmit={(v) => {
+            hlApi("/jobs", { method: "POST", body: { title: String(v.title || "").trim(), description: String(v.description || "").trim() || undefined, priority: v.priority || "routine", buildingId: site.id } })
+              .then(({ ok }) => { if (ok) load(); else showToast("Could not log the work order."); });
+          }}
+        />
+      )}
+      {action === "incident" && (
+        <SimpleAddModal
+          title={"Report an incident at " + site.name}
+          subtitle="Goes straight into the security log for this site. It escalates if nobody picks it up."
+          icon="shield"
+          fields={[
+            { id: "title", label: "What happened", placeholder: "e.g. Forced door at loading bay", required: true },
+            { id: "severity", label: "Severity", type: "select", options: ["low", "medium", "high", "critical"], default: "medium" },
+            { id: "description", label: "Detail (optional)", type: "textarea", placeholder: "What did you see?", required: false },
+          ]}
+          submitLabel="Report incident"
+          successTitle="Incident reported"
+          successCopy="It's in the security log. Move it to investigating when someone picks it up."
+          onClose={() => setAction(null)}
+          onSubmit={(v) => {
+            hlApi("/incidents", { method: "POST", body: { title: String(v.title || "").trim(), severity: v.severity || "medium", description: String(v.description || "").trim() || null, buildingId: site.id } })
+              .then(({ ok }) => { if (ok) load(); else showToast("Could not report the incident."); });
+          }}
+        />
+      )}
+      {action === "visitor" && (
+        <SimpleAddModal
+          title={"Book a visitor for " + site.name}
+          subtitle="Goes on today's sheet as expected. Reception marks them arrived when they show up."
+          icon="users"
+          fields={[
+            { id: "name", label: "Visitor name", placeholder: "Full name", required: true },
+            { id: "company", label: "Company (optional)", required: false },
+            { id: "host", label: "Host (optional)", placeholder: "Who they're here to see", required: false },
+          ]}
+          submitLabel="Book visitor"
+          successTitle="Visitor booked"
+          successCopy={"They're on the expected list for " + site.name + " today."}
+          onClose={() => setAction(null)}
+          onSubmit={(v) => {
+            hlApi("/visitors", { method: "POST", body: { name: String(v.name || "").trim(), company: String(v.company || "").trim() || undefined, host: String(v.host || "").trim() || undefined, buildingId: site.id, expectedAt: new Date().toISOString() } })
+              .then(({ ok }) => { if (ok) load(); else showToast("Could not book the visitor."); });
+          }}
+        />
+      )}
+      {toastNode}
     </div>
   );
 }

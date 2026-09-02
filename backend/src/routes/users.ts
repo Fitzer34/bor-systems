@@ -7,6 +7,9 @@ import { ctx } from "../services/auth-context.js";
 import { validatePassword } from "../services/password-policy.js";
 import { sendStaffInvite } from "../services/invites.js";
 import { getPermissions, requirePermission } from "../services/permissions.js";
+import { userSiteIds } from "../services/site-membership.js";
+import { audit } from "../services/audit.js";
+import { inArray } from "drizzle-orm";
 
 const requireRole = (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
   async (req: any, reply: any) => {
@@ -25,8 +28,12 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     if (!u) return null;
     const [org] = await db.select().from(schema.organisations).where(eq(schema.organisations.id, c.orgId)).limit(1);
     const permissions = await getPermissions(c.orgId, u.role);
+    // Sites this user belongs to. Empty means unrestricted (admins, or not yet
+    // assigned) — clients use it for scope + the landing page.
+    const siteIds = await userSiteIds(c.orgId, u.id);
     return {
       id: u.id, email: u.email, name: u.name, role: u.role, onDuty: u.onDuty, locale: u.locale,
+      siteIds,
       phoneE164: u.phoneE164,
       avatarUrl: u.avatarUrl,
       lastActiveAt: u.lastActiveAt,
@@ -140,7 +147,44 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
       })
       .from(schema.users)
       .where(eq(schema.users.organisationId, c.orgId));
-    return { users: rows };
+    const memberships = await db
+      .select({ userId: schema.userSites.userId, buildingId: schema.userSites.buildingId })
+      .from(schema.userSites)
+      .where(eq(schema.userSites.organisationId, c.orgId));
+    const byUser = new Map<string, string[]>();
+    for (const m of memberships) byUser.set(m.userId, [...(byUser.get(m.userId) ?? []), m.buildingId]);
+    return { users: rows.map((r) => ({ ...r, siteIds: byUser.get(r.id) ?? [] })) };
+  });
+
+  /* Replace a user's site membership. Admin only. Every id must be one of
+   * this org's buildings. An empty list = unrestricted again. */
+  app.put("/users/:id/sites", { preHandler: [app.authenticate, requireRole(["admin"]), requirePermission("action.manage_users")] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ buildingIds: z.array(z.string().uuid()).max(500) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_input" });
+    const c = ctx(req);
+    const [target] = await db
+      .select({ id: schema.users.id, name: schema.users.name })
+      .from(schema.users)
+      .where(and(eq(schema.users.id, id), eq(schema.users.organisationId, c.orgId)))
+      .limit(1);
+    if (!target) return reply.code(404).send({ error: "not_found" });
+    const wanted = [...new Set(body.data.buildingIds)];
+    if (wanted.length) {
+      const owned = await db
+        .select({ id: schema.buildings.id })
+        .from(schema.buildings)
+        .where(and(eq(schema.buildings.organisationId, c.orgId), inArray(schema.buildings.id, wanted)));
+      if (owned.length !== wanted.length) return reply.code(400).send({ error: "unknown_building" });
+    }
+    await db.transaction(async (tx) => {
+      await tx.delete(schema.userSites).where(and(eq(schema.userSites.organisationId, c.orgId), eq(schema.userSites.userId, id)));
+      if (wanted.length) {
+        await tx.insert(schema.userSites).values(wanted.map((b) => ({ organisationId: c.orgId, userId: id, buildingId: b })));
+      }
+    });
+    audit(c.orgId, c.sub, "user.sites_changed", "user", id, { name: target.name, buildingIds: wanted });
+    return { ok: true, siteIds: wanted };
   });
 
   app.post("/users", { preHandler: [app.authenticate, requireRole(["admin"]), requirePermission("action.manage_users")] }, async (req, reply) => {

@@ -313,6 +313,9 @@ export const securityIncidents = pgTable(
     // The maintenance job this incident was turned into, if any (cross-discipline
     // bridge — e.g. a broken-door incident becomes a tracked repair job).
     raisedJobId: uuid("raised_job_id").references(() => maintenanceJobs.id, { onDelete: "set null" }),
+    // Set once when an incident sits at "open" past the escalation window and
+    // supervisors/admins were told. Same idea as alerts.escalatedAt.
+    escalatedAt: timestamp("escalated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
@@ -1347,6 +1350,9 @@ export const permits = pgTable(
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     closedNote: text("closed_note"),
+    // Set once when a request has waited past the nudge window and approvers
+    // were reminded.
+    nudgedAt: timestamp("nudged_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({ orgStatusIdx: index("permits_org_status_idx").on(t.organisationId, t.status) }),
@@ -1455,5 +1461,22 @@ export const jobDockets = pgTable(
   (t) => ({
     tokenIdx: uniqueIndex("job_dockets_token_idx").on(t.token),
     jobIdx: index("job_dockets_job_idx").on(t.jobId),
+  }),
+);
+
+/// Which sites a user belongs to. Admins are implicitly on every site; a
+/// supervisor or field worker with rows here is scoped to those sites (empty
+/// = no restriction, so existing users keep working until an admin assigns).
+export const userSites = pgTable(
+  "user_sites",
+  {
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "cascade" }).notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    buildingId: uuid("building_id").references(() => buildings.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.buildingId] }),
+    orgBuildingIdx: index("user_sites_org_building_idx").on(t.organisationId, t.buildingId),
   }),
 );

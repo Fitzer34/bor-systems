@@ -18,6 +18,7 @@ import type { FastifyInstance } from "fastify";
 import { and, eq, gte, isNull, inArray } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { visibleSiteIds } from "../services/site-membership.js";
 
 const requireRole =
   (allowed: Array<typeof schema.userRole.enumValues[number]>) =>
@@ -196,10 +197,13 @@ export default async function sitesRoutes(app: FastifyInstance): Promise<void> {
         const c = ctx(req);
         const today = new Date().toISOString().slice(0, 10);
 
-        const buildings = await db
+        // Non-admins with site assignments only see their sites (totals too).
+        const scope = await visibleSiteIds(c.orgId, c.sub, c.role);
+        const buildings = (await db
           .select({ id: schema.buildings.id, name: schema.buildings.name, createdAt: schema.buildings.createdAt })
           .from(schema.buildings)
-          .where(eq(schema.buildings.organisationId, c.orgId));
+          .where(eq(schema.buildings.organisationId, c.orgId)))
+          .filter((b) => !scope || scope.includes(b.id));
 
         type Row = {
           buildingId: string; buildingName: string;

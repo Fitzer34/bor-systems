@@ -213,6 +213,9 @@ export function PrototypeAppLive() {
       name: user.name,
       email: user.email,
       role: user.role,
+      // Site membership drives scope + the landing page. Empty = unrestricted.
+      siteIds: Array.isArray((user as any).siteIds) ? (user as any).siteIds : [],
+      permissions: (user as any).permissions || null,
       initials: initialsOf(user.name),
     });
   }

@@ -8,6 +8,15 @@ import {
   getResolutionTimerMinutes,
 } from "./system-settings.js";
 import { notifyPush } from "./notifications.js";
+import { createNotification } from "./notification-centre.js";
+import { dedupKeyFired } from "./notification-dedup.js";
+import { staffForBuilding } from "./site-membership.js";
+
+// Incidents left at "open" (nobody moved them to investigating) this long get
+// escalated to the site's supervisors and admins. Permits still "requested"
+// this long nudge the approvers. Both fire once per record.
+const INCIDENT_ESCALATE_MINUTES = 30;
+const PERMIT_NUDGE_HOURS = 24;
 
 const TICK_MS = 30_000;
 
@@ -105,6 +114,62 @@ async function tick(): Promise<void> {
           .update(schema.alerts)
           .set({ status: "closed", closedAt: new Date(), closureReason: "manual" })
           .where(eq(schema.alerts.id, a.id));
+      }
+    }
+
+    // Incident escalation — same idea as the spill ack timeout, for the
+    // security discipline. "open" means nobody has picked it up yet.
+    const incCutoff = new Date(now - INCIDENT_ESCALATE_MINUTES * 60_000);
+    const staleIncidents = await db
+      .select({ id: schema.securityIncidents.id, title: schema.securityIncidents.title, severity: schema.securityIncidents.severity, buildingId: schema.securityIncidents.buildingId })
+      .from(schema.securityIncidents)
+      .where(and(
+        eq(schema.securityIncidents.organisationId, org.id),
+        eq(schema.securityIncidents.status, "open"),
+        isNull(schema.securityIncidents.escalatedAt),
+        lte(schema.securityIncidents.createdAt, incCutoff),
+      ));
+    for (const i of staleIncidents) {
+      await db.update(schema.securityIncidents).set({ escalatedAt: new Date() }).where(eq(schema.securityIncidents.id, i.id));
+      if (!(await dedupKeyFired(org.id, "incident.escalated", i.id))) continue;
+      const recipients = await staffForBuilding(org.id, i.buildingId, ["admin", "supervisor"]);
+      for (const userId of recipients) {
+        try {
+          await createNotification({
+            orgId: org.id, userId, type: "incident.escalated",
+            title: "Incident not picked up: " + i.title,
+            body: `A ${i.severity} incident has sat at open for ${INCIDENT_ESCALATE_MINUTES} minutes with nobody investigating.`,
+            entityType: "incident", entityId: i.id,
+          });
+        } catch { /* best effort */ }
+      }
+      eventBus.publish(org.id, { type: "incident.escalated", incidentId: i.id } as any);
+    }
+
+    // Permit nudge — a request nobody has approved or rejected in a day.
+    const permitCutoff = new Date(now - PERMIT_NUDGE_HOURS * 3_600_000);
+    const stalePermits = await db
+      .select({ id: schema.permits.id, type: schema.permits.type, description: schema.permits.description, buildingId: schema.permits.buildingId })
+      .from(schema.permits)
+      .where(and(
+        eq(schema.permits.organisationId, org.id),
+        eq(schema.permits.status, "requested"),
+        isNull(schema.permits.nudgedAt),
+        lte(schema.permits.createdAt, permitCutoff),
+      ));
+    for (const p of stalePermits) {
+      await db.update(schema.permits).set({ nudgedAt: new Date() }).where(eq(schema.permits.id, p.id));
+      if (!(await dedupKeyFired(org.id, "permit.stale", p.id))) continue;
+      const recipients = await staffForBuilding(org.id, p.buildingId, ["admin", "supervisor"]);
+      for (const userId of recipients) {
+        try {
+          await createNotification({
+            orgId: org.id, userId, type: "permit.stale",
+            title: "Permit waiting on a decision",
+            body: `${p.type.replace(/_/g, " ")} — "${p.description.slice(0, 80)}" has waited ${PERMIT_NUDGE_HOURS} hours. Approve or reject it.`,
+            entityType: "permit", entityId: p.id,
+          });
+        } catch { /* best effort */ }
       }
     }
 
