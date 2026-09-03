@@ -15,18 +15,31 @@ Usage:  cadenv/bin/python to_autocad.py <folder-with-step-files> [out-folder]
 import sys, os, glob
 import ezdxf, cadquery as cq
 from ezdxf.acis import api as acis
-from ezdxf.render import MeshBuilder
+from ezdxf.render import MeshBuilder, MeshVertexMerger
 from ezdxf.math import Vec3
 
 TOL = float(os.environ.get("ACAD_TOL", "0.05"))   # mm, linear deflection of the tessellation
 ANG = float(os.environ.get("ACAD_ANG", "0.2"))    # radians, angular deflection
 
+MERGE_COPLANAR = os.environ.get("ACAD_MERGE_COPLANAR", "0") == "1"   # smaller files, but can leave open shells
+
 def shape_to_body(shape):
+    """Tessellate the solid and stitch it into a closed, manifold mesh before building the ACIS body.
+
+    Vertices are merged by coordinate (MeshVertexMerger) so every edge is shared by exactly two faces;
+    otherwise the per-face tessellation leaves duplicate vertices and the .sat arrives as an open shell,
+    which AutoCAD can refuse to treat as a solid. Coplanar merging is off by default for the same reason.
+    """
     verts, tris = shape.tessellate(TOL, ANG)
-    mb = MeshBuilder()
-    mb.vertices = [Vec3(v.x, v.y, v.z) for v in verts]
-    mb.faces = [tuple(t) for t in tris]
-    mb = mb.merge_coplanar_faces()
+    pts = [Vec3(v.x, v.y, v.z) for v in verts]
+    mb = MeshVertexMerger(precision=4)
+    for (a, b, c) in tris:
+        mb.add_face((pts[a], pts[b], pts[c]))
+    if MERGE_COPLANAR:
+        mb = mb.merge_coplanar_faces()
+    d = mb.diagnose()
+    if not (d.is_closed_surface and d.is_manifold):
+        print("  WARNING: mesh is not a closed manifold (closed=%s manifold=%s)" % (d.is_closed_surface, d.is_manifold))
     return acis.body_from_mesh(mb), len(mb.faces)
 
 def load(path):
