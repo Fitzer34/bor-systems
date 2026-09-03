@@ -850,7 +850,7 @@ FILES
   <part>.step / .stl / .png / _drawing.dxf   printable parts: hanger_body, hanger_lid, hanger_bar, hanger_backplate, gateway_body, gateway_lid
   hanger_assembly.step, gateway_assembly.step  named and coloured assemblies including the reference solids
   hanger_section.dxf, gateway_section.dxf      assembly stack-up sections
-  *_exploded.png, *_assembled*.png             previews
+  *_exploded.png, *_assembled*.png, *_lid_off.png previews
   ref/                                          reference solids (board, cell, holder, Hall carrier, magnet, antenna, plug), not printed
   autocad/                                      .sat + 3DSOLID .dxf for AutoCAD for Mac (from to_autocad.py)
   manifest.txt                                  bounding boxes and derived positions
@@ -1097,11 +1097,18 @@ def main(out_dir, quick=False, autocad=True):
         render_scad(out_dir, "hanger_assembled", unit_scad("hanger", h_parts, h_refs, {}))
         render_scad(out_dir, "hanger_assembled_front", unit_scad("hanger", h_parts, h_refs, {}), camera="0,0,0,90,0,0,0")
         render_scad(out_dir, "hanger_assembled_side", unit_scad("hanger", h_parts, h_refs, {}), camera="0,0,0,90,0,90,0")
+        # lid off: how the board, holder, cell, antenna and bar sit in the body
+        h_open = [p for p in h_parts if p[0] != "hanger_lid"]
+        h_open_refs = {n: v for n, v in h_refs.items() if n != "window_insert"}
+        render_scad(out_dir, "hanger_lid_off", unit_scad("hanger", h_open, h_open_refs, {}))
         g_parts_ex = [("gateway_body", (0.85, 0.85, 0.85), (0, 0, 0)), ("gateway_lid", (0.75, 0.78, 0.82), (0, -EX, 0))]
         render_scad(out_dir, "gateway_exploded", unit_scad("gateway", g_parts_ex, g_refs, {"window_insert": (0, -EX, 0)}))
         g_parts = [(n, c, (0, 0, 0)) for (n, c, t) in g_parts_ex]
         render_scad(out_dir, "gateway_assembled", unit_scad("gateway", g_parts, g_refs, {}))
         render_scad(out_dir, "gateway_assembled_front", unit_scad("gateway", g_parts, g_refs, {}), camera="0,0,0,90,0,0,0")
+        g_open = [p for p in g_parts if p[0] != "gateway_lid"]
+        g_open_refs = {n: v for n, v in g_refs.items() if n != "window_insert"}
+        render_scad(out_dir, "gateway_lid_off", unit_scad("gateway", g_open, g_open_refs, {}))
         for f in glob.glob(os.path.join(out_dir, "*.scad")):
             os.remove(f)
 
