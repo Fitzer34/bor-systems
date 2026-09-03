@@ -22,16 +22,21 @@ import traceback
 import adsk.core
 import adsk.fusion
 
+# Folder converted without asking when it exists; otherwise a folder dialog is shown.
+DEFAULT_SRC = os.path.expanduser("~/Downloads/bor-systems/hardware/enclosures/v8/final")
+
 
 def run(context):
     app = adsk.core.Application.get()
     ui = app.userInterface
     try:
-        dlg = ui.createFolderDialog()
-        dlg.title = "Folder with .step files"
-        if dlg.showDialog() != adsk.core.DialogResults.DialogOK:
-            return
-        src = dlg.folder
+        src = DEFAULT_SRC if os.path.isdir(DEFAULT_SRC) else ""
+        if not src:
+            dlg = ui.createFolderDialog()
+            dlg.title = "Folder with .step files"
+            if dlg.showDialog() != adsk.core.DialogResults.DialogOK:
+                return
+            src = dlg.folder
         out = os.path.join(src, "sat_true")
         os.makedirs(out, exist_ok=True)
         steps = sorted(f for f in os.listdir(src) if f.lower().endswith((".step", ".stp")))

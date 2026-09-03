@@ -1,0 +1,9 @@
+{
+  "autodeskProduct": "Fusion",
+  "type": "script",
+  "author": "Owen",
+  "description": "Import every STEP in v8/final and export true ACIS .sat files for AutoCAD",
+  "supportedOS": "windows|mac",
+  "editEnabled": true,
+  "iconFilename": ""
+}
