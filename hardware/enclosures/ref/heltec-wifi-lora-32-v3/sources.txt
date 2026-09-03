@@ -1,0 +1,9 @@
+Heltec WiFi LoRa 32 V3 reference files (downloaded 2026-09-02, Heltec non-commercial use terms apply)
+https://resource.heltec.cn/download/WiFi_LoRa_32_V3/WiFi_LoRa32_V3.dwg            (2D mechanical drawing, AutoCAD 2000)
+https://resource.heltec.cn/download/WiFi_LoRa_32_V3/HTIT-WB32LA_V3.2.pdf          (datasheet, section 4 Physical dimensions)
+https://resource.heltec.cn/download/WiFi_LoRa_32_V3/3D/HTIT-WB32LAF_V3.7(3).step  (detailed PCB + SMD parts, no OLED, no headers)
+https://resource.heltec.cn/download/WiFi_LoRa_32_V3/3D/V3_Non-Exact%203D%20Model.STEP (simplified envelope incl. OLED and USB-C)
+https://resource.heltec.cn/download/WiFi_LoRa_32_V3/Wi-Fi_LoRa32_V3.2_Pinmap.png
+https://heltec.org/project/wifi-lora-32-v3/  (gallery photos: top V3.2, underside, kit contents)
+https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wifi-lora-32-v3/
+The DXF was converted from the DWG with libredwg dwg2dxf; open the DWG directly in AutoCAD for the authoritative drawing.

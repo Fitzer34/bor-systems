@@ -1,0 +1,1 @@
+import("/Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v8/B/hanger_body.stl");
