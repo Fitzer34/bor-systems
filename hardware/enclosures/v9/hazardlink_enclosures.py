@@ -866,6 +866,22 @@ def export_part(out_dir, name, wp):
     cq.exporters.export(wp, os.path.join(out_dir, name + ".stl"), tolerance=0.01, angularTolerance=0.1)
     print("  %-22s %s" % (name, bbox_str(wp)))
 
+PRINT_ORIENT = {"hanger_body": "back_down", "hanger_lid": "face_down", "hanger_bar": "upright",
+                "hanger_backplate": "back_down", "gateway_body": "back_down", "gateway_lid": "face_down"}
+
+def export_print_stl(print_dir, name, wp, orient):
+    """STL already rotated into its print orientation (build direction = +Z, part resting on z=0)."""
+    solid = wp.val()
+    if orient == "back_down":        # back face (max Y) onto the bed: y -> -z
+        solid = solid.rotate(cq.Vector(0, 0, 0), cq.Vector(1, 0, 0), -90)
+    elif orient == "face_down":      # outer face (min Y) onto the bed: y -> +z
+        solid = solid.rotate(cq.Vector(0, 0, 0), cq.Vector(1, 0, 0), 90)
+    bb = solid.BoundingBox()
+    solid = solid.translate(cq.Vector(-bb.xmin, -bb.ymin, -bb.zmin))
+    cq.exporters.export(cq.Workplane("XY").add(solid), os.path.join(print_dir, name + ".stl"), tolerance=0.01, angularTolerance=0.1)
+    bb = solid.BoundingBox()
+    return "%-18s %-10s footprint %.0f x %.0f mm, height %.1f mm" % (name, orient, bb.xlen, bb.ylen, bb.zlen)
+
 def export_assembly(path, parts):
     """parts: list of (name, workplane, color, translate)."""
     assy = cq.Assembly(name=os.path.splitext(os.path.basename(path))[0])
@@ -1115,6 +1131,14 @@ def main(out_dir, quick=False, autocad=True):
     for name, wp in parts.items():
         assert wp.val().isValid(), name + " is not a valid solid"
         export_part(out_dir, name, wp)
+    print_dir = os.path.join(out_dir, "print"); os.makedirs(print_dir, exist_ok=True)
+    print("Exporting print-oriented STLs")
+    print_lines = [export_print_stl(print_dir, name, wp, PRINT_ORIENT[name]) for name, wp in parts.items()]
+    for l in print_lines:
+        print("  " + l)
+    open(os.path.join(print_dir, "ORIENTATION.txt"), "w").write(
+        "Print-ready STLs: build direction is +Z, each part rests on z=0 in the orientation the design assumes.\n"
+        "Do not rotate them in the slicer.\n\n" + "\n".join(print_lines) + "\n")
     print("Exporting reference solids")
     for unit, refs in (("hanger", h_refs), ("gateway", g_refs)):
         for name, (wp, col) in refs.items():

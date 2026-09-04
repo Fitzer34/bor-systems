@@ -14,4 +14,4 @@ Key derived positions (world frame, mm):
   magnet datum: bar centreline x=50, Y=-2, pole face at z=-29.80 (saddle floor + 1.0 clearance + 1.2 tag wall); sensor package top at z=-33.78; air gap 3.98 mm
   gateway board: USB-end corners at x=46.0, centreline z=42.0; SMA at (104, 15) on the top wall; cable notch at z=42
 
-Elapsed 8 s
+Elapsed 5 s

@@ -1,0 +1,9 @@
+Print-ready STLs: build direction is +Z, each part rests on z=0 in the orientation the design assumes.
+Do not rotate them in the slicer.
+
+hanger_body        back_down  footprint 100 x 130 mm, height 35.0 mm
+hanger_lid         face_down  footprint 100 x 130 mm, height 24.0 mm
+hanger_bar         upright    footprint 32 x 59 mm, height 43.1 mm
+hanger_backplate   back_down  footprint 90 x 124 mm, height 17.0 mm
+gateway_body       back_down  footprint 120 x 80 mm, height 30.0 mm
+gateway_lid        face_down  footprint 120 x 80 mm, height 24.0 mm
