@@ -22,8 +22,9 @@ import traceback
 import adsk.core
 import adsk.fusion
 
-# Folder converted without asking when it exists; otherwise a folder dialog is shown.
-DEFAULT_SRC = os.path.expanduser("~/Downloads/bor-systems/hardware/enclosures/v8/final")
+# Newest design folder that exists is converted without asking; otherwise a folder dialog is shown.
+_CANDIDATES = ("~/Downloads/bor-systems/hardware/enclosures/v9", "~/Downloads/bor-systems/hardware/enclosures/v8/final")
+DEFAULT_SRC = next((os.path.expanduser(c) for c in _CANDIDATES if os.path.isdir(os.path.expanduser(c))), "")
 
 
 def run(context):

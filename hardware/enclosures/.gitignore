@@ -1,7 +1,9 @@
 # Regenerable bulk outputs of hazardlink_enclosures.py / to_autocad.py.
-# Keep the source scripts, STEP, drawing DXFs, PNG previews and READMEs.
-v8/*/autocad/
-v8/*/*.stl
-v8/*/ref/*.stl
+# Keep the source scripts, STEP, drawing DXFs, PNG previews, READMEs and the true-surface sat_true/ files.
+v*/**/autocad/
+v*/autocad/
+v*/**/*.stl
+v*/*.stl
+v*/closeups/*.scad
 __pycache__/
 *.log
