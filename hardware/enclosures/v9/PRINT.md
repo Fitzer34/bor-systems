@@ -3,21 +3,24 @@
 Files: `print/*.stl` are already rotated into the print orientation (do not rotate them in Stratos).
 Material: PETG, 0.4 mm hotend. Slicer: BCN3D Stratos with its built-in BCN3D PETG profile for temperatures.
 
-## Settings (Stratos, both extruders 0.4)
+## Settings (Stratos, 0.4 hotend) - STRENGTH FIRST
+
+The first print (Fine 0.15, 3 walls, 40 % infill) came out thin and poorly bonded. Use this instead:
 
 | Setting | Value | Why |
 |---|---|---|
-| Layer height | 0.15 mm (Fine) | best finish on the visible lids; strong enough layer bonds for the latches |
-| Line width | 0.45 mm | the latch fingers are 1.35 mm = exactly 3 lines, no gap fill in the spring |
-| Wall line count | 3 | the design assumes 3 perimeters everywhere |
-| Top / bottom layers | 5 / 5 | solid skins on the 2.5 mm walls |
-| Infill | 40 % gyroid | stiffness for the bodies, fine for the bar |
-| Print speed | 40 mm/s, outer wall 25 mm/s | PETG quality; slow walls on the fingers and tabs |
-| Fan | PETG profile default, cap at 40 % on the lids | layer bonding in the spring latches |
+| Layer height | 0.2 mm (Standard) | PETG bonds far better at 0.2; also about a third faster |
+| Wall line count | 4 (1.6 mm) | the latch fingers are 1.6 mm = 4 lines at 0.4, no gap fill |
+| Top / bottom thickness | 1.6 mm each | the 3 mm lid becomes a solid plate instead of two skins over sponge |
+| Infill | 100 % for lid and bar; 60 % gyroid for bodies and backplate | the bar carries the sign and the lid is handled; both must be solid |
+| Printing temperature | profile default + 10 C (about 245 C) | layer bonding in PETG |
+| Fan | 30 % max, off for the first 3 layers | bonding; PETG does not need much cooling |
+| Print speed | 35 mm/s, outer wall 25 mm/s | quality on the visible faces without starving the extruder |
 | Enable bridge settings | on | the closed front of the bar channel is a 27 to 34 mm bridge |
-| Z seam | back / sharpest corner | keeps the seam off the visible lid face |
-| Adhesion | brim 5 mm (lids and bodies), skirt (bar, backplate) | flat big faces on an enclosed printer |
-| Supports | see per part | |
+| Adhesion | brim 5 mm | flat big faces |
+| Supports | touching buildplate only, see per part | |
+
+Dry the filament first if the spool has been open more than a couple of weeks: 65 C for 4 to 6 hours. Damp PETG prints weak and stringy no matter what the slicer says.
 
 ## Per part
 

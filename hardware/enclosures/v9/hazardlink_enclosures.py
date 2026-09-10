@@ -77,7 +77,7 @@ P = dict(
     # ---- snap-fit lids (v9: no screws anywhere in the assembly) ------------------------
     # two rigid hinge tabs on the lid's top edge hook behind a ledge on the top wall; two spring latches on the
     # bottom edge click into pockets in the bottom wall; a 2.2 mm pin through the bottom wall releases each latch
-    LATCH_W=8.0, LATCH_T=1.35, LATCH_L=17.0, LATCH_BARB=1.0, LATCH_LEAD=2.5, LATCH_FLAT=0.7, LATCH_CLR=0.25, LATCH_CLR_Y=0.4,   # research: cantilever finger (3 x 0.45 lines), strain 1.5*y*t/L^2 <= 2 % for PETG; 55 deg catch face; fore-aft clearance in the layer direction
+    LATCH_W=8.0, LATCH_T=1.6, LATCH_L=17.0, LATCH_BARB=1.0, LATCH_LEAD=2.5, LATCH_FLAT=0.7, LATCH_CLR=0.25, LATCH_CLR_Y=0.4,   # research: cantilever finger (4 x 0.4 lines; 1.6 after the first print came out weak at 1.35), strain 1.5*y*t/L^2 <= 2 % for PETG; 55 deg catch face; fore-aft clearance in the layer direction
     LATCH_ROOT_FILLET=0.7,   # assumed: gusset at the finger/tongue step (stress riser relief)
     PIN_RING_D=4.0, PIN_RING_DEPTH=0.3,   # assumed: countersink ring around each release hole so it can be found by touch
     LATCH_SKIN=1.2,          # assumed: wall left under the latch pocket
