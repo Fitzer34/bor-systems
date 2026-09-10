@@ -12,7 +12,7 @@ FILES
 
 HOW THE PARTS HOLD TOGETHER (v9)
   Lids (both units): two rigid hinge tabs on the lid's top edge reach 14 mm in and hook into pockets in a rib along the
-    top wall; two spring latches on the bottom edge (8 x 1.35 mm fingers, 17 mm long, 1.0 mm barb, 55 deg catch face)
+    top wall; two spring latches on the bottom edge (8 x 1.60 mm fingers, 17 mm long, 1.0 mm barb, 55 deg catch face)
     click into pockets in the bottom wall. Strain at full deflection is under 2 %, so they survive repeated use in PETG.
     Fit: hold the lid tilted (bottom edge out), push the top tabs into the rib pockets, swing the bottom edge in until both
     latches click. Open: lift the sign off the bar first (the release holes sit inside its footprint), push a paperclip
