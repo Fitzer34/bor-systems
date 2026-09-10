@@ -86,7 +86,7 @@ P = dict(
     TAB_RIB_Y0=8.0, TAB_RIB_H=2.0, TAB_RIB_SIDE=3.0,   # assumed: stiffening rib along the top wall from Y=8 to the back wall; the nose pocket is cut through it (bridge on 2.5 mm cheeks)
     H_LATCH_XS=(15.0, 85.0), H_TAB_XS=(22.0, 70.0),   # assumed positions (clear of the bar channel, holder, SMA knock-out)
     G_LATCH_XS=(20.0, 56.0), G_TAB_XS=(66.0, 86.0),   # assumed positions (latches clear of the intake vents, ribs clear of the exhaust vents and the SMA pad)
-    SNAP_STRAIN_MAX=2.0,     # research: PETG repeated-use design strain, percent
+    SNAP_STRAIN_MAX=1.5,     # research: repeated-use design strain, percent; 1.5 covers PLA (the first spool) as well as PETG (2.0)
     PINHOLE_D=2.0,           # assumed: RST paperclip hole
     LED_WIN_D=3.0, LED_SKIN=0.5,      # assumed: sealed translucent window over the LEDs
     PRG_TAB=(6.0, 10.0, 1.0, 0.8, 0.4),   # assumed: width, length, thickness, groove, outer skin
@@ -934,9 +934,9 @@ def design_checks(hg, gg):
     bp_z0 = (hg["H"] - P["BP_H"]) / 2
     out.append((bp_z0 <= P["DT_H"] and bp_z0 >= 1.0, "backplate bottom edge z=%.1f covers the bar channel mouth (z 0..%.1f)" % (bp_z0, P["DT_H"])))
     out.append((abs((P["DT_TOP"] - P["DT_MOUTH"]) - 2 * P["DT_H"]) < 0.01, "dovetail flanks are 45 deg (top - mouth = 2 x height), self-supporting when the bar prints upright"))
-    out.append((eps_latch <= P["SNAP_STRAIN_MAX"], "lid latch strain %.2f %% (1.5*y*t/L^2, y=%.2f t=%.1f L=%.0f; <= %.0f %% PETG)" % (eps_latch, P["LATCH_BARB"] + P["LATCH_CLR"], P["LATCH_T"], P["LATCH_L"], P["SNAP_STRAIN_MAX"])))
+    out.append((eps_latch <= P["SNAP_STRAIN_MAX"], "lid latch strain %.2f %% (1.5*y*t/L^2, y=%.2f t=%.1f L=%.0f; <= %.1f %%)" % (eps_latch, P["LATCH_BARB"] + P["LATCH_CLR"], P["LATCH_T"], P["LATCH_L"], P["SNAP_STRAIN_MAX"])))
     eps_catch = 100.0 * 1.5 * (P["CATCH_NOSE"] + 0.4) * P["CATCH_T"] / P["CATCH_L"] ** 2
-    out.append((eps_catch <= P["SNAP_STRAIN_MAX"], "backplate catch strain %.2f %% (y=%.1f t=%.1f L=%.0f; <= %.0f %%)" % (eps_catch, P["CATCH_NOSE"] + 0.4, P["CATCH_T"], P["CATCH_L"], P["SNAP_STRAIN_MAX"])))
+    out.append((eps_catch <= P["SNAP_STRAIN_MAX"], "backplate catch strain %.2f %% (y=%.1f t=%.1f L=%.0f; <= %.1f %%)" % (eps_catch, P["CATCH_NOSE"] + 0.4, P["CATCH_T"], P["CATCH_L"], P["SNAP_STRAIN_MAX"])))
     out.append((P["CATCH_GAP"] >= P["CATCH_NOSE"] + 0.5, "catch free space %.1f mm >= nose %.1f + 0.5" % (P["CATCH_GAP"], P["CATCH_NOSE"])))
     out.append((P["CATCH_NOSE"] >= wall - 0.5, "catch nose %.1f mm reaches into the %.1f mm back wall (>= wall - 0.5)" % (P["CATCH_NOSE"], wall)))
     out.append((P["BP_T"] - P["CATCH_T"] - P["CATCH_GAP"] >= 3.0, "backplate left behind the catch pocket = %.1f mm (>= 3)" % (P["BP_T"] - P["CATCH_T"] - P["CATCH_GAP"])))

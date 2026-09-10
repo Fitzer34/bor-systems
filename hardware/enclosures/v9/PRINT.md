@@ -1,7 +1,10 @@
 # Printing the v9 enclosures on the BCN3D Epsilon W50
 
 Files: `print/*.stl` are already rotated into the print orientation (do not rotate them in Stratos).
-Material: PETG, 0.4 mm hotend. Slicer: BCN3D Stratos with its built-in BCN3D PETG profile for temperatures.
+Material: the spool on the printer is **Polymaker PolyLite PLA, 2.85 mm, black** (not PET-G). Slice it as PLA: in Stratos pick
+Generic > PLA (or BCN3D Filaments > PLA), nozzle 210 to 215 C, bed 60 C, fan 100 % after the first two layers. PLA is fine for
+the first test parts; for units that go on a wall long term use PET-G, which takes heat and repeated flexing of the latches better.
+Polymaker's own range for PolyLite PLA is 190 to 230 C nozzle, 25 to 60 C bed.
 
 ## Settings (Stratos, 0.4 hotend) - STRENGTH FIRST
 
@@ -13,14 +16,14 @@ The first print (Fine 0.15, 3 walls, 40 % infill) came out thin and poorly bonde
 | Wall line count | 4 (1.6 mm) | the latch fingers are 1.6 mm = 4 lines at 0.4, no gap fill |
 | Top / bottom thickness | 1.6 mm each | the 3 mm lid becomes a solid plate instead of two skins over sponge |
 | Infill | 100 % for lid and bar; 60 % gyroid for bodies and backplate | the bar carries the sign and the lid is handled; both must be solid |
-| Printing temperature | profile default + 10 C (about 245 C) | layer bonding in PETG |
-| Fan | 30 % max, off for the first 3 layers | bonding; PETG does not need much cooling |
+| Printing temperature | PLA: 215 C. PET-G: profile default + 10 C (about 245 C) | layer bonding |
+| Fan | PLA: 100 % after layer 2. PET-G: 30 % max | PLA needs the cooling, PET-G does not |
 | Print speed | 35 mm/s, outer wall 25 mm/s | quality on the visible faces without starving the extruder |
 | Enable bridge settings | on | the closed front of the bar channel is a 27 to 34 mm bridge |
 | Adhesion | brim 5 mm | flat big faces |
 | Supports | touching buildplate only, see per part | |
 
-Dry the filament first if the spool has been open more than a couple of weeks: 65 C for 4 to 6 hours. Damp PETG prints weak and stringy no matter what the slicer says.
+Dry the filament first if the spool has been open more than a couple of weeks: PLA 50 C, PET-G 65 C, 4 to 6 hours. Damp filament prints weak and stringy no matter what the slicer says.
 
 ## Per part
 
