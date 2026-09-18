@@ -39,8 +39,8 @@ gbody, glid = hl.build_gateway_body(), hl.build_gateway_lid()
 grefs = {k: v[0] for k, v in hl.gateway_refs().items()}
 cases = {
     "heltec board (hanger)": (refs["heltec"], printed),
-    "21700 holder": (refs["holder"], printed),
-    "21700 cell": (refs["cell"], dict(printed, holder=refs["holder"])),
+    "18650 holder": (refs["holder"], printed),
+    "18650 cell": (refs["cell"], dict(printed, holder=refs["holder"])),
     "Hall carrier": (refs["hall_carrier"], dict(printed, pin=refs["hall_pin"])),
     "Hall retaining pin": (refs["hall_pin"], dict(printed, sign_handle=refs["sign_handle"])),
     "stub antenna": (refs["stub_antenna"], printed),

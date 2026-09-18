@@ -54,12 +54,15 @@ HOW THE PARTS HOLD TOGETHER (v9)
     Board: long edges on two rails, pocket walls each side, stops at both ends, and a 45 deg catch on each pocket wall hooked
       over the PCB's long edge (push the board straight in; lever one edge out with a fingernail to remove). The lid ribs
       clamp it as well when the lid is on.
-    Battery holder: ribbed bay on four sides, the back wall behind it, and a snap arm at each end hooked over its front
+    Battery: Murata US18650VTC6 cell in the BeiLaMoo 18650-PC2 holder (77.7 x 20.9 x 21.3, solder pins underneath). The holder
+      stands on three 4 mm ribs so its pins and the wires soldered to them have room, in a ribbed bay on four sides, with
+      a snap arm at each end hooked over its front
       face (press the holder straight in). Two lid posts bear on its end blocks when the lid is on.
     Cell: the holder's own spring contacts, plus two lid ribs 0.5 mm in front of it so it cannot leave the holder.
     Hall carrier: slot in the bar under the saddle; a 6.5 mm offcut of 2.85 mm filament dropped into the hole in the saddle
       floor stands behind it. The sign's handle sits over the pin.
-    Stub antenna: two C-clips, a slotted shelf under the rod (the pigtail drops through the slot) and a stop above it.
+    Antenna: the SMA jack of the pigtail drops into a slotted shelf and its own nut clamps it; the stubby antenna screws on
+      above and its body snaps into a clip. For an outside antenna, push out the knock-out in the top wall and fit the jack there.
     Hook bar: dovetail flanks carry the load; closed channel end in front, backplate behind (0.5 mm play each way).
   Hall carrier: slot in the bar. Wall screws (4 in the backplate, 3 for the gateway keyholes) are the only screws left; they
   fix to the building, not to each other. The gateway's SMA nut is part of the bought connector.

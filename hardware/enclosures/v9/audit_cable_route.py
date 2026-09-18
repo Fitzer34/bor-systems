@@ -21,10 +21,11 @@ route = [
   ("in the bar: sensor slot and lead tunnel to the web",      (48.5, 3.0, zb),   (48.5, 29.0, zb),  1.4),
   ("up the open groove in the back of the web",               (50.0, 30.5, zb),  (50.0, 30.5, zg),  1.4),
   ("forward in the groove on top of the dovetail plate",      (50.0, 30.5, zg),  (50.0, 8.5, zg),   1.4),
-  ("up through the slot in the body's channel roof",          (50.0, 8.5, zg),   (50.0, 8.5, 9.0),  1.4),
-  ("straight up in front of the battery holder",              (50.0, 8.5, 9.0),  (50.0, 8.5, 32.0), 1.4),
-  ("through the new slot in the bulkhead",                    (50.0, 8.5, 32.0), (50.0, 8.5, 50.0), 1.4),
-  ("back and across to under the board",                      (50.0, 8.5, 50.0), (xn, 16.0, 70.0),  1.4),
+  ("up through the slot in the body's channel roof",          (50.0, 8.5, zg),   (50.0, 8.5, 7.4),  1.4),
+  ("forward in the passage under the battery holder",         (50.0, 8.5, 7.4),  (50.0, 4.2, 7.4),  1.4),
+  ("straight up in front of the battery holder",              (50.0, 4.2, 7.4),  (50.0, 4.2, 32.0), 1.4),
+  ("through the slot in the bulkhead",                        (50.0, 4.2, 32.0), (50.0, 4.2, 50.0), 1.4),
+  ("back and across to under the board",                      (50.0, 4.2, 50.0), (xn, 16.0, 70.0),  1.4),
   ("up through the notch in the board cradle wall",           (xn, 16.0, 70.0),  (xn, 16.0, 96.0),  1.4),
 ]
 ok = True

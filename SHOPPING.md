@@ -13,6 +13,8 @@ Everything needed to build 2 hangers + 1 gateway.
 
 ---
 
+> **What was actually delivered (TinyTronics order 660112, packing slip photographed 2026-09-18):** 14 x XMP neodymium magnet 6x2 mm N52; 4 x "1x 18650 Battery holder for PCB" (BeiLaMoo 18650-PC2, 77.7 x 20.9 x 21.3 mm, solder pins); 6 x Heltec WiFi LoRa 32 V3 868 MHz; 4 x Murata US18650VTC6 18650 cell 3120 mAh; 4 x PKCELL LiPo 350 mAh LP552035. The enclosures in `hardware/enclosures/v9` are sized for these parts, not for the 21700 parts listed below.
+
 ## Order #1 — TinyTronics (Netherlands) — ~€136
 
 Best value for batteries + boards. Ships to Ireland in 3-5 days.

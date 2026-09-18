@@ -124,10 +124,11 @@ P = dict(
     H_W=100.0, H_H=130.0, H_D=35.0,   # v7
     H_BRD_ZC=104.0,          # assumed: board centreline height (window as high as the bosses allow)
     H_PCB_TOP_Y=None,        # derived: the display sits inside the lid, its glass just behind a 1 mm bezel (see hanger_geom)
-    HOLDER_L=80.0, HOLDER_W=25.0, HOLDER_H=21.0, HOLDER_CLR=0.5,   # assumed: TinyTronics leads holder
-    HOLDER_X0=10.0, HOLDER_Z0=6.5,    # assumed placement (bottom of the body; 6.5 leaves 1.15 mm over the flexed latch fingers)
-    HOLDER_RIB_T=3.0, HOLDER_RIB_H=8.0, HOLDER_LEAD_GAP=8.0,   # assumed
-    CELL_D=21.25, CELL_L=70.8,        # datasheet Samsung INR21700-50E max
+    HOLDER_L=77.7, HOLDER_W=20.9, HOLDER_H=21.3, HOLDER_CLR=0.5,   # maker's listing: BeiLaMoo BH18650-PC2 (TinyTronics "1x 18650 Battery holder for PCB", marked 18650-PC2)
+    HOLDER_STANDOFF=4.0,     # assumed: the holder has solder PINS underneath, so it stands on ribs with room for the pins and the soldered wires. MEASURE the pin length.
+    HOLDER_X0=11.15, HOLDER_Z0=10.0,    # centred; 10.0 leaves a 4 mm passage under the holder for the sensor lead
+    HOLDER_RIB_T=3.0, HOLDER_RIB_H=12.0, HOLDER_LEAD_GAP=8.0,   # assumed
+    CELL_D=18.5, CELL_L=65.2,         # packing slip: Murata US18650VTC6 (18650), datasheet maximum size
     BULK_Z=(34.0, 46.0),              # assumed: stiffening bulkhead between bay and board
     # ---- hanging bar (Owen: sign hangs from the bottom edge, nothing on the face) -------
     BAR_W=95.0,              # PROVISIONAL: the bar spans the sign's hand hole so the sign hangs level and cannot slide sideways
@@ -151,12 +152,12 @@ P = dict(
     BAR_WIRE_Y=(6.5, 10.5),  # assumed: lead slot through the channel roof, in front of the holder (leads rise into the free space under the bulkhead)
     BAR_WIRE_W=8.0,          # assumed
     WEB_BAND=(-19.0, -15.0), # assumed: the lead groove in the back of the web is open (wires lay in) except this band, which keeps them in
-    BULK_LEAD_SLOT=(46.0, 54.0, 5.0, 11.0),   # assumed: slot through the bulkhead right above the channel roof slot (x0, x1, y0, y1)
+    BULK_LEAD_SLOT=(46.0, 54.0, 2.0, 6.4),   # assumed: slot through the bulkhead right above the channel roof slot (x0, x1, y0, y1)
     BAR_GUSSET=8.0, BAR_GUSSET_W=2.0,    # assumed: short side gussets at the lip root
     HALL_CARRIER=(8.0, 8.0, 1.6),     # assumed carrier PCB
     HALL_SLOT_CLR=0.3, HALL_SLOT_H=3.0, HALL_SKIN=1.5, HALL_WIRE_H=4.5,   # assumed
     SOT23=(2.9, 1.3, 1.12),  # datasheet TI DBZ package
-    MAGNET_D=6.0, MAGNET_T=3.0,       # datasheet 6 x 3 N35
+    MAGNET_D=6.0, MAGNET_T=2.0,       # packing slip: XMP neodymium 6 x 2 mm N52
     TAG_WALL=1.2, TAG_CLR=1.0,        # research: tag wall and running clearance (assumed values)
     BP_W=90.0, BP_H=124.0, BP_T=10.0,   # v7 90 wide; 124 tall (z 3..127) so the plate covers the bar channel mouth; thickness 10 assumed
     BP_SCREW_D=4.5, BP_SCREW_CSK_D=9.0, BP_SCREW_INSET=10.0,   # v7 / research No.8 csk
@@ -164,19 +165,21 @@ P = dict(
     # v9: spring catch on the backplate replaces the internal security screw; released from inside with the lid off
     CATCH_X=50.0, CATCH_Z0=44.0, CATCH_W=8.0, CATCH_T=1.8, CATCH_L=24.0, CATCH_GAP=3.0, CATCH_SLOT=0.8,   # assumed: tongue in the plate's front skin, root at the bottom; cavity open to the back face so the slicer can support it
     CATCH_NOSE=2.3, CATCH_NOSE_H=4.0, CATCH_NOSE_Z=16.0, CATCH_PAD=(1.5, 2.5, 5.0), CATCH_WIN=(9.5, 10.5), CATCH_WIN_CLR=0.5,   # assumed: nose z = root + 16; push pad (proud, height, above nose top); window through the back wall (w, h)
-    ANT_X=86.0, ANT_ZS=(70.0, 110.0), ANT_D=6.0, ANT_L=60.0, ANT_Y=22.0,   # assumed stub antenna
+    # antenna, read off Owen's ruler photo: SMA bulkhead pigtail + stubby SMA antenna, black body about 9.5 dia, antenna about
+    # 47 long including its brass connector. Mounted INSIDE: the jack sits in a slotted shelf (its own nut clamps it), the body
+    # snaps into a clip. The knock-out in the top wall above it takes the same jack if an outside antenna is ever wanted.
+    ANT_X=86.0, ANT_Y=22.0, ANT_D=9.5, ANT_L=47.0, ANT_SHELF_Z=62.0, ANT_SHELF_T=2.5, ANT_SLOT_W=6.6, ANT_CLIP_Z=100.0,
     SMA_KO=(84.0, 17.5),     # assumed optional SMA knock-out on the top wall
     # label recess removed: it was on the face that sits on the print bed, so it printed over nothing. Use a sticker.
-    SADDLES=((30.0, 74.0), (86.0, 51.0)),   # assumed cable tie saddles (leads, pigtail); the pigtail one sits clear below the antenna shelf
+    SADDLES=((30.0, 74.0),),   # assumed cable tie saddles (leads, pigtail); the pigtail one sits clear below the antenna shelf
     # retention added after the six-direction audit (audit_retention.py): nothing may move more than about 0.5 mm
     # v9.5: parts stay put with the lid OFF. Clips flex across the print layers here (the body prints back-face down), so
     # their strain is held under SNAP_STRAIN_XLAYER, well below the limit used for flexures that print flat.
     SNAP_STRAIN_XLAYER=0.7,
     BRD_BARB=(0.5, 6.0, 22.0, 32.0),   # assumed: board catch engagement over the PCB edge, catch length, J3-side start Xb, J2-side start Xb
-    HOLDER_ARM=(2.0, 6.0, 25.5, 0.8),  # assumed: battery holder snap arm thickness (X), width (Z), lower edge z, engagement over the holder's front face
-    HOLD_POST=(4.0, 12.0, 0.3),      # assumed: lid posts on the holder's end blocks (X thickness, Z width, clearance)
+    HOLDER_ARM=(2.0, 6.0, 24.9, 0.8),  # assumed: battery holder snap arm thickness (X), width (Z), lower edge z, engagement over the holder's front face
+    HOLD_POST=(4.0, 8.0, 0.3),      # assumed: lid posts on the holder's end blocks (X thickness, Z width, clearance)
     CELL_RIB=(16.0, 3.0, 0.5),       # assumed: lid ribs in front of the cell (X length, Z width, clearance)
-    ANT_STOP_T=2.5, ANT_STOP_CLR=0.3, ANT_CABLE_SLOT=3.5,   # assumed: shelf under the antenna rod and a stop above it
     HALL_PIN_D=3.0, HALL_PIN_X=2.6,  # assumed: hole for a 2.85 mm filament offcut behind the Hall carrier (offset from the bar centreline)
 
     # ---- Gateway ----------------------------------------------------------------------
@@ -561,6 +564,9 @@ def hanger_geom():
              x0=P["H_BRD_X0"], zc=P["H_BRD_ZC"],
              pcb_top=-lt + P["BEZEL_T"] + P["OLED_GAP"] + P["OLED_H_MAX"])       # glass (at most OLED_H_MAX above the PCB) just behind the bezel
     g["bulk"] = P["BULK_Z"]
+    g["holder_back"] = g["y_back"] - P["HOLDER_STANDOFF"]            # the holder's pin side rests here, on standoff ribs
+    g["holder_front"] = g["holder_back"] - P["HOLDER_H"]
+    g["cell_y"] = g["holder_back"] - P["HOLDER_H"] / 2 - 0.5        # cell axis
     # the wall face is at Y = D + BP_T; the bar runs from there forward to the lip
     g["wall_y"] = D + P["BP_T"]
     g["bar_x0"] = W / 2 - P["BAR_W"] / 2
@@ -637,10 +643,15 @@ def build_hanger_body():
         body = body.union(box(xa, xb, yb - rh, yb + EPS, zm + gap / 2, hz1 + rt))
     body = body.union(box(hx0 - rt, hx1 + rt, yb - rh, yb + EPS, wall - EPS, hz0))
     body = body.union(box(hx0 + 10.0, hx1 - 10.0, yb - rh, yb + EPS, hz1, bz0 + EPS))
+    # standoff ribs: the holder's underside (with its two solder pins, one at each end) stands 4 mm off the back wall on
+    # three cross ribs; the pins and the wires soldered to them live in the gap and leave through the end-rib gaps
+    for fx in (0.22, 0.5, 0.78):
+        rx = hx0 + fx * (hx1 - hx0)
+        body = body.union(box(rx - 1.5, rx + 1.5, g["holder_back"], yb + EPS, hz0, hz1))
     # snap arms at both ends of the holder: each rises from the back wall beside the holder's end face and hooks 0.8 mm over
     # its front face with a 45 deg barb, so the holder stays in with the lid off. Press the holder straight in to fit it.
     at, aw, az0, ae = P["HOLDER_ARM"]
-    holder_front = yb - P["HOLDER_H"]
+    holder_front = g["holder_front"]
     ab = ae + P["HOLDER_CLR"]
     ayc = holder_front - 0.05 - ae
     for (xf, sgn) in ((hx0, 1), (hx1, -1)):                    # xf = arm's inner face, sgn = direction the barb points
@@ -648,26 +659,23 @@ def build_hanger_body():
         body = body.union(box(xa, xb, ayc - 0.4 - 1.25 * ab - 0.5, yb + EPS, az0, az0 + aw))
         pts = [(xf - sgn * EPS, ayc + ab), (xf + sgn * ab, ayc), (xf + sgn * ab, ayc - 0.4), (xf - sgn * EPS, ayc - 0.4 - 1.25 * ab)]
         body = body.union(cq.Workplane("XY").polyline(pts).close().extrude(aw).translate((0, 0, az0)))
-    # stub antenna C-clips on the right, rod snaps in from the front
-    ax, ay = P["ANT_X"], P["ANT_Y"]
-    for az in P["ANT_ZS"]:
-        clip = box(ax - 4.5, ax + 4.5, ay - 10.0, yb + EPS, az - 3, az + 3)
-        clip = clip.cut(cyl_z(ax, ay, P["ANT_D"] + 0.8, az - 4, az + 4))
-        clip = clip.cut(box(ax - (P["ANT_D"] - 0.5) / 2, ax + (P["ANT_D"] - 0.5) / 2, ay - 11.0, ay, az - 4, az + 4))
-        body = body.union(clip)
-    # the rod must not slide through its clips: a shelf under it (slotted for the pigtail) and a stop above it
-    az0 = (P["ANT_ZS"][0] + P["ANT_ZS"][1]) / 2 - P["ANT_L"] / 2
-    az1 = az0 + P["ANT_L"]
-    st, sc = P["ANT_STOP_T"], P["ANT_STOP_CLR"]
-    shelf = box(ax - 4.5, W - wall + EPS, ay - 3.0, yb + EPS, az0 - sc - st, az0 - sc)
-    shelf = shelf.cut(box(ax - P["ANT_CABLE_SLOT"] / 2, ax + P["ANT_CABLE_SLOT"] / 2, ay - 4.0, ay + P["ANT_CABLE_SLOT"] / 2, az0 - sc - st - 1, az0))
+    # antenna inside the box, upright on the right: the SMA jack drops into a slotted shelf from the front and its own nut
+    # clamps it (flange under the shelf, washer and nut on top); the antenna body snaps into a C-clip above
+    ax, ay, ad = P["ANT_X"], P["ANT_Y"], P["ANT_D"]
+    sz, st_ = P["ANT_SHELF_Z"], P["ANT_SHELF_T"]
+    shelf = box(ax - 8.0, W - wall + EPS, ay - 9.5, yb + EPS, sz, sz + st_)
+    shelf = shelf.cut(box(ax - P["ANT_SLOT_W"] / 2, ax + P["ANT_SLOT_W"] / 2, ay - 11.0, ay, sz - 1, sz + st_ + 1))
+    shelf = shelf.cut(cyl_z(ax, ay, P["ANT_SLOT_W"], sz - 1, sz + st_ + 1))
     body = body.union(shelf)
-    body = body.union(box(ax - 4.5, W - wall + EPS, ay + 0.5, yb + EPS, az1 + sc, az1 + sc + st))
+    cz_ = P["ANT_CLIP_Z"]
+    clip = box(ax - ad / 2 - 2.5, ax + ad / 2 + 2.5, ay - ad / 2 - 2.0, yb + EPS, cz_ - 3, cz_ + 3)
+    clip = clip.cut(cyl_z(ax, ay, ad + 0.6, cz_ - 4, cz_ + 4))
+    clip = clip.cut(box(ax - (ad - 0.6) / 2, ax + (ad - 0.6) / 2, ay - ad, ay, cz_ - 4, cz_ + 4))
+    body = body.union(clip)
     # cable tie saddles: lead bundle rising past the security screw (tie tunnel along X),
     # pigtail run to the antenna (tunnel along Z)
-    (s1x, s1z), (s2x, s2z) = P["SADDLES"]
-    body = body.union(tie_saddle(s1x, s1z, yb, along="X"))
-    body = body.union(tie_saddle(s2x, s2z, yb, along="Z"))
+    for (sx_, sz_) in P["SADDLES"]:
+        body = body.union(tie_saddle(sx_, sz_, yb, along="X"))
     # USB-C slot in the left wall, 13.5 x 8 rounded, with a 1 mm stepped lead-in outside
     uy = g["pcb_top"] - P["USB_OPEN_CY"]
     uw, uh = P["USB_SLOT_W"], P["USB_SLOT_H"]
@@ -721,11 +729,11 @@ def build_hanger_lid():
     # can move toward the lid. The middle (x 40..60) stays clear for the Hall leads rising from the bar channel.
     hx0, hl = P["HOLDER_X0"], P["HOLDER_L"]
     hzc = P["HOLDER_Z0"] + P["HOLDER_W"] / 2
-    holder_front = g["y_back"] - P["HOLDER_H"]
+    holder_front = g["holder_front"]
     pt_, pw_, pc_ = P["HOLD_POST"]
     for cx in (hx0 + 1.5, hx0 + hl - 1.5):
         lid = lid.union(box(cx - pt_ / 2, cx + pt_ / 2, -EPS, holder_front - pc_, hzc - pw_ / 2, hzc + pw_ / 2))
-    cell_front = (g["y_back"] - P["HOLDER_H"] / 2 - 0.5) - P["CELL_D"] / 2
+    cell_front = g["cell_y"] - P["CELL_D"] / 2
     rl, rw, rc = P["CELL_RIB"]
     for xa in (hx0 + 12.0, hx0 + hl - 12.0 - rl):
         lid = lid.union(box(xa, xa + rl, -EPS, cell_front - rc, hzc - rw / 2, hzc + rw / 2))
@@ -841,9 +849,12 @@ def hanger_refs():
     hx0, hz0 = P["HOLDER_X0"], P["HOLDER_Z0"]
     hl, hwd, hh = P["HOLDER_L"], P["HOLDER_W"], P["HOLDER_H"]
     cz = hz0 + hwd / 2
-    cy = yb - hh / 2 - 0.5
-    holder = box(hx0, hx0 + hl, yb - hh, yb, hz0, hz0 + hwd)
-    holder = holder.cut(cyl_x(cy, cz, P["CELL_D"] + 0.5, hx0 + 3, hx0 + hl - 3))
+    cy = g["cell_y"]
+    holder = box(hx0, hx0 + hl, g["holder_front"], g["holder_back"], hz0, hz0 + hwd)
+    # open-topped trough like the real holder; its sprung contacts take up the end play, so the trough is cell length + 1
+    tx0, tx1 = hx0 + hl / 2 - P["CELL_L"] / 2 - 0.5, hx0 + hl / 2 + P["CELL_L"] / 2 + 0.5
+    holder = holder.cut(cyl_x(cy, cz, P["CELL_D"] + 0.5, tx0, tx1))
+    holder = holder.cut(box(tx0, tx1, g["holder_front"] - 1, cy, cz - (P["CELL_D"] + 0.5) / 2, cz + (P["CELL_D"] + 0.5) / 2))
     refs["holder"] = (holder, (0.15, 0.15, 0.15))
     cx = hx0 + hl / 2
     refs["cell"] = (cyl_x(cy, cz, P["CELL_D"], cx - P["CELL_L"] / 2, cx + P["CELL_L"] / 2), (0.20, 0.55, 0.85))
@@ -866,9 +877,16 @@ def hanger_refs():
     bar = bar.cut(cyl_z(W / 2, sy, P["MAGNET_D"] + 0.2, bar_bot - 1, bar_bot + P["TAG_WALL"] + P["MAGNET_T"]))
     refs["sign_handle"] = (bar, (0.95, 0.80, 0.10))
     refs["magnet"] = (cyl_z(W / 2, sy, P["MAGNET_D"], bar_bot + P["TAG_WALL"], bar_bot + P["TAG_WALL"] + P["MAGNET_T"]), (0.6, 0.6, 0.65))
-    # stub antenna rod in the clips
-    az0 = (P["ANT_ZS"][0] + P["ANT_ZS"][1]) / 2 - P["ANT_L"] / 2
-    refs["stub_antenna"] = (cyl_z(P["ANT_X"], P["ANT_Y"], P["ANT_D"], az0, az0 + P["ANT_L"]), (0.2, 0.2, 0.2))
+    # SMA jack + stubby antenna, upright in the shelf and clip
+    ax, ay, sz, st_ = P["ANT_X"], P["ANT_Y"], P["ANT_SHELF_Z"], P["ANT_SHELF_T"]
+    top = sz + st_
+    ant = cyl_z(ax, ay, 6.0, sz - 15.0, sz - 2.0)                      # jack rear body and cable boot
+    ant = ant.union(cyl_z(ax, ay, 8.6, sz - 2.0, sz))                     # flange under the shelf
+    ant = ant.union(cyl_z(ax, ay, 6.3, sz - EPS, top + 9.0))              # thread through the shelf
+    ant = ant.union(cyl_z(ax, ay, 9.0, top + 0.05, top + 2.6))            # washer and nut on top of the shelf
+    ant = ant.union(cyl_z(ax, ay, 9.2, top + 2.8, top + 12.5))            # the antenna's brass connector
+    ant = ant.union(cyl_z(ax, ay, P["ANT_D"], top + 12.5, top + 2.8 + P["ANT_L"]))   # black body
+    refs["stub_antenna"] = (ant, (0.2, 0.2, 0.2))
     # USB-C cable plugged in with the lid ON (proves the opening): 12.35 x 6.5 overmold (USB-IF maximum), its face 0.45 mm
     # short of the receptacle, 6.65 mm nose inside the receptacle. No window insert: the display's own glass is behind the bezel.
     uy = g["pcb_top"] - P["USB_OPEN_CY"]
@@ -1112,7 +1130,7 @@ def design_checks(hg, gg):
     gap = mag_face - sens_top
     out.append((3.5 <= gap <= 4.5, "magnet face to Hall package top = %.2f mm (target 3.5 to 4.5, research)" % gap))
     cz = P["HOLDER_Z0"] + P["HOLDER_W"] / 2
-    d = math.sqrt((hg["y_back"] - P["HOLDER_H"] / 2 - sy) ** 2 + (cz - P["CELL_D"] / 2 - hg["sensor_z"]) ** 2)
+    d = math.sqrt((hg["cell_y"] - sy) ** 2 + (cz - P["CELL_D"] / 2 - hg["sensor_z"]) ** 2)
     out.append((d >= 15.0, "Hall sensor to nearest cell surface: %.1f mm (>= 15)" % d))
     out.append((hg["wall_y"] - hg["lip_front"] >= 45.0, "wall face to lip front = %.0f mm (>= 45 for a folded sign)" % (hg["wall_y"] - hg["lip_front"])))
     out.append((hg["lip_back"] < -hg["lid_t"], "lip (Y<=%.1f) is forward of the lid face (Y=%.1f)" % (hg["lip_back"], -hg["lid_t"])))
@@ -1128,7 +1146,7 @@ def design_checks(hg, gg):
     out.append((head <= 0.0, "sign handle top (z=%.1f, %.0f mm above the saddle) clears the body bottom (z=0)" % (head, P["HANDLE_H"])))
     out.append((hg["lip_top"] <= 0.0, "lip top z=%.0f stays below the body bottom" % hg["lip_top"]))
     ke = hg["x0"] + P["BRD_L"] + 5.0
-    out.append((P["ANT_X"] - P["ANT_D"] / 2 >= ke, "stub antenna x=%.0f outside the 2.4 GHz keep-out (x<%.1f)" % (P["ANT_X"], ke)))
+    out.append((P["ANT_X"] - P["ANT_D"] / 2 >= ke, "antenna x=%.0f outside the board's 2.4 GHz keep-out (x<%.1f)" % (P["ANT_X"], ke)))
     out.append((gg["x0"] - gg["wall"] >= 36.0, "gateway: %.1f mm for the USB-C plug overmold left of the board" % (gg["x0"] - gg["wall"])))
     out.append((P["G_SMA"][0] - P["SMA_PAD_D"] / 2 >= gg["x0"] + P["BRD_L"] + 5.0 - 10.0, "gateway: SMA pad right of the board antenna end"))
 
@@ -1160,14 +1178,14 @@ def design_checks(hg, gg):
         lo, hi = sorted((g["root"], g["slot_far"]))
         clear = min(abs(lo - W / 2), abs(hi - W / 2)) - P["DT_STRIP_W"] / 2
         out.append((clear >= 0.5 and lo >= P["CORNER_R"] + 1.0 and hi <= W - P["CORNER_R"] - 1.0, "hanger wall arm x %.1f..%.1f clears the bar channel strip by %.1f mm and the corner radii" % (lo, hi, clear)))
-    out.append((P["ARM_W"] + P["ARM_SLOT"] + 10.0 <= hg["y_back"] - P["HOLDER_RIB_H"], "arm slot (Y<=%.1f) is well in front of the holder bay ribs (Y>=%.1f)" % (P["ARM_W"] + P["ARM_SLOT"], hg["y_back"] - P["HOLDER_RIB_H"])))
+    out.append((P["ARM_W"] + P["ARM_SLOT"] + 5.0 <= hg["y_back"] - P["HOLDER_RIB_H"], "arm slot (Y<=%.1f) is well in front of the holder bay ribs (Y>=%.1f)" % (P["ARM_W"] + P["ARM_SLOT"], hg["y_back"] - P["HOLDER_RIB_H"])))
     # lid-off retention (clips that flex across the layers)
     e, bl, xb3, xb2 = P["BRD_BARB"]
     wall_free = hg["y_back"] - max(hg["pcb_top"] - P["RAIL_LIP_ABOVE"], 0.5)
     eps_brd = 100.0 * 1.5 * e * P["POCKET_WALL_T"] / wall_free ** 2
     out.append((eps_brd <= P["SNAP_STRAIN_XLAYER"], "board catches: %.1f mm over each long edge; pocket wall strain %.2f %% while the board goes in (<= %.1f %% across layers)" % (e, eps_brd, P["SNAP_STRAIN_XLAYER"])))
     at, aw, az0, ae = P["HOLDER_ARM"]
-    arm_len = hg["y_back"] - (hg["y_back"] - P["HOLDER_H"] - 0.05 - ae - 0.4 - 1.25 * (ae + P["HOLDER_CLR"]) - 0.5)
+    arm_len = hg["y_back"] - (hg["holder_front"] - 0.05 - ae - 0.4 - 1.25 * (ae + P["HOLDER_CLR"]) - 0.5)
     eps_arm2 = 100.0 * 1.5 * ae * at / arm_len ** 2
     out.append((eps_arm2 <= P["SNAP_STRAIN_XLAYER"], "battery holder arms: %.1f mm over the holder's front face; arm strain %.2f %% (arm %.1f mm long; <= %.1f %% across layers)" % (ae, eps_arm2, arm_len, P["SNAP_STRAIN_XLAYER"])))
     out.append((az0 >= P["HOLDER_Z0"] + P["HOLDER_W"] / 2 + P["HOLD_POST"][1] / 2 + 0.4 and az0 + aw <= P["HOLDER_Z0"] + P["HOLDER_W"], "holder arms (z %.1f..%.1f) sit above the lid's holder posts and within the holder's height" % (az0, az0 + aw)))
@@ -1217,7 +1235,12 @@ def design_checks(hg, gg):
     out.append(((P["DT_TOP"] - P["DT_MOUTH"]) / 2 >= 2.0, "dovetail flank overhang %.2f mm per side (>= 2.0)" % ((P["DT_TOP"] - P["DT_MOUTH"]) / 2)))
     out.append((P["DT_STRIP_W"] >= P["DT_TOP"] + 2 * 3.0, "channel strip leaves >= 3 mm beside the dovetail top"))
     out.append((hg["plate_y1"] <= hg["wall_y"] - 1.0 and hg["plate_y0"] >= P["DT_Y0"] + 0.5, "bar plate Y %.0f..%.0f inside the channel (front end %.0f, wall %.0f)" % (hg["plate_y0"], hg["plate_y1"], P["DT_Y0"], hg["wall_y"])))
-    out.append((P["BAR_WIRE_Y"][1] + 1.0 <= hg["y_back"] - P["HOLDER_H"], "lead slot (Y<=%.1f) rises in front of the holder (Y>=%.1f)" % (P["BAR_WIRE_Y"][1], hg["y_back"] - P["HOLDER_H"])))
+    lead_gap = (P["HOLDER_Z0"] - P["HOLDER_CLR"]) - hg["strip_top"]
+    out.append((lead_gap >= 3.5, "passage under the holder for the sensor lead = %.1f mm (>= 3.5)" % lead_gap))
+    out.append((hg["holder_front"] >= P["HOOK_L"] - 1.5 or P["HOLDER_Z0"] - P["HOLDER_CLR"] >= wall + P["TONGUE_CLR"] + P["HOOK_T"] + P["HOOK_GUSSET"], "lid hooks and their gussets stay below the holder (holder z>=%.1f)" % (P["HOLDER_Z0"] - P["HOLDER_CLR"])))
+    ant_top = P["ANT_SHELF_Z"] + P["ANT_SHELF_T"] + 2.8 + P["ANT_L"]
+    out.append((ant_top + 3.0 <= H - wall - P["TAB_RIB_H"], "antenna top z=%.1f fits under the top wall rib (z=%.1f)" % (ant_top, H - wall - P["TAB_RIB_H"])))
+    out.append((P["ANT_SHELF_Z"] - 15.0 >= hg["bulk"][1] + 0.5, "SMA jack's rear (z>=%.1f) clears the bulkhead top (z=%.1f)" % (P["ANT_SHELF_Z"] - 15.0, hg["bulk"][1])))
     out.append((P["BAR_WIRE_Y"][0] >= P["DT_Y0"], "lead slot starts inside the channel (Y>=%.0f)" % P["DT_Y0"]))
     win_w, win_h = P["CATCH_WIN"]
     out.append((win_w >= P["CATCH_W"] + 2 * 0.5 and win_h >= P["CATCH_NOSE_H"] + 2 * P["CATCH_WIN_CLR"], "catch window %.1f x %.1f fits the %.0f x %.0f nose with clearance" % (win_w, win_h, P["CATCH_W"], P["CATCH_NOSE_H"])))
@@ -1298,12 +1321,15 @@ HOW THE PARTS HOLD TOGETHER (v9)
     Board: long edges on two rails, pocket walls each side, stops at both ends, and a 45 deg catch on each pocket wall hooked
       over the PCB's long edge (push the board straight in; lever one edge out with a fingernail to remove). The lid ribs
       clamp it as well when the lid is on.
-    Battery holder: ribbed bay on four sides, the back wall behind it, and a snap arm at each end hooked over its front
+    Battery: Murata US18650VTC6 cell in the BeiLaMoo 18650-PC2 holder (77.7 x 20.9 x 21.3, solder pins underneath). The holder
+      stands on three 4 mm ribs so its pins and the wires soldered to them have room, in a ribbed bay on four sides, with
+      a snap arm at each end hooked over its front
       face (press the holder straight in). Two lid posts bear on its end blocks when the lid is on.
     Cell: the holder's own spring contacts, plus two lid ribs 0.5 mm in front of it so it cannot leave the holder.
     Hall carrier: slot in the bar under the saddle; a 6.5 mm offcut of 2.85 mm filament dropped into the hole in the saddle
       floor stands behind it. The sign's handle sits over the pin.
-    Stub antenna: two C-clips, a slotted shelf under the rod (the pigtail drops through the slot) and a stop above it.
+    Antenna: the SMA jack of the pigtail drops into a slotted shelf and its own nut clamps it; the stubby antenna screws on
+      above and its body snaps into a clip. For an outside antenna, push out the knock-out in the top wall and fit the jack there.
     Hook bar: dovetail flanks carry the load; closed channel end in front, backplate behind (0.5 mm play each way).
   Hall carrier: slot in the bar. Wall screws (4 in the backplate, 3 for the gateway keyholes) are the only screws left; they
   fix to the building, not to each other. The gateway's SMA nut is part of the bought connector.
