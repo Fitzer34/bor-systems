@@ -71,6 +71,7 @@ P = dict(
                             # on the hanger the coil relief runs the pocket on to the slot at this edge)
     BTN_PAD_GAP=1.5,        # assumed: each pad starts this far from the board centreline
     BTN_PIN_D=3.2, BTN_PIN_GAP=0.3, BTN_TRAVEL=0.3,   # assumed: pin diameter, rest gap over the switch, switch travel
+    BTN_LABEL=(4.2, 2.4),   # Owen: the light hole cut through the S of RST. Pad names are 4.2 tall and run up the LEFT side of each pad (centre 2.4 from the pad's left edge), so the hole sits beside the letters
     LED_HOLE_D=1.8,         # assumed: light hole over the two status LEDs (it falls inside the RST pad)
     # v9.3 face marks: sunk MARK_DEPTH (0.6 = three layers, so white stays white over black) into the face as narrow strokes (prints cleanly on the bed), or filled flush in a
     # second colour from the other hotend using print/<lid>_inlay.stl
@@ -563,7 +564,8 @@ def face_marks(W, lid_t, logo, wordmark, x0, zc, vertical=None):
             mark = mark.union(txt(name, (fx0 + P["BTN_PAD"][4] + fx1) / 2, (z0 + z1) / 2, 5.0, halign="center"))
         else:       # tall narrow pad: the name reads upward, placed toward the free end away from the hinge
             zm = (z0 + z1) / 2 + (-2.0 if hinge == "z1" else 2.0)
-            mark = mark.union(txt(name, (fx0 + fx1) / 2, zm, 5.0, halign="center", turn=90))
+            lh, lx = P["BTN_LABEL"]
+            mark = mark.union(txt(name, fx0 + lx, zm, lh, halign="center", turn=90))
     return mark
 
 def lid_tongue(W, H, wall, bosses, cutouts=()):
