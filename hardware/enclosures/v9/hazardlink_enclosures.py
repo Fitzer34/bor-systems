@@ -169,6 +169,11 @@ P = dict(
     # label recess removed: it was on the face that sits on the print bed, so it printed over nothing. Use a sticker.
     SADDLES=((30.0, 74.0), (86.0, 51.0)),   # assumed cable tie saddles (leads, pigtail); the pigtail one sits clear below the antenna shelf
     # retention added after the six-direction audit (audit_retention.py): nothing may move more than about 0.5 mm
+    # v9.5: parts stay put with the lid OFF. Clips flex across the print layers here (the body prints back-face down), so
+    # their strain is held under SNAP_STRAIN_XLAYER, well below the limit used for flexures that print flat.
+    SNAP_STRAIN_XLAYER=0.7,
+    BRD_BARB=(0.5, 6.0, 22.0, 32.0),   # assumed: board catch engagement over the PCB edge, catch length, J3-side start Xb, J2-side start Xb
+    HOLDER_ARM=(2.0, 6.0, 25.5, 0.8),  # assumed: battery holder snap arm thickness (X), width (Z), lower edge z, engagement over the holder's front face
     HOLD_POST=(4.0, 12.0, 0.3),      # assumed: lid posts on the holder's end blocks (X thickness, Z width, clearance)
     CELL_RIB=(16.0, 3.0, 0.5),       # assumed: lid ribs in front of the cell (X length, Z width, clearance)
     ANT_STOP_T=2.5, ANT_STOP_CLR=0.3, ANT_CABLE_SLOT=3.5,   # assumed: shelf under the antenna rod and a stop above it
@@ -322,6 +327,13 @@ def board_cradle(x0, zc, pcb_top_y, y_back, x_wall_inner, setback=None):
     for s in (-1, 1):
         z0, z1 = sorted((zc + s * 10.0, zc + s * hw))
         parts.append(box(xs0, x0 - clr, max(pcb_top_y, P["TONGUE_H"] + 0.4), y_back + EPS, z0, z1))   # starts below the lid's lip
+    # catches: a 45 deg barb on each pocket wall's inner face hooks over the PCB's long edge, so the board stays in
+    # with the lid off. Push the board straight in to fit it; lever one edge out with a fingernail to remove it.
+    e, bl, xb3, xb2 = P["BRD_BARB"]
+    b = e + clr
+    yc = pcb_top_y - 0.05 - e
+    for (zf, sgn, xb) in ((zc + hw, -1, xb3), (zc - hw, 1, xb2)):
+        parts.append(prism_yz([(yc + b, zf - sgn * EPS), (yc, zf + sgn * b), (yc - 0.4, zf + sgn * b), (yc - 0.4 - 1.25 * b, zf - sgn * EPS)], x0 + xb, x0 + xb + bl))
     cradle = union_all(parts)
     # lead notch through the J2 wall + ledge, leaving the front part of the wall as a bridge
     n0, n1 = P["LEAD_NOTCH"]
@@ -335,8 +347,12 @@ def lid_header_ribs(x0, zc, pcb_top_y):
     z_out = hw - P["POCKET_WALL_T"] * 0 - 0.3      # rib outer edge, 0.3 inside the pocket wall
     y1 = pcb_top_y - P["LID_RIB_CLR"]
     w = P["LID_RIB_W"]
-    j2 = box(x0 + 13.0, x0 + 44.0, -EPS, y1, zc - z_out, zc - z_out + w)      # starts clear of the button pads
-    j3 = box(x0 + 13.0, x0 + 34.0, -EPS, y1, zc + z_out - w, zc + z_out)
+    e, bl, xb3, xb2 = P["BRD_BARB"]
+    def rib(xa, xb, z0, z1, gap0):
+        r = box(x0 + xa, x0 + xb, -EPS, y1, z0, z1)
+        return r.cut(box(x0 + gap0 - 1.0, x0 + gap0 + bl + 1.0, -1, y1 + 1, z0 - 1, z1 + 1))     # clear of the board catch
+    j2 = rib(13.0, 44.0, zc - z_out, zc - z_out + w, xb2)      # starts clear of the button pads
+    j3 = rib(13.0, 34.0, zc + z_out - w, zc + z_out, xb3)
     return j2.union(j3)
 
 def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False, vertical=None):
@@ -621,6 +637,17 @@ def build_hanger_body():
         body = body.union(box(xa, xb, yb - rh, yb + EPS, zm + gap / 2, hz1 + rt))
     body = body.union(box(hx0 - rt, hx1 + rt, yb - rh, yb + EPS, wall - EPS, hz0))
     body = body.union(box(hx0 + 10.0, hx1 - 10.0, yb - rh, yb + EPS, hz1, bz0 + EPS))
+    # snap arms at both ends of the holder: each rises from the back wall beside the holder's end face and hooks 0.8 mm over
+    # its front face with a 45 deg barb, so the holder stays in with the lid off. Press the holder straight in to fit it.
+    at, aw, az0, ae = P["HOLDER_ARM"]
+    holder_front = yb - P["HOLDER_H"]
+    ab = ae + P["HOLDER_CLR"]
+    ayc = holder_front - 0.05 - ae
+    for (xf, sgn) in ((hx0, 1), (hx1, -1)):                    # xf = arm's inner face, sgn = direction the barb points
+        xa, xb = sorted((xf, xf - sgn * at))
+        body = body.union(box(xa, xb, ayc - 0.4 - 1.25 * ab - 0.5, yb + EPS, az0, az0 + aw))
+        pts = [(xf - sgn * EPS, ayc + ab), (xf + sgn * ab, ayc), (xf + sgn * ab, ayc - 0.4), (xf - sgn * EPS, ayc - 0.4 - 1.25 * ab)]
+        body = body.union(cq.Workplane("XY").polyline(pts).close().extrude(aw).translate((0, 0, az0)))
     # stub antenna C-clips on the right, rod snaps in from the front
     ax, ay = P["ANT_X"], P["ANT_Y"]
     for az in P["ANT_ZS"]:
@@ -1134,6 +1161,16 @@ def design_checks(hg, gg):
         clear = min(abs(lo - W / 2), abs(hi - W / 2)) - P["DT_STRIP_W"] / 2
         out.append((clear >= 0.5 and lo >= P["CORNER_R"] + 1.0 and hi <= W - P["CORNER_R"] - 1.0, "hanger wall arm x %.1f..%.1f clears the bar channel strip by %.1f mm and the corner radii" % (lo, hi, clear)))
     out.append((P["ARM_W"] + P["ARM_SLOT"] + 10.0 <= hg["y_back"] - P["HOLDER_RIB_H"], "arm slot (Y<=%.1f) is well in front of the holder bay ribs (Y>=%.1f)" % (P["ARM_W"] + P["ARM_SLOT"], hg["y_back"] - P["HOLDER_RIB_H"])))
+    # lid-off retention (clips that flex across the layers)
+    e, bl, xb3, xb2 = P["BRD_BARB"]
+    wall_free = hg["y_back"] - max(hg["pcb_top"] - P["RAIL_LIP_ABOVE"], 0.5)
+    eps_brd = 100.0 * 1.5 * e * P["POCKET_WALL_T"] / wall_free ** 2
+    out.append((eps_brd <= P["SNAP_STRAIN_XLAYER"], "board catches: %.1f mm over each long edge; pocket wall strain %.2f %% while the board goes in (<= %.1f %% across layers)" % (e, eps_brd, P["SNAP_STRAIN_XLAYER"])))
+    at, aw, az0, ae = P["HOLDER_ARM"]
+    arm_len = hg["y_back"] - (hg["y_back"] - P["HOLDER_H"] - 0.05 - ae - 0.4 - 1.25 * (ae + P["HOLDER_CLR"]) - 0.5)
+    eps_arm2 = 100.0 * 1.5 * ae * at / arm_len ** 2
+    out.append((eps_arm2 <= P["SNAP_STRAIN_XLAYER"], "battery holder arms: %.1f mm over the holder's front face; arm strain %.2f %% (arm %.1f mm long; <= %.1f %% across layers)" % (ae, eps_arm2, arm_len, P["SNAP_STRAIN_XLAYER"])))
+    out.append((az0 >= P["HOLDER_Z0"] + P["HOLDER_W"] / 2 + P["HOLD_POST"][1] / 2 + 0.4 and az0 + aw <= P["HOLDER_Z0"] + P["HOLDER_W"], "holder arms (z %.1f..%.1f) sit above the lid's holder posts and within the holder's height" % (az0, az0 + aw)))
     # flush display
     glass = hg["pcb_top"] - P["OLED_H_MAX"]
     out.append((abs(glass - (-hg["lid_t"] + P["BEZEL_T"] + P["OLED_GAP"])) < 0.01, "display glass (tallest case %.1f mm above the PCB) sits %.1f mm behind a %.1f mm bezel: %.1f mm below the face (was 5.5)" % (P["OLED_H_MAX"], P["OLED_GAP"], P["BEZEL_T"], P["BEZEL_T"] + P["OLED_GAP"])))
@@ -1205,7 +1242,7 @@ def design_checks(hg, gg):
 def write_readme(out_dir, hg, gg):
     sy = hg["sensor_y"]
     gap = hg["saddle_floor"] + P["TAG_CLR"] + P["TAG_WALL"] - (hg["sensor_z"] + P["SOT23"][2] / 2)
-    txt = """HazardLink v9.4 enclosures: no screws; wall-arm latches; flush display; USB-C at the edge (lid on); two button pads; logo on the face; wide hook bar. Generated by hazardlink_enclosures.py.
+    txt = """HazardLink v9.5 enclosures: no screws; every part clipped in even with the lid off; wall-arm latches; flush display; USB-C at the edge (lid on); two button pads; logo on the face; wide hook bar. Generated by hazardlink_enclosures.py.
 Frame: X right, Z up, Y from the front face into the wall. Wall face at Y=%.0f.
 
 FILES
@@ -1257,8 +1294,12 @@ HOW THE PARTS HOLD TOGETHER (v9)
     along the top of the dovetail plate, slot in the channel roof, straight up in front of the battery holder, slot through
     the bulkhead, notch in the board cradle wall.
   WHAT HOLDS EACH BOUGHT PART (checked by audit_retention.py: free travel in all six directions, target <= 0.5 mm)
-    Board: long edges on two rails, pocket walls each side, stops at both ends, clamped from the front by two lid ribs.
-    Battery holder: ribbed bay on four sides, the back wall behind it, and two lid posts bearing on its end blocks.
+    Everything below stays in place with the LID OFF as well (audit_retention.py with AUDIT_ARGS=--lid-off).
+    Board: long edges on two rails, pocket walls each side, stops at both ends, and a 45 deg catch on each pocket wall hooked
+      over the PCB's long edge (push the board straight in; lever one edge out with a fingernail to remove). The lid ribs
+      clamp it as well when the lid is on.
+    Battery holder: ribbed bay on four sides, the back wall behind it, and a snap arm at each end hooked over its front
+      face (press the holder straight in). Two lid posts bear on its end blocks when the lid is on.
     Cell: the holder's own spring contacts, plus two lid ribs 0.5 mm in front of it so it cannot leave the holder.
     Hall carrier: slot in the bar under the saddle; a 6.5 mm offcut of 2.85 mm filament dropped into the hole in the saddle
       floor stands behind it. The sign's handle sits over the pin.
@@ -1575,7 +1616,7 @@ def main(out_dir, quick=False, autocad=True):
     write_readme(out_dir, hg, gg)
 
     # ---- manifest -----------------------------------------------------------------------
-    lines = ["HazardLink v9.4 enclosures (no screws; wall-arm latches; flush display; USB-C at the edge; button pads; logo; wide bar). Generated by hazardlink_enclosures.py", ""]
+    lines = ["HazardLink v9.5 enclosures (parts clipped in with the lid off; no screws; wall-arm latches; flush display; USB-C at the edge; button pads; logo; wide bar). Generated by hazardlink_enclosures.py", ""]
     for name, wp in parts.items():
         lines.append("%-22s %s" % (name, bbox_str(wp)))
     lines += ["", "Key derived positions (world frame, mm):",

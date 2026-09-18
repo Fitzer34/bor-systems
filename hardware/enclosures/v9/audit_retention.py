@@ -8,7 +8,9 @@ import cadquery as cq
 
 body, lid, bar, plate = hl.build_hanger_body(), hl.build_hanger_lid(), hl.build_hanger_bar(), hl.build_hanger_backplate()
 refs = {k: v[0] for k, v in hl.hanger_refs().items()}
-printed = {"body": body, "lid": lid, "bar": bar, "backplate": plate}
+LID_OFF = "--lid-off" in __import__("os").environ.get("AUDIT_ARGS", "")
+printed = {"body": body, "bar": bar, "backplate": plate} if LID_OFF else {"body": body, "lid": lid, "bar": bar, "backplate": plate}
+print("LID OFF: what still holds each part" if LID_OFF else "LID ON")
 MAX, TOL = 14.0, 0.3     # mm searched, mm3 counted as contact
 
 def hits(shape, obstacles, vec):
@@ -45,7 +47,7 @@ cases = {
     "hook bar (printed)": (bar, {"body": body, "backplate": plate}),
     "lid (printed)": (lid, {"body": body}),
     "body (printed) on the backplate": (body, {"backplate": plate}),
-    "heltec board (gateway)": (grefs["heltec"], {"body": gbody, "lid": glid}),
+    "heltec board (gateway)": (grefs["heltec"], {"body": gbody} if LID_OFF else {"body": gbody, "lid": glid}),
     "gateway lid (printed)": (glid, {"body": gbody}),
 }
 t0 = time.time()
