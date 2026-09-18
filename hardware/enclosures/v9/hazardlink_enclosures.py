@@ -49,8 +49,11 @@ P = dict(
     USB_NOSE=0.65,          # datasheet: USB-C nose proud of the corner points
     USB_SETBACK=1.0,        # assumed: corner points to the wall inner face (nose 0.35 inside); gateway
     H_USB_SETBACK=3.2,      # assumed: cradle pocket walls start this far in front of the USB-end corners
-    H_BRD_X0=18.7,          # assumed: board moved right so the display window is centred on the 100 mm face (x = 50) and the
-                            # strip to its left is wide enough for two finger-sized buttons. USB-C is reached with the lid off.
+    H_BRD_X0=3.5,           # v9.4: board back against the left wall (USB nose 0.35 inside it) so a cable plugs in with the LID ON.
+                            # On this board the USB-C port sits between the two buttons at the very end, so port-at-the-edge,
+                            # wide pads and a centred display cannot all be had: the display sits left of centre instead.
+    H_PAD_V=(5.8, 17.5, 2.6, 0.5),   # assumed: hanger pads run vertically above and below the port: pad left edge x, pad height, pin diameter, pin x offset
+    USB_LID_SKIN=0.75,      # assumed: lid face left over the plug's overmold where the opening runs into the lid edge
     # v9.3 buttons: each is a flap cut into the lid (U-slot through, thin hinge at the root) with a pin over the switch
     BTN_PAD=(24.0, 15.0, 1.6, 0.8, 4.0, 0.8),   # assumed: pad length (X), height (Z), pad thickness, hinge thickness, hinge length, slot width
     BTN_PAD_X1=11.3,        # assumed: pad free end, measured from the board's USB-end corners (2 mm short of the display pocket)
@@ -61,8 +64,8 @@ P = dict(
     # second colour from the other hotend using print/<lid>_inlay.stl
     MARK_DEPTH=0.6, LOGO_BADGE=(26.0, 40.0, 5.0, 2.0, -7.0),   # assumed: badge width, height, corner radius, stroke, tilt in degrees
     LOGO_BANG=(5.0, 17.0, 4.5, 5.5, -11.5),   # assumed: exclamation bar width, height, bar centre z, dot diameter, dot centre z (from the badge centre)
-    H_LOGO=(24.0, 61.0, 1.0), H_WORDMARK=(43.0, 61.0, 7.5),   # assumed: hanger badge centre (x, z, scale), wordmark left edge (x, z, cap height)
-    G_LOGO=(17.0, 58.0, 0.78), G_WORDMARK=(62.0, 66.0, 6.5),  # assumed: gateway
+    H_LOGO=(74.0, 100.0, 1.0), H_WORDMARK=(50.0, 64.0, 8.0, "center"),   # assumed: badge to the right of the display, wordmark centred below the row
+    G_LOGO=(17.0, 58.0, 0.78), G_WORDMARK=(62.0, 66.0, 6.5, "left"),     # assumed: gateway
     OLED_H_MAX=5.0,         # datasheet envelope: the most the display can stand above the PCB top. MEASURE the real value (photos suggest 4 to 5)
     BEZEL_T=1.0, OLED_POCKET=(36.0, 20.4), OLED_GAP=0.2,   # assumed: front skin left around the window, pocket for the display module (X, Z), clearance glass to bezel
     OLED_X0=14.9, OLED_X1=47.9, OLED_HALF_W=9.28, OLED_H=5.0,    # datasheet envelope
@@ -336,7 +339,7 @@ def lid_header_ribs(x0, zc, pcb_top_y):
     j3 = box(x0 + 13.0, x0 + 34.0, -EPS, y1, zc + z_out - w, zc + z_out)
     return j2.union(j3)
 
-def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False):
+def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False, vertical=None):
     """Common lid features over the board: OLED window with an inside pocket and cleats for a clear
     insert, sealed PRG living-hinge button with a pusher pin, RST pinhole, sealed LED window."""
     cx = x0 + P["OLED_ACT_CX"]
@@ -366,37 +369,51 @@ def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False):
         for s in (-1, 1):
             xa, xb = sorted((cx + s * iw / 2, cx + s * (iw / 2 - c)))
             lid = lid.union(box(xa, xb, -pd + P["INSERT_T"] + 0.2, -pd + P["INSERT_T"] + 0.9, cz - 4.0, cz + 4.0))
-    lid = lid_buttons(lid, x0, zc, pcb_top_y, lid_t)
+    lid = lid_buttons(lid, x0, zc, pcb_top_y, lid_t, vertical)
     return lid
 
-def button_pads(x0, zc):
-    """(name, pad x0, x1, z0, z1, pin x, pin z) for the two board buttons."""
+def button_pads(x0, zc, vertical=None):
+    """(name, pad x0, x1, z0, z1, pin x, pin z, hinge) for the two board buttons. hinge is 'x0' (hinge at the pad's left
+    end, pad runs along X) or 'z0' / 'z1' (pad runs along Z, hinge at its far end from the board centreline)."""
     fw, fh = P["BTN_PAD"][0], P["BTN_PAD"][1]
     fx1 = x0 + P["BTN_PAD_X1"]
     out = []
     for name, (bx, bz) in (("PRG", P["PRG"]), ("RST", P["RST"])):
         sgn = 1 if bz > 0 else -1
-        za, zb = sorted((zc + sgn * P["BTN_PAD_GAP"], zc + sgn * (P["BTN_PAD_GAP"] + fh)))
-        out.append((name, fx1 - fw, fx1, za, zb, x0 + bx, zc + bz))
+        if vertical:
+            vx0, vh, pd, pdx = vertical
+            za, zb = sorted((zc + sgn * P["BTN_PAD_GAP"], zc + sgn * (P["BTN_PAD_GAP"] + vh)))
+            out.append((name, vx0, fx1, za, zb, x0 + bx + pdx, zc + bz, "z1" if sgn > 0 else "z0"))
+        else:
+            za, zb = sorted((zc + sgn * P["BTN_PAD_GAP"], zc + sgn * (P["BTN_PAD_GAP"] + fh)))
+            out.append((name, fx1 - fw, fx1, za, zb, x0 + bx, zc + bz, "x0"))
     return out
 
-def lid_buttons(lid, x0, zc, pcb_top_y, lid_t):
-    """Two finger-sized pads in the face. Each is a flap: a slot cut right through on three sides, a thin hinge at the
-    root (it prints flat on the bed, so it bends along the layers), and a pin on the back that sits just over the small
-    switch on the board. Pressing anywhere on the pad clicks the switch."""
+def lid_buttons(lid, x0, zc, pcb_top_y, lid_t, vertical=None):
+    """Two pads in the face. Each is a flap: a slot cut right through on three sides, a thin hinge on the fourth (it
+    prints flat on the bed, so it bends along the layers), and a pin on the back that sits just over the small switch
+    on the board. Pressing anywhere on the pad clicks the switch."""
     fw, fh, ft, ht, hl, sl = P["BTN_PAD"]
-    for (name, fx0, fx1, z0, z1, px, pz) in button_pads(x0, zc):
-        lid = lid.cut(box(fx0, fx1 + sl, -lid_t + ft, 1, z0 - sl, z1 + sl))          # pad thinned from the inside
-        lid = lid.cut(box(fx0, fx0 + hl, -lid_t + ht, 1, z0 - sl, z1 + sl))          # hinge thinner still
-        lid = lid.cut(box(fx1, fx1 + sl, -lid_t - 1, 1, z0 - sl, z1 + sl))           # slot: free end
-        lid = lid.cut(box(fx0, fx1 + sl, -lid_t - 1, 1, z0 - sl, z0))                # slot: lower side
-        lid = lid.cut(box(fx0, fx1 + sl, -lid_t - 1, 1, z1, z1 + sl))                # slot: upper side
-        lid = lid.union(cyl_y(px, pz, P["BTN_PIN_D"], -lid_t + ft - EPS, pcb_top_y - P["BTN_H"] - P["BTN_PIN_GAP"]))
+    pin_d = vertical[2] if vertical else P["BTN_PIN_D"]
+    for (name, fx0, fx1, z0, z1, px, pz, hinge) in button_pads(x0, zc, vertical):
+        lid = lid.cut(box(fx0 - (0 if hinge == "x0" else sl), fx1 + sl, -lid_t + ft, 1, z0 - (0 if hinge == "z0" else sl), z1 + (0 if hinge == "z1" else sl)))
+        if hinge == "x0":
+            lid = lid.cut(box(fx0, fx0 + hl, -lid_t + ht, 1, z0 - sl, z1 + sl))
+            slots = [(fx1, fx1 + sl, z0 - sl, z1 + sl), (fx0, fx1 + sl, z0 - sl, z0), (fx0, fx1 + sl, z1, z1 + sl)]
+        else:
+            ha, hb = (z1 - hl, z1) if hinge == "z1" else (z0, z0 + hl)
+            lid = lid.cut(box(fx0 - sl, fx1 + sl, -lid_t + ht, 1, ha, hb))
+            fe = (z0 - sl, z0) if hinge == "z1" else (z1, z1 + sl)            # free end is the side nearer the board centreline
+            za, zb = (z0 - sl, z1) if hinge == "z1" else (z0, z1 + sl)
+            slots = [(fx0 - sl, fx1 + sl, fe[0], fe[1]), (fx0 - sl, fx0, za, zb), (fx1, fx1 + sl, za, zb)]
+        for (xa, xb, zca, zcb) in slots:
+            lid = lid.cut(box(xa, xb, -lid_t - 1, 1, zca, zcb))
+        lid = lid.union(cyl_y(px, pz, pin_d, -lid_t + ft - EPS, pcb_top_y - P["BTN_H"] - P["BTN_PIN_GAP"]))
     # light hole over the status LEDs
     lid = lid.cut(cyl_y(x0 + P["LED"][0], zc + P["LED"][1], P["LED_HOLE_D"], -lid_t - 1, 1))
     return lid
 
-def face_marks(W, lid_t, logo, wordmark, x0, zc):
+def face_marks(W, lid_t, logo, wordmark, x0, zc, vertical=None):
     """Everything sunk into the face: the badge outline with its exclamation mark, the HazardLink wordmark and the two
     button names. Narrow strokes only, so they print cleanly on the bed; the same solids are the second-colour inlay."""
     y1 = -lid_t + P["MARK_DEPTH"]; y0 = -lid_t - 1.0
@@ -409,12 +426,19 @@ def face_marks(W, lid_t, logo, wordmark, x0, zc):
     bang = rr(ew * k, eh * k, ew * k / 2 - 0.05).translate((0, 0, ez * k))
     dot = cyl_y(0, dz * k, dd * k, y0, y1)
     mark = badge.union(bang).union(dot).rotate((0, 0, 0), (0, 1, 0), -tilt).translate((lx, 0, lz))
-    def txt(s, x, z, h, halign="left"):
-        return cq.Workplane("XZ", origin=(x, y1, z)).text(s, h, y1 - y0, halign=halign, valign="center", kind="bold")
-    tx, tz, th = wordmark
-    mark = mark.union(txt("HazardLink", tx, tz, th))
-    for (name, fx0, fx1, z0, z1, px, pz) in button_pads(x0, zc):
-        mark = mark.union(txt(name, (fx0 + P["BTN_PAD"][4] + fx1) / 2, (z0 + z1) / 2, 5.0, halign="center"))
+    def txt(s, x, z, h, halign="left", turn=0):
+        t = cq.Workplane("XZ", origin=(0, y1, 0)).text(s, h, y1 - y0, halign=halign, valign="center", kind="bold")
+        if turn:
+            t = t.rotate((0, 0, 0), (0, 1, 0), -turn)
+        return t.translate((x, 0, z))
+    tx, tz, th, ta = wordmark
+    mark = mark.union(txt("HazardLink", tx, tz, th, halign=ta))
+    for (name, fx0, fx1, z0, z1, px, pz, hinge) in button_pads(x0, zc, vertical):
+        if hinge == "x0":
+            mark = mark.union(txt(name, (fx0 + P["BTN_PAD"][4] + fx1) / 2, (z0 + z1) / 2, 5.0, halign="center"))
+        else:       # tall narrow pad: the name reads upward, placed toward the free end away from the hinge
+            zm = (z0 + z1) / 2 + (-2.0 if hinge == "z1" else 2.0)
+            mark = mark.union(txt(name, (fx0 + fx1) / 2, zm, 5.0, halign="center", turn=90))
     return mark
 
 def lid_tongue(W, H, wall, bosses, cutouts=()):
@@ -586,7 +610,7 @@ def build_hanger_body():
         for pz in P["PEG_ZS"]:
             body = body.union(box(px - 8, px + 8, D - boss_t, yb + EPS, pz - drop - head_w / 2 - 2, pz + 8))
     # board cradle (USB end against the left wall)
-    body = body.union(board_cradle(g["x0"], g["zc"], g["pcb_top"], yb, wall, setback=P["H_USB_SETBACK"]))
+    body = body.union(board_cradle(g["x0"], g["zc"], g["pcb_top"], yb, wall, setback=P["USB_SETBACK"]))
     # 21700 holder bay: 3 mm ribs 8 mm tall, lead gaps in both end ribs, ends of the top rib open
     hx0 = P["HOLDER_X0"] - P["HOLDER_CLR"]; hx1 = P["HOLDER_X0"] + P["HOLDER_L"] + P["HOLDER_CLR"]
     hz0 = P["HOLDER_Z0"] - P["HOLDER_CLR"]; hz1 = P["HOLDER_Z0"] + P["HOLDER_W"] + P["HOLDER_CLR"]
@@ -655,17 +679,17 @@ def build_hanger_lid():
     lid = rbox_y(0, W, -lt, 0, 0, H, P["CORNER_R"])
     bz0, bz1 = g["bulk"]
     uy = g["pcb_top"] - P["USB_OPEN_CY"]
+    uw = P["USB_SLOT_W"] / 2
     cutouts = ((-1, 6, bz0 - 0.5, bz1 + 0.5), (W - 6, W + 1, bz0 - 0.5, bz1 + 0.5),
+               (-1, 5.0, g["zc"] - P["BRD_W"] / 2 - 1.3, g["zc"] + P["BRD_W"] / 2 + 1.3),   # lip cut away along the board's end (the PCB reaches into the lip's depth) and the USB-C opening
                (5.0, W - 5.0, H - wall - P["TONGUE_CLR"] - P["TONGUE_T"] - 0.5, H + 1))   # top segment relieved: the tabs locate the top edge and the lid must pivot there
     lid = lid.union(lid_tongue(W, H, wall, (), cutouts))
-    # USB shutter: the lip runs unbroken past the USB notch and is deepened there, so the side stays closed with the lid on.
-    # The USB-C port is reached with the lid off (the display sits in the lid, so a plug would foul the lid anyway).
-    o = wall + P["TONGUE_CLR"]
-    notch_y = uy + P["USB_SLOT_H"] / 2
-    lid = lid.union(box(o, o + P["TONGUE_T"], -EPS, notch_y + 0.3, g["zc"] - P["USB_SLOT_W"] / 2 - 1.0, g["zc"] + P["USB_SLOT_W"] / 2 + 1.0))
+    # USB-C with the lid on: the plug's overmold runs 1.75 mm into the lid's thickness, so the lid edge is hollowed from
+    # behind over the opening, leaving a thin face skin
+    lid = lid.cut(box(-1, wall + 0.6, -lt + P["USB_LID_SKIN"], 1, g["zc"] - uw, g["zc"] + uw))
     lid = lid_snap_features(lid, W, H, wall, P["H_ARMS"], P["H_TAB_XS"])
     lid = lid.union(lid_header_ribs(g["x0"], g["zc"], g["pcb_top"]))
-    lid = lid_board_features(lid, g["x0"], g["zc"], g["pcb_top"], lt, flush=True)
+    lid = lid_board_features(lid, g["x0"], g["zc"], g["pcb_top"], lt, flush=True, vertical=P["H_PAD_V"])
     # battery retention: two posts bear on the holder's end blocks and two ribs sit just in front of the cell, so neither
     # can move toward the lid. The middle (x 40..60) stays clear for the Hall leads rising from the bar channel.
     hx0, hl = P["HOLDER_X0"], P["HOLDER_L"]
@@ -682,7 +706,7 @@ def build_hanger_lid():
 
 def hanger_marks():
     g = hanger_geom()
-    return face_marks(g["W"], g["lid_t"], P["H_LOGO"], P["H_WORDMARK"], g["x0"], g["zc"])
+    return face_marks(g["W"], g["lid_t"], P["H_LOGO"], P["H_WORDMARK"], g["x0"], g["zc"], vertical=P["H_PAD_V"])
 
 def gateway_marks():
     g = gateway_geom()
@@ -818,8 +842,13 @@ def hanger_refs():
     # stub antenna rod in the clips
     az0 = (P["ANT_ZS"][0] + P["ANT_ZS"][1]) / 2 - P["ANT_L"] / 2
     refs["stub_antenna"] = (cyl_z(P["ANT_X"], P["ANT_Y"], P["ANT_D"], az0, az0 + P["ANT_L"]), (0.2, 0.2, 0.2))
-    # no USB plug and no window insert in the hanger assembly: the port is used with the lid off, and the display's own glass
-    # sits behind the bezel
+    # USB-C cable plugged in with the lid ON (proves the opening): 12.35 x 6.5 overmold (USB-IF maximum), its face 0.45 mm
+    # short of the receptacle, 6.65 mm nose inside the receptacle. No window insert: the display's own glass is behind the bezel.
+    uy = g["pcb_top"] - P["USB_OPEN_CY"]
+    face = g["x0"] - P["USB_NOSE"] - 0.45
+    plug = box(face - 24.0, face, uy - 3.25, uy + 3.25, g["zc"] - 6.175, g["zc"] + 6.175)
+    plug = plug.union(box(face - EPS, face + 6.65, uy - 1.2, uy + 1.2, g["zc"] - 4.1, g["zc"] + 4.1))
+    refs["usb_plug"] = (plug, (0.5, 0.5, 0.5))
     return refs
 
 # --------------------------------------------------------------------------------------
@@ -1113,7 +1142,9 @@ def design_checks(hg, gg):
     out.append((hg["lid_t"] - (P["IPEX_H"] + P["UFL_PLUG_H"] + 0.4 - hg["pcb_top"]) >= 1.5, "lid left over the U.FL relief = %.1f mm (>= 1.5)" % (hg["lid_t"] - (P["IPEX_H"] + P["UFL_PLUG_H"] + 0.4 - hg["pcb_top"]))))
     out.append((hg["pcb_top"] - P["BTN_H"] >= 0.5, "PRG/RST button tops Y=%.1f clear the lid inner face" % (hg["pcb_top"] - P["BTN_H"])))
     nose = hg["x0"] - P["USB_NOSE"]
-    out.append((nose >= wall + P["TONGUE_CLR"] + P["TONGUE_T"] + 0.3, "USB nose x=%.2f sits behind the lid's lip (x<=%.2f), so the lip closes the side notch" % (nose, wall + P["TONGUE_CLR"] + P["TONGUE_T"])))
+    out.append((wall <= nose <= wall + 0.6, "USB-C nose x=%.2f is right at the left wall (inner face %.1f): a cable plugs in with the lid on" % (nose, wall)))
+    plug_top = (hg["pcb_top"] - P["USB_OPEN_CY"]) - 3.25
+    out.append((plug_top - (-hg["lid_t"] + P["USB_LID_SKIN"]) >= 0.4, "plug overmold top Y=%.2f clears the %.2f mm lid skin over it by %.2f mm" % (plug_top, P["USB_LID_SKIN"], plug_top - (-hg["lid_t"] + P["USB_LID_SKIN"]))))
     tab_top = H - wall - P["TONGUE_CLR"] - P["TONGUE_T"]
     tab_bot = tab_top - P["TONGUE_T"] - 0.25
     nose_top = tab_top + P["TAB_NOSE"]
@@ -1133,16 +1164,19 @@ def design_checks(hg, gg):
     out.append((P["DT_MOUTH"] >= P["WEB_W"] + 0.8, "channel mouth %.1f passes the %.0f mm web with 0.4 per side" % (P["DT_MOUTH"], P["WEB_W"])))
     out.append((P["BAR_W"] <= W + 20.0 and P["BAR_W"] >= P["WEB_W"], "hook bar %.0f mm wide (PROVISIONAL: set to the sign's hand-hole width minus %.0f)" % (P["BAR_W"], P["SIGN_HOLE_CLR"])))
     fw, fh, ft, ht, hl, sl = P["BTN_PAD"]
-    arm = (hg["x0"] + P["PRG"][0]) - (hg["x0"] + P["BTN_PAD_X1"] - fw + hl / 2)
-    eps_btn = 100.0 * (ht / 2) * ((P["BTN_PIN_GAP"] + P["BTN_TRAVEL"]) / arm) / hl
-    out.append((eps_btn <= P["SNAP_STRAIN_MAX"], "button pad hinge strain %.2f %% for a full press (hinge %.1f x %.0f mm, pin %.1f mm from it; <= %.1f %%)" % (eps_btn, ht, hl, arm, P["SNAP_STRAIN_MAX"])))
-    out.append((fw >= 20.0 and fh >= 14.0, "button pads %.0f x %.0f mm: a full fingertip" % (fw, fh)))
-    pads = button_pads(hg["x0"], hg["zc"])
+    pads = button_pads(hg["x0"], hg["zc"], P["H_PAD_V"])
+    for (name, fx0, fx1, z0, z1, px, pz, hinge) in pads:
+        hc = (z1 - hl / 2) if hinge == "z1" else (z0 + hl / 2) if hinge == "z0" else None
+        arm = abs(pz - hc) if hc is not None else px - (fx0 + hl / 2)
+        eps_btn = 100.0 * (ht / 2) * ((P["BTN_PIN_GAP"] + P["BTN_TRAVEL"]) / arm) / hl
+        out.append((eps_btn <= P["SNAP_STRAIN_MAX"], "%s pad %.1f x %.1f mm, hinge strain %.2f %% for a full press (pin %.1f mm from the hinge; <= %.1f %%)" % (name, fx1 - fx0, z1 - z0, eps_btn, arm, P["SNAP_STRAIN_MAX"])))
+        out.append((min(fx1 - fx0, z1 - z0) >= 8.5 and (fx1 - fx0) * (z1 - z0) >= 150.0, "%s pad is fingertip sized (%.0f mm2)" % (name, (fx1 - fx0) * (z1 - z0))))
+        out.append((fx0 <= px - P["H_PAD_V"][2] / 2 and px + P["H_PAD_V"][2] / 2 <= fx1 and z0 < pz < z1, "%s pin sits wholly on its pad" % name))
     disp_x0 = hg["x0"] + P["OLED_ACT_CX"] - P["OLED_POCKET"][0] / 2
     out.append((max(pd[2] for pd in pads) + sl + 1.0 <= disp_x0, "button pads end %.1f mm short of the display pocket" % (disp_x0 - max(pd[2] for pd in pads) - sl)))
-    out.append((min(pd[1] for pd in pads) >= wall + P["TONGUE_CLR"] + P["TONGUE_T"] + 1.0, "button pad hinges start clear of the lid's lip"))
-    out.append((max(pd[4] for pd in pads) + sl + 0.8 <= H - wall - P["TONGUE_CLR"] - 2 * P["TONGUE_T"] - 0.25, "upper pad clears the hinge tab roots"))
-    out.append((abs(hg["x0"] + P["OLED_ACT_CX"] - W / 2) < 0.05, "display window centred on the face (x=%.1f)" % (hg["x0"] + P["OLED_ACT_CX"])))
+    out.append((min(pd[1] for pd in pads) - sl >= wall + P["TONGUE_CLR"] + P["TONGUE_T"] + 0.2, "button pad slots start clear of the lid's lip"))
+    out.append((max(pd[4] for pd in pads) + sl <= H - wall - P["TONGUE_CLR"] - P["TONGUE_T"] - 0.5 - 0.4 and max(pd[2] for pd in pads) + sl < min(P["H_TAB_XS"]) - P["TAB_W"] / 2, "upper pad stops below the lid's top edge and beside the hinge tab roots"))
+    out.append((True, "display window centre x=%.1f: left of centre on purpose, so the USB-C port is at the edge; badge balances it on the right" % (hg["x0"] + P["OLED_ACT_CX"])))
     out.append(((P["DT_TOP"] - P["DT_MOUTH"]) / 2 >= 2.0, "dovetail flank overhang %.2f mm per side (>= 2.0)" % ((P["DT_TOP"] - P["DT_MOUTH"]) / 2)))
     out.append((P["DT_STRIP_W"] >= P["DT_TOP"] + 2 * 3.0, "channel strip leaves >= 3 mm beside the dovetail top"))
     out.append((hg["plate_y1"] <= hg["wall_y"] - 1.0 and hg["plate_y0"] >= P["DT_Y0"] + 0.5, "bar plate Y %.0f..%.0f inside the channel (front end %.0f, wall %.0f)" % (hg["plate_y0"], hg["plate_y1"], P["DT_Y0"], hg["wall_y"])))
@@ -1171,7 +1205,7 @@ def design_checks(hg, gg):
 def write_readme(out_dir, hg, gg):
     sy = hg["sensor_y"]
     gap = hg["saddle_floor"] + P["TAG_CLR"] + P["TAG_WALL"] - (hg["sensor_z"] + P["SOT23"][2] / 2)
-    txt = """HazardLink v9.3 enclosures: no screws; wall-arm latches; flush centred display; two big button pads; logo on the face; wide hook bar. Generated by hazardlink_enclosures.py.
+    txt = """HazardLink v9.4 enclosures: no screws; wall-arm latches; flush display; USB-C at the edge (lid on); two button pads; logo on the face; wide hook bar. Generated by hazardlink_enclosures.py.
 Frame: X right, Z up, Y from the front face into the wall. Wall face at Y=%.0f.
 
 FILES
@@ -1194,8 +1228,7 @@ HOW THE PARTS HOLD TOGETHER (v9)
     other, pull the bottom edge out about 25 mm until the top tabs drop free, then take the lid away.
   Display (hanger): the board sits right up behind the lid so the display glass is %.1f mm below the face behind a %.1f mm
     bezel (it was 5.5 mm down a well). The pocket allows for a display up to %.1f mm tall above the PCB; measure yours
-    (PCB top to glass top) and set OLED_H_MAX to it to close the last of the gap. The USB-C port is reached with the lid
-    off: a plug cannot share the space with a flush display, and the lid's lip now closes the side notch.
+    (PCB top to glass top) and set OLED_H_MAX to it to close the last of the gap.
   Hook bar to hanger body: the bar's plate is a dovetail (%.1f wide at the mouth, %.1f at the top, %.1f tall, 45 deg flanks)
     that slides into a channel in the body's bottom wall FROM THE WALL SIDE. The channel is closed at the front and the
     backplate covers its mouth, so with the body hung the bar cannot come out. The sign's weight is carried by the dovetail
@@ -1208,8 +1241,11 @@ HOW THE PARTS HOLD TOGETHER (v9)
     the window from inside, which needs the lid off. Same tamper resistance as the old security screw for that step.
   Tamper note: the lid opens by hand from underneath (two pull lips). With a sign hung they sit behind the sign's top edge.
     Firmware rule: a lid-open or a lift without a service login is a tamper alarm.
-  Face (v9.3): the display window is centred. To its left are two finger-sized button pads, PRG above and RST below. Each
-    pad is a flap cut into the lid with a thin hinge at its left end and a pin behind it over the board's small switch, so
+  Face (v9.4): the board sits against the left wall so the USB-C port is at the edge and a cable plugs in with the lid on
+    (the opening is shared by the body wall and a hollow in the lid edge). On this board the port sits between the two
+    buttons, so the pads run vertically: PRG above the port, RST below it, each 9 x 17.5 mm. The display is left of centre
+    and the badge balances it on the right. Each
+    pad is a flap cut into the lid with a thin hinge at its far end and a pin behind it over the board's small switch, so
     pressing anywhere on the pad clicks the switch. The status LEDs show through a small hole in the RST pad. The badge,
     the HazardLink name and the two button names are sunk 0.4 mm into the face as narrow strokes. To print them in a second
     colour instead, load print/<lid>_inlay.stl with the lid (it is already lined up), assign it to the other hotend and
@@ -1539,7 +1575,7 @@ def main(out_dir, quick=False, autocad=True):
     write_readme(out_dir, hg, gg)
 
     # ---- manifest -----------------------------------------------------------------------
-    lines = ["HazardLink v9.3 enclosures (no screws; wall-arm latches; flush centred display; button pads; logo; wide bar). Generated by hazardlink_enclosures.py", ""]
+    lines = ["HazardLink v9.4 enclosures (no screws; wall-arm latches; flush display; USB-C at the edge; button pads; logo; wide bar). Generated by hazardlink_enclosures.py", ""]
     for name, wp in parts.items():
         lines.append("%-22s %s" % (name, bbox_str(wp)))
     lines += ["", "Key derived positions (world frame, mm):",
