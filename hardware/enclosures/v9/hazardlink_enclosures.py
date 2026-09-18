@@ -57,9 +57,9 @@ P = dict(
     BTN_PAD_GAP=1.5,        # assumed: each pad starts this far from the board centreline
     BTN_PIN_D=3.2, BTN_PIN_GAP=0.3, BTN_TRAVEL=0.3,   # assumed: pin diameter, rest gap over the switch, switch travel
     LED_HOLE_D=1.8,         # assumed: light hole over the two status LEDs (it falls inside the RST pad)
-    # v9.3 face marks: sunk MARK_DEPTH into the face as narrow strokes (prints cleanly on the bed), or filled flush in a
+    # v9.3 face marks: sunk MARK_DEPTH (0.6 = three layers, so white stays white over black) into the face as narrow strokes (prints cleanly on the bed), or filled flush in a
     # second colour from the other hotend using print/<lid>_inlay.stl
-    MARK_DEPTH=0.4, LOGO_BADGE=(26.0, 40.0, 5.0, 2.0, -7.0),   # assumed: badge width, height, corner radius, stroke, tilt in degrees
+    MARK_DEPTH=0.6, LOGO_BADGE=(26.0, 40.0, 5.0, 2.0, -7.0),   # assumed: badge width, height, corner radius, stroke, tilt in degrees
     LOGO_BANG=(5.0, 17.0, 4.5, 5.5, -11.5),   # assumed: exclamation bar width, height, bar centre z, dot diameter, dot centre z (from the badge centre)
     H_LOGO=(24.0, 61.0, 1.0), H_WORDMARK=(43.0, 61.0, 7.5),   # assumed: hanger badge centre (x, z, scale), wordmark left edge (x, z, cap height)
     G_LOGO=(17.0, 58.0, 0.78), G_WORDMARK=(62.0, 66.0, 6.5),  # assumed: gateway
