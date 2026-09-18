@@ -105,6 +105,6 @@ This needs a spool of white 2.85 mm PLA on the other hotend. It is not on any or
 
 The two pads in each lid (PRG and RST) are flaps with a 0.8 mm hinge. On the hanger lid they run down the left edge. They print flat
 on the bed, so they are strong in the direction they bend. No brim may be laid inside the 0.8 mm slots around them, which is what Brim Only on Outside in the settings table is for. If the first layer
-closes a slot anyway, run a blade along it. The 1.8 mm LED light hole should be open too; clear it with a pin if the first layer has closed it.
+closes a slot anyway, run a blade along it. The hanger lid has no LED light hole. The gateway lid has one (1.8 mm); clear it with a pin if the first layer has closed it.
 
 These two pads are the board's own PRG and RST buttons. They have nothing to do with the cleaning-mode button under the base.

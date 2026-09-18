@@ -20,4 +20,4 @@ Key derived positions (world frame, mm):
   cleaning button (Gebildet 16 mm, with its plug-in socket): 16.4 hole through the bottom wall at x=83.8, Y=21.3, behind the right latch arm; head 18.2 dia x 3.2 under the base, 26.8 mm from its face to the hook; 40.6 mm long behind the head, top at z=40.6, battery shelf above it at z=47.5; only its two switch wires go to the board (GND and GPIO3); firmware reserves TEST_BUTTON_PIN = 3 (GPIO3) as the cleaning-mode trigger but the hanger program does not act on a press yet
   gateway board: USB-end corners at x=46.0, centreline z=42.0; SMA at (104, 15) on the top wall; cable notch at z=42
 
-Elapsed 15 s
+Elapsed 16 s

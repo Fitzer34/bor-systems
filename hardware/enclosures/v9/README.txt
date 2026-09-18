@@ -135,8 +135,7 @@ HOW THE PARTS HOLD TOGETHER
     1.4 mm skin over the plug. On this board the port sits between the two buttons, so the two finger pads run down the
     left edge: PRG above the port, RST below it, each 9 x 17.5 mm. The display is left of centre and the badge balances
     it on the right. Each pad is a flap cut into the lid with a thin hinge at its far end and a pusher pin behind it over
-    the board's small switch, so pressing anywhere on the pad clicks the switch. The status LEDs show through an open
-    1.8 mm light hole in the RST pad. The badge, the HazardLink wordmark and the two button names are sunk 0.6 mm into the
+    the board's small switch, so pressing anywhere on the pad clicks the switch. There is NO light hole in the hanger's face: the board's two small status lights (one is the charging light) are hidden with the lid on, and the display shows what the unit is doing. Take the lid off if you need to see the charging light. The badge, the HazardLink wordmark and the two button names are sunk 0.6 mm into the
     face as narrow strokes. They are meant for a WHITE second-colour inlay over the black lid: load
     print/hanger_lid_inlay.stl with the lid (it is already lined up), assign it to the other hotend and merge the two
     models; the face then comes off the bed flush and smooth. Printed in one colour they are simply sunk lines. The gateway
@@ -251,7 +250,7 @@ HOW THE PARTS HOLD TOGETHER
   fix the units to the building. The SMA nut and the button's nut are part of the bought parts.
 
 HANGER: the sign hangs from the bar under the bottom edge. Nothing on the face except the display window, the PRG and RST
-pads, the LED hole in the RST pad and the sunk logo and names. The cleaning-mode button is under the base on the right,
+pads and the sunk logo and names. The cleaning-mode button is under the base on the right,
 pointing down. The web at the back carries the bar 30 mm below the body; the bar reaches 70 mm out from the wall face and
 ends in a 20 mm lip; the sign's handle settles in the saddle, which is centred 2 mm in front of the body rim (Y=-2, which
 is 1 mm BEHIND the lid's outer face), directly over the Hall sensor.
@@ -599,7 +598,7 @@ PRINTING
     No support.
   hanger_lid: outer face down. Only the lip, the rigid hooks and tabs, ribs, posts and the two pusher pins stand up from it. The hook's catch
     face is a 1 mm overhang; print the lid with the part fan on. The two finger pads print flat on the bed with 0.8 mm
-    slots round them: keep brim out of the slots. The LED hole is an open 1.8 mm hole. No window insert: the display
+    slots round them: keep brim out of the slots. No window insert: the display
     glass itself sits behind the bezel. No support.
   hanger_bar: UPRIGHT on the bar's bottom face (lip pointing up), with NO SUPPORT AT ALL. All bending loads are then in-plane,
     the dovetail flanks and the spreaders are 45 deg, and a 45 deg gusset off the web carries the front 17.4 mm of the

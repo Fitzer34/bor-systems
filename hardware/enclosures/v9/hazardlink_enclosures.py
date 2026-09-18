@@ -71,8 +71,11 @@ P = dict(
                             # on the hanger the coil relief runs the pocket on to the slot at this edge)
     BTN_PAD_GAP=1.5,        # assumed: each pad starts this far from the board centreline
     BTN_PIN_D=3.2, BTN_PIN_GAP=0.3, BTN_TRAVEL=0.3,   # assumed: pin diameter, rest gap over the switch, switch travel
-    BTN_LABEL=(4.2, 2.4),   # Owen: the light hole cut through the S of RST. Pad names are 4.2 tall and run up the LEFT side of each pad (centre 2.4 from the pad's left edge), so the hole sits beside the letters
+    BTN_LABEL=(4.2, 2.4),   # pad names are 4.2 tall and run up the LEFT side of each pad (centre 2.4 from the pad's left edge), clear of where the status lights sit under the RST pad
     LED_HOLE_D=1.8,         # assumed: light hole over the two status LEDs (it falls inside the RST pad)
+    H_LED_HOLE=False,       # Owen: no hole in the hanger's face (it is cleaned around wet floors and he does not want it). The board's two status
+                            # lights are hidden with the lid on; the display shows what the unit is doing. The gateway keeps its light hole.
+    G_LED_HOLE=True,
     # v9.3 face marks: sunk MARK_DEPTH (0.6 = three layers, so white stays white over black) into the face as narrow strokes (prints cleanly on the bed), or filled flush in a
     # second colour from the other hotend using print/<lid>_inlay.stl
     MARK_DEPTH=0.6, LOGO_BADGE=(26.0, 40.0, 5.0, 2.0, -7.0),   # assumed: badge width, height, corner radius, stroke, tilt in degrees
@@ -495,7 +498,7 @@ def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False, vertical=None
         for s in (-1, 1):
             xa, xb = sorted((cx + s * iw / 2, cx + s * (iw / 2 - c)))
             lid = lid.union(box(xa, xb, -pd + P["INSERT_T"] + 0.2, -pd + P["INSERT_T"] + 0.9, cz - 4.0, cz + 4.0))
-    lid = lid_buttons(lid, x0, zc, pcb_top_y, lid_t, vertical)
+    lid = lid_buttons(lid, x0, zc, pcb_top_y, lid_t, vertical, led_hole=P["H_LED_HOLE"] if flush else P["G_LED_HOLE"])
     return lid
 
 def button_pads(x0, zc, vertical=None):
@@ -515,7 +518,7 @@ def button_pads(x0, zc, vertical=None):
             out.append((name, fx1 - fw, fx1, za, zb, x0 + bx, zc + bz, "x0"))
     return out
 
-def lid_buttons(lid, x0, zc, pcb_top_y, lid_t, vertical=None):
+def lid_buttons(lid, x0, zc, pcb_top_y, lid_t, vertical=None, led_hole=True):
     """Two pads in the face. Each is a flap: a slot cut right through on three sides, a thin hinge on the fourth (it
     prints flat on the bed, so it bends along the layers), and a pin on the back that sits just over the small switch
     on the board. Pressing anywhere on the pad clicks the switch."""
@@ -535,8 +538,9 @@ def lid_buttons(lid, x0, zc, pcb_top_y, lid_t, vertical=None):
         for (xa, xb, zca, zcb) in slots:
             lid = lid.cut(box(xa, xb, -lid_t - 1, 1, zca, zcb))
         lid = lid.union(cyl_y(px, pz, pin_d, -lid_t + ft - EPS, pcb_top_y - P["BTN_H"] - P["BTN_PIN_GAP"]))
-    # light hole over the status LEDs
-    lid = lid.cut(cyl_y(x0 + P["LED"][0], zc + P["LED"][1], P["LED_HOLE_D"], -lid_t - 1, 1))
+    # light hole over the status LEDs (the hanger has none: H_LED_HOLE)
+    if led_hole:
+        lid = lid.cut(cyl_y(x0 + P["LED"][0], zc + P["LED"][1], P["LED_HOLE_D"], -lid_t - 1, 1))
     return lid
 
 def face_marks(W, lid_t, logo, wordmark, x0, zc, vertical=None):
@@ -1513,6 +1517,10 @@ def write_readme(out_dir, hg, gg):
         usb_w=P["USB_SLOT_W"], usb_h=P["USB_SLOT_H"], usb_skin=P["USB_LID_SKIN"],
         pad_w=hg["x0"] + P["BTN_PAD_X1"] - P["H_PAD_V"][0], pad_h=P["H_PAD_V"][1], pad_slot=P["BTN_PAD"][5],
         led_d=P["LED_HOLE_D"], mark=P["MARK_DEPTH"],
+        led_text=("The status LEDs show through an open %.1f mm light hole in the RST pad." % P["LED_HOLE_D"]) if P["H_LED_HOLE"] else
+                 "There is NO light hole in the hanger's face: the board's two small status lights (one is the charging light) are hidden with the lid on, and the display shows what the unit is doing. Take the lid off if you need to see the charging light.",
+        led_face=", the LED hole in the RST pad" if P["H_LED_HOLE"] else "",
+        led_print=("The LED hole is an open %.1f mm hole. " % P["LED_HOLE_D"]) if P["H_LED_HOLE"] else "",
         bar_w=P["BAR_W"], web_w=P["WEB_W"], hole_clr=P["SIGN_HOLE_CLR"], bar_drop=P["BAR_DROP"], reach=P["BAR_REACH"], lip_h=P["BAR_LIP_H"],
         saddle_w=P["BAR_SADDLE_W"], sign_t=P["SIGN_T"], free_y=hg["web_y0"] - hg["lip_back"],
         hold_l=P["HOLDER_L"], hold_w=P["HOLDER_W"], hold_h=P["HOLDER_H"], standoff=P["HOLDER_STANDOFF"],
@@ -1680,8 +1688,7 @@ HOW THE PARTS HOLD TOGETHER
     %(usb_skin).1f mm skin over the plug. On this board the port sits between the two buttons, so the two finger pads run down the
     left edge: PRG above the port, RST below it, each %(pad_w).0f x %(pad_h).1f mm. The display is left of centre and the badge balances
     it on the right. Each pad is a flap cut into the lid with a thin hinge at its far end and a pusher pin behind it over
-    the board's small switch, so pressing anywhere on the pad clicks the switch. The status LEDs show through an open
-    %(led_d).1f mm light hole in the RST pad. The badge, the HazardLink wordmark and the two button names are sunk %(mark).1f mm into the
+    the board's small switch, so pressing anywhere on the pad clicks the switch. %(led_text)s The badge, the HazardLink wordmark and the two button names are sunk %(mark).1f mm into the
     face as narrow strokes. They are meant for a WHITE second-colour inlay over the black lid: load
     print/hanger_lid_inlay.stl with the lid (it is already lined up), assign it to the other hotend and merge the two
     models; the face then comes off the bed flush and smooth. Printed in one colour they are simply sunk lines. The gateway
@@ -1796,7 +1803,7 @@ HOW THE PARTS HOLD TOGETHER
   fix the units to the building. The SMA nut and the button's nut are part of the bought parts.
 
 HANGER: the sign hangs from the bar under the bottom edge. Nothing on the face except the display window, the PRG and RST
-pads, the LED hole in the RST pad and the sunk logo and names. The cleaning-mode button is under the base on the right,
+pads%(led_face)s and the sunk logo and names. The cleaning-mode button is under the base on the right,
 pointing down. The web at the back carries the bar %(bar_drop).0f mm below the body; the bar reaches %(reach).0f mm out from the wall face and
 ends in a %(lip_h).0f mm lip; the sign's handle settles in the saddle, which is centred %(sy_front).0f mm in front of the body rim (Y=%(sy).0f, which
 is %(sy_behind).0f mm BEHIND the lid's outer face), directly over the Hall sensor.
@@ -2144,7 +2151,7 @@ PRINTING
     No support.
   hanger_lid: outer face down. Only the lip, the rigid hooks and tabs, ribs, posts and the two pusher pins stand up from it. The hook's catch
     face is a %(hook_barb).0f mm overhang; print the lid with the part fan on. The two finger pads print flat on the bed with %(pad_slot).1f mm
-    slots round them: keep brim out of the slots. The LED hole is an open %(led_d).1f mm hole. No window insert: the display
+    slots round them: keep brim out of the slots. %(led_print)sNo window insert: the display
     glass itself sits behind the bezel. No support.
   hanger_bar: UPRIGHT on the bar's bottom face (lip pointing up), with NO SUPPORT AT ALL. All bending loads are then in-plane,
     the dovetail flanks and the spreaders are 45 deg, and a 45 deg gusset off the web carries the front %(gusset).1f mm of the
@@ -2294,19 +2301,19 @@ def main(out_dir, quick=False, autocad=True):
                  "The box is %.0f mm taller than v9.8 for the button (%.0f tall, was %.0f): every feature keeps its place measured from the TOP. The bay under the battery holds only the button and wires."
                  % (P["H_BASEMENT"], H, H - P["H_BASEMENT"])] if P["BTN16_ON"] else []))
     write_part_drawing(os.path.join(out_dir, "hanger_lid_drawing.dxf"), "HazardLink hanger lid v9.9 (mm)", h_lid, [
-        dict(view="front", at=-1.5, off=(0, -150), label="FRONT SECTION at Y=-1.5 (inside the lid's thickness): window, display pocket with the coil relief, button pad slots, LED hole, USB hollow in the left edge",
+        dict(view="front", at=-1.5, off=(0, -150), label="FRONT SECTION at Y=-1.5 (inside the lid's thickness): window, display pocket with the coil relief, button pad slots, USB hollow in the left edge",
              dims=[("h", (0, 0), (W, 0), -10), ("v", (0, 0), (0, H), -12),
                    ("h", (cxw - P["WIN_W"] / 2, czw), (cxw + P["WIN_W"] / 2, czw), czw + 14, "window <>"),
                    ("v", (cxw + P["WIN_W"] / 2, czw - P["WIN_H"] / 2), (cxw + P["WIN_W"] / 2, czw + P["WIN_H"] / 2), cxw + 22, "window <>"),
                    ("h", (0, czw), (cxw, czw), czw - 12, "window centre <>"), ("v", (W, 0), (W, czw), 108, "window centre <>")]),
-        dict(view="front", at=-2.7, off=(0, -320), label="FRONT SECTION at Y=-2.7 (outer skin): sunk badge, wordmark and button names, button pad slots, LED hole, window chamfer", dims=[]),
+        dict(view="front", at=-2.7, off=(0, -320), label="FRONT SECTION at Y=-2.7 (outer skin): sunk badge, wordmark and button names, button pad slots, window chamfer", dims=[]),
         dict(view="top", at=zc, off=(0, -400), label="TOP SECTION at Z=%.0f (board centreline): display pocket behind the bezel, window chamfer, USB hollow, lip" % zc,
              dims=[("v", (W, -P["LID_T"]), (W, 0), 108, "lid <>"), ("v", (W, 0), (W, P["TONGUE_H"]), 118, "lip <>")]),
         dict(view="side", at=W / 2, off=(320, -150), label="SIDE SECTION at X=50: lip and display pocket", label_at=(-5, -8), dims=[]),
     ], notes=["Print lid outer face down, no support. NO window insert and no cleats: the display module sits in the pocket with its glass behind the %.1f mm bezel." % P["BEZEL_T"],
               "PRG and RST: two finger pads down the left edge, each %.1f x %.1f, %.1f thick, cut free on three sides by %.1f slots, %.1f hinge at the far end, %.1f dia pusher pin behind it over its switch."
               % (hg["x0"] + P["BTN_PAD_X1"] - P["H_PAD_V"][0], P["H_PAD_V"][1], P["BTN_PAD"][2], P["BTN_PAD"][5], P["BTN_PAD"][3], P["H_PAD_V"][2]),
-              "LED: open %.1f light hole in the RST pad. Badge, wordmark and button names sunk %.1f; second colour inlay: print/hanger_lid_inlay.stl." % (P["LED_HOLE_D"], P["MARK_DEPTH"])])
+              (("LED: open %.1f light hole in the RST pad. " % P["LED_HOLE_D"]) if P["H_LED_HOLE"] else "No LED hole in the hanger lid. ") + "Badge, wordmark and button names sunk %.1f; second colour inlay: print/hanger_lid_inlay.stl." % P["MARK_DEPTH"]])
     sy = hg["sensor_y"]
     write_part_drawing(os.path.join(out_dir, "hanger_bar_drawing.dxf"), "HazardLink hanger bar v9.9 (mm)", h_bar, [
         dict(view="side", at=W / 2, off=(0, -120), label="SIDE SECTION at X=50: bar, lip, dovetail plate on its 45 deg gusset, saddle, Hall sensor nest and tunnel, lead channel",
