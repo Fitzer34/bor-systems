@@ -47,7 +47,10 @@ P = dict(
     BRD_T=1.8,              # datasheet 1.6 + 0.2 allowance
     BRD_CLR=0.3,            # assumed: pocket clearance per side (PETG slip fit)
     USB_NOSE=0.65,          # datasheet: USB-C nose proud of the corner points
-    USB_SETBACK=1.0,        # assumed: corner points to the wall inner face (nose 0.35 inside)
+    USB_SETBACK=1.0,        # assumed: corner points to the wall inner face (nose 0.35 inside); gateway
+    H_USB_SETBACK=3.2,      # assumed: hanger board sits further in so the lid's lip passes in front of the USB nose and closes the wall notch
+    OLED_H_MAX=5.0,         # datasheet envelope: the most the display can stand above the PCB top. MEASURE the real value (photos suggest 4 to 5)
+    BEZEL_T=1.0, OLED_POCKET=(36.0, 20.4), OLED_GAP=0.2,   # assumed: front skin left around the window, pocket for the display module (X, Z), clearance glass to bezel
     OLED_X0=14.9, OLED_X1=47.9, OLED_HALF_W=9.28, OLED_H=5.0,    # datasheet envelope
     OLED_ACT_CX=31.3, OLED_ACT_CY=0.5,       # research: window centre (active area ~1 mm toward +Yb)
     WIN_W=30.0, WIN_H=16.0,                  # research: conservative window showing the whole picture
@@ -77,15 +80,18 @@ P = dict(
     # ---- snap-fit lids (v9: no screws anywhere in the assembly) ------------------------
     # two rigid hinge tabs on the lid's top edge hook behind a ledge on the top wall; two spring latches on the
     # bottom edge click into pockets in the bottom wall; a 2.2 mm pin through the bottom wall releases each latch
-    LATCH_W=8.0, LATCH_T=1.6, LATCH_L=17.0, LATCH_BARB=1.0, LATCH_LEAD=2.5, LATCH_FLAT=0.7, LATCH_CLR=0.25, LATCH_CLR_Y=0.4,   # research: cantilever finger (4 x 0.4 lines; 1.6 after the first print came out weak at 1.35), strain 1.5*y*t/L^2 <= 2 % for PETG; 55 deg catch face; fore-aft clearance in the layer direction
-    LATCH_ROOT_FILLET=0.7,   # assumed: gusset at the finger/tongue step (stress riser relief)
-    PIN_RING_D=4.0, PIN_RING_DEPTH=0.3,   # assumed: countersink ring around each release hole so it can be found by touch
-    LATCH_SKIN=1.2,          # assumed: wall left under the latch pocket
-    RELEASE_D=2.2,           # assumed: release pinhole under each latch (paperclip)
+    # v9.2 latches: the SPRING is an arm cut into the body's bottom wall (it prints along its length, so bending runs
+    # along the layers); the lid carries only a rigid hook. First PLA print: thin fingers standing on the lid snapped.
+    ARM_L=21.0, ARM_W=10.5, ARM_T=2.0, ARM_SLOT=1.2,      # assumed: arm length (X), width from the rim (Y), thickness (outer face relieved), slot width
+    ARM_TAB=(0.6, 0.8),      # assumed: breakaway tab (Y, Z) across the end slot so the arm's first layers bridge; snaps on first use
+    ARM_WIN=(11.0, 5.0, 8.6),   # assumed: window through the arm near its free end (X width, Y front edge, Y back edge)
+    ARM_WIN_FROM_TIP=7.0,    # assumed: window centre to the arm tip
+    ARM_LIP=(6.0, 1.2),      # assumed: pull lip under the arm tip (X length, proud of the bottom face)
+    HOOK_W=10.0, HOOK_T=3.0, HOOK_L=8.4, HOOK_BARB=1.0, HOOK_CATCH_Y=5.2, HOOK_FLAT=1.0, HOOK_GUSSET=4.0,   # assumed: rigid lid hook (barb catches the window's front edge)
     TAB_W=12.0, TAB_L=14.0, TAB_NOSE=2.5, TAB_NOSE_L=3.0, TAB_CLR=0.25, TAB_POCKET_UP=0.6,   # assumed: hinge tab (contiguous with the tongue, 2.25 thick) with a 45 deg hook face; nose pocket reaches 0.6 into the top wall
     TAB_RIB_Y0=8.0, TAB_RIB_H=2.0, TAB_RIB_SIDE=3.0,   # assumed: stiffening rib along the top wall from Y=8 to the back wall; the nose pocket is cut through it (bridge on 2.5 mm cheeks)
-    H_LATCH_XS=(15.0, 85.0), H_TAB_XS=(22.0, 70.0),   # assumed positions (clear of the bar channel, holder, SMA knock-out)
-    G_LATCH_XS=(20.0, 56.0), G_TAB_XS=(66.0, 86.0),   # assumed positions (latches clear of the intake vents, ribs clear of the exhaust vents and the SMA pad)
+    H_ARMS=((7.0, 1), (93.0, -1)), H_TAB_XS=(22.0, 70.0),   # assumed: (root x, direction) of each wall arm, clear of the bar channel strip (x 30..70)
+    G_ARMS=((8.0, 1), (36.0, 1)), G_TAB_XS=(66.0, 86.0),    # assumed: gateway arms, left of the intake vents
     SNAP_STRAIN_MAX=1.5,     # research: repeated-use design strain, percent; 1.5 covers PLA (the first spool) as well as PETG (2.0)
     PINHOLE_D=2.0,           # assumed: RST paperclip hole
     LED_WIN_D=3.0, LED_SKIN=0.5,      # assumed: sealed translucent window over the LEDs
@@ -100,7 +106,7 @@ P = dict(
     # ---- Hanger -----------------------------------------------------------------------
     H_W=100.0, H_H=130.0, H_D=35.0,   # v7
     H_BRD_ZC=104.0,          # assumed: board centreline height (window as high as the bosses allow)
-    H_PCB_TOP_Y=7.5,         # assumed: OLED glass 2.5 mm behind the lid inner face
+    H_PCB_TOP_Y=None,        # derived: the display sits inside the lid, its glass just behind a 1 mm bezel (see hanger_geom)
     HOLDER_L=80.0, HOLDER_W=25.0, HOLDER_H=21.0, HOLDER_CLR=0.5,   # assumed: TinyTronics leads holder
     HOLDER_X0=10.0, HOLDER_Z0=6.5,    # assumed placement (bottom of the body; 6.5 leaves 1.15 mm over the flexed latch fingers)
     HOLDER_RIB_T=3.0, HOLDER_RIB_H=8.0, HOLDER_LEAD_GAP=8.0,   # assumed
@@ -137,7 +143,7 @@ P = dict(
     CATCH_NOSE=2.3, CATCH_NOSE_H=4.0, CATCH_NOSE_Z=16.0, CATCH_PAD=(1.5, 2.5, 5.0), CATCH_WIN=(9.5, 10.5), CATCH_WIN_CLR=0.5,   # assumed: nose z = root + 16; push pad (proud, height, above nose top); window through the back wall (w, h)
     ANT_X=86.0, ANT_ZS=(70.0, 110.0), ANT_D=6.0, ANT_L=60.0, ANT_Y=22.0,   # assumed stub antenna
     SMA_KO=(84.0, 17.5),     # assumed optional SMA knock-out on the top wall
-    LABEL=(56.0, 90.0, 92.0, 118.0, 0.5),   # assumed label recess x0, x1, z0, z1, depth
+    # label recess removed: it was on the face that sits on the print bed, so it printed over nothing. Use a sticker.
     SADDLES=((30.0, 74.0), (86.0, 55.0)),   # assumed cable tie saddles (leads, pigtail)
 
     # ---- Gateway ----------------------------------------------------------------------
@@ -149,7 +155,6 @@ P = dict(
     G_KEYHOLES=((25.0, 62.0), (95.0, 62.0)), G_LOWER_SCREW=(60.0, 16.0),   # assumed (screw positions)
     G_VENT=dict(len=8.0, w=2.0, pitch=8.0, n=5, bot_x0=72.0, top_x0=16.0, ys=(13.0, 18.0, 23.0)),
     G_BTN_KO=(25.0, 15.0, 12.5),      # assumed knock-out for a 12 mm panel button on GPIO3
-    G_LABEL=(66.0, 108.0, 6.0, 26.0, 0.5),   # assumed label recess
     WHIP_D=13.0, WHIP_L=195.0,        # research: 868 MHz 5 dBi whip
 )
 EPS = 0.01
@@ -253,7 +258,7 @@ def heltec_ref(x0, zc, pcb_top_y):
     parts.append(box(45.0, 51.0, 8.0, 12.7, 0, 1.6))    # V3.2 block antenna (approx)
     return b2w(union_all(parts), x0, zc, pcb_top_y)
 
-def board_cradle(x0, zc, pcb_top_y, y_back, x_wall_inner):
+def board_cradle(x0, zc, pcb_top_y, y_back, x_wall_inner, setback=None):
     """Screwless cradle for the Heltec V3: a ledge under each long edge (the board rests on it),
     pocket side walls, an end stop at the antenna tip, corner stops at the USB end. The J3 (+Z, PRG)
     ledge has gaps at the wire pads (GND, 3V3, GPIO3, GPIO6). A notch in the J2 (-Z) wall lets the
@@ -261,9 +266,9 @@ def board_cradle(x0, zc, pcb_top_y, y_back, x_wall_inner):
     L, clr = P["BRD_L"], P["BRD_CLR"]
     hw = P["BRD_W"] / 2 + clr                     # pocket half height (Z)
     pcb_bot = pcb_top_y + P["BRD_T"]
-    y_lip = pcb_top_y - P["RAIL_LIP_ABOVE"]       # pocket walls rise above the PCB top
+    y_lip = max(pcb_top_y - P["RAIL_LIP_ABOVE"], 0.5)      # pocket walls rise above the PCB top but stop 0.5 under the lid
     wt = P["POCKET_WALL_T"]
-    x_start = max(x0 - P["USB_SETBACK"], x_wall_inner + P["TONGUE_T"] + P["TONGUE_CLR"] + 0.3)
+    x_start = max(x0 - (setback if setback is not None else P["USB_SETBACK"]), x_wall_inner + P["TONGUE_T"] + P["TONGUE_CLR"] + 0.3)
     x_end = x0 + L + clr + 2.0
     parts = []
     # J2 side (-Z): continuous ledge and wall
@@ -288,7 +293,7 @@ def board_cradle(x0, zc, pcb_top_y, y_back, x_wall_inner):
     xs0 = max(x_wall_inner - EPS, x0 - 3.0)
     for s in (-1, 1):
         z0, z1 = sorted((zc + s * 10.0, zc + s * hw))
-        parts.append(box(xs0, x0 - clr, pcb_top_y, y_back + EPS, z0, z1))
+        parts.append(box(xs0, x0 - clr, max(pcb_top_y, P["TONGUE_H"] + 0.4), y_back + EPS, z0, z1))   # starts below the lid's lip
     cradle = union_all(parts)
     # lead notch through the J2 wall + ledge, leaving the front part of the wall as a bridge
     n0, n1 = P["LEAD_NOTCH"]
@@ -306,7 +311,7 @@ def lid_header_ribs(x0, zc, pcb_top_y):
     j3 = box(x0 + 13.0, x0 + 34.0, -EPS, y1, zc + z_out - w, zc + z_out)
     return j2.union(j3)
 
-def lid_board_features(lid, x0, zc, pcb_top_y, lid_t):
+def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False):
     """Common lid features over the board: OLED window with an inside pocket and cleats for a clear
     insert, sealed PRG living-hinge button with a pusher pin, RST pinhole, sealed LED window."""
     cx = x0 + P["OLED_ACT_CX"]
@@ -315,13 +320,27 @@ def lid_board_features(lid, x0, zc, pcb_top_y, lid_t):
     lid = lid.cut(box(cx - ww / 2, cx + ww / 2, -lid_t - 1, 1, cz - wh / 2, cz + wh / 2))
     # 0.8 mm chamfer on the outside of the window (cosmetic, and cleans the bed edge)
     lid = lid.cut(box(cx - ww / 2 - 0.8, cx + ww / 2 + 0.8, -lid_t - 1, -lid_t + 0.8, cz - wh / 2 - 0.8, cz + wh / 2 + 0.8))
-    iw, ih, pd = P["INSERT_W"], P["INSERT_H"], P["INSERT_POCKET"]
-    lid = lid.cut(box(cx - iw / 2, cx + iw / 2, -pd, 0.5, cz - ih / 2, cz + ih / 2))
-    # cleats on the short pocket edges: insert flexes in under them
-    c = P["INSERT_CLEAT"]
-    for s in (-1, 1):
-        xa, xb = sorted((cx + s * iw / 2, cx + s * (iw / 2 - c)))
-        lid = lid.union(box(xa, xb, -pd + P["INSERT_T"] + 0.2, -pd + P["INSERT_T"] + 0.9, cz - 4.0, cz + 4.0))
+    if flush:
+        # the display module itself sits in this pocket, its glass OLED_GAP behind a BEZEL_T front skin; no insert, no cleats
+        iw, ih = P["OLED_POCKET"]
+        lid = lid.cut(box(cx - iw / 2, cx + iw / 2, -lid_t + P["BEZEL_T"], 0.5, cz - ih / 2, cz + ih / 2))
+        # relief over the USB-C shell (3.25 above the PCB top) where it would touch the lid
+        usb_top = pcb_top_y - 3.25 - 0.4
+        if usb_top < 0:
+            lid = lid.cut(box(x0 - 0.9, x0 + 8.2, usb_top, 0.5, zc - 5.2, zc + 5.2))
+        # relief over the mated U.FL plug (socket + plug can reach 3.8 above the PCB top)
+        ufl_top = pcb_top_y - (P["IPEX_H"] + P["UFL_PLUG_H"]) - 0.4
+        if ufl_top < 0:
+            ix, iz = x0 + P["IPEX"][0], zc + P["IPEX"][1]
+            lid = lid.cut(box(ix - 4.0, ix + 4.0, ufl_top, 0.5, iz - 4.0, iz + 4.0))
+    else:
+        iw, ih, pd = P["INSERT_W"], P["INSERT_H"], P["INSERT_POCKET"]
+        lid = lid.cut(box(cx - iw / 2, cx + iw / 2, -pd, 0.5, cz - ih / 2, cz + ih / 2))
+        # cleats on the short pocket edges: insert flexes in under them
+        c = P["INSERT_CLEAT"]
+        for s in (-1, 1):
+            xa, xb = sorted((cx + s * iw / 2, cx + s * (iw / 2 - c)))
+            lid = lid.union(box(xa, xb, -pd + P["INSERT_T"] + 0.2, -pd + P["INSERT_T"] + 0.9, cz - 4.0, cz + 4.0))
     # PRG living-hinge tab: root on +X, thinned to 1.0 mm, 0.8 mm groove closed by a 0.4 mm outer skin
     tw, tl, tt, tg, ts = P["PRG_TAB"]
     px, pz = x0 + P["PRG"][0], zc + P["PRG"][1]
@@ -354,26 +373,27 @@ def lid_tongue(W, H, wall, bosses, cutouts=()):
         ring = ring.cut(box(x0, x1, -1, h + 1, z0, z1))
     return ring
 
-def latch_geom():
-    """Y stations of a lid latch finger (root at the tongue's inner end)."""
-    tip = P["TONGUE_H"] + P["LATCH_L"]
-    ramp0 = tip - P["LATCH_LEAD"]
-    flat0 = ramp0 - P["LATCH_FLAT"] - 0.6          # 55 deg catch face over LATCH_FLAT, then a 0.6 flat under the barb
-    return dict(tip=tip, ramp0=ramp0, flat0=flat0, pocket_y0=flat0 - P["LATCH_CLR_Y"], pocket_y1=tip + P["LATCH_CLR"],
-                pin_y=(ramp0 + tip) / 2)
+def arm_geom(root_x, direction):
+    """X stations of one wall arm. direction +1: free end toward +X."""
+    tip = root_x + direction * P["ARM_L"]
+    slot_far = tip + direction * P["ARM_SLOT"]
+    win_cx = tip - direction * P["ARM_WIN_FROM_TIP"]
+    return dict(root=root_x, tip=tip, slot_far=slot_far, win_cx=win_cx, d=direction)
 
-def lid_snap_features(lid, W, H, wall, latch_xs, tab_xs):
-    """Two spring latches on the bottom edge and two rigid hinge tabs on the top edge (all part of the lid)."""
+def lid_snap_features(lid, W, H, wall, arms, tab_xs):
+    """Rigid hooks on the bottom edge (they drop into the windows of the body's wall arms) and two rigid hinge tabs on the
+    top edge. Nothing on the lid flexes."""
     o = wall + P["TONGUE_CLR"]                      # tongue outer face (bottom edge at z=o, top edge at z=H-o)
-    lg = latch_geom()
-    t, w = P["LATCH_T"], P["LATCH_W"]
-    f = P["LATCH_ROOT_FILLET"]
-    for x in latch_xs:
-        finger = box(x - w / 2, x + w / 2, P["TONGUE_H"] - EPS, lg["tip"], o, o + t)
-        # 55 deg catch face (rises the barb height over LATCH_FLAT of Y) so it prints without a 90 deg overhang and self-wedges
-        barb = prism_yz([(lg["flat0"], o + EPS), (lg["flat0"] + P["LATCH_FLAT"], o - P["LATCH_BARB"]), (lg["ramp0"], o - P["LATCH_BARB"]), (lg["tip"], o + EPS)], x - w / 2, x + w / 2)
-        gusset = prism_yz([(P["TONGUE_H"] - EPS, o + t - EPS), (P["TONGUE_H"] + f, o + t - EPS), (P["TONGUE_H"] - EPS, o + t + f)], x - w / 2, x + w / 2)
-        lid = lid.union(finger).union(barb).union(gusset)
+    hw, ht, hl = P["HOOK_W"] / 2, P["HOOK_T"], P["HOOK_L"]
+    cy, fl, bb = P["HOOK_CATCH_Y"], P["HOOK_FLAT"], P["HOOK_BARB"]
+    for (rx, d) in arms:
+        g = arm_geom(rx, d)
+        x = g["win_cx"]
+        post = box(x - hw, x + hw, -EPS, hl, o, o + ht)
+        # barb under the post: flat catch face toward the lid (it bears on the window's front edge), ramp toward the box
+        barb = prism_yz([(cy, o + EPS), (cy, o - bb), (cy + fl, o - bb), (hl, o + EPS)], x - hw, x + hw)
+        gus = prism_yz([(-EPS, o + ht - EPS), (-EPS, o + ht + P["HOOK_GUSSET"]), (P["HOOK_GUSSET"], o + ht - EPS)], x - hw, x + hw)
+        lid = lid.union(post).union(barb).union(gus)
     tab_top = H - wall - P["TONGUE_CLR"] - P["TONGUE_T"]        # contiguous with the tongue's inner face
     tab_bot = tab_top - P["TONGUE_T"] - 0.25
     nose_y0 = P["TAB_RIB_Y0"] + 2.5 + P["TAB_CLR"]              # behind the 2.5 mm cheek of the rib pocket
@@ -381,20 +401,35 @@ def lid_snap_features(lid, W, H, wall, latch_xs, tab_xs):
     nose_top = tab_top + P["TAB_NOSE"]
     for x in tab_xs:
         tab = box(x - P["TAB_W"] / 2, x + P["TAB_W"] / 2, -EPS, P["TAB_L"], tab_bot, tab_top)
-        # one 45 deg hook face from the tab top to the nose top (printable with the lid face down), short flat top
         nose = prism_yz([(nose_y0, tab_top - EPS), (nose_y1, tab_top - EPS), (nose_y1, nose_top), (nose_y0 + P["TAB_NOSE"], nose_top)],
                         x - P["TAB_W"] / 2, x + P["TAB_W"] / 2)
         lid = lid.union(tab).union(nose)
     return lid
 
-def body_snap_features(body, W, H, wall, y_back, latch_xs, tab_xs):
-    """Latch pockets and release pinholes in the bottom wall; hinge ledges on the top wall inner face."""
-    lg = latch_geom()
-    w = P["LATCH_W"] + 2 * P["LATCH_CLR"]
-    for x in latch_xs:
-        body = body.cut(box(x - w / 2, x + w / 2, lg["pocket_y0"], lg["pocket_y1"], P["LATCH_SKIN"], wall + 1.0))
-        body = body.cut(cyl_z(x, lg["pin_y"], P["RELEASE_D"], -1.0, wall + 1.0))
-        body = body.cut(cyl_z(x, lg["pin_y"], P["PIN_RING_D"], -1.0, P["PIN_RING_DEPTH"]))    # touch-find ring on the outside
+def body_snap_features(body, W, H, wall, y_back, arms, tab_xs):
+    """Spring arms cut into the bottom wall (one slot along X behind the arm, one end slot; the arm runs out to the rim),
+    each with a window for the lid's hook and a pull lip underneath; hinge ribs on the top wall."""
+    aw, at, sl = P["ARM_W"], P["ARM_T"], P["ARM_SLOT"]
+    ww, wy0, wy1 = P["ARM_WIN"]
+    ty, tz = P["ARM_TAB"]
+    ll, lp = P["ARM_LIP"]
+    for (rx, d) in arms:
+        g = arm_geom(rx, d)
+        xa, xb = sorted((g["root"], g["slot_far"]))
+        body = body.cut(box(xa, xb, aw, aw + sl, -1.0, wall + EPS))                       # slot behind the arm
+        ea, eb = sorted((g["tip"], g["slot_far"]))
+        body = body.cut(box(ea, eb, -1.0, aw + sl, -1.0, wall + EPS))                     # end slot out to the rim
+        ta, tb = sorted((g["root"] + d * 3.0, g["tip"]))
+        body = body.cut(box(ta, tb, -1.0, aw, -1.0, wall - at))                           # thin the arm from outside
+        body = body.cut(box(g["win_cx"] - ww / 2, g["win_cx"] + ww / 2, wy0, wy1, -1.0, wall + EPS))   # window for the hook
+        # lead-in chamfer on the rim's inner edge so the hook's ramp rides up the arm
+        body = body.cut(prism_yz([(-0.1, wall + 0.1), (-0.1, wall - 0.8), (0.8, wall + 0.1)], ta, tb))
+        # breakaway tab across the end slot at the arm's back edge: the arm's first layers bridge root to tab
+        body = body.union(box(ea - EPS, eb + EPS, aw - ty, aw, wall - at + 0.3, wall - at + 0.3 + tz))
+        # pull lip under the tip, 45 deg on the side that prints first
+        la, lb = sorted((g["tip"] - d * 0.5, g["tip"] - d * (0.5 + ll)))
+        z_out = wall - at
+        body = body.union(prism_yz([(0.5, z_out + EPS), (0.5, -lp), (4.5, -lp), (4.5 + z_out + lp, z_out + EPS)], la, lb))
     # hinge: a rib along the top wall from Y=TAB_RIB_Y0 to the back wall (grows from the bed, stiffens the wall) with the
     # nose pocket cut through its full height (a bridge on 2.5 mm cheeks); the pocket reaches TAB_POCKET_UP into the wall
     y0 = P["TAB_RIB_Y0"]
@@ -426,7 +461,8 @@ def hanger_geom():
     """Derived hanger positions shared by body, lid, bar, backplate and references."""
     W, H, D, wall, lt = P["H_W"], P["H_H"], P["H_D"], P["WALL"], P["LID_T"]
     g = dict(W=W, H=H, D=D, wall=wall, y_back=D - wall, lid_t=lt,
-             x0=wall + P["USB_SETBACK"], zc=P["H_BRD_ZC"], pcb_top=P["H_PCB_TOP_Y"])
+             x0=wall + P["H_USB_SETBACK"], zc=P["H_BRD_ZC"],
+             pcb_top=-lt + P["BEZEL_T"] + P["OLED_GAP"] + P["OLED_H_MAX"])       # glass (at most OLED_H_MAX above the PCB) just behind the bezel
     g["bulk"] = P["BULK_Z"]
     # the wall face is at Y = D + BP_T; the bar runs from there forward to the lip
     g["wall_y"] = D + P["BP_T"]
@@ -476,7 +512,7 @@ def build_hanger_body():
     for (nx0, nx1) in ((wall - 1, wall + 7.5), (W - wall - 7.5, W - wall + 1)):
         body = body.cut(box(nx0, nx1, 12.0, yb + 1, bz0 - 1, bz1 + 1))
     # snap-fit lid: latch pockets + release pinholes in the bottom wall, hinge ledges on the top wall
-    body = body_snap_features(body, W, H, wall, yb, P["H_LATCH_XS"], P["H_TAB_XS"])
+    body = body_snap_features(body, W, H, wall, yb, P["H_ARMS"], P["H_TAB_XS"])
     # keyhole peg pockets in 10 mm bosses on the back wall (pegs live on the backplate)
     stem_pass = P["PEG_STEM_L"] - 0.2
     head_ch = P["PEG_HEAD_L"] + 0.7
@@ -488,7 +524,7 @@ def build_hanger_body():
         for pz in P["PEG_ZS"]:
             body = body.union(box(px - 8, px + 8, D - boss_t, yb + EPS, pz - drop - head_w / 2 - 2, pz + 8))
     # board cradle (USB end against the left wall)
-    body = body.union(board_cradle(g["x0"], g["zc"], g["pcb_top"], yb, wall))
+    body = body.union(board_cradle(g["x0"], g["zc"], g["pcb_top"], yb, wall, setback=P["H_USB_SETBACK"]))
     # 21700 holder bay: 3 mm ribs 8 mm tall, lead gaps in both end ribs, ends of the top rib open
     hx0 = P["HOLDER_X0"] - P["HOLDER_CLR"]; hx1 = P["HOLDER_X0"] + P["HOLDER_L"] + P["HOLDER_CLR"]
     hz0 = P["HOLDER_Z0"] - P["HOLDER_CLR"]; hz1 = P["HOLDER_Z0"] + P["HOLDER_W"] + P["HOLDER_CLR"]
@@ -550,15 +586,16 @@ def build_hanger_lid():
     bz0, bz1 = g["bulk"]
     uy = g["pcb_top"] - P["USB_OPEN_CY"]
     cutouts = ((-1, 6, bz0 - 0.5, bz1 + 0.5), (W - 6, W + 1, bz0 - 0.5, bz1 + 0.5),
-               (-1, 6, g["zc"] - P["USB_SLOT_W"] / 2 - 0.5, g["zc"] + P["USB_SLOT_W"] / 2 + 0.5),
                (5.0, W - 5.0, H - wall - P["TONGUE_CLR"] - P["TONGUE_T"] - 0.5, H + 1))   # top segment relieved: the tabs locate the top edge and the lid must pivot there
     lid = lid.union(lid_tongue(W, H, wall, (), cutouts))
-    lid = lid_snap_features(lid, W, H, wall, P["H_LATCH_XS"], P["H_TAB_XS"])
+    # USB shutter: the lip runs unbroken past the USB notch and is deepened there, so the side stays closed with the lid on.
+    # The USB-C port is reached with the lid off (the display sits in the lid, so a plug would foul the lid anyway).
+    o = wall + P["TONGUE_CLR"]
+    notch_y = uy + P["USB_SLOT_H"] / 2
+    lid = lid.union(box(o, o + P["TONGUE_T"], -EPS, notch_y + 0.3, g["zc"] - P["USB_SLOT_W"] / 2 - 1.0, g["zc"] + P["USB_SLOT_W"] / 2 + 1.0))
+    lid = lid_snap_features(lid, W, H, wall, P["H_ARMS"], P["H_TAB_XS"])
     lid = lid.union(lid_header_ribs(g["x0"], g["zc"], g["pcb_top"]))
-    lid = lid_board_features(lid, g["x0"], g["zc"], g["pcb_top"], lt)
-    # label recess
-    lx0, lx1, lz0, lz1, ld = P["LABEL"]
-    lid = lid.cut(box(lx0, lx1, -lt - 1, -lt + ld, lz0, lz1))
+    lid = lid_board_features(lid, g["x0"], g["zc"], g["pcb_top"], lt, flush=True)
     return lid
 
 def build_hanger_bar():
@@ -665,15 +702,8 @@ def hanger_refs():
     # stub antenna rod in the clips
     az0 = (P["ANT_ZS"][0] + P["ANT_ZS"][1]) / 2 - P["ANT_L"] / 2
     refs["stub_antenna"] = (cyl_z(P["ANT_X"], P["ANT_Y"], P["ANT_D"], az0, az0 + P["ANT_L"]), (0.2, 0.2, 0.2))
-    # USB-C plug overmold in the port (shows the reach)
-    uy = g["pcb_top"] - P["USB_OPEN_CY"]
-    plug = box(-22.0, -3.0, uy - 3.25, uy + 3.25, g["zc"] - 6.2, g["zc"] + 6.2)
-    plug = plug.union(box(-3.5, 3.4, uy - 1.2, uy + 1.2, g["zc"] - 4.1, g["zc"] + 4.1))
-    refs["usb_plug"] = (plug, (0.5, 0.5, 0.5))
-    # clear window insert
-    cxw = g["x0"] + P["OLED_ACT_CX"]; czw = g["zc"] + P["OLED_ACT_CY"]
-    refs["window_insert"] = (box(cxw - P["INSERT_W"] / 2 + 0.1, cxw + P["INSERT_W"] / 2 - 0.1, -P["INSERT_POCKET"], -P["INSERT_POCKET"] + P["INSERT_T"],
-                                 czw - P["INSERT_H"] / 2 + 0.1, czw + P["INSERT_H"] / 2 - 0.1), (0.7, 0.9, 1.0))
+    # no USB plug and no window insert in the hanger assembly: the port is used with the lid off, and the display's own glass
+    # sits behind the bezel
     return refs
 
 # --------------------------------------------------------------------------------------
@@ -692,7 +722,7 @@ def build_gateway_body():
     W, H, D, wall, yb = g["W"], g["H"], g["D"], g["wall"], g["y_back"]
     body = rbox_y(0, W, 0, D, 0, H, P["CORNER_R"])
     body = body.cut(rbox_y(wall, W - wall, -1, yb, wall, H - wall, P["CORNER_R"] - wall))
-    body = body_snap_features(body, W, H, wall, yb, P["G_LATCH_XS"], P["G_TAB_XS"])
+    body = body_snap_features(body, W, H, wall, yb, P["G_ARMS"], P["G_TAB_XS"])
     body = body.union(board_cradle(g["x0"], g["zc"], g["pcb_top"], yb, wall))
     # USB-C cable entry: notch in the left wall open to the front (cable drops in, lid closes it)
     cy, cz, nw = g["cable_y"], g["cable_z"], P["G_CABLE_NOTCH_W"]
@@ -733,14 +763,12 @@ def build_gateway_lid():
     cutouts = ((-1, 6, cz - P["G_CABLE_NOTCH_W"] / 2 - 0.5, cz + P["G_CABLE_NOTCH_W"] / 2 + 0.5),
                (5.0, W - 5.0, H - wall - P["TONGUE_CLR"] - P["TONGUE_T"] - 0.5, H + 1))
     lid = lid.union(lid_tongue(W, H, wall, (), cutouts))
-    lid = lid_snap_features(lid, W, H, wall, P["G_LATCH_XS"], P["G_TAB_XS"])
+    lid = lid_snap_features(lid, W, H, wall, P["G_ARMS"], P["G_TAB_XS"])
     lid = lid.union(lid_header_ribs(g["x0"], g["zc"], g["pcb_top"]))
     lid = lid_board_features(lid, g["x0"], g["zc"], g["pcb_top"], lt)
     # knock-out for a 12 mm panel button on GPIO3 (factory reset), skin left outside
     bx, bz, bd = P["G_BTN_KO"]
     lid = lid.cut(cyl_y(bx, bz, bd, -lt + P["KNOCKOUT_SKIN"], 1))
-    lx0, lx1, lz0, lz1, ld = P["G_LABEL"]
-    lid = lid.cut(box(lx0, lx1, -lt - 1, -lt + ld, lz0, lz1))
     return lid
 
 def gateway_refs():
@@ -925,8 +953,6 @@ def design_checks(hg, gg):
     out.append((P["G_SMA"][0] - P["SMA_PAD_D"] / 2 >= gg["x0"] + P["BRD_L"] + 5.0 - 10.0, "gateway: SMA pad right of the board antenna end"))
 
     # ---- v9 snap-fit rules -------------------------------------------------------------
-    lg = latch_geom()
-    eps_latch = 100.0 * 1.5 * (P["LATCH_BARB"] + P["LATCH_CLR"]) * P["LATCH_T"] / P["LATCH_L"] ** 2
     head_w = P["PEG_HEAD_D"] + 2 * P["PEG_HEAD_CLR"]
     rib_top = P["HOLDER_Z0"] + P["HOLDER_W"] + P["HOLDER_CLR"] + P["HOLDER_RIB_T"]
     out.append((min(P["PEG_ZS"]) - P["PEG_DROP"] - head_w / 2 >= rib_top, "keyhole head chamber (z>=%.1f) below the lower pegs clears the holder's top rib (z<=%.1f)" % (min(P["PEG_ZS"]) - P["PEG_DROP"] - head_w / 2, rib_top)))
@@ -934,23 +960,36 @@ def design_checks(hg, gg):
     bp_z0 = (hg["H"] - P["BP_H"]) / 2
     out.append((bp_z0 <= P["DT_H"] and bp_z0 >= 1.0, "backplate bottom edge z=%.1f covers the bar channel mouth (z 0..%.1f)" % (bp_z0, P["DT_H"])))
     out.append((abs((P["DT_TOP"] - P["DT_MOUTH"]) - 2 * P["DT_H"]) < 0.01, "dovetail flanks are 45 deg (top - mouth = 2 x height), self-supporting when the bar prints upright"))
-    out.append((eps_latch <= P["SNAP_STRAIN_MAX"], "lid latch strain %.2f %% (1.5*y*t/L^2, y=%.2f t=%.1f L=%.0f; <= %.1f %%)" % (eps_latch, P["LATCH_BARB"] + P["LATCH_CLR"], P["LATCH_T"], P["LATCH_L"], P["SNAP_STRAIN_MAX"])))
     eps_catch = 100.0 * 1.5 * (P["CATCH_NOSE"] + 0.4) * P["CATCH_T"] / P["CATCH_L"] ** 2
     out.append((eps_catch <= P["SNAP_STRAIN_MAX"], "backplate catch strain %.2f %% (y=%.1f t=%.1f L=%.0f; <= %.1f %%)" % (eps_catch, P["CATCH_NOSE"] + 0.4, P["CATCH_T"], P["CATCH_L"], P["SNAP_STRAIN_MAX"])))
     out.append((P["CATCH_GAP"] >= P["CATCH_NOSE"] + 0.5, "catch free space %.1f mm >= nose %.1f + 0.5" % (P["CATCH_GAP"], P["CATCH_NOSE"])))
     out.append((P["CATCH_NOSE"] >= wall - 0.5, "catch nose %.1f mm reaches into the %.1f mm back wall (>= wall - 0.5)" % (P["CATCH_NOSE"], wall)))
     out.append((P["BP_T"] - P["CATCH_T"] - P["CATCH_GAP"] >= 3.0, "backplate left behind the catch pocket = %.1f mm (>= 3)" % (P["BP_T"] - P["CATCH_T"] - P["CATCH_GAP"])))
     o = wall + P["TONGUE_CLR"]
-    barb_tip = o - P["LATCH_BARB"]
-    out.append((barb_tip >= P["LATCH_SKIN"] + 0.3, "latch barb tip z=%.2f clears the pocket floor (skin %.1f + 0.3)" % (barb_tip, P["LATCH_SKIN"])))
-    out.append((P["LATCH_SKIN"] >= 1.0, "wall under the latch pocket = %.1f mm (>= 1.0)" % P["LATCH_SKIN"]))
-    flexed_top = o + P["LATCH_T"] + P["LATCH_BARB"] + P["LATCH_CLR"]
-    out.append((flexed_top <= holder_bot, "latch finger flexed top z=%.2f stays under the holder (z=%.1f)" % (flexed_top, holder_bot)))
-    for x in P["H_LATCH_XS"]:
-        clear = abs(x - W / 2) - P["LATCH_W"] / 2 - P["LATCH_CLR"] - P["DT_STRIP_W"] / 2
-        out.append((clear >= 1.0, "hanger latch at x=%.0f clears the bar channel strip by %.1f mm" % (x, clear)))
-    rib_y = hg["y_back"] - P["HOLDER_RIB_H"]
-    out.append((lg["pocket_y1"] + 1.0 <= rib_y, "latch fingers (Y<=%.1f) run under the holder and stop before its bay ribs (Y>=%.1f)" % (lg["pocket_y1"], rib_y)))
+    # wall-arm latches (the spring is in the body, printed along its length)
+    eps_arm = 100.0 * 1.5 * P["HOOK_BARB"] * P["ARM_T"] / P["ARM_L"] ** 2
+    out.append((eps_arm <= P["SNAP_STRAIN_MAX"], "wall arm strain %.2f %% (1.5*y*t/L^2, y=%.1f t=%.1f L=%.0f; <= %.1f %%), bending along the layers" % (eps_arm, P["HOOK_BARB"], P["ARM_T"], P["ARM_L"], P["SNAP_STRAIN_MAX"])))
+    out.append((P["ARM_WIN"][1] >= 4.0, "arm material in front of the hook window = %.1f mm (>= 4): this strip takes the pull on the lid" % P["ARM_WIN"][1]))
+    out.append((P["ARM_W"] - P["ARM_WIN"][2] >= 1.5, "arm material behind the window = %.1f mm (>= 1.5)" % (P["ARM_W"] - P["ARM_WIN"][2])))
+    out.append((P["HOOK_CATCH_Y"] - P["ARM_WIN"][1] >= 0.15 and P["ARM_WIN"][2] - P["HOOK_L"] >= 0.15, "hook (Y %.1f..%.1f) sits inside the window (Y %.1f..%.1f) with clearance" % (P["HOOK_CATCH_Y"], P["HOOK_L"], P["ARM_WIN"][1], P["ARM_WIN"][2])))
+    out.append((P["ARM_WIN"][0] >= P["HOOK_W"] + 0.8, "window %.1f wide passes the %.1f mm hook" % (P["ARM_WIN"][0], P["HOOK_W"])))
+    out.append((wall - P["ARM_T"] <= (wall + P["TONGUE_CLR"]) - P["HOOK_BARB"], "hook tip z=%.2f stays inside the arm thickness (outer face z=%.2f): nothing sticks out under the box" % ((wall + P["TONGUE_CLR"]) - P["HOOK_BARB"], wall - P["ARM_T"])))
+    out.append((wall + P["TONGUE_CLR"] + P["HOOK_T"] + 0.2 <= holder_bot, "hook top z=%.2f under the battery holder (z=%.1f)" % (wall + P["TONGUE_CLR"] + P["HOOK_T"], holder_bot)))
+    for (rx, d) in P["H_ARMS"]:
+        g = arm_geom(rx, d)
+        lo, hi = sorted((g["root"], g["slot_far"]))
+        clear = min(abs(lo - W / 2), abs(hi - W / 2)) - P["DT_STRIP_W"] / 2
+        out.append((clear >= 0.5 and lo >= P["CORNER_R"] + 1.0 and hi <= W - P["CORNER_R"] - 1.0, "hanger wall arm x %.1f..%.1f clears the bar channel strip by %.1f mm and the corner radii" % (lo, hi, clear)))
+    out.append((P["ARM_W"] + P["ARM_SLOT"] + 10.0 <= hg["y_back"] - P["HOLDER_RIB_H"], "arm slot (Y<=%.1f) is well in front of the holder bay ribs (Y>=%.1f)" % (P["ARM_W"] + P["ARM_SLOT"], hg["y_back"] - P["HOLDER_RIB_H"])))
+    # flush display
+    glass = hg["pcb_top"] - P["OLED_H_MAX"]
+    out.append((abs(glass - (-hg["lid_t"] + P["BEZEL_T"] + P["OLED_GAP"])) < 0.01, "display glass (tallest case %.1f mm above the PCB) sits %.1f mm behind a %.1f mm bezel: %.1f mm below the face (was 5.5)" % (P["OLED_H_MAX"], P["OLED_GAP"], P["BEZEL_T"], P["BEZEL_T"] + P["OLED_GAP"])))
+    out.append((P["OLED_POCKET"][0] >= (P["OLED_X1"] - P["OLED_X0"]) + 1.0 and P["OLED_POCKET"][1] / 2 - abs(P["OLED_ACT_CY"]) >= P["OLED_HALF_W"] + 0.3, "lid pocket %.0f x %.1f takes the %.1f x %.1f display module" % (P["OLED_POCKET"][0], P["OLED_POCKET"][1], P["OLED_X1"] - P["OLED_X0"], 2 * P["OLED_HALF_W"])))
+    out.append((P["WIN_W"] <= (P["OLED_X1"] - P["OLED_X0"]) - 2.0 and P["WIN_H"] <= 2 * P["OLED_HALF_W"] - 2.0, "window %g x %g is smaller than the glass, so the bezel frames it and hides its edges" % (P["WIN_W"], P["WIN_H"])))
+    out.append((hg["lid_t"] - (P["IPEX_H"] + P["UFL_PLUG_H"] + 0.4 - hg["pcb_top"]) >= 1.5, "lid left over the U.FL relief = %.1f mm (>= 1.5)" % (hg["lid_t"] - (P["IPEX_H"] + P["UFL_PLUG_H"] + 0.4 - hg["pcb_top"]))))
+    out.append((hg["pcb_top"] - P["BTN_H"] >= 0.5, "PRG/RST button tops Y=%.1f clear the lid inner face" % (hg["pcb_top"] - P["BTN_H"])))
+    nose = hg["x0"] - P["USB_NOSE"]
+    out.append((nose >= wall + P["TONGUE_CLR"] + P["TONGUE_T"] + 0.3, "USB nose x=%.2f sits behind the lid's lip (x<=%.2f), so the lip closes the side notch" % (nose, wall + P["TONGUE_CLR"] + P["TONGUE_T"])))
     tab_top = H - wall - P["TONGUE_CLR"] - P["TONGUE_T"]
     tab_bot = tab_top - P["TONGUE_T"] - 0.25
     nose_top = tab_top + P["TAB_NOSE"]
@@ -979,8 +1018,10 @@ def design_checks(hg, gg):
         d = math.hypot(px - P["CATCH_X"], pz - (hg["win_z0"] + hg["win_z1"]) / 2)
         out.append((d >= 15.0, "catch window to peg (%.0f, %.0f): %.1f mm (>= 15)" % (px, pz, d)))
     gv = P["G_VENT"]
-    for x in P["G_LATCH_XS"]:
-        out.append((x + P["LATCH_W"] / 2 + P["LATCH_CLR"] + 2.0 <= gv["bot_x0"], "gateway latch at x=%.0f clears the intake vents (x>=%.0f)" % (x, gv["bot_x0"])))
+    for (rx, d) in P["G_ARMS"]:
+        g = arm_geom(rx, d)
+        lo, hi = sorted((g["root"], g["slot_far"]))
+        out.append((hi + 2.0 <= gv["bot_x0"] and lo >= P["CORNER_R"] + 1.0, "gateway wall arm x %.1f..%.1f is left of the intake vents (x>=%.0f)" % (lo, hi, gv["bot_x0"])))
     vent_x1 = gv["top_x0"] + (gv["n"] - 1) * gv["pitch"] + gv["len"]
     for x in P["G_TAB_XS"]:
         rib_x0 = x - P["TAB_W"] / 2 - P["TAB_RIB_SIDE"]
@@ -994,8 +1035,7 @@ def design_checks(hg, gg):
 def write_readme(out_dir, hg, gg):
     sy = hg["sensor_y"]
     gap = hg["saddle_floor"] + P["TAG_CLR"] + P["TAG_WALL"] - (hg["sensor_z"] + P["SOT23"][2] / 2)
-    lg = latch_geom()
-    txt = """HazardLink v9 enclosures: NO SCREWS in the assembly. Generated by hazardlink_enclosures.py.
+    txt = """HazardLink v9.2 enclosures: NO SCREWS in the assembly; springs in the body wall, display flush with the face. Generated by hazardlink_enclosures.py.
 Frame: X right, Z up, Y from the front face into the wall. Wall face at Y=%.0f.
 
 FILES
@@ -1009,13 +1049,17 @@ FILES
 
 HOW THE PARTS HOLD TOGETHER (v9)
   Lids (both units): two rigid hinge tabs on the lid's top edge reach %.0f mm in and hook into pockets in a rib along the
-    top wall; two spring latches on the bottom edge (%.0f x %.2f mm fingers, %.0f mm long, %.1f mm barb, 55 deg catch face)
-    click into pockets in the bottom wall. Strain at full deflection is under %.0f %%, so they survive repeated use in PETG.
-    Fit: hold the lid tilted (bottom edge out), push the top tabs into the rib pockets, swing the bottom edge in until both
-    latches click. Open: lift the sign off the bar first (the release holes sit inside its footprint), push a paperclip
-    (%.1f mm holes in the bottom face at Y=%.1f, each in a shallow 4 mm ring you can find by touch) into ONE hole, ease that
-    corner of the lid out 1 mm, do the other, pull the bottom edge out about 25 mm (12 degrees) until the top tabs drop free,
-    then take the lid away.
+    top wall. At the bottom the SPRING is in the body: two arms cut into the bottom wall (%.0f long x %.1f wide x %.1f thick,
+    printed along their length so they bend along the layers, strain under %.1f %%). Each arm has a window; the lid carries a
+    rigid %.0f mm hook with a %.1f mm barb that drops into it. Nothing on the lid flexes, so nothing on the lid can snap.
+    First use: push each arm tip down once with a screwdriver to break its small moulding tab (it is there so the arm
+    prints cleanly). Fit: top tabs into the rib pockets, swing the bottom edge in until both hooks click.
+    Open: pull the lip under one arm tip down about 1 mm with a fingernail or coin, ease that corner of the lid out, do the
+    other, pull the bottom edge out about 25 mm until the top tabs drop free, then take the lid away.
+  Display (hanger): the board sits right up behind the lid so the display glass is %.1f mm below the face behind a %.1f mm
+    bezel (it was 5.5 mm down a well). The pocket allows for a display up to %.1f mm tall above the PCB; measure yours
+    (PCB top to glass top) and set OLED_H_MAX to it to close the last of the gap. The USB-C port is reached with the lid
+    off: a plug cannot share the space with a flush display, and the lid's lip now closes the side notch.
   Hook bar to hanger body: the bar's plate is a dovetail (%.1f wide at the mouth, %.1f at the top, %.1f tall, 45 deg flanks)
     that slides into a channel in the body's bottom wall FROM THE WALL SIDE. The channel is closed at the front and the
     backplate covers its mouth, so with the body hung the bar cannot come out. The sign's weight is carried by the dovetail
@@ -1026,11 +1070,9 @@ HOW THE PARTS HOLD TOGETHER (v9)
     backplate's front face (%.0f x %.0f mm, %.1f thick, root at the bottom) carries a nose that springs into a %.1f x %.1f window
     through the body's back wall as the body drops home; the body cannot be lifted until the nose is pushed back through
     the window from inside, which needs the lid off. Same tamper resistance as the old security screw for that step.
-  Tamper note: the old lid needed pin-Torx screws; this one opens with a paperclip, but only after the sign has been lifted
-    off the bar, which the Hall sensor reports. Firmware rule: a sign-removed event followed by a lid-open or a lift within
-    a few minutes is a service visit, anything else is a tamper alarm. If a harder gate is ever wanted, one latch can be
-    changed to a magnet-released catch without touching the rest of the design.
-  Board: rests on rails, clamped by the lid ribs. Battery: holder in its ribbed bay, held by the lid. Window insert: cleats.
+  Tamper note: the lid opens by hand from underneath (two pull lips). With a sign hung they sit behind the sign's top edge.
+    Firmware rule: a lid-open or a lift without a service login is a tamper alarm.
+  Board: rests on rails, clamped by the lid ribs. Battery: holder in its ribbed bay, held by the lid.
   Hall carrier: slot in the bar. Wall screws (4 in the backplate, 3 for the gateway keyholes) are the only screws left; they
   fix to the building, not to each other. The gateway's SMA nut is part of the bought connector.
 
@@ -1045,8 +1087,8 @@ slack from inside.
 
 HANGER SERVICE SEQUENCE (unit stays on the wall)
   0. Lift the sign off the bar (the system logs a sign-removed event; service mode suppresses the alarm).
-  1. Paperclip into one release hole, ease that corner out 1 mm, then the other; pull the bottom edge out until the top tabs
-     drop free and take the lid away.
+  1. Pull the lip under one wall arm down 1 mm, ease that corner of the lid out, then the other; pull the bottom edge out until
+     the top tabs drop free and take the lid away.
   2. The 21700 cell sits in its holder facing you: push it against the spring end and lift it out. Fit the new cell, same polarity.
   3. To swap the board: lift the antenna end of the board off its rail, unplug the U.FL antenna, the JST-PH Hall plug and the
      JST 1.25 battery plug from the exposed underside, lift the board out. No screws hold the board: it rests on the rails and
@@ -1064,11 +1106,11 @@ HANGER SERVICE SEQUENCE (unit stays on the wall)
 GATEWAY OFF THE WALL: lid off, remove the No.8 pan head at (60, 16) from inside, lift 10 mm, pull forward.
 
 WHAT OPENS WITH WHAT
-  sign off the bar: hands.   lid: paperclip (after the sign is off).   body off the backplate: lid off + flat screwdriver.
-  bar out of the body: body off the wall.   gateway lid: paperclip.   gateway off the wall: lid off + screwdriver.
+  sign off the bar: hands.   lid: fingernail or coin on the two lips underneath.   body off the backplate: lid off + flat screwdriver.
+  bar out of the body: body off the wall.   gateway lid: the two lips underneath.   gateway off the wall: lid off + screwdriver.
 
 GATEWAY SERVICE SEQUENCE
-  1. Paperclip into the two release holes in the bottom wall, pull the bottom of the lid out, slide it down and off.
+  1. Pull each arm lip under the box down 1 mm in turn, ease the lid's bottom edge out, tilt it until the top tabs drop free.
   2. Unplug the USB-C plug (cable stays tied to the saddle), unplug the U.FL pigtail, lift the board off its rails.
 
 MAGNET DATUM (publish to the sign tag)
@@ -1080,10 +1122,9 @@ PRINTING (PETG, 0.4 nozzle, 3 perimeters, 0.2 layers)
     its closed front end is a 27 to 34 mm bridge (bridge fan 100 %%, bridge speed <= 20 mm/s); the latch pockets and pinholes
     are small vertical cavities; the hinge ribs grow from the bed and their nose pockets are 13 mm bridges; peg pocket roofs
     bridge 11.5 mm. No support.
-  hanger_lid: outer face down. The latch fingers and hinge tabs stand up from the bed; slow the outer perimeters (30 mm/s) and
-    keep the fan low on the fingers for layer bonding; set the slicer line width so 1.35 mm = 3 lines. The hook faces are 45 and
-    55 deg, no support. PRG tab and LED window are thin skins on the bed. Fit the 36 x 19.5 x 1 mm clear insert from inside
-    under the two cleats.
+  hanger_lid: outer face down. Only short rigid hooks and tabs stand up from it. The hook's catch face is a 1 mm overhang;
+    print the lid with the part fan on. PRG tab and LED window are thin skins on the bed. No window insert: the display
+    glass itself sits behind the bezel.
   hanger_bar: UPRIGHT on the bar's bottom face (lip pointing up). All bending loads are then in-plane and the dovetail flanks
     are 45 deg. Support is needed only under the front 16 mm of the plate (it overhangs the bar); use tree supports from the bed.
   hanger_backplate: back face down. The catch cavity is open to the back face on purpose: let the slicer drop support through
@@ -1098,8 +1139,10 @@ MEASURE BEFORE FREEZING (assumed values in PARAMS)
   The folded sign thickness at the handle (assumed 15 to 50): it sits between the lip and the wall either side of the saddle.
   The stub antenna diameter and length (clips are for a 6 mm rod, 60 mm long).
   The OLED active area offset (window is 30 x 16 to cover it with margin).
-  Print one lid first and check the latch click and the pin release before printing the bodies.
-""" % (hg["wall_y"], P["TAB_L"], P["LATCH_W"], P["LATCH_T"], P["LATCH_L"], P["LATCH_BARB"], P["SNAP_STRAIN_MAX"], P["RELEASE_D"], lg["pin_y"],
+  The display height above the PCB (OLED_H_MAX, assumed 5.0): measure PCB top to glass top with calipers.
+  Print the lid and a short slice of the body's bottom edge first and check the hook click before the full body.
+""" % (hg["wall_y"], P["TAB_L"], P["ARM_L"], P["ARM_W"], P["ARM_T"], P["SNAP_STRAIN_MAX"], P["HOOK_W"], P["HOOK_BARB"],
+       P["BEZEL_T"] + P["OLED_GAP"], P["BEZEL_T"], P["OLED_H_MAX"],
        P["DT_MOUTH"], P["DT_TOP"], P["DT_H"], (P["DT_TOP"] - P["DT_MOUTH"]) / 2, P["PEG_DROP"], P["CATCH_W"], P["CATCH_L"], P["CATCH_T"],
        P["CATCH_WIN"][0], P["CATCH_WIN"][1], P["BAR_REACH"], P["BAR_LIP_H"], -sy, P["BAR_WIRE_Y"][0], P["BAR_WIRE_Y"][1],
        hg["W"] / 2, sy, P["TAG_CLR"], P["TAG_WALL"], gap)
@@ -1136,6 +1179,13 @@ def main(out_dir, quick=False, autocad=True):
     print_lines = [export_print_stl(print_dir, name, wp, PRINT_ORIENT[name]) for name, wp in parts.items()]
     for l in print_lines:
         print("  " + l)
+    # test coupon: the front 14 mm of the hanger body (rim, wall arms, hinge ribs, USB notch). Prints in about 2 hours and
+    # proves the lid's hooks, hinge tabs, lip fit and USB shutter before the full body is printed.
+    coupon = h_body.intersect(box(-5, hg["W"] + 5, -1, 14.0, -5, hg["H"] + 5))
+    # keep only the ring itself: slices of the board cradle are cut loose from the back wall at this depth
+    ring = max(coupon.solids().vals(), key=lambda sol: sol.Volume())
+    coupon = cq.Workplane("XY").add(ring)
+    print_lines.append(export_print_stl(print_dir, "hanger_body_coupon", coupon, "back_down"))
     open(os.path.join(print_dir, "ORIENTATION.txt"), "w").write(
         "Print-ready STLs: build direction is +Z, each part rests on z=0 in the orientation the design assumes.\n"
         "Do not rotate them in the slicer.\n\n" + "\n".join(print_lines) + "\n")
@@ -1267,7 +1317,7 @@ def main(out_dir, quick=False, autocad=True):
     dxf_dim(msp, "h", (-hg["wall_y"], hg["bar_bot"] - 4), (-hg["lip_front"], hg["bar_bot"] - 4), hg["bar_bot"] - 10, off, "reach from wall <>")
     off = (300, -160)
     dxf_dim(msp, "v", (10, czw - P["WIN_H"] / 2), (10, czw + P["WIN_H"] / 2), 20, off, "window <>")
-    dxf_dim(msp, "h", (0, zc + 20), (-P["H_PCB_TOP_Y"], zc + 20), zc + 26, off, "PCB top from lid inner face <>")
+    dxf_dim(msp, "h", (0, zc + 20), (-hg["pcb_top"], zc + 20), zc + 26, off, "PCB top from lid inner face <>")
     doc.saveas(os.path.join(out_dir, "hanger_section.dxf"))
     doc = dxf_new(); msp = doc.modelspace()
     dxf_text(msp, "HazardLink gateway v9 assembly sections (mm)", (0, 0), (0, 0), h=5.0)
@@ -1330,12 +1380,12 @@ def main(out_dir, quick=False, autocad=True):
     write_readme(out_dir, hg, gg)
 
     # ---- manifest -----------------------------------------------------------------------
-    lines = ["HazardLink v9 enclosures (no screws, reviewed). Generated by hazardlink_enclosures.py", ""]
+    lines = ["HazardLink v9.2 enclosures (no screws; wall-arm latches; flush display). Generated by hazardlink_enclosures.py", ""]
     for name, wp in parts.items():
         lines.append("%-22s %s" % (name, bbox_str(wp)))
     lines += ["", "Key derived positions (world frame, mm):",
               "  hanger board: USB-end corners at x=%.1f, centreline z=%.1f, PCB top at Y=%.1f, OLED glass at Y=%.1f" % (x0, zc, pt, pt - P["OLED_H"]),
-              "  hanger window: %.0f x %.0f centred at (%.1f, %.1f); insert pocket %.0f x %.1f x %.1f" % (P["WIN_W"], P["WIN_H"], cxw, czw, P["INSERT_W"], P["INSERT_H"], P["INSERT_POCKET"]),
+              "  hanger window: %.0f x %.0f centred at (%.1f, %.1f); display pocket %.0f x %.1f behind a %.1f mm bezel; PCB top at Y=%.1f" % (P["WIN_W"], P["WIN_H"], cxw, czw, P["OLED_POCKET"][0], P["OLED_POCKET"][1], P["BEZEL_T"], pt),
               "  bar: %.0f wide x %.0f thick, top %.0f mm below the body bottom, reach %.0f mm from the wall face, lip %.0f tall; saddle at Y=%.0f (%.0f mm in front of the lid face)" % (P["BAR_W"], P["BAR_T"], P["BAR_DROP"], P["BAR_REACH"], P["BAR_LIP_H"], sy, -sy),
               "  magnet datum: bar centreline x=%.0f, Y=%.0f, pole face at z=%.2f (saddle floor + %.1f clearance + %.1f tag wall); sensor package top at z=%.2f; air gap %.2f mm" % (W / 2, sy, mag_face, P["TAG_CLR"], P["TAG_WALL"], sens_top, mag_face - sens_top),
               "  gateway board: USB-end corners at x=%.1f, centreline z=%.1f; SMA at (%.0f, %.0f) on the top wall; cable notch at z=%.0f" % (gx0, gzc, P["G_SMA"][0], P["G_SMA"][1], gg["cable_z"]),
