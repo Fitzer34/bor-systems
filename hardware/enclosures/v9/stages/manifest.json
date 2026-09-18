@@ -17,7 +17,7 @@
  },
  {
   "file": "S1_body",
-  "colour": 8
+  "colour": 252
  },
  {
   "file": "S1_bar",
@@ -37,7 +37,7 @@
  },
  {
   "file": "S2_body",
-  "colour": 8
+  "colour": 252
  },
  {
   "file": "S2_bar",
@@ -57,7 +57,7 @@
  },
  {
   "file": "S3_body",
-  "colour": 8
+  "colour": 252
  },
  {
   "file": "S3_bar",
@@ -93,7 +93,7 @@
  },
  {
   "file": "S4_body",
-  "colour": 8
+  "colour": 252
  },
  {
   "file": "S4_bar",
@@ -121,7 +121,7 @@
  },
  {
   "file": "S4_lid",
-  "colour": 9
+  "colour": 251
  },
  {
   "file": "S4_logo",
@@ -137,7 +137,7 @@
  },
  {
   "file": "S5_body",
-  "colour": 8
+  "colour": 252
  },
  {
   "file": "S5_bar",
@@ -149,7 +149,7 @@
  },
  {
   "file": "S5_lid",
-  "colour": 9
+  "colour": 251
  },
  {
   "file": "S5_logo",
@@ -173,7 +173,7 @@
  },
  {
   "file": "S6_body",
-  "colour": 8
+  "colour": 252
  },
  {
   "file": "S6_bar",
@@ -181,7 +181,7 @@
  },
  {
   "file": "S6_lid",
-  "colour": 9
+  "colour": 251
  },
  {
   "file": "S6_logo",
@@ -197,7 +197,7 @@
  },
  {
   "file": "S7_lid",
-  "colour": 9
+  "colour": 251
  },
  {
   "label": "6 (SEEN FROM BEHIND) THE LID ALONE: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET, BUTTON PADS WITH THEIR PINS",

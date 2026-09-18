@@ -107,7 +107,7 @@ GATEWAY SERVICE SEQUENCE
 
 MAGNET DATUM (publish to the sign tag)
   Magnet on the bar centreline (x=50), centred on the saddle (Y=-2), pole face parallel to the saddle floor, facing down,
-  with 1.0 mm running clearance and a 1.2 mm tag wall (assumed). Air gap magnet face to Hall package top = 3.90 mm.
+  with 1.0 mm running clearance and a 1.2 mm tag wall (assumed). Air gap magnet face to Hall package top = 4.15 mm.
 
 PRINTING (PETG, 0.4 nozzle, 3 perimeters, 0.2 layers)
   hanger_body: back face down, open front up. The dovetail channel runs along the print direction so its flanks print clean;

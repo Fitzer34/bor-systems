@@ -8,10 +8,10 @@ gateway_body           X -0.0..120.0  Y -0.0..30.0  Z -1.2..80.0  (120.0 x 30.0 
 gateway_lid            X -0.0..120.0  Y -3.0..14.0  Z -0.0..80.0  (120.0 x 17.0 x 80.0 mm)
 
 Key derived positions (world frame, mm):
-  hanger board: USB-end corners at x=3.5, centreline z=104.0, PCB top at Y=4.2, OLED glass at Y=-0.8
+  hanger board: USB-end corners at x=3.5, centreline z=104.0, PCB top at Y=4.2, OLED glass at Y=-1.4
   hanger window: 30 x 16 centred at (34.8, 104.5); display pocket 36 x 20.4 behind a 1.0 mm bezel; PCB top at Y=4.2
   bar: 95 wide x 10 thick, top 30 mm below the body bottom, reach 70 mm from the wall face, lip 20 tall; saddle at Y=-2 (2 mm in front of the lid face)
-  magnet datum: bar centreline x=50, Y=-2, pole face at z=-29.80 (saddle floor + 1.0 clearance + 1.2 tag wall); sensor package top at z=-33.70; air gap 3.90 mm
+  magnet datum: bar centreline x=50, Y=-2, pole face at z=-29.80 (saddle floor + 1.0 clearance + 1.2 tag wall); sensor package top at z=-33.95; air gap 4.15 mm
   gateway board: USB-end corners at x=46.0, centreline z=42.0; SMA at (104, 15) on the top wall; cable notch at z=42
 
-Elapsed 14 s
+Elapsed 16 s

@@ -53,7 +53,7 @@ P = dict(
                             # On this board the USB-C port sits between the two buttons at the very end, so port-at-the-edge,
                             # wide pads and a centred display cannot all be had: the display sits left of centre instead.
     H_PAD_V=(5.8, 17.5, 2.6, 0.5),   # assumed: hanger pads run vertically above and below the port: pad left edge x, pad height, pin diameter, pin x offset
-    USB_LID_SKIN=0.75,      # assumed: lid face left over the plug's overmold where the opening runs into the lid edge
+    USB_LID_SKIN=1.4,       # review: seven layers left over the plug's overmold where the opening runs into the lid edge (the plug sits 1 mm deeper since v9.7, so 0.75 was needlessly fragile)
     # v9.3 buttons: each is a flap cut into the lid (U-slot through, thin hinge at the root) with a pin over the switch
     BTN_PAD=(24.0, 15.0, 1.6, 0.8, 4.0, 0.8),   # assumed: pad length (X), height (Z), pad thickness, hinge thickness, hinge length, slot width
     BTN_PAD_X1=11.3,        # assumed: pad free end, measured from the board's USB-end corners (2 mm short of the display pocket)
@@ -71,7 +71,7 @@ P = dict(
     COIL=(13.75, 7.3, 3.3, 5.9),   # Owen's side photo: WiFi coil antenna STANDING on the board between the USB end and the display (Xb 12.1 to 15.4, about 3.3 dia,
                             # 5.9 tall). Its position across the board (Yb) is NOT visible in that photo; 7.3 is where Heltec's V3.2 puts its RF part. Confirm with a top photo.
     BEZEL_T=1.0, OLED_POCKET=(36.0, 20.4), OLED_GAP=0.2,   # assumed: front skin left around the window, pocket for the display module (X, Z), clearance glass to bezel
-    OLED_X0=14.9, OLED_X1=47.9, OLED_HALF_W=9.28, OLED_H=5.0,    # datasheet envelope
+    OLED_X0=14.9, OLED_X1=47.9, OLED_HALF_W=9.28, OLED_H=5.6,    # datasheet envelope; height from Owen's side photo
     OLED_ACT_CX=31.3, OLED_ACT_CY=0.5,       # research: window centre (active area ~1 mm toward +Yb)
     WIN_W=30.0, WIN_H=16.0,                  # research: conservative window showing the whole picture
     INSERT_W=36.0, INSERT_H=19.5, INSERT_T=1.0, INSERT_POCKET=1.3,   # assumed 1 mm acrylic or PETG pane
@@ -160,9 +160,11 @@ P = dict(
     BAR_GUSSET=8.0, BAR_GUSSET_W=2.0,    # assumed: short side gussets at the lip root
     HALL_PKG=(4.1, 3.0, 1.5),         # Owen's caliper photo: the lift sensor is a BARE flat 3-leg Hall sensor (TO-92S style), body about 4.1 wide x 3.0 x 1.5 thick, no carrier board
     HALL_LEG=(0.45, 1.27, 14.0),      # datasheet TO-92S: leg width, pitch, length (the wires are soldered to the legs and sleeved)
-    HALL_NEST_CLR=(0.25, 0.3, 0.2),   # assumed: nest clearance each side, in front, above and below the package
+    HALL_NEST_CLR=(0.25, 0.3, 0.35),  # review: nest clearance each side, in front, above and below the package (0.35 so a sagging bridge cannot jam it, and every level of the cavity lands on a 0.2 mm layer)
     HALL_TUNNEL_W=8.6,                # v9: tunnel behind the nest for the legs and the three sleeved solder joints
-    HALL_SLOT_H=3.0, HALL_SKIN=1.5, HALL_WIRE_H=4.5,   # assumed
+    HALL_SLOT_H=3.0, HALL_SKIN=1.6, HALL_WIRE_H=4.4,   # review: values that put the roof, floors and trench on 0.2 mm layer boundaries with the bar printed upright
+    HALL_PIN_PUSH_D=2.0,              # review: small hole under each pin through the bar's underside, to push a pin out and to drain
+    HALL_FUNNEL_Y=4.5,                # review: the tunnel narrows to the nest over this length, so the package is steered in
     MAGNET_D=6.0, MAGNET_T=2.0,       # packing slip: XMP neodymium 6 x 2 mm N52
     TAG_WALL=1.2, TAG_CLR=1.0,        # research: tag wall and running clearance (assumed values)
     BP_W=90.0, BP_H=124.0, BP_T=10.0,   # v7 90 wide; 124 tall (z 3..127) so the plate covers the bar channel mouth; thickness 10 assumed
@@ -183,10 +185,11 @@ P = dict(
     # their strain is held under SNAP_STRAIN_XLAYER, well below the limit used for flexures that print flat.
     SNAP_STRAIN_XLAYER=0.7,
     BRD_BARB=(0.5, 6.0, 22.0, 32.0),   # assumed: board catch engagement over the PCB edge, catch length, J3-side start Xb, J2-side start Xb
+    HOLDER_ARM_ROOT=3.0,             # review: the arm is slotted free of the end rib except for this much at the back wall
     HOLDER_ARM=(2.0, 6.0, 24.9, 0.8),  # assumed: battery holder snap arm thickness (X), width (Z), lower edge z, engagement over the holder's front face
     HOLD_POST=(4.0, 8.0, 0.3),      # assumed: lid posts on the holder's end blocks (X thickness, Z width, clearance)
     CELL_RIB=(16.0, 3.0, 0.5),       # assumed: lid ribs in front of the cell (X length, Z width, clearance)
-    HALL_PIN_D=3.0, HALL_PIN_X=3.2,  # assumed: TWO holes for 2.85 mm filament offcuts, one each side of the sensor's legs right behind its body: the legs pass between them, the 4.1 mm body cannot
+    HALL_PIN_D=3.1, HALL_PIN_X=3.2,  # assumed: TWO holes for 2.85 mm filament offcuts, one each side of the sensor's legs right behind its body: the legs pass between them, the 4.1 mm body cannot
 
     # ---- Gateway ----------------------------------------------------------------------
     G_W=120.0, G_H=80.0, G_D=30.0,    # assumed
@@ -374,8 +377,13 @@ def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False, vertical=None
     cz = zc + P["OLED_ACT_CY"]
     ww, wh = P["WIN_W"], P["WIN_H"]
     lid = lid.cut(box(cx - ww / 2, cx + ww / 2, -lid_t - 1, 1, cz - wh / 2, cz + wh / 2))
-    # 0.8 mm chamfer on the outside of the window (cosmetic, and cleans the bed edge)
-    lid = lid.cut(box(cx - ww / 2 - 0.8, cx + ww / 2 + 0.8, -lid_t - 1, -lid_t + 0.8, cz - wh / 2 - 0.8, cz + wh / 2 + 0.8))
+    # true 45 deg chamfer 0.6 deep round the outside of the window (self-supporting face down; the old square rebate left a
+    # one-layer flash ring round the display)
+    c = 0.6
+    cha = prism_yz([(-lid_t - 1, cz - wh / 2 - c - 1), (-lid_t - 1, cz + wh / 2 + c + 1), (-lid_t + c, cz + wh / 2), (-lid_t + c, cz - wh / 2)], cx - ww / 2 - c - 2, cx + ww / 2 + c + 2)
+    chb = cq.Workplane("XY").polyline([(cx - ww / 2 - c - 1, -lid_t - 1), (cx + ww / 2 + c + 1, -lid_t - 1), (cx + ww / 2, -lid_t + c), (cx - ww / 2, -lid_t + c)]).close() \
+        .extrude(wh + 2 * c + 4).translate((0, 0, cz - wh / 2 - c - 2))
+    lid = lid.cut(cha.intersect(chb))
     if flush:
         # the display module itself sits in this pocket, its glass OLED_GAP behind a BEZEL_T front skin; no insert, no cleats
         iw, ih = P["OLED_POCKET"]
@@ -385,6 +393,12 @@ def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False, vertical=None
             # not known yet, so the pocket runs on to the pads' end slot over its whole height
             px0 = min(px0, x0 + P["BTN_PAD_X1"] + P["BTN_PAD"][5])
         lid = lid.cut(box(px0, cx + iw / 2, -lid_t + P["BEZEL_T"], 0.5, cz - ih / 2, cz + ih / 2))
+        if P.get("COIL"):
+            # review: over the coil's own stretch of the board the relief runs right out to the header ribs' inner faces, with
+            # 0.5 mm of margin along the board, so the coil clears anywhere inboard of the header pad rows
+            kx, ky, kd, kh = P["COIL"]
+            zr = P["BRD_W"] / 2 + P["BRD_CLR"] - 0.3 - P["LID_RIB_W"]
+            lid = lid.cut(box(x0 + kx - kd / 2 - 0.5, x0 + kx + kd / 2 + 0.5, -lid_t + P["BEZEL_T"], 0.5, zc - zr, zc + zr))
         # relief over the USB-C shell (3.25 above the PCB top) where it would touch the lid
         usb_top = pcb_top_y - 3.25 - 0.4
         if usb_top < 0:
@@ -674,6 +688,13 @@ def build_hanger_body():
     ab = ae + P["HOLDER_CLR"]
     ayc = holder_front - 0.05 - ae
     for (xf, sgn) in ((hx0, 1), (hx1, -1)):                    # xf = arm's inner face, sgn = direction the barb points
+        # review: the arm stood inside the 3 mm end rib, which made its back 12 mm rigid. Slot it free above and below for
+        # the rib's full height and thin the rib behind it, leaving only a short root block at the back wall.
+        ra, rb = sorted((xf, xf - sgn * rt))
+        body = body.cut(box(ra - EPS, rb + EPS, yb - rh - EPS, yb, az0 - 1.0, az0))
+        body = body.cut(box(ra - EPS, rb + EPS, yb - rh - EPS, yb, az0 + aw, az0 + aw + 1.0))
+        oa, ob = sorted((xf - sgn * at, xf - sgn * rt))
+        body = body.cut(box(oa, ob, yb - rh - EPS, yb - P["HOLDER_ARM_ROOT"], az0 - EPS, az0 + aw + EPS))
         xa, xb = sorted((xf, xf - sgn * at))
         body = body.union(box(xa, xb, ayc - 0.4 - 1.25 * ab - 0.5, yb + EPS, az0, az0 + aw))
         pts = [(xf - sgn * EPS, ayc + ab), (xf + sgn * ab, ayc), (xf + sgn * ab, ayc - 0.4), (xf - sgn * EPS, ayc - 0.4 - 1.25 * ab)]
@@ -738,7 +759,7 @@ def build_hanger_lid():
                (-1, 5.0, g["zc"] - P["BRD_W"] / 2 - 1.3, g["zc"] + P["BRD_W"] / 2 + 1.3),   # lip cut away along the board's end (the PCB reaches into the lip's depth) and the USB-C opening
                (5.0, W - 5.0, H - wall - P["TONGUE_CLR"] - P["TONGUE_T"] - 0.5, H + 1))   # top segment relieved: the tabs locate the top edge and the lid must pivot there
     lid = lid.union(lid_tongue(W, H, wall, (), cutouts))
-    # USB-C with the lid on: the plug's overmold runs 1.75 mm into the lid's thickness, so the lid edge is hollowed from
+    # USB-C with the lid on: the plug's overmold runs 0.75 mm into the lid's thickness, so the lid edge is hollowed from
     # behind over the opening, leaving a thin face skin
     lid = lid.cut(box(-1, wall + 0.6, -lt + P["USB_LID_SKIN"], 1, g["zc"] - uw, g["zc"] + uw))
     lid = lid_snap_features(lid, W, H, wall, P["H_ARMS"], P["H_TAB_XS"])
@@ -785,6 +806,10 @@ def build_hanger_bar():
     bar = box(bx0, bx1, g["lip_front"], g["bar_back"], g["bar_bot"], g["bar_top"])
     lip = box(bx0, bx1, g["lip_front"], g["lip_back"], g["bar_bot"], g["lip_top"])
     part = plate.union(web).union(bar).union(lip)
+    # the front of the dovetail plate overhangs the BAR (not the bed) when printed upright, where bed supports cannot reach:
+    # a 45 deg gusset off the web carries it, so the part prints with no support at all
+    gh = g["web_y0"] - g["plate_y0"]
+    part = part.union(prism_yz([(g["web_y0"] + EPS, g["plate_bot"] + EPS), (g["plate_y0"], g["plate_bot"] + EPS), (g["web_y0"] + EPS, g["plate_bot"] - gh)], wx0, wx1))
     # spreaders each side of the web carry the wide bar back into the web
     sp = P["BAR_SPREAD"]
     for sgn, xe in ((-1, wx0), (1, wx1)):
@@ -802,14 +827,22 @@ def build_hanger_bar():
     # Hall sensor: tunnel from the bar's back face forward to the back of the package, a 45 deg ramp up, then the nest
     hw, nw = g["slot_hw"], g["nest_hw"]
     step = g["nest_floor"] - g["slot_floor"]
-    part = part.cut(box(W / 2 - hw, W / 2 + hw, g["nest_y_back"] + step, g["bar_back"] + 1, g["slot_floor"], g["slot_ceil"]))
-    part = part.cut(prism_yz([(g["nest_y_back"] - EPS, g["nest_floor"]), (g["nest_y_back"] + step + EPS, g["slot_floor"]),
-                              (g["nest_y_back"] + step + EPS, g["slot_ceil"]), (g["nest_y_back"] - EPS, g["slot_ceil"])], W / 2 - hw, W / 2 + hw))
-    part = part.cut(box(W / 2 - nw, W / 2 + nw, g["slot_y_front"], g["nest_y_back"] + EPS, g["nest_floor"], g["slot_ceil"]))
+    yb0, yf = g["nest_y_back"], g["nest_y_back"] + P["HALL_FUNNEL_Y"]
+    part = part.cut(box(W / 2 - hw, W / 2 + hw, yf, g["bar_back"] + 1, g["slot_floor"], g["slot_ceil"]))
+    # last stretch before the nest: floor ramps up 45 deg and the side walls close in from the tunnel width to the nest width
+    approach = box(W / 2 - hw, W / 2 + hw, yb0 + step, yf + EPS, g["slot_floor"], g["slot_ceil"]).union(
+        prism_yz([(yb0 - EPS, g["nest_floor"]), (yb0 + step + EPS, g["slot_floor"]), (yb0 + step + EPS, g["slot_ceil"]), (yb0 - EPS, g["slot_ceil"])], W / 2 - hw, W / 2 + hw))
+    funnel = cq.Workplane("XY").polyline([(W / 2 - nw, yb0 - 2 * EPS), (W / 2 + nw, yb0 - 2 * EPS), (W / 2 + hw, yf + 2 * EPS), (W / 2 - hw, yf + 2 * EPS)]).close() \
+        .extrude(g["slot_ceil"] - g["slot_floor"] + 2.0).translate((0, 0, g["slot_floor"] - 1.0))
+    part = part.cut(approach.intersect(funnel))
+    part = part.cut(box(W / 2 - nw, W / 2 + nw, g["slot_y_front"], yb0 + EPS, g["nest_floor"], g["slot_ceil"]))
     # lead route: tunnel along the bar behind the saddle; then a groove up the BACK of the web that is open so the wires
     # simply lay in (one short closed band keeps them there); then a groove along the top of the plate to the roof slot
     cw2 = P["BAR_WIRE_W"] / 2 - 1
-    part = part.cut(box(W / 2 - cw2, W / 2 + cw2, g["saddle_y"] + sw / 2, g["bar_back"] + 1, g["wire_z0"], g["slot_ceil"]))
+    ty0 = g["saddle_y"] + sw / 2
+    tstep = g["slot_floor"] - g["wire_z0"]          # the deeper wire trench ends in a 45 deg ramp too, so nothing pushed along it meets a square step
+    part = part.cut(box(W / 2 - cw2, W / 2 + cw2, ty0 + tstep, g["bar_back"] + 1, g["wire_z0"], g["slot_ceil"]))
+    part = part.cut(prism_yz([(ty0 - EPS, g["slot_floor"]), (ty0 + tstep + EPS, g["wire_z0"]), (ty0 + tstep + EPS, g["slot_ceil"]), (ty0 - EPS, g["slot_ceil"])], W / 2 - cw2, W / 2 + cw2))
     band0, band1 = P["WEB_BAND"]
     for (za, zb) in ((g["wire_z0"], band0), (band1, g["plate_z1"] + 1)):
         part = part.cut(box(W / 2 - cw2, W / 2 + cw2, g["web_y0"] + 2.5, g["web_y1"] + 1, za, zb))
@@ -818,14 +851,24 @@ def build_hanger_bar():
     part = part.cut(box(W / 2 - cw2, W / 2 + cw2, wy0 + 0.5, g["plate_y1"] + 1, g["plate_z1"] - 1.5, g["plate_z1"] + 1))
     # retaining pins: two 6.5 mm offcuts of 2.85 mm filament stand right behind the package, one each side of its legs, so
     # the sensor cannot slide back out of its nest. They drop into blind holes in the saddle floor and the sign's handle sits over them.
-    for (px_, py_) in hall_pin_xys(g):
-        part = part.cut(cyl_z(px_, py_, P["HALL_PIN_D"], g["slot_floor"] - 2.0, g["saddle_floor"] + 1.0))
+    # The holes cross the tunnel's bridged roof. So that roof still prints cleanly, the hole opens in stages (the usual FDM
+    # trick): first roof layer = one slot right across, so its bridge lines run wall to wall; second = a square, bridged
+    # the short way; round from the third layer up. A 2 mm hole under each pin lets it be pushed out and drains the cavity.
+    pd, lay = P["HALL_PIN_D"], 0.2
+    pins = hall_pin_xys(g)
+    sxw = max(hw, P["HALL_PIN_X"] + pd / 2)
+    part = part.cut(box(W / 2 - sxw, W / 2 + sxw, pins[0][1] - pd / 2, pins[0][1] + pd / 2, g["slot_ceil"] - EPS, g["slot_ceil"] + lay))
+    for (px_, py_) in pins:
+        part = part.cut(cyl_z(px_, py_, pd, g["slot_floor"] - 2.0, g["slot_ceil"]))
+        part = part.cut(box(px_ - pd / 2, px_ + pd / 2, py_ - pd / 2, py_ + pd / 2, g["slot_ceil"] + lay - EPS, g["slot_ceil"] + 2 * lay))
+        part = part.cut(cyl_z(px_, py_, pd, g["slot_ceil"] + 2 * lay - EPS, g["saddle_floor"] + 1.0))
+        part = part.cut(cyl_z(px_, py_, P["HALL_PIN_PUSH_D"], g["bar_bot"] - 1.0, g["slot_floor"] - 2.0 + EPS))
     return part
 
 def hall_pin_xys(g):
     """Pin centres: each pin's edge meets the package's rear corner 0.2 mm behind it."""
     pw = P["HALL_PKG"][0]
-    r, dx = P["HALL_PIN_D"] / 2, P["HALL_PIN_X"] - pw / 2
+    r, dx = 2.85 / 2, P["HALL_PIN_X"] - pw / 2          # the PIN's radius (2.85 filament), not the hole's
     py = g["nest_y_back"] + 0.2 + math.sqrt(max(r * r - dx * dx, 0.0))
     return [(g["W"] / 2 + s * P["HALL_PIN_X"], py) for s in (-1, 1)]
 
@@ -1214,9 +1257,10 @@ def design_checks(hg, gg):
     eps_brd = 100.0 * 1.5 * e * P["POCKET_WALL_T"] / wall_free ** 2
     out.append((eps_brd <= P["SNAP_STRAIN_XLAYER"], "board catches: %.1f mm over each long edge; pocket wall strain %.2f %% while the board goes in (<= %.1f %% across layers)" % (e, eps_brd, P["SNAP_STRAIN_XLAYER"])))
     at, aw, az0, ae = P["HOLDER_ARM"]
-    arm_len = hg["y_back"] - (hg["holder_front"] - 0.05 - ae - 0.4 - 1.25 * (ae + P["HOLDER_CLR"]) - 0.5)
+    arm_len = (hg["y_back"] - P["HOLDER_ARM_ROOT"]) - (hg["holder_front"] - 0.05 - ae - 0.2)     # FREE length: root block to the barb nose
     eps_arm2 = 100.0 * 1.5 * ae * at / arm_len ** 2
-    out.append((eps_arm2 <= P["SNAP_STRAIN_XLAYER"], "battery holder arms: %.1f mm over the holder's front face; arm strain %.2f %% (arm %.1f mm long; <= %.1f %% across layers)" % (ae, eps_arm2, arm_len, P["SNAP_STRAIN_XLAYER"])))
+    eps_arm3 = 100.0 * 1.5 * (ae + P["HOLDER_CLR"]) * at / arm_len ** 2                          # holder pushed in hard against one arm
+    out.append((max(eps_arm2, eps_arm3) <= P["SNAP_STRAIN_XLAYER"], "battery holder arms: %.1f mm over the holder's front face; free length %.1f mm (slotted out of the end rib); strain %.2f %%, or %.2f %% with the holder hard against one arm (<= %.1f %% across layers)" % (ae, arm_len, eps_arm2, eps_arm3, P["SNAP_STRAIN_XLAYER"])))
     out.append((az0 >= P["HOLDER_Z0"] + P["HOLDER_W"] / 2 + P["HOLD_POST"][1] / 2 + 0.4 and az0 + aw <= P["HOLDER_Z0"] + P["HOLDER_W"], "holder arms (z %.1f..%.1f) sit above the lid's holder posts and within the holder's height" % (az0, az0 + aw)))
     # flush display
     glass = hg["pcb_top"] - P["OLED_H_MAX"]
@@ -1258,9 +1302,9 @@ def design_checks(hg, gg):
         out.append((fx0 <= px - P["H_PAD_V"][2] / 2 and px + P["H_PAD_V"][2] / 2 <= fx1 and z0 < pz < z1, "%s pin sits wholly on its pad" % name))
     kx, ky, kd, kh = P["COIL"]
     slot_edge = P["BTN_PAD_X1"] + sl
-    out.append((kx - kd / 2 >= slot_edge - 0.05, "coil antenna (Xb %.1f to %.1f, from Owen's photo) starts at or past the pads' end slot (Xb %.1f), so it is never under a pad" % (kx - kd / 2, kx + kd / 2, slot_edge)))
+    out.append((kx - kd / 2 - 0.4 >= slot_edge - 0.5 - 0.05, "coil antenna (Xb %.1f to %.1f, from Owen's photo, +/- 0.4) stays inside the relief, which starts at Xb %.1f" % (kx - kd / 2, kx + kd / 2, slot_edge - 0.5)))
     coil_clear = (hg["pcb_top"] - kh) - (-hg["lid_t"] + P["BEZEL_T"])
-    out.append((coil_clear >= 0.2, "coil antenna top (%.1f above the PCB) clears the pocket floor by %.1f mm (>= 0.2); the pocket runs on to the pads' slot so it clears at ANY position across the board" % (kh, coil_clear)))
+    out.append((coil_clear >= 0.2, "coil antenna top (%.1f above the PCB) clears the pocket floor by %.1f mm (>= 0.2); relieved for a coil centred anywhere within Yb +/-%.2f, which is everything inboard of the header pad rows" % (kh, coil_clear, P["BRD_W"] / 2 + P["BRD_CLR"] - 0.3 - P["LID_RIB_W"] - kd / 2)))
     out.append((P["HOLDER_STANDOFF"] >= P["HOLDER_PIN"][1] + 0.5, "holder stands %.1f mm off the back wall for its %.1f mm solder pins (>= pin + 0.5)" % (P["HOLDER_STANDOFF"], P["HOLDER_PIN"][1])))
     pw_ = P["HALL_PKG"][0]
     gate = 2 * P["HALL_PIN_X"] - 2.85
