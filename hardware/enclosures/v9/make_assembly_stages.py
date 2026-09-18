@@ -23,7 +23,7 @@ for deg in (0, 3, 6, 12):
     print("lid pivoted %2d deg: overlap with body and parts %.2f mm3" % (deg, v))
 
 DX = 300.0
-COL = dict(logo=30, body=8, lid=9, bar=30, plate=152, board=94, holder=251, cell=150, sensor=2, antenna=6, sign=40, magnet=1)
+COL = dict(logo=255, plug=253, body=252, lid=251, bar=30, plate=152, board=94, holder=251, cell=150, sensor=2, antenna=6, sign=40, magnet=1)
 def T(wp, dx=0, dy=0, dz=0): return wp.translate((dx, dy, dz))
 def Rv(wp):            # seen from behind: turn the group half a turn about a vertical axis through the body centre
     return wp.rotate((50, 17.5, 0), (50, 17.5, 1), 180)
@@ -40,13 +40,16 @@ stages = [
       ("plate", [T(plate)]), ("body", [T(body)]), ("bar", [T(bar)]), ("sensor", [T(R["hall_carrier"]), T(R["hall_pin"])]),
       ("board", [T(R["heltec"], dy=-45)]), ("holder", [T(R["holder"], dy=-55)]), ("cell", [T(R["cell"], dy=-95)]),
       ("antenna", [T(R["stub_antenna"], dy=-40)])]),
-  ("4 ALL PARTS HOME. LID WITH LOGO AND TWO BUTTON PADS: TOP TABS IN FIRST, THEN THE BOTTOM HOOKS CLICK", [
+  ("4 ALL PARTS HOME. LID (WHITE WRITING, PRG AND RST PADS ABOVE AND BELOW THE USB PORT): TOP TABS IN, BOTTOM HOOKS CLICK", [
       ("plate", [T(plate)]), ("body", [T(body)]), ("bar", [T(bar)]), ("sensor", [T(R["hall_carrier"]), T(R["hall_pin"])]),
       ("board", [T(R["heltec"])]), ("holder", [T(R["holder"])]), ("cell", [T(R["cell"])]), ("antenna", [T(R["stub_antenna"])]),
       ("lid", [T(lid, dy=-75)]), ("logo", [T(inlay, dy=-75)])]),
   ("5 FINISHED. THE SIGN HANGS ON THE WIDE BAR THROUGH ITS HAND HOLE, MAGNET OVER THE SENSOR", [
       ("plate", [T(plate)]), ("body", [T(body)]), ("bar", [T(bar)]), ("sensor", [T(R["hall_carrier"]), T(R["hall_pin"])]),
       ("lid", [T(lid)]), ("logo", [T(inlay)]), ("sign", [T(R["sign_handle"])]), ("magnet", [T(R["magnet"])])]),
+  ("5B USB-C CABLE PLUGGED IN AT THE LEFT EDGE WITH THE LID ON", [
+      ("plate", [T(plate)]), ("body", [T(body)]), ("bar", [T(bar)]), ("lid", [T(lid)]), ("logo", [T(inlay)]),
+      ("plug", [T(R["usb_plug"])])]),
   ("6 (SEEN FROM BEHIND) THE LID ALONE: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET, BUTTON PADS WITH THEIR PINS", [
       ("lid", [Rv(T(lid))])]),
 ]

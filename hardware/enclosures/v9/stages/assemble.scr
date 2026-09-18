@@ -11,7 +11,7 @@ CECOLOR 2
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S0_sensor.sat
 CECOLOR 1
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S0_magnet.sat
-CECOLOR 8
+CECOLOR 252
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S1_body.sat
 CECOLOR 30
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S1_bar.sat
@@ -19,7 +19,7 @@ CECOLOR 2
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S1_sensor.sat
 CECOLOR 152
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S2_plate.sat
-CECOLOR 8
+CECOLOR 252
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S2_body.sat
 CECOLOR 30
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S2_bar.sat
@@ -27,7 +27,7 @@ CECOLOR 2
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S2_sensor.sat
 CECOLOR 152
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S3_plate.sat
-CECOLOR 8
+CECOLOR 252
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S3_body.sat
 CECOLOR 30
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S3_bar.sat
@@ -43,7 +43,7 @@ CECOLOR 6
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S3_antenna.sat
 CECOLOR 152
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_plate.sat
-CECOLOR 8
+CECOLOR 252
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_body.sat
 CECOLOR 30
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_bar.sat
@@ -57,28 +57,40 @@ CECOLOR 150
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_cell.sat
 CECOLOR 6
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_antenna.sat
-CECOLOR 9
+CECOLOR 251
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_lid.sat
-CECOLOR 30
+CECOLOR 255
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_logo.sat
 CECOLOR 152
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_plate.sat
-CECOLOR 8
+CECOLOR 252
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_body.sat
 CECOLOR 30
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_bar.sat
 CECOLOR 2
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_sensor.sat
-CECOLOR 9
+CECOLOR 251
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_lid.sat
-CECOLOR 30
+CECOLOR 255
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_logo.sat
 CECOLOR 40
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_sign.sat
 CECOLOR 1
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_magnet.sat
-CECOLOR 9
+CECOLOR 152
+ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S6_plate.sat
+CECOLOR 252
+ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S6_body.sat
+CECOLOR 30
+ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S6_bar.sat
+CECOLOR 251
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S6_lid.sat
+CECOLOR 255
+ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S6_logo.sat
+CECOLOR 253
+ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S6_plug.sat
+CECOLOR 251
+ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S7_lid.sat
 CECOLOR 7
 -TEXT -30,-150,-80 7 0 0 (SEEN FROM THE WALL SIDE) WIDE
 -TEXT -30,-162,-80 7 0 HOOK BAR: SENSOR SLIDES INTO ITS
@@ -92,16 +104,19 @@ CECOLOR 7
 -TEXT 570,-174,-80 7 0 CLICKS
 -TEXT 870,-150,-80 7 0 3 BOARD, BATTERY HOLDER, CELL AND
 -TEXT 870,-162,-80 7 0 ANTENNA GO IN FROM THE FRONT
--TEXT 1170,-150,-80 7 0 4 ALL PARTS HOME. LID WITH LOGO AND
--TEXT 1170,-162,-80 7 0 TWO BUTTON PADS: TOP TABS IN FIRST,
--TEXT 1170,-174,-80 7 0 THEN THE BOTTOM HOOKS CLICK
+-TEXT 1170,-150,-80 7 0 4 ALL PARTS HOME. LID (WHITE
+-TEXT 1170,-162,-80 7 0 WRITING, PRG AND RST PADS ABOVE AND
+-TEXT 1170,-174,-80 7 0 BELOW THE USB PORT): TOP TABS IN,
+-TEXT 1170,-186,-80 7 0 BOTTOM HOOKS CLICK
 -TEXT 1470,-150,-80 7 0 5 FINISHED. THE SIGN HANGS ON THE
 -TEXT 1470,-162,-80 7 0 WIDE BAR THROUGH ITS HAND HOLE,
 -TEXT 1470,-174,-80 7 0 MAGNET OVER THE SENSOR
--TEXT 1770,-150,-80 7 0 6 (SEEN FROM BEHIND) THE LID ALONE:
--TEXT 1770,-162,-80 7 0 HOOKS, HINGE TABS, BATTERY POSTS,
--TEXT 1770,-174,-80 7 0 DISPLAY POCKET, BUTTON PADS WITH
--TEXT 1770,-186,-80 7 0 THEIR PINS
+-TEXT 1770,-150,-80 7 0 5B USB-C CABLE PLUGGED IN AT THE
+-TEXT 1770,-162,-80 7 0 LEFT EDGE WITH THE LID ON
+-TEXT 2070,-150,-80 7 0 6 (SEEN FROM BEHIND) THE LID ALONE:
+-TEXT 2070,-162,-80 7 0 HOOKS, HINGE TABS, BATTERY POSTS,
+-TEXT 2070,-174,-80 7 0 DISPLAY POCKET, BUTTON PADS WITH
+-TEXT 2070,-186,-80 7 0 THEIR PINS
 CECOLOR BYLAYER
 ZOOM E
 FILEDIA 1

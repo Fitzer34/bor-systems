@@ -125,10 +125,10 @@
  },
  {
   "file": "S4_logo",
-  "colour": 30
+  "colour": 255
  },
  {
-  "label": "4 ALL PARTS HOME. LID WITH LOGO AND TWO BUTTON PADS: TOP TABS IN FIRST, THEN THE BOTTOM HOOKS CLICK",
+  "label": "4 ALL PARTS HOME. LID (WHITE WRITING, PRG AND RST PADS ABOVE AND BELOW THE USB PORT): TOP TABS IN, BOTTOM HOOKS CLICK",
   "x": 1200.0
  },
  {
@@ -153,7 +153,7 @@
  },
  {
   "file": "S5_logo",
-  "colour": 30
+  "colour": 255
  },
  {
   "file": "S5_sign",
@@ -168,11 +168,39 @@
   "x": 1500.0
  },
  {
+  "file": "S6_plate",
+  "colour": 152
+ },
+ {
+  "file": "S6_body",
+  "colour": 8
+ },
+ {
+  "file": "S6_bar",
+  "colour": 30
+ },
+ {
   "file": "S6_lid",
   "colour": 9
  },
  {
-  "label": "6 (SEEN FROM BEHIND) THE LID ALONE: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET, BUTTON PADS WITH THEIR PINS",
+  "file": "S6_logo",
+  "colour": 255
+ },
+ {
+  "file": "S6_plug",
+  "colour": 253
+ },
+ {
+  "label": "5B USB-C CABLE PLUGGED IN AT THE LEFT EDGE WITH THE LID ON",
   "x": 1800.0
+ },
+ {
+  "file": "S7_lid",
+  "colour": 9
+ },
+ {
+  "label": "6 (SEEN FROM BEHIND) THE LID ALONE: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET, BUTTON PADS WITH THEIR PINS",
+  "x": 2100.0
  }
 ]
