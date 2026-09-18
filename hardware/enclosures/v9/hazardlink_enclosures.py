@@ -120,13 +120,13 @@ P = dict(
     # v9: the bar's plate is a dovetail that slides into a channel in the body's bottom wall FROM THE WALL SIDE;
     # the channel is closed at the front and the backplate covers its mouth, so with the body hung the bar cannot come out
     DT_MOUTH=27.0, DT_TOP=34.0, DT_H=3.5, DT_CLR=0.45, DT_ROOF=1.9, DT_STRIP_W=40.0, DT_Y0=6.0, DT_LEADIN=0.6,   # assumed: mouth width, top width (45 deg flanks: top - mouth = 2 x height), height, plate clearance per side (flanks print as 45 deg overhangs), roof, strip width, closed front end, mouth chamfer
-    PLATE_Y=(7.5, 34.0),     # assumed: bar plate span along Y (flush with the web's back face, 1 mm inside the body's back face)
+    PLATE_Y=(6.6, 34.5),     # assumed: bar plate span along Y (flush with the web's back face, 1 mm inside the body's back face)
     HANDLE_H=20.0,           # assumed: sign panel height above the hand-hole that rests on the bar (research 20 to 30)
     BAR_REACH=70.0,          # assumed: wall face to the lip front (research: >= 45 so a folded sign clears the wall)
     BAR_LIP_T=9.0,           # v7 lip thickness
     BAR_LIP_H=20.0,          # assumed: lip rises this much above the bar top (forward of the lid, so no clash)
     BAR_SADDLE_Y=-2.0,       # assumed: saddle centre, just in front of the lid face (sign thickness sits either side)
-    BAR_SADDLE_W=14.0, BAR_SADDLE_D=2.0,  # assumed: saddle width along Y (folded handle stack 6 to 12, research) and depth
+    BAR_SADDLE_W=15.0, BAR_SADDLE_D=2.0,  # assumed: saddle width along Y (folded handle stack 6 to 12, research) and depth
     BAR_WIRE_Y=(6.5, 10.5),  # assumed: lead slot through the channel roof, in front of the holder (leads rise into the free space under the bulkhead)
     BAR_WIRE_W=8.0,          # assumed
     BAR_GUSSET=8.0, BAR_GUSSET_W=2.0,    # assumed: short side gussets at the lip root
@@ -144,7 +144,12 @@ P = dict(
     ANT_X=86.0, ANT_ZS=(70.0, 110.0), ANT_D=6.0, ANT_L=60.0, ANT_Y=22.0,   # assumed stub antenna
     SMA_KO=(84.0, 17.5),     # assumed optional SMA knock-out on the top wall
     # label recess removed: it was on the face that sits on the print bed, so it printed over nothing. Use a sticker.
-    SADDLES=((30.0, 74.0), (86.0, 55.0)),   # assumed cable tie saddles (leads, pigtail)
+    SADDLES=((30.0, 74.0), (86.0, 51.0)),   # assumed cable tie saddles (leads, pigtail); the pigtail one sits clear below the antenna shelf
+    # retention added after the six-direction audit (audit_retention.py): nothing may move more than about 0.5 mm
+    HOLD_POST=(4.0, 12.0, 0.3),      # assumed: lid posts on the holder's end blocks (X thickness, Z width, clearance)
+    CELL_RIB=(16.0, 3.0, 0.5),       # assumed: lid ribs in front of the cell (X length, Z width, clearance)
+    ANT_STOP_T=2.5, ANT_STOP_CLR=0.3, ANT_CABLE_SLOT=3.5,   # assumed: shelf under the antenna rod and a stop above it
+    HALL_PIN_D=3.0, HALL_PIN_X=2.6,  # assumed: hole for a 2.85 mm filament offcut behind the Hall carrier (offset from the bar centreline)
 
     # ---- Gateway ----------------------------------------------------------------------
     G_W=120.0, G_H=80.0, G_D=30.0,    # assumed
@@ -542,6 +547,14 @@ def build_hanger_body():
         clip = clip.cut(cyl_z(ax, ay, P["ANT_D"] + 0.8, az - 4, az + 4))
         clip = clip.cut(box(ax - (P["ANT_D"] - 0.5) / 2, ax + (P["ANT_D"] - 0.5) / 2, ay - 11.0, ay, az - 4, az + 4))
         body = body.union(clip)
+    # the rod must not slide through its clips: a shelf under it (slotted for the pigtail) and a stop above it
+    az0 = (P["ANT_ZS"][0] + P["ANT_ZS"][1]) / 2 - P["ANT_L"] / 2
+    az1 = az0 + P["ANT_L"]
+    st, sc = P["ANT_STOP_T"], P["ANT_STOP_CLR"]
+    shelf = box(ax - 4.5, W - wall + EPS, ay - 3.0, yb + EPS, az0 - sc - st, az0 - sc)
+    shelf = shelf.cut(box(ax - P["ANT_CABLE_SLOT"] / 2, ax + P["ANT_CABLE_SLOT"] / 2, ay - 4.0, ay + P["ANT_CABLE_SLOT"] / 2, az0 - sc - st - 1, az0))
+    body = body.union(shelf)
+    body = body.union(box(ax - 4.5, W - wall + EPS, ay + 0.5, yb + EPS, az1 + sc, az1 + sc + st))
     # cable tie saddles: lead bundle rising past the security screw (tie tunnel along X),
     # pigtail run to the antenna (tunnel along Z)
     (s1x, s1z), (s2x, s2z) = P["SADDLES"]
@@ -596,6 +609,18 @@ def build_hanger_lid():
     lid = lid_snap_features(lid, W, H, wall, P["H_ARMS"], P["H_TAB_XS"])
     lid = lid.union(lid_header_ribs(g["x0"], g["zc"], g["pcb_top"]))
     lid = lid_board_features(lid, g["x0"], g["zc"], g["pcb_top"], lt, flush=True)
+    # battery retention: two posts bear on the holder's end blocks and two ribs sit just in front of the cell, so neither
+    # can move toward the lid. The middle (x 40..60) stays clear for the Hall leads rising from the bar channel.
+    hx0, hl = P["HOLDER_X0"], P["HOLDER_L"]
+    hzc = P["HOLDER_Z0"] + P["HOLDER_W"] / 2
+    holder_front = g["y_back"] - P["HOLDER_H"]
+    pt_, pw_, pc_ = P["HOLD_POST"]
+    for cx in (hx0 + 1.5, hx0 + hl - 1.5):
+        lid = lid.union(box(cx - pt_ / 2, cx + pt_ / 2, -EPS, holder_front - pc_, hzc - pw_ / 2, hzc + pw_ / 2))
+    cell_front = (g["y_back"] - P["HOLDER_H"] / 2 - 0.5) - P["CELL_D"] / 2
+    rl, rw, rc = P["CELL_RIB"]
+    for xa in (hx0 + 12.0, hx0 + hl - 12.0 - rl):
+        lid = lid.union(box(xa, xa + rl, -EPS, cell_front - rc, hzc - rw / 2, hzc + rw / 2))
     return lid
 
 def build_hanger_bar():
@@ -632,7 +657,17 @@ def build_hanger_bar():
     part = part.cut(box(W / 2 - cw2, W / 2 + cw2, g["web_y0"] + 2.5, g["web_y1"] - 2.5, g["wire_z0"], g["plate_z1"] + 1))
     wy0, wy1 = P["BAR_WIRE_Y"]
     part = part.cut(box(W / 2 - cw2, W / 2 + cw2, wy0 + 0.5, g["plate_y1"] + 1, g["plate_z1"] - 1.5, g["plate_z1"] + 1))
+    # retaining pin: a 6.5 mm offcut of 2.85 mm filament stands right behind the carrier, so the sensor cannot slide back
+    # out of its slot. Offset to one side so the three leads pass beside it.
+    px_, py_ = hall_pin_xy(g)
+    # blind hole from the saddle floor: the pin drops in from the top, rests on the hole bottom, and the sign's handle
+    # sits over it, so gravity and the sign both keep it in
+    part = part.cut(cyl_z(px_, py_, P["HALL_PIN_D"], g["slot_floor"] - 2.0, g["saddle_floor"] + 1.0))
     return part
+
+def hall_pin_xy(g):
+    cw, cl, ct = P["HALL_CARRIER"]
+    return (g["W"] / 2 + P["HALL_PIN_X"], g["sensor_y"] + cl / 2 + P["HALL_SLOT_CLR"] + P["HALL_PIN_D"] / 2)
 
 def build_hanger_backplate():
     g = hanger_geom()
@@ -693,6 +728,8 @@ def hanger_refs():
     carrier = box(W / 2 - cw / 2, W / 2 + cw / 2, sy - cl / 2, sy + cl / 2, g["slot_floor"], g["slot_floor"] + ct)
     carrier = carrier.union(box(W / 2 - sw / 2, W / 2 + sw / 2, sy - sl_ / 2, sy + sl_ / 2, g["slot_floor"] + ct, g["slot_floor"] + ct + sh))
     refs["hall_carrier"] = (carrier, (0.05, 0.35, 0.10))
+    px_, py_ = hall_pin_xy(g)
+    refs["hall_pin"] = (cyl_z(px_, py_, 2.85, g["slot_floor"] - 2.0, g["saddle_floor"]), (0.9, 0.9, 0.9))
     # sign handle stack (assumed 24 wide x 12 thick x 20 tall) settled in the saddle, magnet in its underside
     bar_bot = g["saddle_floor"] + P["TAG_CLR"]
     bar = box(W / 2 - 12, W / 2 + 12, sy - 6.0, sy + 6.0, bar_bot, bar_bot + P["HANDLE_H"])
@@ -1072,7 +1109,14 @@ HOW THE PARTS HOLD TOGETHER (v9)
     the window from inside, which needs the lid off. Same tamper resistance as the old security screw for that step.
   Tamper note: the lid opens by hand from underneath (two pull lips). With a sign hung they sit behind the sign's top edge.
     Firmware rule: a lid-open or a lift without a service login is a tamper alarm.
-  Board: rests on rails, clamped by the lid ribs. Battery: holder in its ribbed bay, held by the lid.
+  WHAT HOLDS EACH BOUGHT PART (checked by audit_retention.py: free travel in all six directions, target <= 0.5 mm)
+    Board: long edges on two rails, pocket walls each side, stops at both ends, clamped from the front by two lid ribs.
+    Battery holder: ribbed bay on four sides, the back wall behind it, and two lid posts bearing on its end blocks.
+    Cell: the holder's own spring contacts, plus two lid ribs 0.5 mm in front of it so it cannot leave the holder.
+    Hall carrier: slot in the bar under the saddle; a 6.5 mm offcut of 2.85 mm filament dropped into the hole in the saddle
+      floor stands behind it. The sign's handle sits over the pin.
+    Stub antenna: two C-clips, a slotted shelf under the rod (the pigtail drops through the slot) and a stop above it.
+    Hook bar: dovetail flanks carry the load; closed channel end in front, backplate behind (0.5 mm play each way).
   Hall carrier: slot in the bar. Wall screws (4 in the backplate, 3 for the gateway keyholes) are the only screws left; they
   fix to the building, not to each other. The gateway's SMA nut is part of the bought connector.
 
@@ -1347,7 +1391,7 @@ def main(out_dir, quick=False, autocad=True):
             for name, (wp, col) in refs.items():
                 s += scad_import("ref/%s_%s.stl" % (unit, name), col, ref_tr.get(name, (0, 0, 0)))
             return s
-        bar_refs = {"hall_carrier", "sign_handle", "magnet"}
+        bar_refs = {"hall_carrier", "hall_pin", "sign_handle", "magnet"}
         h_parts_ex = [("hanger_body", (0.85, 0.85, 0.85), (0, 0, 0)), ("hanger_lid", (0.75, 0.78, 0.82), (0, -EX, 0)),
                       ("hanger_bar", (0.95, 0.55, 0.1), (0, 0, -EX)), ("hanger_backplate", (0.55, 0.55, 0.6), (0, EX, 0))]
         h_ref_tr = {n: (0, 0, -EX) for n in bar_refs}; h_ref_tr["window_insert"] = (0, -EX, 0)

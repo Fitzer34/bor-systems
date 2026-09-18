@@ -35,7 +35,14 @@ HOW THE PARTS HOLD TOGETHER (v9)
     the window from inside, which needs the lid off. Same tamper resistance as the old security screw for that step.
   Tamper note: the lid opens by hand from underneath (two pull lips). With a sign hung they sit behind the sign's top edge.
     Firmware rule: a lid-open or a lift without a service login is a tamper alarm.
-  Board: rests on rails, clamped by the lid ribs. Battery: holder in its ribbed bay, held by the lid.
+  WHAT HOLDS EACH BOUGHT PART (checked by audit_retention.py: free travel in all six directions, target <= 0.5 mm)
+    Board: long edges on two rails, pocket walls each side, stops at both ends, clamped from the front by two lid ribs.
+    Battery holder: ribbed bay on four sides, the back wall behind it, and two lid posts bearing on its end blocks.
+    Cell: the holder's own spring contacts, plus two lid ribs 0.5 mm in front of it so it cannot leave the holder.
+    Hall carrier: slot in the bar under the saddle; a 6.5 mm offcut of 2.85 mm filament dropped into the hole in the saddle
+      floor stands behind it. The sign's handle sits over the pin.
+    Stub antenna: two C-clips, a slotted shelf under the rod (the pigtail drops through the slot) and a stop above it.
+    Hook bar: dovetail flanks carry the load; closed channel end in front, backplate behind (0.5 mm play each way).
   Hall carrier: slot in the bar. Wall screws (4 in the backplate, 3 for the gateway keyholes) are the only screws left; they
   fix to the building, not to each other. The gateway's SMA nut is part of the bought connector.
 

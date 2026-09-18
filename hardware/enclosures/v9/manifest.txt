@@ -2,7 +2,7 @@ HazardLink v9.2 enclosures (no screws; wall-arm latches; flush display). Generat
 
 hanger_body            X -0.0..100.0  Y -0.0..35.0  Z -1.2..130.0  (100.0 x 35.0 x 131.2 mm)
 hanger_lid             X -0.0..100.0  Y -3.0..14.0  Z -0.0..130.0  (100.0 x 17.0 x 130.0 mm)
-hanger_bar             X 33.9..66.1  Y -25.0..34.0  Z -40.0..3.1  (32.2 x 59.0 x 43.1 mm)
+hanger_bar             X 33.9..66.1  Y -25.0..34.5  Z -40.0..3.1  (32.2 x 59.5 x 43.1 mm)
 hanger_backplate       X 5.0..95.0  Y 28.0..45.0  Z 3.0..127.0  (90.0 x 17.0 x 124.0 mm)
 gateway_body           X -0.0..120.0  Y -0.0..30.0  Z -1.2..80.0  (120.0 x 30.0 x 81.2 mm)
 gateway_lid            X -0.0..120.0  Y -3.0..14.0  Z -0.0..80.0  (120.0 x 17.0 x 80.0 mm)
@@ -14,4 +14,4 @@ Key derived positions (world frame, mm):
   magnet datum: bar centreline x=50, Y=-2, pole face at z=-29.80 (saddle floor + 1.0 clearance + 1.2 tag wall); sensor package top at z=-33.78; air gap 3.98 mm
   gateway board: USB-end corners at x=46.0, centreline z=42.0; SMA at (104, 15) on the top wall; cable notch at z=42
 
-Elapsed 8 s
+Elapsed 9 s

@@ -1,0 +1,174 @@
+[
+ {
+  "file": "S0_bar",
+  "colour": 30
+ },
+ {
+  "file": "S0_sensor",
+  "colour": 2
+ },
+ {
+  "file": "S0_sign",
+  "colour": 40
+ },
+ {
+  "file": "S0_magnet",
+  "colour": 1
+ },
+ {
+  "label": "0 (SEEN FROM THE WALL SIDE) HOOK BAR: SENSOR SLIDES INTO ITS SLOT, PIN DROPS IN BEHIND IT, SIGN HANDLE AND MAGNET SIT ON TOP",
+  "x": 0.0
+ },
+ {
+  "file": "S1_body",
+  "colour": 8
+ },
+ {
+  "file": "S1_bar",
+  "colour": 30
+ },
+ {
+  "file": "S1_sensor",
+  "colour": 2
+ },
+ {
+  "label": "1 (SEEN FROM THE WALL SIDE) HOOK BAR SLIDES INTO THE DOVETAIL CHANNEL IN THE BODY",
+  "x": 270.0
+ },
+ {
+  "file": "S2_plate",
+  "colour": 152
+ },
+ {
+  "file": "S2_body",
+  "colour": 8
+ },
+ {
+  "file": "S2_bar",
+  "colour": 30
+ },
+ {
+  "file": "S2_sensor",
+  "colour": 2
+ },
+ {
+  "label": "2 BODY LIFTS 14 MM AND DROPS ONTO THE FOUR BACKPLATE PEGS; THE CATCH CLICKS",
+  "x": 540.0
+ },
+ {
+  "file": "S3_plate",
+  "colour": 152
+ },
+ {
+  "file": "S3_body",
+  "colour": 8
+ },
+ {
+  "file": "S3_bar",
+  "colour": 30
+ },
+ {
+  "file": "S3_sensor",
+  "colour": 2
+ },
+ {
+  "file": "S3_board",
+  "colour": 94
+ },
+ {
+  "file": "S3_holder",
+  "colour": 251
+ },
+ {
+  "file": "S3_cell",
+  "colour": 150
+ },
+ {
+  "file": "S3_antenna",
+  "colour": 6
+ },
+ {
+  "label": "3 BOARD, BATTERY HOLDER, CELL AND ANTENNA GO IN FROM THE FRONT",
+  "x": 810.0
+ },
+ {
+  "file": "S4_plate",
+  "colour": 152
+ },
+ {
+  "file": "S4_body",
+  "colour": 8
+ },
+ {
+  "file": "S4_bar",
+  "colour": 30
+ },
+ {
+  "file": "S4_sensor",
+  "colour": 2
+ },
+ {
+  "file": "S4_board",
+  "colour": 94
+ },
+ {
+  "file": "S4_holder",
+  "colour": 251
+ },
+ {
+  "file": "S4_cell",
+  "colour": 150
+ },
+ {
+  "file": "S4_antenna",
+  "colour": 6
+ },
+ {
+  "file": "S4_lid",
+  "colour": 9
+ },
+ {
+  "label": "4 ALL PARTS HOME. LID: TOP TABS IN FIRST, THEN THE BOTTOM HOOKS CLICK INTO THE WALL ARMS",
+  "x": 1080.0
+ },
+ {
+  "file": "S5_plate",
+  "colour": 152
+ },
+ {
+  "file": "S5_body",
+  "colour": 8
+ },
+ {
+  "file": "S5_bar",
+  "colour": 30
+ },
+ {
+  "file": "S5_sensor",
+  "colour": 2
+ },
+ {
+  "file": "S5_lid",
+  "colour": 9
+ },
+ {
+  "file": "S5_sign",
+  "colour": 40
+ },
+ {
+  "file": "S5_magnet",
+  "colour": 1
+ },
+ {
+  "label": "5 CLOSED. SIGN HANDLE AND MAGNET REST IN THE SADDLE OVER THE SENSOR",
+  "x": 1350.0
+ },
+ {
+  "file": "S6_lid",
+  "colour": 9
+ },
+ {
+  "label": "6 (SEEN FROM BELOW AND BEHIND THE LID) THE LID ALONE: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET",
+  "x": 1620.0
+ }
+]

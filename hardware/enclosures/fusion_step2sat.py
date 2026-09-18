@@ -22,16 +22,20 @@ import traceback
 import adsk.core
 import adsk.fusion
 
-# Newest design folder that exists is converted without asking; otherwise a folder dialog is shown.
-_CANDIDATES = ("~/Downloads/bor-systems/hardware/enclosures/v9", "~/Downloads/bor-systems/hardware/enclosures/v8/final")
-DEFAULT_SRC = next((os.path.expanduser(c) for c in _CANDIDATES if os.path.isdir(os.path.expanduser(c))), "")
+# The first folder in this list that actually contains STEP files is converted without asking; otherwise a dialog is shown.
+_CANDIDATES = ("~/Downloads/bor-systems/hardware/enclosures/v9/stages", "~/Downloads/bor-systems/hardware/enclosures/v9",
+               "~/Downloads/bor-systems/hardware/enclosures/v8/final")
+def _has_steps(d):
+    d = os.path.expanduser(d)
+    return os.path.isdir(d) and any(f.lower().endswith((".step", ".stp")) for f in os.listdir(d))
+DEFAULT_SRC = next((os.path.expanduser(c) for c in _CANDIDATES if _has_steps(c)), "")
 
 
 def run(context):
     app = adsk.core.Application.get()
     ui = app.userInterface
     try:
-        src = DEFAULT_SRC if os.path.isdir(DEFAULT_SRC) else ""
+        src = DEFAULT_SRC if DEFAULT_SRC and os.path.isdir(DEFAULT_SRC) else ""
         if not src:
             dlg = ui.createFolderDialog()
             dlg.title = "Folder with .step files"
