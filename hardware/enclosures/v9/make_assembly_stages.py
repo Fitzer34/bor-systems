@@ -82,3 +82,22 @@ for i, (title, groups) in enumerate(stages):
     manifest.append(dict(label=title, x=i * DX))
 json.dump(manifest, open(os.path.join(out, "manifest.json"), "w"), indent=1)
 print(len([m for m in manifest if "file" in m]), "stage files written to", out)
+
+# AutoCAD script that loads every converted stage (stages/sat_true/*.sat, made by Fusion) in its colour and types the labels
+import textwrap
+sat = os.path.abspath(os.path.join(out, "sat_true"))
+scr = ["FILEDIA 0", "CMDECHO 0", "ERASE ALL", "", "PERSPECTIVE 0", "-VIEW _SWISO", "VSCURRENT S"]
+for m in manifest:
+    if "file" in m:
+        scr += ["CECOLOR %d" % m["colour"], "ACISIN %s" % os.path.join(sat, m["file"] + ".sat")]
+scr.append("CECOLOR 7")
+for m in manifest:
+    if "label" in m:
+        lines = textwrap.wrap(m["label"], 38)
+        if len(lines) > 9:
+            lines = lines[:8] + ["(FULL STEPS: SEE README.TXT)"]
+        for k, ln in enumerate(lines):
+            scr.append("-TEXT %d,%d,-80 7 0 %s" % (m["x"] - 30, -150 - 12 * k, ln))
+scr += ["CECOLOR BYLAYER", "ZOOM E", "FILEDIA 1", "CMDECHO 1", ""]
+open(os.path.join(out, "assemble.scr"), "w").write("\n".join(scr))
+print("assemble.scr written:", sum(1 for l in scr if l.startswith("ACISIN")), "solids,", sum(1 for l in scr if l.startswith("-TEXT")), "text lines")

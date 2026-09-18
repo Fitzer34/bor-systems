@@ -1,0 +1,11 @@
+{
+  "autodeskProduct": "Fusion",
+  "type": "addin",
+  "id": "5b0f6d0e-6a3a-4c0b-9d51-7e2a9c1f4a10",
+  "author": "Owen",
+  "description": {"": "When a CONVERT_ME file is present in a STEP folder, export true ACIS .sat files for AutoCAD, then remove the flag."},
+  "version": "1.0.0",
+  "runOnStartup": true,
+  "supportedOS": "windows|mac",
+  "editEnabled": true
+}

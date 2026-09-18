@@ -7,3 +7,10 @@ v*/*.stl
 v*/closeups/*.scad
 __pycache__/
 *.log
+
+# AutoCAD viewer scratch files and Fusion conversion output
+v9/stages/sat_true/
+v9/stages/DONE.txt
+v9/stages/viewer.*
+v9/stages/CONVERT_ME
+v9/stages/LOAD_ME
