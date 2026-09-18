@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-"""HazardLink v9 enclosures, FINAL (Designer A base, hanger reworked to Owen's bottom-hung concept).
+"""HazardLink v9.9 enclosures, FINAL (Designer A base, hanger reworked to Owen's bottom-hung concept).
 
 Two printed enclosures built around the Heltec WiFi LoRa 32 V3:
-  HANGER  : battery wall hanger = body + lid + backplate + bolt-on hanging BAR under the bottom edge
-            (the sign hangs below the unit; the bar carries a saddle and the Hall sensor under it)
+  HANGER  : battery wall hanger = body + lid + backplate + slide-in hanging BAR under the bottom edge
+            (the sign hangs below the unit; the bar carries a saddle, and a bare Hall sensor sits in a nest under it,
+            held by two filament pins). No screws between the parts; wall screws are the only screws.
   GATEWAY : mains wall box      = body + lid (SMA bulkhead on top, USB-C entry with strain relief)
 
 Run with the CadQuery venv:
@@ -11,16 +12,19 @@ Run with the CadQuery venv:
   --quick skips the PNG previews, --no-autocad skips the SAT/DXF conversion, --check prints
   part-to-part and part-to-reference intersection volumes instead of exporting.
 
-Per part: <part>.step, <part>.stl (fine), <part>.png, <part>_drawing.dxf (three sections with dimensions).
+Per part: <part>.step, <part>.stl (fine), <part>.png, <part>_drawing.dxf (section views with dimensions).
 Per unit: <unit>_assembly.step (named, coloured, with reference solids), <unit>_exploded.png,
 <unit>_assembled.png, <unit>_section.dxf (assembly stack-up section through the board).
-Reference solids (board, cell, holder, Hall carrier, magnet, antenna, plug) go to ref/.
-AutoCAD for Mac deliverables (.sat + 3DSOLID .dxf) are produced by ../../to_autocad.py, which
-this script runs at the end into <out_dir>/autocad.
+print/ holds the same parts already turned into their print orientation (PRINT_ORIENT), the two lid inlays for a
+second colour, the body coupon and ORIENTATION.txt. The slicer settings live in PRINT.md.
+Reference solids (board, cell, holder, Hall sensor and its two pins, magnet, sign handle, antenna, plug) go to ref/.
+The design rule checks run BEFORE anything is exported, so a bad parameter cannot overwrite good files.
+AutoCAD for Mac deliverables (.sat + 3DSOLID .dxf) come from to_autocad.py, which this script tries to run at
+the end into <out_dir>/autocad unless --no-autocad is given.
 
 FRAME (both units): X to the viewer's right when facing the unit, Z up, Y is depth measured from
 the body's front face INTO the wall (right-handed). Body occupies Y 0..D, lid sits at Y -LID_T..0,
-backplate at Y D..D+BP_T, hook at Y < -LID_T. Print orientation is a slicer choice (see notes).
+backplate at Y D..D+BP_T, the bar's lip at Y < -LID_T. The body rim is Y=0 and the lid's outer face is Y=-LID_T.
 
 Board frame -> world: Xb (along the board from the USB-end corner points) -> +X,
 Zb (up from the PCB top, toward the OLED) -> -Y (toward the lid), Yb (+ toward PRG/J3) -> +Z.
@@ -28,10 +32,12 @@ So the OLED faces the lid, the USB-C is at the left wall, PRG is above the board
 RST below it.
 
 Every dimension lives in PARAMS with a tag:
-  datasheet : from a vendor drawing or STEP (Heltec, Samsung, TI, ruthex, USB-IF, TE)
+  datasheet : from a vendor drawing or STEP (Heltec, Murata, TI, USB-IF, TE)
   research  : computed or measured in the research pass (field tables, community practice)
   v7        : kept from the v7 OpenSCAD sketch (design intent, not a measured requirement)
   assumed   : chosen here, must be measured or confirmed before the CAD is frozen
+  Owen's caliper / ruler / side photo, packing slip, maker's listing : read off the parts that were delivered
+  review    : changed after the independent review of v9.7
 No em-dashes anywhere in this file, on purpose.
 """
 import os, sys, math, subprocess, glob, time
@@ -45,10 +51,10 @@ P = dict(
     BRD_L=51.7,             # datasheet (STEP outline, USB corners to antenna tip)
     BRD_W=25.4,             # datasheet
     BRD_T=1.8,              # datasheet 1.6 + 0.2 allowance
-    BRD_CLR=0.3,            # assumed: pocket clearance per side (PETG slip fit)
+    BRD_CLR=0.3,            # assumed: pocket clearance per side (slip fit)
     USB_NOSE=0.65,          # datasheet: USB-C nose proud of the corner points
     USB_SETBACK=1.0,        # assumed: corner points to the wall inner face (nose 0.35 inside); gateway
-    H_USB_SETBACK=3.2,      # assumed: cradle pocket walls start this far in front of the USB-end corners
+    H_USB_SETBACK=3.2,      # not read by the model (the hanger cradle uses USB_SETBACK); kept for reference
     H_BRD_X0=3.5,           # v9.4: board back against the left wall (USB nose 0.35 inside it) so a cable plugs in with the LID ON.
                             # On this board the USB-C port sits between the two buttons at the very end, so port-at-the-edge,
                             # wide pads and a centred display cannot all be had: the display sits left of centre instead.
@@ -56,7 +62,8 @@ P = dict(
     USB_LID_SKIN=1.4,       # review: seven layers left over the plug's overmold where the opening runs into the lid edge (the plug sits 1 mm deeper since v9.7, so 0.75 was needlessly fragile)
     # v9.3 buttons: each is a flap cut into the lid (U-slot through, thin hinge at the root) with a pin over the switch
     BTN_PAD=(24.0, 15.0, 1.6, 0.8, 4.0, 0.8),   # assumed: pad length (X), height (Z), pad thickness, hinge thickness, hinge length, slot width
-    BTN_PAD_X1=11.3,        # assumed: pad free end, measured from the board's USB-end corners (2 mm short of the display pocket)
+    BTN_PAD_X1=11.3,        # assumed: pad edge nearest the display, measured from the board's USB-end corners (2 mm short of the display pocket;
+                            # on the hanger the coil relief runs the pocket on to the slot at this edge)
     BTN_PAD_GAP=1.5,        # assumed: each pad starts this far from the board centreline
     BTN_PIN_D=3.2, BTN_PIN_GAP=0.3, BTN_TRAVEL=0.3,   # assumed: pin diameter, rest gap over the switch, switch travel
     LED_HOLE_D=1.8,         # assumed: light hole over the two status LEDs (it falls inside the RST pad)
@@ -68,14 +75,16 @@ P = dict(
     G_LOGO=(17.0, 58.0, 0.78), G_WORDMARK=(62.0, 66.0, 6.5, "left"),     # assumed: gateway
     OLED_H_MAX=6.0,         # Owen's side photo of his own board (scaled off the USB-C shell): display on its clear carrier stands about 5.6 above the
                             # PCB and the coil antenna beside it about 5.9, both +/- 0.4. 6.0 clears both. A caliper-jaw reading would close the last few tenths.
+                            # NEVER set this below the coil height: the pocket floor (OLED_H_MAX + OLED_GAP above the PCB) must stay at least 0.2 above
+                            # the coil top, and design_checks stops the build before any file is written if it does not.
     COIL=(13.75, 7.3, 3.3, 5.9),   # Owen's side photo: WiFi coil antenna STANDING on the board between the USB end and the display (Xb 12.1 to 15.4, about 3.3 dia,
                             # 5.9 tall). Its position across the board (Yb) is NOT visible in that photo; 7.3 is where Heltec's V3.2 puts its RF part. Confirm with a top photo.
     BEZEL_T=1.0, OLED_POCKET=(36.0, 20.4), OLED_GAP=0.2,   # assumed: front skin left around the window, pocket for the display module (X, Z), clearance glass to bezel
     OLED_X0=14.9, OLED_X1=47.9, OLED_HALF_W=9.28, OLED_H=5.6,    # datasheet envelope; height from Owen's side photo
     OLED_ACT_CX=31.3, OLED_ACT_CY=0.5,       # research: window centre (active area ~1 mm toward +Yb)
     WIN_W=30.0, WIN_H=16.0,                  # research: conservative window showing the whole picture
-    INSERT_W=36.0, INSERT_H=19.5, INSERT_T=1.0, INSERT_POCKET=1.3,   # assumed 1 mm acrylic or PETG pane
-    INSERT_CLEAT=0.6,                        # assumed: retaining cleat overhang into the pocket
+    INSERT_W=36.0, INSERT_H=19.5, INSERT_T=1.0, INSERT_POCKET=1.3,   # assumed 1 mm acrylic or PETG pane (GATEWAY lid only; the hanger lid is flush and takes no insert)
+    INSERT_CLEAT=0.6,                        # assumed: retaining cleat overhang into the pocket (gateway lid only)
     PRG=(3.4, 7.9), RST=(3.4, -7.9), BTN_H=2.0,   # datasheet (STEP)
     LED=(8.1, -8.0),                              # datasheet (STEP, two 0603 LEDs)
     IPEX=(50.4, 0.0), IPEX_H=1.26, UFL_PLUG_H=2.5,   # datasheet socket / assumed plug height
@@ -93,13 +102,14 @@ P = dict(
     WIFI_KEEPOUT=15.0,                 # research: last 10 mm of board + 5 beyond, no metal
 
     # ---- FDM rules --------------------------------------------------------------------
-    WALL=2.5,                # research: 3 perimeters, 2.4 min for an electronics box
+    WALL=2.5,                # research: 2.4 min for an electronics box
     LID_T=3.0,               # research: 3.0 for a handled face
     CORNER_R=5.0,            # v7
     TONGUE_T=2.0, TONGUE_H=4.0, TONGUE_CLR=0.25,   # research: lip 2 x 4, 0.25 per side
     # ---- snap-fit lids (v9: no screws anywhere in the assembly) ------------------------
-    # two rigid hinge tabs on the lid's top edge hook behind a ledge on the top wall; two spring latches on the
-    # bottom edge click into pockets in the bottom wall; a 2.2 mm pin through the bottom wall releases each latch
+    # two rigid hinge tabs on the lid's top edge hook into pockets in a rib along the top wall; two rigid hooks on the
+    # lid's bottom edge drop into windows in two spring arms cut into the body's bottom wall; a pull lip under each arm
+    # tip releases it by hand (no release pins or pinholes since v9.2)
     # v9.2 latches: the SPRING is an arm cut into the body's bottom wall (it prints along its length, so bending runs
     # along the layers); the lid carries only a rigid hook. First PLA print: thin fingers standing on the lid snapped.
     ARM_L=21.0, ARM_W=10.5, ARM_T=2.0, ARM_SLOT=1.2,      # assumed: arm length (X), width from the rim (Y), thickness (outer face relieved), slot width
@@ -113,11 +123,13 @@ P = dict(
     H_ARMS=((7.0, 1), (93.0, -1)), H_TAB_XS=(22.0, 70.0),   # assumed: (root x, direction) of each wall arm, clear of the bar channel strip (x 30..70)
     G_ARMS=((8.0, 1), (36.0, 1)), G_TAB_XS=(66.0, 86.0),    # assumed: gateway arms, left of the intake vents
     SNAP_STRAIN_MAX=1.5,     # research: repeated-use design strain, percent; 1.5 covers PLA (the first spool) as well as PETG (2.0)
-    PINHOLE_D=2.0,           # assumed: RST paperclip hole
-    LED_WIN_D=3.0, LED_SKIN=0.5,      # assumed: sealed translucent window over the LEDs
-    PRG_TAB=(6.0, 10.0, 1.0, 0.8, 0.4),   # assumed: width, length, thickness, groove, outer skin
-    PUSHER_D=2.5,            # assumed: pusher pin over the 1.76 mm actuator
-    PEG_STEM_D=5.5, PEG_STEM_L=3.5, PEG_HEAD_D=10.0, PEG_HEAD_L=3.5, PEG_CHAMFER=1.0,  # assumed
+    # the next four belong to the v9.2 face (RST pinhole, sealed LED window, PRG living-hinge tab). Nothing reads them since
+    # v9.3: both buttons are pads (BTN_PAD, H_PAD_V) and the LED shows through an open hole (LED_HOLE_D)
+    PINHOLE_D=2.0,           # unused since v9.3
+    LED_WIN_D=3.0, LED_SKIN=0.5,      # unused since v9.3
+    PRG_TAB=(6.0, 10.0, 1.0, 0.8, 0.4),   # unused since v9.3
+    PUSHER_D=2.5,            # unused since v9.3
+    PEG_STEM_D=5.5, PEG_STEM_L=3.5, PEG_HEAD_D=10.0, PEG_HEAD_L=3.5, PEG_CHAMFER=1.0,  # assumed (PEG_CHAMFER is not read: the head has a 45 deg cone under it instead)
     PEG_DROP=14.0,           # v7: engagement slide
     PEG_SLOT_CLR=0.35, PEG_HEAD_CLR=0.75, PEG_POCKET_BACK=2.5,   # assumed clearances / roof
     KEY_HEAD_D=10.0, KEY_SLOT_W=5.0, KEY_SLOT_L=10.0,   # research: No.8 pan head keyhole (slot 10 here)
@@ -130,7 +142,7 @@ P = dict(
     HOLDER_L=77.7, HOLDER_W=20.9, HOLDER_H=21.3, HOLDER_CLR=0.5,   # maker's listing: BeiLaMoo BH18650-PC2 (TinyTronics "1x 18650 Battery holder for PCB", marked 18650-PC2)
     HOLDER_STANDOFF=5.0,     # Owen's caliper photo: one solder pin at each end, about 3.4 in from the end face, about 4.3 long. 5.0 leaves room for the pin and the wire soldered to it.
     HOLDER_PIN=(3.4, 4.3, 1.0),   # Owen's caliper photo: pin centre from the end face, pin length, pin width (reference only)
-    HOLDER_X0=11.15, HOLDER_Z0=10.0,    # centred; 10.0 leaves a 4 mm passage under the holder for the sensor lead
+    HOLDER_X0=11.15, HOLDER_Z0=10.0,    # centred; 10.0 leaves a 4.1 mm passage under the holder for the sensor lead
     HOLDER_RIB_T=3.0, HOLDER_RIB_H=12.0, HOLDER_LEAD_GAP=8.0,   # assumed
     CELL_D=18.5, CELL_L=65.2,         # packing slip: Murata US18650VTC6 (18650), datasheet maximum size
     BULK_Z=(34.0, 46.0),              # assumed: stiffening bulkhead between bay and board
@@ -151,15 +163,18 @@ P = dict(
     BAR_REACH=70.0,          # assumed: wall face to the lip front (research: >= 45 so a folded sign clears the wall)
     BAR_LIP_T=9.0,           # v7 lip thickness
     BAR_LIP_H=20.0,          # assumed: lip rises this much above the bar top (forward of the lid, so no clash)
-    BAR_SADDLE_Y=-2.0,       # assumed: saddle centre, just in front of the lid face (sign thickness sits either side)
+    BAR_SADDLE_Y=-2.0,       # assumed: saddle centre, 2 mm in front of the body rim (Y=0), which is 1 mm BEHIND the lid's outer face (Y=-3); sign thickness sits either side
     BAR_SADDLE_W=15.0, BAR_SADDLE_D=2.0,  # assumed: saddle width along Y (folded handle stack 6 to 12, research) and depth
-    BAR_WIRE_Y=(6.5, 10.5),  # assumed: lead slot through the channel roof, in front of the holder (leads rise into the free space under the bulkhead)
+    BAR_WIRE_Y=(6.5, 10.5),  # assumed: lead slot through the channel roof. It opens UNDER the battery holder (holder front face Y=6.2 at HOLDER_STANDOFF 5):
+                             # the leads run forward in the 4.1 mm passage under the holder, then rise in front of it. So they go in BEFORE the holder does.
     BAR_WIRE_W=8.0,          # assumed
     WEB_BAND=(-19.0, -15.0), # assumed: the lead groove in the back of the web is open (wires lay in) except this band, which keeps them in
     BULK_LEAD_SLOT=(46.0, 54.0, 2.0, 6.4),   # assumed: slot through the bulkhead right above the channel roof slot (x0, x1, y0, y1)
     BAR_GUSSET=8.0, BAR_GUSSET_W=2.0,    # assumed: short side gussets at the lip root
-    HALL_PKG=(4.1, 3.0, 1.5),         # Owen's caliper photo: the lift sensor is a BARE flat 3-leg Hall sensor (TO-92S style), body about 4.1 wide x 3.0 x 1.5 thick, no carrier board
-    HALL_LEG=(0.45, 1.27, 14.0),      # datasheet TO-92S: leg width, pitch, length (the wires are soldered to the legs and sleeved)
+    HALL_PKG=(4.1, 3.0, 1.5),         # Owen's caliper photo: the lift sensor is a BARE flat 3-leg Hall sensor, TI DRV5032FA in the TO-92 style (LPG) package
+                                      # (DigiKey DRV5032FALPG), body about 4.1 wide x 3.0 x 1.5 thick, no carrier board. OMNIPOLAR: either magnet pole works.
+    HALL_LEG=(0.45, 1.27, 14.0),      # datasheet (TO-92 style): leg width, pitch, length. The wires are soldered to the legs and each joint sleeved, but the
+                                      # first 3 mm of the legs behind the body stays bare, straight and unsleeved: the two retaining pins stand there
     HALL_NEST_CLR=(0.25, 0.3, 0.35),  # review: nest clearance each side, in front, above and below the package (0.35 so a sagging bridge cannot jam it, and every level of the cavity lands on a 0.2 mm layer)
     HALL_TUNNEL_W=8.6,                # v9: tunnel behind the nest for the legs and the three sleeved solder joints
     HALL_SLOT_H=3.0, HALL_SKIN=1.6, HALL_WIRE_H=4.4,   # review: values that put the roof, floors and trench on 0.2 mm layer boundaries with the bar printed upright
@@ -179,7 +194,7 @@ P = dict(
     ANT_X=86.0, ANT_Y=22.0, ANT_D=9.5, ANT_L=47.0, ANT_SHELF_Z=62.0, ANT_SHELF_T=2.5, ANT_SLOT_W=6.6, ANT_CLIP_Z=100.0,
     SMA_KO=(84.0, 17.5),     # assumed optional SMA knock-out on the top wall
     # label recess removed: it was on the face that sits on the print bed, so it printed over nothing. Use a sticker.
-    SADDLES=((30.0, 74.0),),   # assumed cable tie saddles (leads, pigtail); the pigtail one sits clear below the antenna shelf
+    SADDLES=((30.0, 74.0),),   # assumed: one cable tie saddle on the back wall for the lead bundle (x, z)
     # retention added after the six-direction audit (audit_retention.py): nothing may move more than about 0.5 mm
     # v9.5: parts stay put with the lid OFF. Clips flex across the print layers here (the body prints back-face down), so
     # their strain is held under SNAP_STRAIN_XLAYER, well below the limit used for flexures that print flat.
@@ -189,7 +204,18 @@ P = dict(
     HOLDER_ARM=(2.0, 6.0, 24.9, 0.8),  # assumed: battery holder snap arm thickness (X), width (Z), lower edge z, engagement over the holder's front face
     HOLD_POST=(4.0, 8.0, 0.3),      # assumed: lid posts on the holder's end blocks (X thickness, Z width, clearance)
     CELL_RIB=(16.0, 3.0, 0.5),       # assumed: lid ribs in front of the cell (X length, Z width, clearance)
-    HALL_PIN_D=3.1, HALL_PIN_X=3.2,  # assumed: TWO holes for 2.85 mm filament offcuts, one each side of the sensor's legs right behind its body: the legs pass between them, the 4.1 mm body cannot
+    HALL_PIN_D=3.1, HALL_PIN_X=3.2,  # assumed: TWO holes for 2.85 mm filament offcuts (6.0 to 6.5 long), one each side of the sensor's legs right behind its body: the legs pass between them, the 4.1 mm body cannot
+
+    # ---- cleaning-mode button UNDER THE BASE (Owen: out of sight of the public, above the hook) ----------
+    BTN16=(16.4, 18.2, 3.2, 16.0, 22.0, 3.2),   # Owen's caliper photos of his Gebildet 16 mm button (scaled off its own M16 thread): hole for the thread,
+                             # head dia, head height, body dia, nut across corners, nut thickness
+    BTN16_METAL_L=15.0,      # Owen's photo: threaded metal body behind the head
+    BTN16_SOCKET_L=25.6,     # Owen's photo: the blue plug-in wire socket that pushes onto the button's pins (five wires leave its end)
+    BTN16_PINS_L=7.5,        # ASSUMED: bare pins if the socket is left off and the wires are soldered on (they are hidden inside the socket in the photo)
+    BTN16_USE_SOCKET=True,   # True keeps the plug-in socket (no soldering at the button, swap a button by unplugging); False makes the box about 18 mm shorter
+    BTN16_XY=(83.8, 21.3),   # assumed: through the bottom wall behind the right latch arm, clear of the hook channel strip (x 30..70) and of the rounded inside corner at the side wall
+    BTN16_WIRE=6.0,          # assumed: room above the socket for the five wires to turn
+    BTN16_ON=True,           # False builds the v9.9 box without the button or the basement
 
     # ---- Gateway ----------------------------------------------------------------------
     G_W=120.0, G_H=80.0, G_D=30.0,    # assumed
@@ -280,6 +306,32 @@ def hdr_x(pin):
 # --------------------------------------------------------------------------------------
 # Heltec WiFi LoRa 32 V3: reference model and the shared board cradle
 # --------------------------------------------------------------------------------------
+def btn16_len():
+    """Length behind the button's head: metal body plus the plug-in socket (or the bare pins)."""
+    return P["BTN16_METAL_L"] + (P["BTN16_SOCKET_L"] if P["BTN16_USE_SOCKET"] else P["BTN16_PINS_L"])
+
+def _apply_basement():
+    """The battery holder sits 7 mm above the bottom wall across nearly the full width, and the button is far longer than
+    that. So the box grows DOWNWARD by H_BASEMENT: every hanger feature keeps its place relative to the top, and the button
+    gets an empty bay under the battery. One number (the button's length) sets it."""
+    if not P.get("BTN16_ON"):
+        P["H_BASEMENT"] = 0.0
+        return
+    blen = btn16_len()
+    need = (blen - P["WALL"]) + P["BTN16_WIRE"]                       # clear height wanted above the bottom wall's inner face
+    have = (P["HOLDER_Z0"] - P["HOLDER_CLR"] - P["HOLDER_RIB_T"]) - P["WALL"]   # what is there now, under the holder's locating rib
+    b = float(max(0, math.ceil(need - have)))
+    P["H_BASEMENT"] = b
+    for k in ("H_H", "H_BRD_ZC", "HOLDER_Z0", "BP_H", "CATCH_Z0", "ANT_SHELF_Z", "ANT_CLIP_Z"):
+        P[k] += b
+    P["BULK_Z"] = tuple(z + b for z in P["BULK_Z"])
+    P["PEG_ZS"] = tuple(z + b for z in P["PEG_ZS"])
+    P["SADDLES"] = tuple((x, z + b) for (x, z) in P["SADDLES"])
+    a = P["HOLDER_ARM"]; P["HOLDER_ARM"] = (a[0], a[1], a[2] + b, a[3])
+    l = P["H_LOGO"]; P["H_LOGO"] = (l[0], l[1] + b, l[2])
+    w = P["H_WORDMARK"]; P["H_WORDMARK"] = (w[0], w[1] + b, w[2], w[3])
+_apply_basement()
+
 def b2w(shape, x0, zc, pcb_top_y):
     """Board frame (Xb, Yb, Zb) -> world (x0 + Xb, pcb_top_y - Zb, zc + Yb)."""
     return shape.rotate((0, 0, 0), (1, 0, 0), 90).translate((x0, pcb_top_y, zc))
@@ -356,8 +408,9 @@ def board_cradle(x0, zc, pcb_top_y, y_back, x_wall_inner, setback=None):
     return cradle
 
 def lid_header_ribs(x0, zc, pcb_top_y):
-    """Ribs on the lid inner face bearing on the header pad strips (no headers fitted). The J3 rib
-    is shortened to Xb 13..34 so it clears the wire solder joints; the J2 rib runs Xb 5..44."""
+    """Ribs on the lid inner face bearing on the header pad strips (no headers fitted). Both start at Xb 13, clear of
+    the button pads. The J3 rib stops at Xb 34 so it clears the wire solder joints; the J2 rib runs on to Xb 44. Each
+    has a gap where the board catch on the pocket wall stands."""
     hw = P["BRD_W"] / 2 + P["BRD_CLR"]
     z_out = hw - P["POCKET_WALL_T"] * 0 - 0.3      # rib outer edge, 0.3 inside the pocket wall
     y1 = pcb_top_y - P["LID_RIB_CLR"]
@@ -371,8 +424,10 @@ def lid_header_ribs(x0, zc, pcb_top_y):
     return j2.union(j3)
 
 def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False, vertical=None):
-    """Common lid features over the board: OLED window with an inside pocket and cleats for a clear
-    insert, sealed PRG living-hinge button with a pusher pin, RST pinhole, sealed LED window."""
+    """Common lid features over the board. Both lids: the display window with a 45 deg chamfer round its outside, the
+    two button pads and the open LED light hole (lid_buttons). flush=True (hanger): the display module itself sits in a
+    pocket behind a BEZEL_T skin, with a relief for the coil antenna (and for the USB-C shell and the mated U.FL plug, cut
+    only if they would reach the lid); no insert, no cleats. flush=False (gateway): a pocket inside the lid with two cleats that hold a clear window insert."""
     cx = x0 + P["OLED_ACT_CX"]
     cz = zc + P["OLED_ACT_CY"]
     ww, wh = P["WIN_W"], P["WIN_H"]
@@ -652,7 +707,7 @@ def build_hanger_body():
     # sensor lead goes straight up: a slot through the bulkhead right above the slot in the channel roof
     sx0, sx1, sy0, sy1 = P["BULK_LEAD_SLOT"]
     body = body.cut(box(sx0, sx1, sy0, sy1, bz0 - 1, bz1 + 1))
-    # snap-fit lid: latch pockets + release pinholes in the bottom wall, hinge ledges on the top wall
+    # snap-fit lid: spring arms with hook windows and pull lips in the bottom wall, hinge ribs with nose pockets on the top wall
     body = body_snap_features(body, W, H, wall, yb, P["H_ARMS"], P["H_TAB_XS"])
     # keyhole peg pockets in 10 mm bosses on the back wall (pegs live on the backplate)
     stem_pass = P["PEG_STEM_L"] - 0.2
@@ -666,15 +721,16 @@ def build_hanger_body():
             body = body.union(box(px - 8, px + 8, D - boss_t, yb + EPS, pz - drop - head_w / 2 - 2, pz + 8))
     # board cradle (USB end against the left wall)
     body = body.union(board_cradle(g["x0"], g["zc"], g["pcb_top"], yb, wall, setback=P["USB_SETBACK"]))
-    # 21700 holder bay: 3 mm ribs 8 mm tall, lead gaps in both end ribs, ends of the top rib open
+    # BH18650-PC2 holder bay: ribs HOLDER_RIB_T (3 mm) thick and HOLDER_RIB_H (12 mm) tall, lead gaps in both end ribs, ends of the top rib open
     hx0 = P["HOLDER_X0"] - P["HOLDER_CLR"]; hx1 = P["HOLDER_X0"] + P["HOLDER_L"] + P["HOLDER_CLR"]
     hz0 = P["HOLDER_Z0"] - P["HOLDER_CLR"]; hz1 = P["HOLDER_Z0"] + P["HOLDER_W"] + P["HOLDER_CLR"]
     rt, rh, gap = P["HOLDER_RIB_T"], P["HOLDER_RIB_H"], P["HOLDER_LEAD_GAP"]
     zm = (hz0 + hz1) / 2
+    rib_z0 = (wall - EPS) if not P["H_BASEMENT"] else hz0 - rt       # with a basement the ribs become a shelf off the back wall
     for (xa, xb) in ((hx0 - rt, hx0), (hx1, hx1 + rt)):
-        body = body.union(box(xa, xb, yb - rh, yb + EPS, wall - EPS, zm - gap / 2))
+        body = body.union(box(xa, xb, yb - rh, yb + EPS, rib_z0, zm - gap / 2))
         body = body.union(box(xa, xb, yb - rh, yb + EPS, zm + gap / 2, hz1 + rt))
-    body = body.union(box(hx0 - rt, hx1 + rt, yb - rh, yb + EPS, wall - EPS, hz0))
+    body = body.union(box(hx0 - rt, hx1 + rt, yb - rh, yb + EPS, rib_z0, hz0))
     body = body.union(box(hx0 + 10.0, hx1 - 10.0, yb - rh, yb + EPS, hz1, bz0 + EPS))
     # standoff ribs: the holder's underside (with its two solder pins, one at each end) stands HOLDER_STANDOFF off the back wall on
     # three cross ribs; the pins and the wires soldered to them live in the gap and leave through the end-rib gaps
@@ -712,11 +768,10 @@ def build_hanger_body():
     clip = clip.cut(cyl_z(ax, ay, ad + 0.6, cz_ - 4, cz_ + 4))
     clip = clip.cut(box(ax - (ad - 0.6) / 2, ax + (ad - 0.6) / 2, ay - ad, ay, cz_ - 4, cz_ + 4))
     body = body.union(clip)
-    # cable tie saddles: lead bundle rising past the security screw (tie tunnel along X),
-    # pigtail run to the antenna (tunnel along Z)
+    # cable tie saddle on the back wall for the lead bundle (tie tunnel along X)
     for (sx_, sz_) in P["SADDLES"]:
         body = body.union(tie_saddle(sx_, sz_, yb, along="X"))
-    # USB-C slot in the left wall, 13.5 x 8 rounded, with a 1 mm stepped lead-in outside
+    # USB-C opening in the left wall, USB_SLOT_W x USB_SLOT_H (14.0 x 8.0) with rounded corners and a 1 mm stepped lead-in outside
     uy = g["pcb_top"] - P["USB_OPEN_CY"]
     uw, uh = P["USB_SLOT_W"], P["USB_SLOT_H"]
     body = body.cut(box(-1, wall + 1, uy - uh / 2, uy + uh / 2, g["zc"] - uw / 2, g["zc"] + uw / 2).edges("|X").fillet(2.0))
@@ -729,7 +784,8 @@ def build_hanger_body():
     body = knockout_z(body, kx, ky, P["SMA_HOLE_D"], H, H - wall)
     # hanging bar interface: a thickened strip inside the bottom wall carries a dovetail channel that is open at the
     # back (wall side) and closed at the front; the bar's plate slides in from behind and the wall locks it. The Hall
-    # lead slot goes up through the channel roof in front of the holder.
+    # lead slot goes up through the channel roof UNDER the holder (slot Y 6.5..10.5, holder front face Y=6.2), so the
+    # leads have to be fed up and folded forward before the holder is pressed in.
     sw2 = P["DT_STRIP_W"] / 2
     strip_y0 = P["TONGUE_H"] + P["TONGUE_CLR"] + 0.5
     body = body.union(box(W / 2 - sw2, W / 2 + sw2, strip_y0, yb + EPS, wall - EPS, g["strip_top"]))
@@ -741,6 +797,10 @@ def build_hanger_body():
                              D - li, D + 1.0))
     wy0, wy1 = P["BAR_WIRE_Y"]
     body = body.cut(box(W / 2 - P["BAR_WIRE_W"] / 2, W / 2 + P["BAR_WIRE_W"] / 2, wy0, wy1, -1.0, g["strip_top"] + 1.0))
+    # cleaning-mode button: a plain round hole through the bottom wall; the button's own nut clamps it from inside
+    if P["BTN16_ON"]:
+        bx_, by_ = P["BTN16_XY"]
+        body = body.cut(cyl_z(bx_, by_, P["BTN16"][0], -1.0, wall + 1.0))
     # peg pockets are cut last so no internal rib can refill a head chamber
     for px in P["PEG_XS"]:
         for pz in P["PEG_ZS"]:
@@ -760,7 +820,7 @@ def build_hanger_lid():
                (5.0, W - 5.0, H - wall - P["TONGUE_CLR"] - P["TONGUE_T"] - 0.5, H + 1))   # top segment relieved: the tabs locate the top edge and the lid must pivot there
     lid = lid.union(lid_tongue(W, H, wall, (), cutouts))
     # USB-C with the lid on: the plug's overmold runs 0.75 mm into the lid's thickness, so the lid edge is hollowed from
-    # behind over the opening, leaving a thin face skin
+    # behind over the opening, leaving USB_LID_SKIN (1.4 mm) of face skin over the plug
     lid = lid.cut(box(-1, wall + 0.6, -lt + P["USB_LID_SKIN"], 1, g["zc"] - uw, g["zc"] + uw))
     lid = lid_snap_features(lid, W, H, wall, P["H_ARMS"], P["H_TAB_XS"])
     lid = lid.union(lid_header_ribs(g["x0"], g["zc"], g["pcb_top"]))
@@ -788,15 +848,17 @@ def gateway_marks():
     return face_marks(g["W"], g["lid_t"], P["G_LOGO"], P["G_WORDMARK"], g["x0"], g["zc"])
 
 def inlay_of(marks, W, H, lid_t):
-    """The second-colour body: the marks, trimmed to the 0.4 mm they occupy in the face."""
+    """The second-colour body: the marks, trimmed to the MARK_DEPTH (0.6 mm) they occupy in the face."""
     return marks.intersect(box(-1, W + 1, -lid_t, -lid_t + P["MARK_DEPTH"], -1, H + 1))
 
 def build_hanger_bar():
     """Slide-in hanging bar (no screws), T-shaped: a narrow dovetail plate and web join it to the body, and a WIDE bar
     below spans the sign's hand hole, so the sign hangs level and cannot slide sideways off the sensor. Saddle along the
-    full width, upturned lip at the front, Hall carrier in a slot under the middle of the saddle. Prints UPRIGHT on the
-    bar's bottom face: every bending load is then in-plane, the 45 deg dovetail flanks and the 45 deg spreaders are
-    self-supporting, and only the front of the dovetail plate needs support."""
+    full width, upturned lip at the front, and a bare Hall sensor in a snug nest under the middle of the saddle, reached
+    by a tunnel from the bar's back face and kept there by two filament pins. Prints UPRIGHT on the bar's bottom face
+    with NO support at all: every bending load is then in-plane, the 45 deg dovetail flanks and the 45 deg spreaders
+    are self-supporting, and a 45 deg gusset off the web carries the front of the dovetail plate. Support must never be
+    generated inside the sensor tunnel, the nest or the pin holes: it could not be got out again."""
     g = hanger_geom()
     bx0, bx1, wx0, wx1, W = g["bar_x0"], g["bar_x1"], g["web_x0"], g["web_x1"], g["W"]
     w0, w1 = g["plate_w0"] / 2, g["plate_w1"] / 2
@@ -824,7 +886,9 @@ def build_hanger_bar():
     # saddle across the bar's full width (the handle settles here by gravity)
     sw, sd = P["BAR_SADDLE_W"], P["BAR_SADDLE_D"]
     part = part.cut(box(bx0 - 1, bx1 + 1, g["saddle_y"] - sw / 2, g["saddle_y"] + sw / 2, g["saddle_floor"], g["bar_top"] + 1))
-    # Hall sensor: tunnel from the bar's back face forward to the back of the package, a 45 deg ramp up, then the nest
+    # Hall sensor: tunnel from the bar's back face forward to the back of the package, a 45 deg ramp up, then the nest.
+    # The ROOF (slot_ceil) is one flat surface from the bar's back face to the front of the nest; only the floors step
+    # and ramp. So the easy way in is with the bar held upside down: the sensor slides along the roof, nothing to climb.
     hw, nw = g["slot_hw"], g["nest_hw"]
     step = g["nest_floor"] - g["slot_floor"]
     yb0, yf = g["nest_y_back"], g["nest_y_back"] + P["HALL_FUNNEL_Y"]
@@ -849,11 +913,13 @@ def build_hanger_bar():
     part = part.cut(box(W / 2 - cw2, W / 2 + cw2, g["web_y0"] + 2.5, g["web_y1"] - 2.5, band0 - EPS, band1 + EPS))
     wy0, wy1 = P["BAR_WIRE_Y"]
     part = part.cut(box(W / 2 - cw2, W / 2 + cw2, wy0 + 0.5, g["plate_y1"] + 1, g["plate_z1"] - 1.5, g["plate_z1"] + 1))
-    # retaining pins: two 6.5 mm offcuts of 2.85 mm filament stand right behind the package, one each side of its legs, so
-    # the sensor cannot slide back out of its nest. They drop into blind holes in the saddle floor and the sign's handle sits over them.
+    # retaining pins: two offcuts of 2.85 mm filament, 6.0 to 6.5 mm long, stand right behind the package, one each side of its
+    # legs, so the sensor cannot slide back out of its nest. They drop into holes in the saddle floor (6.6 mm deep, so a pin
+    # never stands proud of the saddle) and the sign's handle sits over them.
     # The holes cross the tunnel's bridged roof. So that roof still prints cleanly, the hole opens in stages (the usual FDM
     # trick): first roof layer = one slot right across, so its bridge lines run wall to wall; second = a square, bridged
-    # the short way; round from the third layer up. A 2 mm hole under each pin lets it be pushed out and drains the cavity.
+    # the short way; round from the third layer up. Nothing has to be drilled. A 2 mm hole under each pin, through the
+    # bar's underside, lets it be pushed out with a 1.5 mm rod and drains the cavity.
     pd, lay = P["HALL_PIN_D"], 0.2
     pins = hall_pin_xys(g)
     sxw = max(hw, P["HALL_PIN_X"] + pd / 2)
@@ -930,7 +996,13 @@ def hanger_refs():
     refs["holder"] = (holder, (0.15, 0.15, 0.15))
     cx = hx0 + hl / 2
     refs["cell"] = (cyl_x(cy, cz, P["CELL_D"], cx - P["CELL_L"] / 2, cx + P["CELL_L"] / 2), (0.20, 0.55, 0.85))
-    # bare flat Hall sensor in its nest under the saddle, branded face up toward the magnet, three legs running back
+    # bare flat Hall sensor (DRV5032FA, TO-92 style) in its nest under the saddle, marked face up toward the magnet, three legs running back
+    if P["BTN16_ON"]:
+        hole, hd, hh, bd, nut, nut_t = P["BTN16"]
+        bx_, by_ = P["BTN16_XY"]
+        btn = cyl_z(bx_, by_, hd, -hh, 0.0).union(cyl_z(bx_, by_, bd - 0.2, -EPS, P["BTN16_METAL_L"])).union(cyl_z(bx_, by_, nut, g["wall"], g["wall"] + nut_t))
+        btn = btn.union(cyl_z(bx_, by_, 17.0 if P["BTN16_USE_SOCKET"] else 12.0, P["BTN16_METAL_L"] - EPS, btn16_len()))     # socket envelope, latch tab included
+        refs["clean_button"] = (btn, (0.75, 0.75, 0.78))
     pw, pl, pt = P["HALL_PKG"]
     lw, lp, ll = P["HALL_LEG"]
     sy, sz = g["sensor_y"], g["sensor_z"]
@@ -1306,6 +1378,15 @@ def design_checks(hg, gg):
     coil_clear = (hg["pcb_top"] - kh) - (-hg["lid_t"] + P["BEZEL_T"])
     out.append((coil_clear >= 0.2, "coil antenna top (%.1f above the PCB) clears the pocket floor by %.1f mm (>= 0.2); relieved for a coil centred anywhere within Yb +/-%.2f, which is everything inboard of the header pad rows" % (kh, coil_clear, P["BRD_W"] / 2 + P["BRD_CLR"] - 0.3 - P["LID_RIB_W"] - kd / 2)))
     out.append((P["HOLDER_STANDOFF"] >= P["HOLDER_PIN"][1] + 0.5, "holder stands %.1f mm off the back wall for its %.1f mm solder pins (>= pin + 0.5)" % (P["HOLDER_STANDOFF"], P["HOLDER_PIN"][1])))
+    if P["BTN16_ON"]:
+        hole, hd, hh, bd, nut, nut_t = P["BTN16"]
+        blen = btn16_len()
+        bx_, by_ = P["BTN16_XY"]
+        rib_bot = P["HOLDER_Z0"] - P["HOLDER_CLR"] - P["HOLDER_RIB_T"]
+        out.append((blen + P["BTN16_WIRE"] <= rib_bot + 0.01, "cleaning button (" + ("with" if P["BTN16_USE_SOCKET"] else "without") + " its plug-in socket): %.1f mm long behind its head + %.0f mm for the wires ends at z=%.1f, under the battery shelf (z=%.1f); the box is %.0f mm taller for it (%.0f tall)" % (blen, P["BTN16_WIRE"], blen + P["BTN16_WIRE"], rib_bot, P["H_BASEMENT"], P["H_H"])))
+        out.append((bx_ + nut / 2 <= W - wall - 0.3 and by_ + nut / 2 <= hg["y_back"] + 0.01 and bx_ - nut / 2 >= W / 2 + P["DT_STRIP_W"] / 2 + 0.5, "cleaning button nut (%.0f mm across corners) turns freely between the side wall, the back wall and the hook channel strip" % nut))
+        out.append((by_ - hole / 2 - (P["ARM_W"] + P["ARM_SLOT"]) >= 1.2, "bottom wall left between the latch arm's slot and the button hole = %.1f mm (>= 1.2)" % (by_ - hole / 2 - P["ARM_W"] - P["ARM_SLOT"])))
+        out.append((P["BAR_DROP"] - hh >= 25.0, "finger room under the button: %.1f mm between its face and the hook (>= 25)" % (P["BAR_DROP"] - hh)))
     pw_ = P["HALL_PKG"][0]
     gate = 2 * P["HALL_PIN_X"] - 2.85
     legs = 2 * P["HALL_LEG"][1] + P["HALL_LEG"][0]
@@ -1350,106 +1431,196 @@ def design_checks(hg, gg):
     return out
 
 def write_readme(out_dir, hg, gg):
+    """README.txt for the build folder. Every number in it is fed from PARAMS or from the derived geometry, by name, so
+    the text cannot drift when a value changes. Literal percent signs in the template are doubled."""
     sy = hg["sensor_y"]
     gap = hg["saddle_floor"] + P["TAG_CLR"] + P["TAG_WALL"] - (hg["sensor_z"] + P["HALL_PKG"][2] / 2)
-    txt = """HazardLink v9.7 enclosures (sized from Owen's own parts): no screws; every part clipped in even with the lid off; wall-arm latches; flush display; USB-C at the edge (lid on); two button pads; logo on the face; wide hook bar. Generated by hazardlink_enclosures.py.
-Frame: X right, Z up, Y from the front face into the wall. Wall face at Y=%.0f.
+    v = dict(
+        wall_y=hg["wall_y"], lid_t=P["LID_T"],
+        tab_l=P["TAB_L"], arm_l=P["ARM_L"], arm_w=P["ARM_W"], arm_t=P["ARM_T"], strain=P["SNAP_STRAIN_MAX"],
+        hook_w=P["HOOK_W"], hook_barb=P["HOOK_BARB"],
+        bezel=P["BEZEL_T"], oled_gap=P["OLED_GAP"], oled_h_max=P["OLED_H_MAX"], oled_h=P["OLED_H"], coil_h=P["COIL"][3],
+        glass_max=P["BEZEL_T"] + P["OLED_GAP"], glass_now=P["LID_T"] + hg["pcb_top"] - P["OLED_H"],
+        pocket_h=P["OLED_H_MAX"] + P["OLED_GAP"], coil_need=P["COIL"][3] + 0.2,
+        coil_band=P["BRD_W"] / 2 + P["BRD_CLR"] - 0.3 - P["LID_RIB_W"] - P["COIL"][2] / 2, coil_yb=P["COIL"][1],
+        ins_w=P["INSERT_W"], ins_h=P["INSERT_H"], ins_t=P["INSERT_T"],
+        dt_mouth=P["DT_MOUTH"], dt_top=P["DT_TOP"], dt_h=P["DT_H"], dt_clr=P["DT_CLR"], dt_flank=(P["DT_TOP"] - P["DT_MOUTH"]) / 2,
+        peg_drop=P["PEG_DROP"], catch_w=P["CATCH_W"], catch_l=P["CATCH_L"], catch_t=P["CATCH_T"],
+        win_w=P["CATCH_WIN"][0], win_h=P["CATCH_WIN"][1],
+        usb_w=P["USB_SLOT_W"], usb_h=P["USB_SLOT_H"], usb_skin=P["USB_LID_SKIN"],
+        pad_w=hg["x0"] + P["BTN_PAD_X1"] - P["H_PAD_V"][0], pad_h=P["H_PAD_V"][1], pad_slot=P["BTN_PAD"][5],
+        led_d=P["LED_HOLE_D"], mark=P["MARK_DEPTH"],
+        bar_w=P["BAR_W"], web_w=P["WEB_W"], hole_clr=P["SIGN_HOLE_CLR"], bar_drop=P["BAR_DROP"], reach=P["BAR_REACH"], lip_h=P["BAR_LIP_H"],
+        saddle_w=P["BAR_SADDLE_W"], sign_t=P["SIGN_T"], free_y=hg["web_y0"] - hg["lip_back"],
+        hold_l=P["HOLDER_L"], hold_w=P["HOLDER_W"], hold_h=P["HOLDER_H"], standoff=P["HOLDER_STANDOFF"],
+        pin_len=P["HOLDER_PIN"][1], pin_in=P["HOLDER_PIN"][0], pin_room=P["HOLDER_STANDOFF"] - P["HOLDER_PIN"][1],
+        arm_over=P["HOLDER_ARM"][3], post_clr=P["HOLD_POST"][2], cell_clr=P["CELL_RIB"][2], rib_clr=P["LID_RIB_CLR"],
+        hall_w=P["HALL_PKG"][0], hall_l=P["HALL_PKG"][1], hall_t=P["HALL_PKG"][2],
+        gate=2 * P["HALL_PIN_X"] - 2.85, tunnel_l=hg["bar_back"] - hg["nest_y_back"],
+        pin_hole=P["HALL_PIN_D"], pin_depth=hg["saddle_floor"] - (hg["slot_floor"] - 2.0), push_d=P["HALL_PIN_PUSH_D"],
+        mag_d=P["MAGNET_D"], mag_t=P["MAGNET_T"],
+        ant_d=P["ANT_D"], ant_l=P["ANT_L"],
+        sy=sy, sy_front=-sy, sy_behind=P["LID_T"] + sy,
+        wire_y0=P["BAR_WIRE_Y"][0], wire_y1=P["BAR_WIRE_Y"][1], holder_front=hg["holder_front"],
+        lead_gap=(P["HOLDER_Z0"] - P["HOLDER_CLR"]) - hg["strip_top"],
+        xc=hg["W"] / 2, tag_clr=P["TAG_CLR"], tag_wall=P["TAG_WALL"], gap=gap,
+        gusset=hg["web_y0"] - hg["plate_y0"], head_w=P["PEG_HEAD_D"] + 2 * P["PEG_HEAD_CLR"], nose_pocket=P["TAB_W"] + 1.0,
+        coupon=14.0, win_ww=P["WIN_W"], win_wh=P["WIN_H"], groove_open=hg["bar_back"] - (hg["web_y0"] + 2.5),
+        g_screw_x=P["G_LOWER_SCREW"][0], g_screw_z=P["G_LOWER_SCREW"][1], key_l=P["KEY_SLOT_L"],
+    )
+    txt = """HazardLink v9.9 enclosures (sized from Owen's own parts): no screws between the parts; every part clipped in even with the lid off; wall-arm latches; flush display; USB-C at the edge (lid on); two finger pads; logo on the face; wide hook bar that prints with no support; bare Hall sensor held by two filament pins. Generated by hazardlink_enclosures.py.
+Frame: X right, Z up, Y from the body rim (Y=0) into the wall. The lid's outer face is at Y=-%(lid_t).0f, the wall face at Y=%(wall_y).0f.
 
 FILES
   <part>.step / .stl / .png / _drawing.dxf   printable parts: hanger_body, hanger_lid, hanger_bar, hanger_backplate, gateway_body, gateway_lid
+  print/                                        the same parts already turned into their print orientation (do not rotate them in the slicer),
+                                                hanger_lid_inlay.stl and gateway_lid_inlay.stl (second colour), hanger_body_coupon.stl (test ring)
+                                                and ORIENTATION.txt
+  PRINT.md                                      the print recipe. It is the single source of truth for the slicer settings.
   hanger_assembly.step, gateway_assembly.step  named and coloured assemblies including the reference solids
   hanger_section.dxf, gateway_section.dxf      assembly stack-up sections
   *_exploded.png, *_assembled*.png, *_lid_off.png previews
-  ref/                                          reference solids (board, cell, holder, Hall carrier, magnet, antenna, plug), not printed
-  sat_true/                                     true-surface ACIS files for AutoCAD for Mac (run fusion_step2sat.py in Fusion)
+  ref/                                          reference solids, not printed: board, cell, holder, Hall sensor (its file is still named
+                                                hall_carrier), its two pins, magnet, sign handle, antenna, plug; window insert for the gateway only
+  sat_true/                                     true-surface ACIS files for AutoCAD for Mac (run fusion_step2sat.py in Fusion to refresh them)
   manifest.txt                                  bounding boxes and derived positions
 
-HOW THE PARTS HOLD TOGETHER (v9)
-  Lids (both units): two rigid hinge tabs on the lid's top edge reach %.0f mm in and hook into pockets in a rib along the
-    top wall. At the bottom the SPRING is in the body: two arms cut into the bottom wall (%.0f long x %.1f wide x %.1f thick,
-    printed along their length so they bend along the layers, strain under %.1f %%). Each arm has a window; the lid carries a
-    rigid %.0f mm hook with a %.1f mm barb that drops into it. Nothing on the lid flexes, so nothing on the lid can snap.
+HOW THE PARTS HOLD TOGETHER
+  Lids (both units): two rigid hinge tabs on the lid's top edge reach %(tab_l).0f mm in and hook into pockets in a rib along the
+    top wall. At the bottom the SPRING is in the body: two arms cut into the bottom wall (%(arm_l).0f long x %(arm_w).1f wide x %(arm_t).1f thick,
+    printed along their length so they bend along the layers, strain under %(strain).1f %%). Each arm has a window; the lid carries a
+    rigid %(hook_w).0f mm hook with a %(hook_barb).1f mm barb that drops into it. No part of the latch on the lid flexes, so the lid has
+    no thin finger to snap off.
     First use: push each arm tip down once with a screwdriver to break its small moulding tab (it is there so the arm
     prints cleanly). Fit: top tabs into the rib pockets, swing the bottom edge in until both hooks click.
     Open: pull the lip under one arm tip down about 1 mm with a fingernail or coin, ease that corner of the lid out, do the
     other, pull the bottom edge out about 25 mm until the top tabs drop free, then take the lid away.
-  Display (hanger): the board sits right up behind the lid so the display glass is %.1f mm below the face behind a %.1f mm
-    bezel (it was 5.5 mm down a well). The pocket allows for a display up to %.1f mm tall above the PCB; measure yours
-    (PCB top to glass top) and set OLED_H_MAX to it to close the last of the gap.
-  Hook bar to hanger body: the bar's plate is a dovetail (%.1f wide at the mouth, %.1f at the top, %.1f tall, 45 deg flanks)
-    that slides into a channel in the body's bottom wall FROM THE WALL SIDE. The channel is closed at the front and the
-    backplate covers its mouth, so with the body hung the bar cannot come out. The sign's weight is carried by the dovetail
-    flanks (%.1f mm each side), not by a snap. Nothing of the bar sits behind the body's back face, so the body still lifts
-    the 14 mm it needs to come off the pegs with the bar fitted.
-  Body to backplate: the four mushroom pegs stay. Offer the body up %.0f mm high so the peg heads pass the keyhole circles
-    (the circles are BELOW the pegs, slots running up) and let it drop; it hangs on the pegs. A spring tongue in the
-    backplate's front face (%.0f x %.0f mm, %.1f thick, root at the bottom) carries a nose that springs into a %.1f x %.1f window
+  Display (hanger): the board sits right up behind the lid and the display module sits in a pocket in the lid, behind a
+    %(bezel).1f mm bezel. This lid has NO window insert and NO cleats. The pocket allows %(oled_h_max).1f mm above the PCB (OLED_H_MAX)
+    plus %(oled_gap).1f mm between glass and bezel, so a display that tall would have its glass %(glass_max).1f mm below the face. Owen's
+    display stands about %(oled_h).1f mm on its clear carrier, so its glass is %(glass_now).1f mm below the face (it was 5.5 mm down a well).
+    A standing WiFi coil antenna about %(coil_h).1f mm tall sits on the board between the USB end and the display, and the pocket runs
+    on over it. OLED_H_MAX has to cover the taller of the two, so NEVER set it below the coil height. The pocket floor is
+    %(pocket_h).1f mm above the PCB now and must stay at least 0.2 mm above the coil top (%(coil_need).1f mm). A lower value fails the design
+    check, and the check runs before any file is written.
+  Display (gateway): the gateway lid is different. It still has the window insert pocket: a clear %(ins_w).0f x %(ins_h).1f x %(ins_t).0f mm pane
+    fits from inside under the two cleats.
+  Hook bar to hanger body: the bar's plate is a dovetail that slides into a channel in the body's bottom wall FROM THE WALL
+    SIDE (channel %(dt_mouth).1f wide at the mouth, %(dt_top).1f at the top, %(dt_h).1f tall, 45 deg flanks; the plate has %(dt_clr).2f mm clearance per
+    side). The channel is closed at the front and the backplate covers its mouth, so with the body hung the bar cannot
+    come out. The sign's weight is carried by the dovetail flanks (%(dt_flank).1f mm each side); no snap takes any of it. Nothing of
+    the bar sits behind the body's back face, so the body still lifts the %(peg_drop).0f mm it needs to come off the pegs with the
+    bar fitted.
+  Body to backplate: four mushroom pegs on the backplate. Offer the body up %(peg_drop).0f mm high so the peg heads pass the keyhole
+    circles (the circles are BELOW the pegs, slots running up) and let it drop; it hangs on the pegs. A spring tongue in the
+    backplate's front face (%(catch_w).0f x %(catch_l).0f mm, %(catch_t).1f thick, root at the bottom) carries a nose that springs into a %(win_w).1f x %(win_h).1f window
     through the body's back wall as the body drops home; the body cannot be lifted until the nose is pushed back through
     the window from inside, which needs the lid off. Same tamper resistance as the old security screw for that step.
-  Tamper note: the lid opens by hand from underneath (two pull lips). With a sign hung they sit behind the sign's top edge.
-    Firmware rule: a lid-open or a lift without a service login is a tamper alarm.
-  Face (v9.4): the board sits against the left wall so the USB-C port is at the edge and a cable plugs in with the lid on
-    (the opening is shared by the body wall and a hollow in the lid edge). On this board the port sits between the two
-    buttons, so the pads run vertically: PRG above the port, RST below it, each 9 x 17.5 mm. The display is left of centre
-    and the badge balances it on the right. Each
-    pad is a flap cut into the lid with a thin hinge at its far end and a pin behind it over the board's small switch, so
-    pressing anywhere on the pad clicks the switch. The status LEDs show through a small hole in the RST pad. The badge,
-    the HazardLink name and the two button names are sunk 0.4 mm into the face as narrow strokes. To print them in a second
-    colour instead, load print/<lid>_inlay.stl with the lid (it is already lined up), assign it to the other hotend and
-    merge the two models; the face then comes off the bed flush and smooth.
-  Hook bar (v9.3): T-shaped. The narrow dovetail and web are unchanged; the bar below is BAR_W wide so it fills the sign's
-    hand hole: the sign hangs level and cannot slide sideways off the sensor. BAR_W is PROVISIONAL until the hand hole is
-    measured (set it to the hole width minus 5 mm).
+  Tamper note: the lid opens by hand from underneath (two pull lips under the box). The enclosure has no lid switch: the
+    one thing the unit can sense is the sign being lifted off the saddle.
+  Face: the board sits against the left wall so the USB-C port is at the edge and a cable plugs in with the lid on. The
+    opening is %(usb_w).1f x %(usb_h).1f mm in the left wall, shared by the body wall and a hollow in the lid edge, and the lid keeps a
+    %(usb_skin).1f mm skin over the plug. On this board the port sits between the two buttons, so the two finger pads run down the
+    left edge: PRG above the port, RST below it, each %(pad_w).0f x %(pad_h).1f mm. The display is left of centre and the badge balances
+    it on the right. Each pad is a flap cut into the lid with a thin hinge at its far end and a pusher pin behind it over
+    the board's small switch, so pressing anywhere on the pad clicks the switch. The status LEDs show through an open
+    %(led_d).1f mm light hole in the RST pad. The badge, the HazardLink wordmark and the two button names are sunk %(mark).1f mm into the
+    face as narrow strokes. To print them in a second colour instead, load print/hanger_lid_inlay.stl with the lid (it is
+    already lined up), assign it to the other hotend and merge the two models; the face then comes off the bed flush and
+    smooth. The gateway lid has its own print/gateway_lid_inlay.stl.
+  Hook bar: T-shaped. The dovetail and web are narrow (web %(web_w).0f mm); the bar below is %(bar_w).0f mm wide (BAR_W) so it fills the
+    sign's hand hole: the sign hangs level and cannot slide sideways off the sensor. BAR_W is PROVISIONAL until the hand
+    hole is measured (set it to the hole width minus %(hole_clr).0f mm).
   Sensor lead (checked by audit_cable_route.py): tunnel in the bar, open lay-in groove up the back of the web, groove
-    along the top of the dovetail plate, slot in the channel roof, straight up in front of the battery holder, slot through
-    the bulkhead, notch in the board cradle wall.
+    along the top of the dovetail plate, slot in the channel roof (it comes up UNDER the battery holder), forward under
+    the holder, up in front of it, slot through the bulkhead, notch in the board cradle wall.
   WHAT HOLDS EACH BOUGHT PART (checked by audit_retention.py: free travel in all six directions, target <= 0.5 mm)
     Everything below stays in place with the LID OFF as well (audit_retention.py with AUDIT_ARGS=--lid-off).
     Board: long edges on two rails, pocket walls each side, stops at both ends, and a 45 deg catch on each pocket wall hooked
-      over the PCB's long edge (push the board straight in; lever one edge out with a fingernail to remove). The lid ribs
-      clamp it as well when the lid is on.
-    Battery: Murata US18650VTC6 cell in the BeiLaMoo 18650-PC2 holder (77.7 x 20.9 x 21.3, solder pins underneath). The holder
-      stands on three 4 mm ribs so its pins and the wires soldered to them have room, in a ribbed bay on four sides, with
-      a snap arm at each end hooked over its front
-      face (press the holder straight in). Two lid posts bear on its end blocks when the lid is on.
-    Cell: the holder's own spring contacts, plus two lid ribs 0.5 mm in front of it so it cannot leave the holder.
-    Hall sensor (bare flat 3-leg part): pushed along the tunnel in the bar into a snug nest under the saddle, flat printed face UP.
-      Two 6.5 mm offcuts of 2.85 mm filament dropped into the holes in the saddle floor stand behind its body, one each side of
-      the legs. The sign's handle sits over the pins.
-    Antenna: the SMA jack of the pigtail drops into a slotted shelf and its own nut clamps it; the stubby antenna screws on
-      above and its body snaps into a clip. For an outside antenna, push out the knock-out in the top wall and fit the jack there.
-    Hook bar: dovetail flanks carry the load; closed channel end in front, backplate behind (0.5 mm play each way).
-  Hall carrier: slot in the bar. Wall screws (4 in the backplate, 3 for the gateway keyholes) are the only screws left; they
-  fix to the building, not to each other. The gateway's SMA nut is part of the bought connector.
+      over the PCB's long edge (push the board straight in; lever one edge out with a fingernail to remove). With the lid
+      on, two lid ribs also sit %(rib_clr).1f mm over its header pad strips.
+    Battery: Murata US18650VTC6 cell (18650) in the BeiLaMoo BH18650-PC2 holder (%(hold_l).1f x %(hold_w).1f x %(hold_h).1f, two solder pins about
+      %(pin_len).1f mm long, one at each end, %(pin_in).1f mm in from the end face). The holder stands on three ribs %(standoff).0f mm off the back wall so
+      its pins and the wires soldered to them have room (%(pin_room).1f mm from pin tip to the back wall), in a ribbed bay on four
+      sides, with a snap arm at each end hooked %(arm_over).1f mm over its front face. The arms are slotted free of the end ribs so
+      they can flex. Press the holder straight in until both arms click. Solder each wire to the SIDE of its pin and lead
+      it out through the gap in the end rib; leave nothing standing beyond the pin tip. With the lid on, two lid posts sit
+      %(post_clr).1f mm in front of the holder's end blocks.
+      ORDER MATTERS: the sensor lead slot in the channel roof is UNDER the holder. Feed the leads up and fold them forward
+      BEFORE the holder is pressed in (see HANGER ASSEMBLY ORDER).
+    Cell: the holder's own spring contacts, plus two lid ribs %(cell_clr).1f mm in front of it so it cannot leave the holder.
+    Hall sensor: TI DRV5032FA in the TO-92 style (LPG) package, bought from DigiKey as DRV5032FALPG. It is a bare flat 3-leg
+      part, body about %(hall_w).1f x %(hall_l).1f x %(hall_t).1f mm. There is no carrier board. It is OMNIPOLAR, so either magnet pole works, and its
+      output goes LOW with the magnet present. Check the leg order in the TI datasheet before soldering (supply to 3V3,
+      ground to GND, output to GPIO6).
+      Legs: the first 3 mm of the legs behind the body must stay bare, straight and unsleeved, because that stretch passes
+      between the two pins (the gap between them is %(gate).2f mm). Solder the three wires further back and sleeve each solder
+      joint with heat shrink.
+      Fitting: hold the bar UPSIDE DOWN. The tunnel roof is one flat surface from the back of the bar to the front of the
+      nest (%(tunnel_l).1f mm to the back of the nest), so the sensor slides along it with no step to climb. The floor has 45 degree
+      ramps and the side walls funnel into the nest. The lead groove up the back of the web opens through the roof over
+      the first %(groove_open).1f mm, so start the sensor on the roof just past it. Lay it with its marked face (the flat face with the
+      lettering) against the roof, legs pointing back, and push it forward by its legs or wires until it stops in the
+      nest under the saddle. With the bar turned upright again the marked face points UP, toward the magnet.
+      Pins: TWO offcuts of 2.85 mm filament, 6.0 to 6.5 mm long. Never cut one longer, or the sign rests on the pins instead
+      of the saddle (each hole is %(pin_depth).1f mm deep). Drop one into each hole in the saddle floor. They stand one each side
+      of the legs, right behind the body, so the sensor cannot slide back. If a pin will not drop in, check first that the
+      sensor is fully home. The pin holes open through the tunnel roof in printed stages, so NO drilling is needed; if a
+      pin is tight, twist a 3 mm drill through by hand. Under each pin a %(push_d).0f mm hole goes through the underside of the
+      bar: push a pin out from below with a 1.5 mm rod. Those holes also drain the cavity. The sign's handle sits over
+      the pins.
+    Magnet: %(mag_d).0f x %(mag_t).0f mm N52 disc (TinyTronics) in the sign's tag, see MAGNET DATUM.
+    Antenna: SMA bulkhead pigtail and a stubby SMA antenna (about %(ant_d).1f dia x %(ant_l).0f long), both inside the box. The pigtail's SMA
+      jack drops into a slotted shelf and its own nut clamps it; the antenna screws on above and its body snaps into a
+      clip. For an outside antenna, push out the knock-out in the top wall and fit the jack there.
+    Hook bar: dovetail flanks carry the load; closed channel end in front, backplate behind (about 0.5 mm play each way).
+  Wall screws (4 in the backplate; 3 for the gateway, two in keyholes and one in the lower hole) are the only screws. They
+  fix the units to the building. The SMA nuts are part of the bought connectors.
 
-HANGER: the sign hangs from the bar under the bottom edge. Nothing on the face except the screen window, PRG button, RST pinhole,
-LED window and the label. The web at the back carries the bar 30 mm below the body; the bar reaches %.0f mm out from the wall face
-and ends in a %.0f mm lip; the sign's handle settles in the saddle %.0f mm in front of the lid face, directly over the Hall sensor.
+HANGER: the sign hangs from the bar under the bottom edge. Nothing on the face except the display window, the PRG and RST
+pads, the LED hole in the RST pad and the sunk logo and names. The web at the back carries the bar %(bar_drop).0f mm below the body; the
+bar reaches %(reach).0f mm out from the wall face and ends in a %(lip_h).0f mm lip; the sign's handle settles in the saddle, which is centred
+%(sy_front).0f mm in front of the body rim (Y=%(sy).0f, which is %(sy_behind).0f mm BEHIND the lid's outer face), directly over the Hall sensor.
 The three Hall leads run along the bar, up the web, forward in a groove in the top of the dovetail plate, then up through the
-slot in the channel roof (Y %.1f to %.1f, in front of the battery holder) and on to the board. Terminate them in a 3-way JST-PH
-plug and solder a short pigtail with the socket to the board's underside pads (J3 pin 1 GND, pin 2 3V3, pin 17 GPIO6) so the
-board comes out without a soldering iron. Feed the leads up through the roof slot BEFORE the plate slides in, then take up the
-slack from inside.
+slot in the channel roof (Y %(wire_y0).1f to %(wire_y1).1f). That slot is under the battery holder (holder front face at Y %(holder_front).1f): the leads come
+up into the %(lead_gap).1f mm passage under the holder, run forward, stand up in the %(holder_front).1f mm space between the holder and the lid, and go
+through the slot in the bulkhead to the board. Terminate them in a 3-way JST-PH plug and solder a short pigtail with the
+socket to the board's underside pads (J3 pin 1 GND, pin 2 3V3, pin 17 GPIO6) so the board comes out without a soldering iron.
+
+HANGER ASSEMBLY ORDER
+  1. Sensor into the bar (bar upside down), both pins in, leads laid in the bar tunnel, the groove up the back of the web and
+     the groove along the top of the plate.
+  2. Feed the leads up through the slot in the channel roof BEFORE the plate slides in, slide the plate into the channel from
+     the wall side, and take up the slack from inside.
+  3. Fold the three leads forward, flat on the channel strip. Only then press the battery holder straight in over them until
+     both arms click. Stand the leads up in front of the holder and thread them through the slot in the bulkhead. A lead left
+     standing gets trapped behind the holder, and then the arms cannot click and the lid cannot close.
+  4. Board: plug the Hall lead and the battery lead into its underside, push it straight in until both catches hook over its
+     edges, then press the U.FL pigtail on from the top. Antenna jack into its shelf, nut on, antenna into its clip.
+  5. Hang the body on the backplate (up %(peg_drop).0f mm, drop until the catch clicks), cell in, lid on.
 
 HANGER SERVICE SEQUENCE (unit stays on the wall)
-  0. Lift the sign off the bar (the system logs a sign-removed event; service mode suppresses the alarm).
+  0. Lift the sign off the bar. The unit senses this as a sign lift.
   1. Pull the lip under one wall arm down 1 mm, ease that corner of the lid out, then the other; pull the bottom edge out until
      the top tabs drop free and take the lid away.
   2. The 18650 cell sits in its holder facing you: push it against the spring end and lift it out. Fit the new cell, same polarity.
-  3. To swap the board: lift the antenna end of the board off its rail, unplug the U.FL antenna, the JST-PH Hall plug and the
-     JST 1.25 battery plug from the exposed underside, lift the board out. No screws hold the board: it rests on the rails and
-     is clamped by the two lid ribs.
+  3. To swap the board: unplug the U.FL antenna from the top of the board, lever one long edge out from under its catch with a
+     fingernail, lift the antenna end, unplug the JST-PH Hall plug and the JST 1.25 battery plug from the exposed underside,
+     lift the board out. No screws hold the board: it rests on the rails under the two catches.
   4. To swap the Hall sensor: with the lid off, put a flat screwdriver on the catch's push pad (visible through the window in
      the back wall, above the nose), push it back about 3 mm, lift the body 6 mm, withdraw the tool, lift the remaining 8 mm and
-     pull the body forward off the pegs. Slide the bar out of the bottom wall backwards, lift the two pins out and slide the Hall sensor out of the bar's
-     back end, fit the new sensor (printed face up), drop the pins back in, lay the leads in the bar and plate grooves, feed them up through the roof slot, slide the
-     plate home while taking up the slack from inside.
-  5. Refit in reverse: bar in from the back, body offered up 14 mm high onto the pegs and dropped until the catch clicks, cell
-     in, lid tabs in first then latches. Insert the cell last, close the lid within the 60 s commissioning window, or press RST
-     (2 mm pinhole) later.
-  Off the wall in one line: lid off, push the catch pad, lift 14 mm, pull forward.
+     pull the body forward off the pegs. Unplug the Hall lead from the board and free it back to the roof slot. Slide the bar
+     out of the bottom wall backwards. Turn the bar over and tip the two pins out; if one sticks, push it out from below with
+     a 1.5 mm rod through the %(push_d).0f mm hole in the bar's underside. Slide the sensor out of the bar's back end. Fit the new
+     sensor with the bar upside down (marked face against the tunnel roof, so it faces up in use), drop the pins back in,
+     lay the leads in the bar and plate grooves and feed them up through the roof slot. The holder can stay in: the slot is
+     just behind its front face, so hook the leads forward from inside with tweezers. Slide the plate home while taking up
+     the slack from inside.
+  5. Refit in reverse: bar in from the back, body offered up %(peg_drop).0f mm high onto the pegs and dropped until the catch clicks, cell
+     in, lid tabs in first then latches. Insert the cell last. If the unit needs a restart afterwards, press the RST pad.
+  Off the wall in one line: lid off, push the catch pad, lift %(peg_drop).0f mm, pull forward.
 
-GATEWAY OFF THE WALL: lid off, remove the No.8 pan head at (60, 16) from inside, lift 10 mm, pull forward.
+GATEWAY OFF THE WALL: lid off, remove the No.8 pan head at (%(g_screw_x).0f, %(g_screw_z).0f) from inside, lift %(key_l).0f mm, pull forward.
 
 WHAT OPENS WITH WHAT
   sign off the bar: hands.   lid: fingernail or coin on the two lips underneath.   body off the backplate: lid off + flat screwdriver.
@@ -1457,44 +1628,64 @@ WHAT OPENS WITH WHAT
 
 GATEWAY SERVICE SEQUENCE
   1. Pull each arm lip under the box down 1 mm in turn, ease the lid's bottom edge out, tilt it until the top tabs drop free.
-  2. Unplug the USB-C plug (cable stays tied to the saddle), unplug the U.FL pigtail, lift the board off its rails.
+  2. Unplug the USB-C plug (cable stays tied to the saddle), unplug the U.FL pigtail, lever one long edge of the board out from
+     under its catch and lift the board off its rails.
 
 MAGNET DATUM (publish to the sign tag)
-  Magnet on the bar centreline (x=%.0f), centred on the saddle (Y=%.0f), pole face parallel to the saddle floor, facing down,
-  with %.1f mm running clearance and a %.1f mm tag wall (assumed). Air gap magnet face to Hall package top = %.2f mm.
+  Magnet: %(mag_d).0f x %(mag_t).0f mm N52 disc. On the bar centreline (x=%(xc).0f), centred on the saddle (Y=%(sy).0f: %(sy_front).0f mm in front of the body rim,
+  %(sy_behind).0f mm behind the lid's outer face), pole face parallel to the saddle floor, facing down. EITHER pole: the DRV5032FA is
+  omnipolar. %(tag_clr).1f mm running clearance and a %(tag_wall).1f mm tag wall (assumed). Air gap magnet face to Hall package top = %(gap).2f mm.
+  Before fixing the magnet in the tag, hold it over the saddle with the unit powered and check that the unit reports the
+  sign present.
 
-PRINTING (PETG, 0.4 nozzle, 3 perimeters, 0.2 layers)
+PRINTING
+  The recipe lives in PRINT.md. If this summary and PRINT.md ever differ, PRINT.md wins. Summary: PLA (Polymaker PolyLite,
+  black, hotend 2), 0.4 nozzle, 0.2 mm layers, 4 walls (1.6 mm), 1.6 mm top and bottom, 60 to 100 %% infill, 215 C, fan 100 %%.
+  PET-G is the alternative (+10 C, fan 30 %%).
+  Use the STLs in print/: they are already turned the right way up.
   hanger_body: back face down, open front up. The dovetail channel runs along the print direction so its flanks print clean;
-    its closed front end is a 27 to 34 mm bridge (bridge fan 100 %%, bridge speed <= 20 mm/s); the latch pockets and pinholes
-    are small vertical cavities; the hinge ribs grow from the bed and their nose pockets are 13 mm bridges; peg pocket roofs
-    bridge 11.5 mm. No support.
-  hanger_lid: outer face down. Only short rigid hooks and tabs stand up from it. The hook's catch face is a 1 mm overhang;
-    print the lid with the part fan on. PRG tab and LED window are thin skins on the bed. No window insert: the display
-    glass itself sits behind the bezel.
-  hanger_bar: UPRIGHT on the bar's bottom face (lip pointing up). All bending loads are then in-plane and the dovetail flanks
-    are 45 deg. Support is needed only under the front 16 mm of the plate (it overhangs the bar); use tree supports from the bed.
+    its closed front end is a %(dt_mouth).0f to %(dt_top).0f mm bridge (turn the bridge settings on, see PRINT.md). The wall arms in the bottom
+    wall each carry a small breakaway tab at the tip so they print cleanly; the hinge ribs grow from the bed and their
+    nose pockets are %(nose_pocket).0f mm bridges; peg pocket roofs bridge %(head_w).1f mm. The holder's snap arms and the board pocket walls with
+    their catches stand straight up from the back wall. No support.
+  hanger_lid: outer face down. Only the lip, the rigid hooks and tabs, ribs, posts and the two pusher pins stand up from it. The hook's catch
+    face is a %(hook_barb).0f mm overhang; print the lid with the part fan on. The two finger pads print flat on the bed with %(pad_slot).1f mm
+    slots round them: keep brim out of the slots. The LED hole is an open %(led_d).1f mm hole. No window insert: the display
+    glass itself sits behind the bezel. No support.
+  hanger_bar: UPRIGHT on the bar's bottom face (lip pointing up), with NO SUPPORT AT ALL. All bending loads are then in-plane,
+    the dovetail flanks and the spreaders are 45 deg, and a 45 deg gusset off the web carries the front %(gusset).1f mm of the
+    dovetail plate. Never let the slicer generate support on this part: support inside the sensor tunnel, the nest or the
+    pin holes cannot be got out again.
   hanger_backplate: back face down. The catch cavity is open to the back face on purpose: let the slicer drop support through
-    it under the tongue and pull it out afterwards. Pegs print vertical with a 45 deg cone under the head.
+    it under the tongue (touching the buildplate only) and pull it out afterwards. Pegs print vertical with a 45 deg cone
+    under the head.
   gateway_body: back face down. gateway_lid: outer face down.
+  print/hanger_body_coupon.stl is the front %(coupon).0f mm ring of the hanger body: rim, both wall arms with their hook windows, the
+    front of the hinge ribs, the USB opening. It exists to test the lid latches and the hinge fit, so print it WHOLE and
+    leave its bottom edge alone: that edge carries the latch arms. Print it with one lid before any full body.
   No heat-set inserts and no machine screws. Wall fixings: 4 No.8 countersunk screws with plugs for the backplate, 2 No.8 pan
   heads for the gateway keyholes plus 1 for its lower anti-lift hole.
 
-MEASURE BEFORE FREEZING (assumed values in PARAMS)
-  The TinyTronics 21700 holder outline (assumed 80 x 25 x 21 mm) and where its leads exit.
-  The sign hand-hole and handle bar: bar width 26, reach 70, lip 20 are assumed; the magnet position in the handle must match the datum.
-  The folded sign thickness at the handle (assumed 15 to 50): it sits between the lip and the wall either side of the saddle.
-  The stub antenna diameter and length (clips are for a 6 mm rod, 60 mm long).
-  The OLED active area offset (window is 30 x 16 to cover it with margin).
-  The display height above the PCB (OLED_H_MAX 6.0, read off a side photo at about 5.6 +/- 0.4): close the caliper jaws on the
-    screen glass and the back of the board and note the reading.
-  Where the coil antenna stands ACROSS the board (COIL Yb, guessed 7.3): one photo looking straight down on the screen side.
-  The sign: hand-hole width and height and the folded handle thickness (BAR_W is still provisional at 95).
-  Print the lid and a short slice of the body's bottom edge first and check the hook click before the full body.
-""" % (hg["wall_y"], P["TAB_L"], P["ARM_L"], P["ARM_W"], P["ARM_T"], P["SNAP_STRAIN_MAX"], P["HOOK_W"], P["HOOK_BARB"],
-       P["BEZEL_T"] + P["OLED_GAP"], P["BEZEL_T"], P["OLED_H_MAX"],
-       P["DT_MOUTH"], P["DT_TOP"], P["DT_H"], (P["DT_TOP"] - P["DT_MOUTH"]) / 2, P["PEG_DROP"], P["CATCH_W"], P["CATCH_L"], P["CATCH_T"],
-       P["CATCH_WIN"][0], P["CATCH_WIN"][1], P["BAR_REACH"], P["BAR_LIP_H"], -sy, P["BAR_WIRE_Y"][0], P["BAR_WIRE_Y"][1],
-       hg["W"] / 2, sy, P["TAG_CLR"], P["TAG_WALL"], gap)
+MEASURE BEFORE FREEZING (still to be measured by Owen)
+  The exact display height and coil antenna height above the PCB (now %(oled_h).1f and %(coil_h).1f, read off a side photo at +/- 0.4): close
+    the caliper jaws on the top of each and the back of the board, and take off the board thickness. Then set OLED_H_MAX to
+    the taller of the two, never below the coil height.
+  Where the coil antenna stands ACROSS the board (COIL Yb, guessed %(coil_yb).1f): one photo looking straight down on the screen side.
+    The lid is relieved for a coil centred anywhere within Yb +/- %(coil_band).2f, which is everything inboard of the header pad rows.
+  The sign's hand hole: width and height, and the folded handle thickness (assumed %(sign_t).0f in a %(saddle_w).0f mm saddle; %(free_y).0f mm is free
+    between the lip and the web). BAR_W %(bar_w).0f is provisional; reach %(reach).0f and lip %(lip_h).0f are assumed. The magnet position in the
+    handle must match the datum.
+  The OLED active area offset (window is %(win_ww).0f x %(win_wh).0f to cover it with margin).
+  Already taken from the delivered parts: board, BH18650-PC2 holder and its pins, 18650 cell, Hall sensor body, %(mag_d).0f x %(mag_t).0f
+    magnet, USB plug body, stub antenna (about %(ant_d).1f dia x %(ant_l).0f long, read off a ruler photo; check the clip fit on the first body).
+
+LATER REVISION (not in this model yet)
+  A cleaning-mode push button (16 mm momentary, LED, waterproof) is planned under the base of the hanger body, above the
+  hook bar, where the public will not see it. Nothing in v9.9 is cut for it and the lid does not carry it.
+""" % v
+    if glob.glob(os.path.join(out_dir, "ref", "hanger_window_insert.*")):
+        txt = txt.replace("  sat_true/ ", "  ref/hanger_window_insert.*                    leftover from an older revision (the hanger lid takes no insert). This script no\n"
+                          "                                                longer writes it; delete it by hand.\n  sat_true/ ", 1)
     open(os.path.join(out_dir, "README.txt"), "w").write(txt)
 
 # --------------------------------------------------------------------------------------
@@ -1505,6 +1696,13 @@ def main(out_dir, quick=False, autocad=True):
     os.makedirs(out_dir, exist_ok=True)
     ref_dir = os.path.join(out_dir, "ref"); os.makedirs(ref_dir, exist_ok=True)
     hg, gg = hanger_geom(), gateway_geom()
+
+    # ---- design rule checks FIRST: a parameter change that breaks the design stops here, before any file is overwritten ----
+    print("Design rule checks")
+    checks = design_checks(hg, gg)
+    for ok, msg in checks:
+        print("  %s %s" % ("PASS" if ok else "FAIL", msg))
+    assert all(ok for ok, _ in checks), "design rule check failed"
 
     print("Building hanger parts")
     h_body = build_hanger_body()
@@ -1532,8 +1730,9 @@ def main(out_dir, quick=False, autocad=True):
         cq.exporters.export(iwp, os.path.join(out_dir, iname + ".stl"), tolerance=0.01, angularTolerance=0.1)   # un-rotated copy for previews
     for l in print_lines:
         print("  " + l)
-    # test coupon: the front 14 mm of the hanger body (rim, wall arms, hinge ribs, USB notch). Prints in about 2 hours and
-    # proves the lid's hooks, hinge tabs, lip fit and USB shutter before the full body is printed.
+    # test coupon: the front 14 mm ring of the hanger body (rim, both wall arms with their hook windows and pull lips, the front
+    # of the hinge ribs with their nose pockets, USB opening). It proves the lid's hooks, hinge tabs, lip fit and the USB
+    # opening before the full body is printed. Print it WHOLE: its bottom edge carries the latch arms it is there to test.
     coupon = h_body.intersect(box(-5, hg["W"] + 5, -1, 14.0, -5, hg["H"] + 5))
     # keep only the ring itself: slices of the board cradle are cut loose from the back wall at this depth
     ring = max(coupon.solids().vals(), key=lambda sol: sol.Volume())
@@ -1563,72 +1762,75 @@ def main(out_dir, quick=False, autocad=True):
     W, H, D = hg["W"], hg["H"], hg["D"]
     zc, x0, pt = hg["zc"], hg["x0"], hg["pcb_top"]
     cxw, czw = x0 + P["OLED_ACT_CX"], zc + P["OLED_ACT_CY"]
-    write_part_drawing(os.path.join(out_dir, "hanger_body_drawing.dxf"), "HazardLink hanger body v9 (mm)", h_body, [
-        dict(view="front", at=28.0, off=(0, -150), label="FRONT SECTION at Y=28 (near back wall): peg bosses, bulkhead, cradle, holder ribs, dovetail strip",
+    write_part_drawing(os.path.join(out_dir, "hanger_body_drawing.dxf"), "HazardLink hanger body v9.9 (mm)", h_body, [
+        dict(view="front", at=28.0, off=(0, -150), label="FRONT SECTION at Y=28 (near back wall): peg bosses, bulkhead, cradle, holder bay ribs and standoff ribs, holder snap arms, dovetail strip",
              dims=[("h", (0, 0), (W, 0), -10), ("v", (0, 0), (0, H), -12),
                    ("h", (P["PEG_XS"][0], P["PEG_ZS"][0]), (P["PEG_XS"][1], P["PEG_ZS"][0]), 55, "peg pitch <>"),
                    ("v", (P["PEG_XS"][1] + 8, P["PEG_ZS"][0]), (P["PEG_XS"][1] + 8, P["PEG_ZS"][1]), 112, "peg pitch <>"),
                    ("v", (W, P["BULK_Z"][0]), (W, P["BULK_Z"][1]), 108, "bulkhead <>"),
                    ("h", (P["HOLDER_X0"] - 0.5, 2.5), (P["HOLDER_X0"] + P["HOLDER_L"] + 0.5, 2.5), -6, "holder bay <>")]),
-        dict(view="front", at=5.0, off=(0, -320), label="FRONT SECTION at Y=5 (near lid): USB slot, board pocket walls, hinge ledges",
-             dims=[("h", (0, zc - P["USB_SLOT_W"] / 2), (0, zc + P["USB_SLOT_W"] / 2), -8, "USB slot <>"),
+        dict(view="front", at=5.0, off=(0, -320), label="FRONT SECTION at Y=5 (near lid): USB opening, board pocket walls, wall arms in the bottom wall",
+             dims=[("h", (0, zc - P["USB_SLOT_W"] / 2), (0, zc + P["USB_SLOT_W"] / 2), -8, "USB opening <>"),
                    ("v", (x0 - 1, zc - 15), (x0 - 1, zc + 15), -20, "board pocket <>"),
                    ("v", (W, 0), (W, zc), 108, "board centre <>")]),
-        dict(view="top", at=zc, off=(0, -400), label="TOP SECTION at Z=104 (board centreline): pocket depth, USB slot, rails",
+        dict(view="top", at=zc, off=(0, -400), label="TOP SECTION at Z=%.0f (board centreline): pocket depth, USB opening, end stop" % zc,
              dims=[("v", (W, -D), (W, 0), 108, "depth <>"), ("v", (-1, -pt), (-1, 0), -12, "PCB top <>"),
                    ("h", (0, -D), (P["WALL"], -D), -8, "wall <>")]),
         dict(view="side", at=30.0, off=(320, -150), label="SIDE SECTION at X=30 (through peg pockets, holder bay, board pocket)", label_at=(-35, -8),
              dims=[("h", (-D, 0), (0, 0), -8, "depth <>"), ("v", (2, 0), (2, H), 8)]),
     ], notes=["Section edges only. Reference parts on layer REF where shown. Every 'assumed' value is listed in PARAMS in hazardlink_enclosures.py.",
-              "Print body back-face down (open front up), PETG, 0.4 nozzle, 3 perimeters; peg pocket roofs bridge 11.5 mm."])
-    write_part_drawing(os.path.join(out_dir, "hanger_lid_drawing.dxf"), "HazardLink hanger lid v9 (mm)", h_lid, [
-        dict(view="front", at=-1.5, off=(0, -150), label="FRONT SECTION at Y=-1.5: window, PRG tab groove, latch fingers, hinge tabs",
+              "Print body back face down (open front up), no support. 0.4 nozzle, 0.2 layers, 4 walls; the full recipe is in PRINT.md. Peg pocket roofs bridge %.1f mm." % (P["PEG_HEAD_D"] + 2 * P["PEG_HEAD_CLR"])])
+    write_part_drawing(os.path.join(out_dir, "hanger_lid_drawing.dxf"), "HazardLink hanger lid v9.9 (mm)", h_lid, [
+        dict(view="front", at=-1.5, off=(0, -150), label="FRONT SECTION at Y=-1.5 (inside the lid's thickness): window, display pocket with the coil relief, button pad slots, LED hole, USB hollow in the left edge",
              dims=[("h", (0, 0), (W, 0), -10), ("v", (0, 0), (0, H), -12),
                    ("h", (cxw - P["WIN_W"] / 2, czw), (cxw + P["WIN_W"] / 2, czw), czw + 14, "window <>"),
                    ("v", (cxw + P["WIN_W"] / 2, czw - P["WIN_H"] / 2), (cxw + P["WIN_W"] / 2, czw + P["WIN_H"] / 2), cxw + 22, "window <>"),
                    ("h", (0, czw), (cxw, czw), czw - 12, "window centre <>"), ("v", (W, 0), (W, czw), 108, "window centre <>")]),
-        dict(view="front", at=-2.7, off=(0, -320), label="FRONT SECTION at Y=-2.7 (outer skin): label recess, LED window skin", dims=[]),
-        dict(view="top", at=zc, off=(0, -400), label="TOP SECTION at Z=104: lip, header ribs, insert pocket",
+        dict(view="front", at=-2.7, off=(0, -320), label="FRONT SECTION at Y=-2.7 (outer skin): sunk badge, wordmark and button names, button pad slots, LED hole, window chamfer", dims=[]),
+        dict(view="top", at=zc, off=(0, -400), label="TOP SECTION at Z=%.0f (board centreline): display pocket behind the bezel, window chamfer, USB hollow, lip" % zc,
              dims=[("v", (W, -P["LID_T"]), (W, 0), 108, "lid <>"), ("v", (W, 0), (W, P["TONGUE_H"]), 118, "lip <>")]),
-        dict(view="side", at=W / 2, off=(320, -150), label="SIDE SECTION at X=50: lip and window pocket", label_at=(-5, -8), dims=[]),
-    ], notes=["Print lid outer face down. Window insert: 36 x 19.5 x 1.0 clear acrylic or PETG, snaps under the two cleats from inside.",
-              "PRG tab: 6 x 10 x 1.0 living hinge sealed by a 0.4 skin; pusher pin 2.5 dia. RST: 2.0 pinhole. LED: 0.5 skin window."])
+        dict(view="side", at=W / 2, off=(320, -150), label="SIDE SECTION at X=50: lip and display pocket", label_at=(-5, -8), dims=[]),
+    ], notes=["Print lid outer face down, no support. NO window insert and no cleats: the display module sits in the pocket with its glass behind the %.1f mm bezel." % P["BEZEL_T"],
+              "PRG and RST: two finger pads down the left edge, each %.1f x %.1f, %.1f thick, cut free on three sides by %.1f slots, %.1f hinge at the far end, %.1f dia pusher pin behind it over its switch."
+              % (hg["x0"] + P["BTN_PAD_X1"] - P["H_PAD_V"][0], P["H_PAD_V"][1], P["BTN_PAD"][2], P["BTN_PAD"][5], P["BTN_PAD"][3], P["H_PAD_V"][2]),
+              "LED: open %.1f light hole in the RST pad. Badge, wordmark and button names sunk %.1f; second colour inlay: print/hanger_lid_inlay.stl." % (P["LED_HOLE_D"], P["MARK_DEPTH"])])
     sy = hg["sensor_y"]
-    write_part_drawing(os.path.join(out_dir, "hanger_bar_drawing.dxf"), "HazardLink hanger bar v9 (mm)", h_bar, [
-        dict(view="side", at=W / 2, off=(0, -120), label="SIDE SECTION at X=50: bar, lip, dovetail plate, saddle, Hall slot, lead channel",
+    write_part_drawing(os.path.join(out_dir, "hanger_bar_drawing.dxf"), "HazardLink hanger bar v9.9 (mm)", h_bar, [
+        dict(view="side", at=W / 2, off=(0, -120), label="SIDE SECTION at X=50: bar, lip, dovetail plate on its 45 deg gusset, saddle, Hall sensor nest and tunnel, lead channel",
              dims=[("h", (-hg["bar_back"], hg["bar_bot"]), (-hg["lip_front"], hg["bar_bot"]), hg["bar_bot"] - 10, "reach from wall <>"),
                    ("v", (-hg["lip_front"], hg["bar_bot"]), (-hg["lip_front"], hg["lip_top"]), -hg["lip_front"] + 8, "lip <>"),
                    ("v", (-hg["bar_back"], hg["bar_bot"]), (-hg["bar_back"], hg["bar_top"]), -hg["bar_back"] - 10, "bar <>"),
                    ("h", (-hg["saddle_y"] - P["BAR_SADDLE_W"] / 2, hg["bar_top"] + 4), (-hg["saddle_y"] + P["BAR_SADDLE_W"] / 2, hg["bar_top"] + 4), hg["bar_top"] + 10, "saddle <>"),
-                   ("h", (0, hg["lip_top"] + 4), (-sy, hg["lip_top"] + 4), hg["lip_top"] + 10, "saddle from lid face <>")],
+                   ("h", (0, hg["lip_top"] + 4), (-sy, hg["lip_top"] + 4), hg["lip_top"] + 10, "saddle from body rim <>")],
              refs=[h_refs["hall_carrier"][0], h_refs["magnet"][0], h_refs["sign_handle"][0]]),
-        dict(view="front", at=sy, off=(0, -230), label="FRONT SECTION through the saddle: bar width, Hall slot, sensor",
+        dict(view="front", at=sy, off=(0, -230), label="FRONT SECTION through the saddle: bar width, Hall sensor in its nest (tunnel width dimensioned)",
              dims=[("h", (hg["bar_x0"], hg["bar_bot"]), (hg["bar_x1"], hg["bar_bot"]), hg["bar_bot"] - 8, "bar width <>"),
-                   ("h", (W / 2 - hg["slot_hw"], hg["slot_ceil"]), (W / 2 + hg["slot_hw"], hg["slot_ceil"]), hg["bar_top"] + 8, "slot <>")],
+                   ("h", (W / 2 - hg["slot_hw"], hg["slot_ceil"]), (W / 2 + hg["slot_hw"], hg["slot_ceil"]), hg["bar_top"] + 8, "tunnel <>")],
              refs=[h_refs["hall_carrier"][0], h_refs["magnet"][0]]),
-        dict(view="top", at=hg["slot_floor"] + 1.0, off=(230, -120), label="TOP SECTION through the Hall slot: carrier pocket, dovetail plate, lead channel",
+        dict(view="top", at=hg["slot_floor"] + 1.0, off=(230, -120), label="TOP SECTION through the Hall tunnel: tunnel from the bar's back face, funnel, sensor nest, two pin holes (dovetail top width dimensioned for reference)",
              dims=[("h", (W / 2 - hg["plate_w1"] / 2, -hg["plate_y0"]), (W / 2 + hg["plate_w1"] / 2, -hg["plate_y0"]), -hg["plate_y0"] + 8, "dovetail top <>")],
              refs=[h_refs["hall_carrier"][0]]),
-    ], notes=["Print lying on a side face (X face on the bed) so layers run along the bar and the dovetail flanks stand vertical. PETG. No screws: slides in from the wall side.",
-              "Magnet datum: bar centreline, centred on the saddle %.0f mm in front of the lid face, pole face parallel to the saddle floor, 1.0 mm running clearance." % -sy])
+    ], notes=["Print UPRIGHT on the bar's bottom face, lip pointing up, with NO support at all: a 45 deg gusset off the web carries the front of the dovetail plate. Never let support generate in the sensor tunnel, nest or pin holes. No screws: slides in from the wall side.",
+              "Sensor: bare TI DRV5032FA (TO-92 style, flat 3-leg), marked face up under the saddle. Two pins of 2.85 filament, 6.0 to 6.5 long, in the %.1f holes in the saddle floor; %.1f push-out and drain hole under each. No drilling needed." % (P["HALL_PIN_D"], P["HALL_PIN_PUSH_D"]),
+              "Magnet datum: bar centreline, centred on the saddle %.0f mm in front of the body rim (%.0f mm behind the lid's outer face), pole face parallel to the saddle floor, either pole, %.1f mm running clearance." % (-sy, P["LID_T"] + sy, P["TAG_CLR"])])
     bx0, bz0 = (W - P["BP_W"]) / 2, (H - P["BP_H"]) / 2
-    write_part_drawing(os.path.join(out_dir, "hanger_backplate_drawing.dxf"), "HazardLink hanger backplate v9 (mm)", h_plate, [
-        dict(view="front", at=D + 1.0, off=(0, -150), label="FRONT SECTION at Y=36 (just inside the front face): wall screw countersinks, catch tongue",
+    write_part_drawing(os.path.join(out_dir, "hanger_backplate_drawing.dxf"), "HazardLink hanger backplate v9.9 (mm)", h_plate, [
+        dict(view="front", at=D + 1.0, off=(0, -150), label="FRONT SECTION at Y=%.0f (just inside the front face): wall screw countersinks, catch tongue" % (D + 1.0),
              dims=[("h", (bx0, bz0), (bx0 + P["BP_W"], bz0), bz0 - 10), ("v", (bx0, bz0), (bx0, bz0 + P["BP_H"]), bx0 - 12),
                    ("h", (bx0 + 10, bz0 + 10), (bx0 + P["BP_W"] - 10, bz0 + 10), bz0 + 4, "screws <>"),
                    ("v", (bx0 + P["BP_W"] - 10, bz0 + 10), (bx0 + P["BP_W"] - 10, bz0 + P["BP_H"] - 10), bx0 + P["BP_W"] + 8, "screws <>")]),
-        dict(view="top", at=P["PEG_ZS"][0], off=(0, -310), label="TOP SECTION at Z=45 (through the lower pegs): mushroom peg profile",
+        dict(view="top", at=P["PEG_ZS"][0], off=(0, -310), label="TOP SECTION at Z=%.0f (through the lower pegs): mushroom peg profile" % P["PEG_ZS"][0],
              dims=[("v", (bx0, -D - P["BP_T"]), (bx0, -D), bx0 - 10, "plate <>"), ("v", (bx0 + P["BP_W"], -D), (bx0 + P["BP_W"], -D + P["PEG_STEM_L"] + P["PEG_HEAD_L"]), bx0 + P["BP_W"] + 8, "peg <>"),
                    ("h", (P["PEG_XS"][0], -D), (P["PEG_XS"][1], -D), -D + 14, "peg pitch <>")]),
-        dict(view="side", at=P["PEG_XS"][0], off=(260, -150), label="SIDE SECTION at X=30 (through both pegs)", label_at=(-45, -8),
+        dict(view="side", at=P["PEG_XS"][0], off=(260, -150), label="SIDE SECTION at X=%.0f (through both pegs)" % P["PEG_XS"][0], label_at=(-45, -8),
              dims=[("v", (-D, P["PEG_ZS"][0]), (-D, P["PEG_ZS"][1]), -D - P["BP_T"] - 10, "peg pitch <>")]),
-    ], notes=["Print back face down. Four No.8 / 4 mm countersunk wall screws with plugs. Spring catch tongue at x=50 replaces the security screw (push back from inside to release).",
-              "Pegs: 5.5 stem x 3.5, 10 head x 3.5, 1 mm chamfer under the head. Body slides down 14 mm onto them."])
+    ], notes=["Print back face down, support touching the buildplate only (it reaches the catch tongue through the open back of its cavity). Four No.8 / 4 mm countersunk wall screws with plugs. Spring catch tongue at x=%.0f replaces the security screw (push back from inside to release)." % P["CATCH_X"],
+              "Pegs: %.1f stem x %.1f, %.0f head x %.1f, 45 deg cone under the head. Body slides down %.0f mm onto them." % (P["PEG_STEM_D"], P["PEG_STEM_L"], P["PEG_HEAD_D"], P["PEG_HEAD_L"], P["PEG_DROP"])])
     GW, GH, GD = gg["W"], gg["H"], gg["D"]
     gx0, gzc, gpt = gg["x0"], gg["zc"], gg["pcb_top"]
     gcx, gcz = gx0 + P["OLED_ACT_CX"], gzc + P["OLED_ACT_CY"]
-    write_part_drawing(os.path.join(out_dir, "gateway_body_drawing.dxf"), "HazardLink gateway body v9 (mm)", g_body, [
-        dict(view="front", at=26.0, off=(0, -100), label="FRONT SECTION at Y=26 (back wall): keyholes, saddles, cradle",
+    write_part_drawing(os.path.join(out_dir, "gateway_body_drawing.dxf"), "HazardLink gateway body v9.9 (mm)", g_body, [
+        dict(view="front", at=26.0, off=(0, -100), label="FRONT SECTION at Y=26 (just in front of the back wall): tie saddles, cradle (keyhole positions dimensioned)",
              dims=[("h", (0, 0), (GW, 0), -10), ("v", (0, 0), (0, GH), -12),
                    ("h", (P["G_KEYHOLES"][0][0], P["G_KEYHOLES"][0][1]), (P["G_KEYHOLES"][1][0], P["G_KEYHOLES"][1][1]), GH + 8, "keyhole pitch <>"),
                    ("v", (GW, 0), (GW, P["G_KEYHOLES"][0][1]), GW + 10, "keyhole <>"), ("v", (GW, 0), (GW, gzc), GW + 20, "board centre <>")]),
@@ -1643,21 +1845,22 @@ def main(out_dir, quick=False, autocad=True):
              dims=[("h", (-GD, 0), (0, 0), -8, "depth <>"), ("v", (2, 0), (2, GH), 8)]),
     ], notes=["Print back face down. SMA: 6.5 D-hole with a 6.0 flat in a 3.0 mm pad; use the 11 mm extended-thread U.FL-to-SMA pigtail.",
               "Cable: lay the USB-C cable in the left-wall notch, tie it to the saddle so no load reaches the board's receptacle."])
-    write_part_drawing(os.path.join(out_dir, "gateway_lid_drawing.dxf"), "HazardLink gateway lid v9 (mm)", g_lid, [
-        dict(view="front", at=-1.5, off=(0, -100), label="FRONT SECTION at Y=-1.5: window, PRG tab groove, button knock-out, latches and tabs",
+    write_part_drawing(os.path.join(out_dir, "gateway_lid_drawing.dxf"), "HazardLink gateway lid v9.9 (mm)", g_lid, [
+        dict(view="front", at=-1.5, off=(0, -100), label="FRONT SECTION at Y=-1.5 (inside the lid's thickness): window, button pad slots, LED hole, button knock-out",
              dims=[("h", (0, 0), (GW, 0), -10), ("v", (0, 0), (0, GH), -12),
                    ("h", (gcx - P["WIN_W"] / 2, gcz), (gcx + P["WIN_W"] / 2, gcz), gcz + 14, "window <>"),
                    ("h", (0, gcz), (gcx, gcz), gcz - 14, "window centre <>"), ("v", (GW, 0), (GW, gcz), GW + 10, "window centre <>"),
                    ("h", (0, P["G_BTN_KO"][1]), (P["G_BTN_KO"][0], P["G_BTN_KO"][1]), -6, "button KO <>")]),
-        dict(view="top", at=gzc, off=(0, -220), label="TOP SECTION at Z=42: lip, header ribs, insert pocket",
+        dict(view="top", at=gzc, off=(0, -220), label="TOP SECTION at Z=%.0f (board centreline): lip, window insert pocket with its two cleats" % gzc,
              dims=[("v", (GW, -P["LID_T"]), (GW, 0), GW + 10, "lid <>")]),
-    ], notes=["Print outer face down. No screws: two hinge tabs at the top, two latches at the bottom, paperclip release holes in the body's bottom wall."])
+    ], notes=["Print outer face down, no support. No screws: two hinge tabs at the top, two rigid hooks at the bottom that drop into the spring arms in the body's bottom wall; open with the pull lips under the box.",
+              "Gateway lid only: clear window insert %.0f x %.1f x %.1f, fitted from inside under the two cleats. PRG and RST are two %.0f x %.0f pads, PRG above RST." % (P["INSERT_W"], P["INSERT_H"], P["INSERT_T"], P["BTN_PAD"][0], P["BTN_PAD"][1])])
     # assembly stack-up sections
     h_all = [h_body, h_lid, h_bar, h_plate]
     doc = dxf_new(); msp = doc.modelspace()
-    dxf_text(msp, "HazardLink hanger v9 assembly sections (mm)", (0, 0), (0, 0), h=5.0)
-    for (label, at, off) in (("SIDE SECTION at X=50: hanging bar, saddle, Hall carrier, magnet datum, lid, backplate, wall", W / 2, (50, -160)),
-                             ("SIDE SECTION at X=34.8: OLED window, insert, board on rails, USB-C level, backplate", cxw, (300, -160))):
+    dxf_text(msp, "HazardLink hanger v9.9 assembly sections (mm)", (0, 0), (0, 0), h=5.0)
+    for (label, at, off) in (("SIDE SECTION at X=%.0f: hanging bar, saddle, Hall sensor in its nest, magnet datum, sign handle, lid, backplate" % (W / 2), W / 2, (50, -160)),
+                             ("SIDE SECTION at X=%.1f: display window, display behind the bezel (no insert), board on rails, backplate" % cxw, cxw, (300, -160))):
         for s in h_all:
             dxf_edges(msp, section_edges([s], "side", at)[0], "side", off)
         for n, (wp, col) in h_refs.items():
@@ -1673,9 +1876,9 @@ def main(out_dir, quick=False, autocad=True):
     dxf_dim(msp, "h", (0, zc + 20), (-hg["pcb_top"], zc + 20), zc + 26, off, "PCB top from lid inner face <>")
     doc.saveas(os.path.join(out_dir, "hanger_section.dxf"))
     doc = dxf_new(); msp = doc.modelspace()
-    dxf_text(msp, "HazardLink gateway v9 assembly sections (mm)", (0, 0), (0, 0), h=5.0)
+    dxf_text(msp, "HazardLink gateway v9.9 assembly sections (mm)", (0, 0), (0, 0), h=5.0)
     g_all = [g_body, g_lid]
-    for (view, label, at, off, lab) in (("side", "SIDE SECTION at X=77.3: window, insert, board on rails", gcx, (40, -110), (-30, -10)),
+    for (view, label, at, off, lab) in (("side", "SIDE SECTION at X=%.1f: window, window insert under its cleats, board on rails" % gcx, gcx, (40, -110), (-30, -10)),
                                         ("top", "TOP SECTION at Z=42: plug, cable, saddle, board, pocket", gzc, (200, -70), (0, -40)),
                                         ("front", "FRONT SECTION at Y=5: board, plug overmold, cable notch, SMA pad", 5.0, (200, -220), (0, -10))):
         for s in g_all:
@@ -1724,23 +1927,25 @@ def main(out_dir, quick=False, autocad=True):
         for f in glob.glob(os.path.join(out_dir, "*.scad")):
             os.remove(f)
 
-    # ---- design rule checks (fail loudly if a parameter change breaks the design) ----------
-    print("Design rule checks")
-    checks = design_checks(hg, gg)
-    for ok, msg in checks:
-        print("  %s %s" % ("PASS" if ok else "FAIL", msg))
-    assert all(ok for ok, _ in checks), "design rule check failed"
+    # the design rule checks already ran at the top of main(), before the first export
     write_readme(out_dir, hg, gg)
 
     # ---- manifest -----------------------------------------------------------------------
-    lines = ["HazardLink v9.7 enclosures (sized from the real parts; parts clipped in with the lid off; no screws; wall-arm latches; flush display; USB-C at the edge; button pads; logo; wide bar). Generated by hazardlink_enclosures.py", ""]
+    lines = ["HazardLink v9.9 enclosures (sized from the real parts; parts clipped in with the lid off; no screws between the parts; wall-arm latches; flush display; USB-C at the edge; two finger pads; logo; wide bar that prints with no support; bare Hall sensor held by two filament pins). Generated by hazardlink_enclosures.py", ""]
     for name, wp in parts.items():
         lines.append("%-22s %s" % (name, bbox_str(wp)))
     lines += ["", "Key derived positions (world frame, mm):",
-              "  hanger board: USB-end corners at x=%.1f, centreline z=%.1f, PCB top at Y=%.1f, OLED glass at Y=%.1f" % (x0, zc, pt, pt - P["OLED_H"]),
-              "  hanger window: %.0f x %.0f centred at (%.1f, %.1f); display pocket %.0f x %.1f behind a %.1f mm bezel; PCB top at Y=%.1f" % (P["WIN_W"], P["WIN_H"], cxw, czw, P["OLED_POCKET"][0], P["OLED_POCKET"][1], P["BEZEL_T"], pt),
-              "  bar: %.0f wide x %.0f thick, top %.0f mm below the body bottom, reach %.0f mm from the wall face, lip %.0f tall; saddle at Y=%.0f (%.0f mm in front of the lid face)" % (P["BAR_W"], P["BAR_T"], P["BAR_DROP"], P["BAR_REACH"], P["BAR_LIP_H"], sy, -sy),
-              "  magnet datum: bar centreline x=%.0f, Y=%.0f, pole face at z=%.2f (saddle floor + %.1f clearance + %.1f tag wall); sensor package top at z=%.2f; air gap %.2f mm" % (W / 2, sy, mag_face, P["TAG_CLR"], P["TAG_WALL"], sens_top, mag_face - sens_top),
+              "  hanger board: USB-end corners at x=%.1f, centreline z=%.1f, PCB top at Y=%.1f; glass of the %.1f mm display at Y=%.1f (%.1f mm behind the lid's outer face); coil antenna top (%.1f mm) at Y=%.1f, pocket floor at Y=%.1f"
+              % (x0, zc, pt, P["OLED_H"], pt - P["OLED_H"], P["LID_T"] + pt - P["OLED_H"], P["COIL"][3], pt - P["COIL"][3], -P["LID_T"] + P["BEZEL_T"]),
+              "  hanger window: %.0f x %.0f centred at (%.1f, %.1f); display pocket %.0f x %.1f behind a %.1f mm bezel, no window insert; USB-C opening %.1f x %.1f in the left wall, %.1f mm lid skin over the plug"
+              % (P["WIN_W"], P["WIN_H"], cxw, czw, P["OLED_POCKET"][0], P["OLED_POCKET"][1], P["BEZEL_T"], P["USB_SLOT_W"], P["USB_SLOT_H"], P["USB_LID_SKIN"]),
+              "  bar: %.0f wide (provisional) x %.0f thick, top %.0f mm below the body bottom, reach %.0f mm from the wall face, lip %.0f tall; saddle at Y=%.0f (%.0f mm in front of the body rim, %.0f mm behind the lid's outer face); prints upright with no support"
+              % (P["BAR_W"], P["BAR_T"], P["BAR_DROP"], P["BAR_REACH"], P["BAR_LIP_H"], sy, -sy, P["LID_T"] + sy),
+              "  Hall sensor (bare DRV5032FA, TO-92 style): package centre x=%.0f, Y=%.1f, z=%.2f, marked face up; two pin holes %.1f dia at x=%.1f and x=%.1f, Y=%.2f, %.1f mm deep from the saddle floor, for 2.85 filament pins 6.0 to 6.5 long; %.1f dia push-out hole under each"
+              % (W / 2, sy, hg["sensor_z"], P["HALL_PIN_D"], hall_pin_xys(hg)[0][0], hall_pin_xys(hg)[1][0], hall_pin_xys(hg)[0][1], hg["saddle_floor"] - (hg["slot_floor"] - 2.0), P["HALL_PIN_PUSH_D"]),
+              "  magnet datum (%.0f x %.0f disc, either pole): bar centreline x=%.0f, Y=%.0f, pole face at z=%.2f (saddle floor + %.1f clearance + %.1f tag wall); sensor package top at z=%.2f; air gap %.2f mm" % (P["MAGNET_D"], P["MAGNET_T"], W / 2, sy, mag_face, P["TAG_CLR"], P["TAG_WALL"], sens_top, mag_face - sens_top),
+              "  battery: holder %.1f x %.1f x %.1f, front face at Y=%.1f, standing %.1f mm off the back wall; sensor lead slot in the channel roof Y %.1f to %.1f (under the holder)"
+              % (P["HOLDER_L"], P["HOLDER_W"], P["HOLDER_H"], hg["holder_front"], P["HOLDER_STANDOFF"], P["BAR_WIRE_Y"][0], P["BAR_WIRE_Y"][1]),
               "  gateway board: USB-end corners at x=%.1f, centreline z=%.1f; SMA at (%.0f, %.0f) on the top wall; cable notch at z=%.0f" % (gx0, gzc, P["G_SMA"][0], P["G_SMA"][1], gg["cable_z"]),
               "", "Elapsed %.0f s" % (time.time() - t0)]
     open(os.path.join(out_dir, "manifest.txt"), "w").write("\n".join(lines) + "\n")
@@ -1748,7 +1953,7 @@ def main(out_dir, quick=False, autocad=True):
 
     # ---- AutoCAD for Mac deliverables ----------------------------------------------------
     if autocad:
-        conv = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "to_autocad.py"))
+        conv = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "to_autocad.py"))
         if os.path.exists(conv):
             print("Running to_autocad.py (SAT + 3DSOLID DXF)")
             r = subprocess.run([sys.executable, conv, out_dir, os.path.join(out_dir, "autocad")], capture_output=True, text=True, timeout=3000)

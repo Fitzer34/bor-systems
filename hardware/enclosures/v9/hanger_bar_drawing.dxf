@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461302.8383680554
+2461302.8659027778
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461302.8383680554
+2461302.8659027778
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-16D
+16E
   9
 $SURFTAB1
  70
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{45537011-0563-4ECC-B03C-797FA2625F32}
+{4786BC1B-6168-4E03-9BEA-E0C795DE40D4}
   9
 $VERSIONGUID
   2
-{13C5D0DA-1C2E-47AB-99EE-FBEA25F45797}
+{6BF74B4F-48C5-4F89-9689-BF57F1B02FE1}
   9
 $EXTNAMES
 290
@@ -3205,7 +3205,7 @@ ACAD
   0
 APPID
   5
-16A
+16B
 330
 3
 100
@@ -3219,7 +3219,7 @@ HATCHBACKGROUNDCOLOR
   0
 APPID
   5
-16B
+16C
 330
 3
 100
@@ -6621,7 +6621,7 @@ AcDbMText
  71
 5
   1
-saddle from lid face 200
+saddle from body rim 200
   7
 OpenSansCondensed-Light
   0
@@ -7101,7 +7101,7 @@ AcDbMText
  71
 5
   1
-slot 860
+tunnel 860
   7
 OpenSansCondensed-Light
   0
@@ -7437,7 +7437,7 @@ AcDbText
  40
 5.0
   1
-HazardLink hanger bar v9 (mm)
+HazardLink hanger bar v9.9 (mm)
  11
 0.0
  21
@@ -8907,7 +8907,7 @@ AcDbText
  40
 2.8
   1
-SIDE SECTION at X=50: bar, lip, dovetail plate, saddle, Hall slot, lead channel
+SIDE SECTION at X=50: bar, lip, dovetail plate on its 45 deg gusset, saddle, Hall sensor nest and tunnel, lead channel
  11
 0.0
  21
@@ -9295,7 +9295,7 @@ EZDXF
  71
 5
   1
-saddle from lid face <>
+saddle from body rim <>
 100
 AcDbAlignedDimension
  13
@@ -9751,7 +9751,7 @@ AcDbText
  40
 2.8
   1
-FRONT SECTION through the saddle: bar width, Hall slot, sensor
+FRONT SECTION through the saddle: bar width, Hall sensor in its nest (tunnel width dimensioned)
  11
 0.0
  21
@@ -9881,7 +9881,7 @@ EZDXF
  71
 5
   1
-slot <>
+tunnel <>
 100
 AcDbAlignedDimension
  13
@@ -10781,7 +10781,7 @@ AcDbText
  40
 2.8
   1
-TOP SECTION through the Hall slot: carrier pocket, dovetail plate, lead channel
+TOP SECTION through the Hall tunnel: tunnel from the bar's back face, funnel, sensor nest, two pin holes (dovetail top width dimensioned for reference)
  11
 230.0
  21
@@ -10897,7 +10897,7 @@ AcDbText
  40
 2.5
   1
-Print lying on a side face (X face on the bed) so layers run along the bar and the dovetail flanks stand vertical. PETG. No screws: slides in from the wall side.
+Print UPRIGHT on the bar's bottom face, lip pointing up, with NO support at all: a 45 deg gusset off the web carries the front of the dovetail plate. Never let support generate in the sensor tunnel, nest or pin holes. No screws: slides in from the wall side.
  11
 0.0
  21
@@ -10927,11 +10927,41 @@ AcDbText
  40
 2.5
   1
-Magnet datum: bar centreline, centred on the saddle 2 mm in front of the lid face, pole face parallel to the saddle floor, 1.0 mm running clearance.
+Sensor: bare TI DRV5032FA (TO-92 style, flat 3-leg), marked face up under the saddle. Two pins of 2.85 filament, 6.0 to 6.5 long, in the 3.1 holes in the saddle floor; 2.0 push-out and drain hole under each. No drilling needed.
  11
 0.0
  21
 -14.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+16A
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-18.0
+ 30
+0.0
+ 40
+2.5
+  1
+Magnet datum: bar centreline, centred on the saddle 2 mm in front of the body rim (1 mm behind the lid's outer face), pole face parallel to the saddle floor, either pole, 1.0 mm running clearance.
+ 11
+0.0
+ 21
+-18.0
  31
 0.0
 100
@@ -12027,7 +12057,7 @@ CREATED_BY_EZDXF
   3
 WRITTEN_BY_EZDXF
 350
-16C
+16D
   0
 DICTIONARYVAR
   5
@@ -12039,7 +12069,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:07:15.872764+00:00
+1.4.4 @ 2026-09-18T19:46:54.550913+00:00
   0
 VISUALSTYLE
   5
@@ -12743,7 +12773,7 @@ X-Ray
   0
 DICTIONARYVAR
   5
-16C
+16D
 330
 2D
 100
@@ -12751,7 +12781,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:07:15.956256+00:00
+1.4.4 @ 2026-09-18T19:46:54.631035+00:00
   0
 ENDSEC
   0

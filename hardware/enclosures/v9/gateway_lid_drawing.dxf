@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461302.8383796294
+2461302.8659027778
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461302.8383796294
+2461302.8659027778
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-13B
+13C
   9
 $SURFTAB1
  70
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{0044D991-77D3-490D-B4D7-0DF8C675FB6C}
+{E78398CD-4632-403C-A6CC-F1F0C97D2BEC}
   9
 $VERSIONGUID
   2
-{AC8AAB9D-FA52-49B8-8EF6-6A40E2A37150}
+{8BA7B2CC-E35D-4598-A40C-05982909AF51}
   9
 $EXTNAMES
 290
@@ -3205,7 +3205,7 @@ ACAD
   0
 APPID
   5
-138
+139
 330
 3
 100
@@ -3219,7 +3219,7 @@ HATCHBACKGROUNDCOLOR
   0
 APPID
   5
-139
+13A
 330
 3
 100
@@ -7181,7 +7181,7 @@ AcDbText
  40
 5.0
   1
-HazardLink gateway lid v9 (mm)
+HazardLink gateway lid v9.9 (mm)
  11
 0.0
  21
@@ -8771,7 +8771,7 @@ AcDbText
  40
 2.8
   1
-FRONT SECTION at Y=-1.5: window, PRG tab groove, button knock-out, latches and tabs
+FRONT SECTION at Y=-1.5 (inside the lid's thickness): window, button pad slots, LED hole, button knock-out
  11
 0.0
  21
@@ -10037,7 +10037,7 @@ AcDbText
  40
 2.8
   1
-TOP SECTION at Z=42: lip, header ribs, insert pocket
+TOP SECTION at Z=42 (board centreline): lip, window insert pocket with its two cleats
  11
 0.0
  21
@@ -10153,11 +10153,41 @@ AcDbText
  40
 2.5
   1
-Print outer face down. No screws: two hinge tabs at the top, two latches at the bottom, paperclip release holes in the body's bottom wall.
+Print outer face down, no support. No screws: two hinge tabs at the top, two rigid hooks at the bottom that drop into the spring arms in the body's bottom wall; open with the pull lips under the box.
  11
 0.0
  21
 -10.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+138
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-14.0
+ 30
+0.0
+ 40
+2.5
+  1
+Gateway lid only: clear window insert 36 x 19.5 x 1.0, fitted from inside under the two cleats. PRG and RST are two 24 x 15 pads, PRG above RST.
+ 11
+0.0
+ 21
+-14.0
  31
 0.0
 100
@@ -11253,7 +11283,7 @@ CREATED_BY_EZDXF
   3
 WRITTEN_BY_EZDXF
 350
-13A
+13B
   0
 DICTIONARYVAR
   5
@@ -11265,7 +11295,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:07:16.144335+00:00
+1.4.4 @ 2026-09-18T19:46:54.813413+00:00
   0
 VISUALSTYLE
   5
@@ -11969,7 +11999,7 @@ X-Ray
   0
 DICTIONARYVAR
   5
-13A
+13B
 330
 2D
 100
@@ -11977,7 +12007,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:07:16.245222+00:00
+1.4.4 @ 2026-09-18T19:46:54.915961+00:00
   0
 ENDSEC
   0

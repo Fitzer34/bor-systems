@@ -1,38 +1,46 @@
-# HazardLink — Full project cost breakdown
+# HazardLink: full project cost breakdown
 
-Updated 2026-05-21
+Updated 2026-09-18 (the Phase 1 parts were checked against what was actually bought; every price in this file is still the estimate from 2026-05-21)
 
 All figures EUR unless marked otherwise. Quantity-pricing estimates assume
 EU/Ireland sourcing for assembly + Chinese sourcing for raw components.
 
 ---
 
-## Phase 1 — Prototype (right now, ~€350)
+## Phase 1: Prototype (May estimate, ~€350)
 
 What you spend before you have anything sellable. One full set of hardware
 end-to-end so you can demo + validate firmware.
 
-| Item | Source | Cost |
-|---|---|---|
-| Heltec WiFi LoRa 32 V3 × 3 (2 hangers + 1 gateway) | TinyTronics | €90 |
-| Samsung INR21700-50E 5000mAh × 2 | TinyTronics | €24 |
-| 21700 battery holders × 2 | TinyTronics | €4 |
-| JST 1.25mm cable pack (Heltec polarity) | Rokland | €7 |
-| DRV5032FA Hall sensor (×5) | Mouser IE | €5 |
-| Neodymium magnets 6×3mm (×10) | TinyTronics | €3 |
-| 868MHz 5dBi SMA antenna + IPEX→SMA pigtail | Amazon UK | €17 |
-| Qorvo DWM3001CDK dev kits × 2 (UWB) | Mouser IE | €160 |
-| CR2032 cells + holders (×5) | TinyTronics | €10 |
-| Plastic enclosure prototypes (3D-printed PETG) | DIY | €10 |
-| Shipping to Ireland | — | ~€20 |
-| **Total prototype** | | **~€350** |
+The Item, Source and Cost columns are the May estimate, and the total is the sum of that Cost column. The last column
+says what was bought in the end. Prices actually paid are on the order confirmations and are not copied here, so treat
+~€350 as the plan and read the real spend off the confirmations. `SHOPPING.md` has the full list of what was bought.
+
+| Item in the May estimate | Source | Cost | What was actually bought |
+|---|---|---|---|
+| Heltec WiFi LoRa 32 V3 × 3 (2 hangers + 1 gateway) | TinyTronics | €90 | 6 boards delivered |
+| Samsung INR21700-50E 5000mAh × 2 | TinyTronics | €24 | Superseded. The hanger takes an 18650: 4 x Murata US18650VTC6 delivered |
+| 21700 battery holders × 2 | TinyTronics | €4 | Superseded. 4 x BeiLaMoo BH18650-PC2 holders (18650, solder pins) delivered |
+| JST 1.25mm cable pack (Heltec polarity) | Rokland | €7 | |
+| DRV5032FA Hall sensor (×5) | Mouser IE | €5 | 25 x TI DRV5032FALPG from DigiKey. Same DRV5032FA sensor, in the bare flat 3-leg package the hook bar is cut for (the SOT-23 version does not fit) |
+| Neodymium magnets 6×3mm (×10) | TinyTronics | €3 | 14 x XMP 6 x 2 mm N52 delivered |
+| 868MHz 5dBi SMA antenna + IPEX→SMA pigtail | Amazon UK | €17 | |
+| Qorvo DWM3001CDK dev kits × 2 (UWB) | Mouser IE | €160 | Dropped from v1 according to `SHOPPING.md`. `docs/UWB_PLAN.md` lists DWM3001CDK kits on a separate DigiKey order, so check there |
+| CR2032 cells + holders (×5) | TinyTronics | €10 | `SHOPPING.md` later swapped these for LiPo cells. 4 x PKCELL LiPo 350 mAh were delivered |
+| Plastic enclosure prototypes (3D-printed PETG) | DIY | €10 | Test parts are printed in PLA (Polymaker PolyLite). PET-G is for units that go on a wall |
+| Shipping to Ireland | | ~€20 | |
+| **Total prototype (May estimate)** | | **~€350** | |
+
+Bought since, outside the May estimate: 6 x Gebildet 16 mm momentary push buttons (LED, waterproof) from Amazon UK, for a
+cleaning-mode button underneath the hanger's base, above the hook bar and out of public view. It is planned for a later
+enclosure revision and is not fitted yet. Price on the order confirmation.
 
 ---
 
-## Phase 2 — Pilot (5 sites, ~€3,500)
+## Phase 2: Pilot (5 sites, ~€3,500)
 
-5 friendly customer installs. No money changing hands yet — validates
-product in real environments.
+5 friendly customer installs. No money changing hands yet. This phase validates
+the product in real environments.
 
 ### Per-unit BOM at qty 100
 
@@ -60,7 +68,7 @@ product in real environments.
 
 ---
 
-## Phase 3 — Production NRE (~€27,500 one-time)
+## Phase 3: Production NRE (~€27,500 one-time)
 
 Engineering investment before mass production. Pays for itself across
 first batch of ~500 units.
@@ -78,7 +86,7 @@ first batch of ~500 units.
 
 ---
 
-## Phase 4 — Production batch (500 hangers, ~€25,000)
+## Phase 4: Production batch (500 hangers, ~€25,000)
 
 First mass-produced batch. Real per-unit economics.
 

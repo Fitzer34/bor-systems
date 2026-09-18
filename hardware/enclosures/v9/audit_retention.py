@@ -1,6 +1,15 @@
 """Retention audit: how far can each bought component move in +/-X, +/-Y, +/-Z before a printed part (or the part that
-is meant to hold it) stops it? Frame: X right, Z up (gravity is -Z on the wall), Y from the lid face (0) into the wall.
-A component is 'held' in a direction when its free travel is small (<= 1 mm). Run: cadenv python audit_retention.py"""
+is meant to hold it) stops it? Frame: X right, Z up (gravity is -Z on the wall), Y from the body's front rim (0, where
+the lid's inner face sits) into the wall, so "-Y (toward lid)" means toward the front of the unit.
+A component is 'held' in a direction when its free travel is small (<= 1 mm). Run: cadenv python audit_retention.py
+Lid-off run: AUDIT_ARGS=--lid-off cadenv python audit_retention.py
+
+Hall sensor: a bare flat 3-leg part in a snug nest under the saddle (the reference key is still "hall_carrier", an old
+name; there is no carrier board). Its only stop toward the wall (+Y) is the TWO filament pins standing behind its body,
+one each side of the legs (reference key "hall_pin" holds both pins). The pins themselves are stopped upward (+Z) only
+by the sign's handle resting over them; with the sign off they stay in by their own weight.
+The reference holder is modelled as an open trough, so with the lid off the cell shows as free toward the lid. In the
+real BH18650-PC2 holder the sprung contacts grip the cell."""
 import sys, importlib.util, time
 sys.argv = ["x"]
 spec = importlib.util.spec_from_file_location("hl", "hazardlink_enclosures.py"); hl = importlib.util.module_from_spec(spec); spec.loader.exec_module(hl)
@@ -41,8 +50,8 @@ cases = {
     "heltec board (hanger)": (refs["heltec"], printed),
     "18650 holder": (refs["holder"], printed),
     "18650 cell": (refs["cell"], dict(printed, holder=refs["holder"])),
-    "Hall carrier": (refs["hall_carrier"], dict(printed, pin=refs["hall_pin"])),
-    "Hall retaining pin": (refs["hall_pin"], dict(printed, sign_handle=refs["sign_handle"])),
+    "Hall sensor (bare 3-leg part)": (refs["hall_carrier"], dict(printed, two_pins=refs["hall_pin"])),   # stopped toward the wall by the two pins
+    "Hall retaining pins (two, moved together)": (refs["hall_pin"], dict(printed, sign_handle=refs["sign_handle"])),
     "stub antenna": (refs["stub_antenna"], printed),
     "hook bar (printed)": (bar, {"body": body, "backplate": plate}),
     "lid (printed)": (lid, {"body": body}),
