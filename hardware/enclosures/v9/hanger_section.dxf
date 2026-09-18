@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461302.8659027778
+2461302.921238426
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461302.865914352
+2461302.921238426
   9
 $TDUUPDATE
  40
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{11293D0F-4D3A-42C6-B068-09F5BA28947F}
+{78C7E08B-4C7A-4AD8-B6C4-48B9092D868C}
   9
 $VERSIONGUID
   2
-{9F9F7117-C866-4C72-82B0-0B264D649393}
+{E8162CBD-7819-4170-9039-B1ABEED6F7A6}
   9
 $EXTNAMES
 290
@@ -1323,9 +1323,9 @@ ISM
   0
 CLASS
   1
-ACDBPLACEHOLDER
+LAYOUT
   2
-AcDbPlaceHolder
+AcDbLayout
   3
 ObjectDBX Classes
  90
@@ -1339,9 +1339,9 @@ ObjectDBX Classes
   0
 CLASS
   1
-LAYOUT
+ACDBPLACEHOLDER
   2
-AcDbLayout
+AcDbPlaceHolder
   3
 ObjectDBX Classes
  90
@@ -10783,7 +10783,7 @@ AcDbText
  40
 2.8
   1
-SIDE SECTION at X=50: hanging bar, saddle, Hall sensor in its nest, magnet datum, sign handle, lid, backplate
+SIDE SECTION at X=50: hanging bar, saddle, Hall sensor in its nest, magnet over it, sign handle, lid, backplate, battery holder on its shelf above the bay
  11
 5.0
  21
@@ -16825,7 +16825,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:46:54.921496+00:00
+1.4.4 @ 2026-09-18T21:06:35.540408+00:00
   0
 VISUALSTYLE
   5
@@ -17537,7 +17537,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:46:55.251000+00:00
+1.4.4 @ 2026-09-18T21:06:35.862775+00:00
   0
 ENDSEC
   0

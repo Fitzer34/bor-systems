@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461302.8658912037
+2461302.9212268516
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461302.8658912037
+2461302.9212268516
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-2E5
+2E9
   9
 $SURFTAB1
  70
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{4D73673D-E72C-4431-82E2-F594AF584F8C}
+{95B87332-0C90-4152-B930-A885411FFEA9}
   9
 $VERSIONGUID
   2
-{9D6B941C-F0F9-4951-B3BF-21CB1C912B75}
+{23205DAC-121F-48E8-B6DB-B1226E785751}
   9
 $EXTNAMES
 290
@@ -1323,9 +1323,9 @@ ISM
   0
 CLASS
   1
-ACDBPLACEHOLDER
+LAYOUT
   2
-AcDbPlaceHolder
+AcDbLayout
   3
 ObjectDBX Classes
  90
@@ -1339,9 +1339,9 @@ ObjectDBX Classes
   0
 CLASS
   1
-LAYOUT
+ACDBPLACEHOLDER
   2
-AcDbLayout
+AcDbPlaceHolder
   3
 ObjectDBX Classes
  90
@@ -3205,7 +3205,7 @@ ACAD
   0
 APPID
   5
-2E2
+2E6
 330
 3
 100
@@ -3219,7 +3219,7 @@ HATCHBACKGROUNDCOLOR
   0
 APPID
   5
-2E3
+2E7
 330
 3
 100
@@ -15515,7 +15515,7 @@ AcDbText
  40
 2.8
   1
-FRONT SECTION at Y=28 (near back wall): peg bosses, bulkhead, cradle, holder bay ribs and standoff ribs, holder snap arms, dovetail strip
+FRONT SECTION at Y=28 (near back wall): peg bosses, bulkhead, cradle, holder shelf ribs and standoff ribs, holder snap arms, the bay under the battery, dovetail strip, cleaning button hole in the bottom wall
  11
 0.0
  21
@@ -22847,6 +22847,126 @@ Print body back face down (open front up), no support. 0.4 nozzle, 0.2 layers, 4
 100
 AcDbText
   0
+TEXT
+  5
+2E2
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-18.0
+ 30
+0.0
+ 40
+2.5
+  1
+After printing, push each latch arm tip OUTWARD once (away from the inside of the box) to break its small breakaway tab.
+ 11
+0.0
+ 21
+-18.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+2E3
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-22.0
+ 30
+0.0
+ 40
+2.5
+  1
+Battery cable (one 2-pin plug, two loose ends): each notch at the ends of the bulkhead is a CLOSED hole. Feed the two loose ends DOWN through the notches from the board side BEFORE they are soldered to the holder, then solder with the holder out of the box, then press the holder in.
+ 11
+0.0
+ 21
+-22.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+2E4
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-26.0
+ 30
+0.0
+ 40
+2.5
+  1
+v9.9 cleaning-mode button: 16.4 hole through the bottom wall at x=83.8, Y=21.3, behind the right latch arm and clear of the channel strip. Button up through it from below, its nut on from inside, then its plug-in socket from inside (the socket will not pass through the hole). Of the socket's five wires only the two switch wires go up to the board; the other three are covered and tucked down in the bay before the battery holder goes in.
+ 11
+0.0
+ 21
+-26.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+2E5
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-30.0
+ 30
+0.0
+ 40
+2.5
+  1
+The box is 41 mm taller than v9.8 for the button (171 tall, was 130): every feature keeps its place measured from the TOP. The bay under the battery holds only the button and wires.
+ 11
+0.0
+ 21
+-30.0
+ 31
+0.0
+100
+AcDbText
+  0
 ENDSEC
   0
 SECTION
@@ -23937,7 +24057,7 @@ CREATED_BY_EZDXF
   3
 WRITTEN_BY_EZDXF
 350
-2E4
+2E8
   0
 DICTIONARYVAR
   5
@@ -23949,7 +24069,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:46:53.700096+00:00
+1.4.4 @ 2026-09-18T21:06:34.346716+00:00
   0
 VISUALSTYLE
   5
@@ -24653,7 +24773,7 @@ X-Ray
   0
 DICTIONARYVAR
   5
-2E4
+2E8
 330
 2D
 100
@@ -24661,7 +24781,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:46:53.849748+00:00
+1.4.4 @ 2026-09-18T21:06:34.487012+00:00
   0
 ENDSEC
   0

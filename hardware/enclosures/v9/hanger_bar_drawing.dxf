@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461302.8659027778
+2461302.921238426
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461302.8659027778
+2461302.921238426
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-16E
+16F
   9
 $SURFTAB1
  70
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{4786BC1B-6168-4E03-9BEA-E0C795DE40D4}
+{71744CF2-E6BB-4C55-A0BD-0DFC5132BD8A}
   9
 $VERSIONGUID
   2
-{6BF74B4F-48C5-4F89-9689-BF57F1B02FE1}
+{F20C525F-12C8-4015-9F37-6679D65DA713}
   9
 $EXTNAMES
 290
@@ -1323,9 +1323,9 @@ ISM
   0
 CLASS
   1
-ACDBPLACEHOLDER
+LAYOUT
   2
-AcDbPlaceHolder
+AcDbLayout
   3
 ObjectDBX Classes
  90
@@ -1339,9 +1339,9 @@ ObjectDBX Classes
   0
 CLASS
   1
-LAYOUT
+ACDBPLACEHOLDER
   2
-AcDbLayout
+AcDbPlaceHolder
   3
 ObjectDBX Classes
  90
@@ -3205,7 +3205,7 @@ ACAD
   0
 APPID
   5
-16B
+16C
 330
 3
 100
@@ -3219,7 +3219,7 @@ HATCHBACKGROUNDCOLOR
   0
 APPID
   5
-16C
+16D
 330
 3
 100
@@ -10927,7 +10927,7 @@ AcDbText
  40
 2.5
   1
-Sensor: bare TI DRV5032FA (TO-92 style, flat 3-leg), marked face up under the saddle. Two pins of 2.85 filament, 6.0 to 6.5 long, in the 3.1 holes in the saddle floor; 2.0 push-out and drain hole under each. No drilling needed.
+Sensor: bare TI DRV5032FA (TO-92 style, flat 3-leg, marked 32FA), marked face up under the saddle. Leg order, confirmed from TI datasheet SLVSDC7H (Figures 7-1 and 5-5, Table 5-1): marked face toward you, legs down, LEFT = VCC (3V3), MIDDLE = GND, RIGHT = OUT (GPIO6). It slides in along the tunnel roof with the bar held UPSIDE DOWN; turn the bar upright before the pins go in.
  11
 0.0
  21
@@ -10957,11 +10957,41 @@ AcDbText
  40
 2.5
   1
-Magnet datum: bar centreline, centred on the saddle 2 mm in front of the body rim (1 mm behind the lid's outer face), pole face parallel to the saddle floor, either pole, 1.0 mm running clearance.
+Two pins of 2.85 filament, 6.0 to 6.5 long (never longer), in the 3.1 holes in the saddle floor; 2.0 push-out and drain hole under each. No drilling needed. To ease a tight pin hole: a 3 mm drill with a flag of tape 6 mm from its tip, twisted by hand only, stopped when the tape reaches the saddle floor. The ledge under each pin hole is only 1.4 mm thick, so never stop by feel.
  11
 0.0
  21
 -18.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+16B
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-22.0
+ 30
+0.0
+ 40
+2.5
+  1
+Magnet position on the sign: bar centreline, centred on the saddle 2 mm in front of the body rim (1 mm behind the lid's outer face), flat face parallel to the saddle floor, either pole, 1.0 mm running clearance.
+ 11
+0.0
+ 21
+-22.0
  31
 0.0
 100
@@ -12057,7 +12087,7 @@ CREATED_BY_EZDXF
   3
 WRITTEN_BY_EZDXF
 350
-16D
+16E
   0
 DICTIONARYVAR
   5
@@ -12069,7 +12099,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:46:54.550913+00:00
+1.4.4 @ 2026-09-18T21:06:35.170472+00:00
   0
 VISUALSTYLE
   5
@@ -12773,7 +12803,7 @@ X-Ray
   0
 DICTIONARYVAR
   5
-16D
+16E
 330
 2D
 100
@@ -12781,7 +12811,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:46:54.631035+00:00
+1.4.4 @ 2026-09-18T21:06:35.252610+00:00
   0
 ENDSEC
   0

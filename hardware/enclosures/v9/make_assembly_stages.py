@@ -1,6 +1,12 @@
-"""Assembly story for AutoCAD: eight stages (0, 1, 2, 3, 4, 5, 5B, 6) laid out left to right, every solid already in
+"""Assembly story for AutoCAD: nine stages (0, 1, 2, 3, 4, 5, 5B, 5C, 6) laid out left to right, every solid already in
 position, one STEP per (stage, colour group). Convert with fusion_step2sat.py (true surfaces), then ACISIN each .sat with
-CECOLOR set. The stage titles below are written into the drawing as text, so they are the assembly instructions.
+CECOLOR set. The stage titles below are written into the drawing as text, so they are a short form of the assembly
+instructions. The full version, with every check, is HANGER ASSEMBLY ORDER in README.txt. Keep each title on ONE line, in
+CAPITAL letters, under 400 characters, and free of quote marks and apostrophes, so the drawing text stays readable.
+What the titles must keep saying: only the TWO switch wires of the button go up to the board (5C); the battery cable's
+two loose ends are fed down through the end notches of the bulkhead BEFORE they are soldered to the holder (3); a new
+board has to be flashed with the hanger firmware (5B); the firmware does not act on the cleaning button yet (5).
+After any change to a title, run this script again so that stages/manifest.json carries the new text.
 Names: the "sensor" colour group holds the bare 3-leg Hall sensor (reference key hall_carrier, an old name kept so the
 file names do not change) and its TWO retaining pins (reference key hall_pin, one reference that holds both pins)."""
 import sys, os, json, importlib.util
@@ -34,31 +40,31 @@ def Tip(wp):           # tipped back about a left-right axis so the UNDERSIDE of
 def Rv(wp):            # seen from behind: turn the group half a turn about a vertical axis through the body centre
     return wp.rotate((50, 17.5, 0), (50, 17.5, 1), 180)
 stages = [
-  ("0 (SEEN FROM THE WALL SIDE) WIDE HOOK BAR: HOLD THE BAR UPSIDE DOWN AND SLIDE THE HALL SENSOR ALONG THE FLAT TUNNEL ROOF INTO ITS NEST, LETTERED FACE AGAINST THE ROOF (FACE UP ONCE THE BAR IS UPRIGHT). THEN DROP THE TWO PINS INTO THE SADDLE FLOOR BEHIND IT, ONE EACH SIDE OF THE LEGS. LEAD LAYS INTO THE GROOVE UP THE BACK", [
+  ("0 (FROM THE WALL SIDE, BAR UPRIGHT) FIRST TRY BOTH PINS (2.85 MM FILAMENT, 6.0 TO 6.5 MM LONG, NEVER LONGER) IN THEIR HOLES IN THE SADDLE FLOOR, THEN TAKE THEM OUT. BAR UPSIDE DOWN: SLIDE THE SENSOR ALONG THE TUNNEL ROOF INTO ITS NEST, MARKED FACE TO THE ROOF. BAR UPRIGHT: DROP IN BOTH PINS. THREAD THE LEADS UNDER THE CLOSED BAND HALF WAY UP THE BACK OF THE WEB, THEN LAY THEM IN THE GROOVE", [
       ("bar", [Rv(T(bar))]), ("sensor", [Rv(T(R["hall_carrier"], dy=50)), Rv(T(R["hall_pin"], dz=22))]),
       ("magnet", [Rv(T(R["magnet"], dz=30))])]),
-  ("1 (SEEN FROM THE WALL SIDE) FEED THE SENSOR LEADS UP THROUGH THE SLOT IN THE CHANNEL ROOF, THEN THE HOOK BAR SLIDES INTO THE DOVETAIL CHANNEL IN THE BODY", [
+  ("1 (SEEN FROM THE WALL SIDE) FEED THE SENSOR LEADS UP THROUGH THE SLOT IN THE CHANNEL ROOF FIRST. THEN SLIDE THE PLATE OF THE HOOK BAR INTO THE DOVETAIL CHANNEL IN THE BODY FROM THE WALL SIDE, TAKING UP THE SLACK IN THE LEADS FROM INSIDE. THE DOVETAIL CHANNEL IS A SLOT WITH SLOPING SIDES, WIDER AT THE TOP, SO THE PLATE CANNOT DROP OUT. IT IS CUT IN THE RAISED STRIP IN THE FLOOR OF THE BOX", [
       ("body", [Rv(T(body))]), ("bar", [Rv(T(bar, dy=55))]), ("sensor", [Rv(T(R["hall_carrier"], dy=55)), Rv(T(R["hall_pin"], dy=55))])]),
-  ("2 BODY LIFTS 14 MM AND DROPS ONTO THE FOUR BACKPLATE PEGS; THE CATCH CLICKS", [
+  ("2 THE BACKPLATE GOES ON THE WALL FIRST: FOUR NO.8 COUNTERSUNK SCREWS AND WALL PLUGS, PEGS TOWARD YOU, THE FIXED END OF THE CATCH TONGUE (THE SPRINGY STRIP IN ITS FACE) AT THE BOTTOM. OFFER THE BODY UP 14 MM HIGH ONTO THE PEGS AND LET IT DROP UNTIL THE CATCH CLICKS. THE HOOK BAR MUST BE IN THE BODY BEFORE THIS. THE README DOES STAGES 3 AND 5C ON THE BENCH BEFORE THIS ONE. EITHER ORDER WORKS", [
       ("plate", [T(plate)]), ("body", [T(body, dy=-45, dz=14)]), ("bar", [T(bar, dy=-45, dz=14)]),
       ("sensor", [T(R["hall_carrier"], dy=-45, dz=14), T(R["hall_pin"], dy=-45, dz=14)])]),
-  ("3 FOLD THE SENSOR LEADS FORWARD FIRST (THEIR SLOT IS UNDER THE BATTERY HOLDER). THEN BOARD, 18650 HOLDER, CELL AND ANTENNA GO IN FROM THE FRONT, AND THE CLEANING-MODE BUTTON COMES UP THROUGH THE BASE FROM BELOW", [
+  ("3 BUTTON FIRST (5C). FEED THE LOOSE ENDS OF THE BATTERY CABLE DOWN THROUGH THE BULKHEAD (THE THICK SHELF ABOVE THE BATTERY), ONE THROUGH EACH END NOTCH, PLUG LEFT ABOVE. HOLDER STILL OUT, IN FRONT OF THE BOX: CHECK POLARITY WITH A METER (REVERSED DESTROYS THE BOARD), SOLDER EACH WIRE TO THE SIDE OF ITS PIN. FOLD THE SENSOR LEADS FORWARD, PRESS THE HOLDER IN. THEN ANTENNA, BOARD, CELL LAST", [
       ("plate", [T(plate)]), ("body", [T(body)]), ("bar", [T(bar)]), ("sensor", [T(R["hall_carrier"]), T(R["hall_pin"])]),
       ("board", [T(R["heltec"], dy=-45)]), ("holder", [T(R["holder"], dy=-55)]), ("cell", [T(R["cell"], dy=-95)]),
-      ("antenna", [T(R["stub_antenna"], dy=-40)]), ("button", [T(b, dz=-40) for b in BTN])]),
-  ("4 ALL PARTS HOME. LID (WHITE WRITING, PRG AND RST PADS ABOVE AND BELOW THE USB PORT, NO WINDOW INSERT): TOP TABS IN, BOTTOM HOOKS CLICK", [
+      ("antenna", [T(R["stub_antenna"], dy=-40)]), ("button", [T(b, dx=35, dz=-25) for b in BTN])]),
+  ("4 ALL PARTS HOME. THE ANTENNA JACK SLID INTO THE SLOT IN ITS SHELF FROM THE FRONT, FLANGE UNDER THE SHELF, WASHER AND NUT ON TOP. IF NOT DONE YET, PUSH THE TIP OF EACH LATCH ARM IN THE BOTTOM WALL OUTWARD ONCE (AWAY FROM THE INSIDE OF THE BOX) TO BREAK ITS BREAKAWAY TAB. LID (100 X 171 MM, PRG AND RST FINGER PADS ABOVE AND BELOW THE USB PORT, NO WINDOW INSERT): TOP TABS IN, BOTTOM HOOKS CLICK", [
       ("plate", [T(plate)]), ("body", [T(body)]), ("bar", [T(bar)]), ("sensor", [T(R["hall_carrier"]), T(R["hall_pin"])]),
       ("board", [T(R["heltec"])]), ("holder", [T(R["holder"])]), ("cell", [T(R["cell"])]), ("antenna", [T(R["stub_antenna"])]),
       ("button", [T(b) for b in BTN]), ("lid", [T(lid, dy=-75)]), ("logo", [T(inlay, dy=-75)])]),
-  ("5 FINISHED. THE SIGN HANGS ON THE WIDE BAR THROUGH ITS HAND HOLE, MAGNET (EITHER POLE) OVER THE HALL SENSOR", [
+  ("5 FINISHED. THE HANGER BOX IS 171 MM TALL IN V9.9: 41 MM WAS ADDED AT THE BOTTOM FOR THE CLEANING-MODE BUTTON, AND EVERY OTHER FEATURE KEEPS ITS PLACE MEASURED FROM THE TOP OF THE BOX. THE SIGN HANGS ON THE WIDE BAR THROUGH ITS HAND HOLE, 6 X 2 MM N52 DISC MAGNET (EITHER POLE) OVER THE HALL SENSOR. THE FIRMWARE DOES NOT ACT ON THE CLEANING BUTTON YET", [
       ("plate", [T(plate)]), ("body", [T(body)]), ("bar", [T(bar)]), ("sensor", [T(R["hall_carrier"]), T(R["hall_pin"])]),
       ("lid", [T(lid)]), ("logo", [T(inlay)]), ("sign", [T(R["sign_handle"])]), ("magnet", [T(R["magnet"])])]),
-  ("5B USB-C CABLE PLUGGED IN AT THE LEFT EDGE WITH THE LID ON", [
+  ("5B USB-C CABLE PLUGGED IN AT THE LEFT EDGE WITH THE LID ON. A NEW HELTEC BOARD RUNS THE DEMO IT CAME WITH: IT MUST BE FLASHED WITH THE HANGER FIRMWARE FROM THE FIRMWARE FOLDER OF THE REPOSITORY (STEPS IN FIRMWARE/README.MD) BEFORE THE UNIT CAN REPORT ANYTHING", [
       ("plate", [T(plate)]), ("body", [T(body)]), ("bar", [T(bar)]), ("lid", [T(lid)]), ("logo", [T(inlay)]),
       ("plug", [T(R["usb_plug"])])]),
-  ("5C (BOX TIPPED BACK SO YOU SEE ITS UNDERSIDE) CLEANING-MODE BUTTON UNDER THE BASE, ABOVE THE HOOK, OUT OF SIGHT FROM THE FRONT. PUSH THE BUTTON UP THROUGH THE HOLE FROM BELOW, NUT ON FROM INSIDE, THEN PLUG ITS BLUE WIRE SOCKET ON", [
+  ("5C (SEEN FROM UNDERNEATH) CLEANING BUTTON. NUT AND BLUE SOCKET OFF. BUTTON PART WAY UP THROUGH THE HOLE, NUT STARTED FROM INSIDE, SOCKET ON WHILE THE BUTTON HANGS LOW (ONCE TIGHT, THE SHELF ABOVE LEAVES TOO LITTLE ROOM), THEN BUTTON HOME, NUT TIGHT. ONLY THE TWO SWITCH WIRES (FOUND WITH A METER) GO UP TO THE BOARD. THE OTHER THREE STAY IN THE BAY, ENDS COVERED. ALL FIVE BEFORE THE HOLDER GOES IN", [
       ("body", [Tip(T(body))]), ("bar", [Tip(T(bar))]), ("lid", [Tip(T(lid))]), ("logo", [Tip(T(inlay))]), ("button", [Tip(T(b)) for b in BTN])]),
-  ("6 (SEEN FROM BEHIND) THE LID ALONE: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET, BUTTON PADS WITH THEIR PINS", [
+  ("6 (SEEN FROM BEHIND) THE LID ALONE, 100 X 171 MM: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET, PRG AND RST FINGER PADS WITH THEIR PUSHER PINS", [
       ("lid", [Rv(T(lid))])]),
 ]
 out = "stages"; os.makedirs(out, exist_ok=True)

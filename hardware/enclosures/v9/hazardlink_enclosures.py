@@ -5,7 +5,12 @@ Two printed enclosures built around the Heltec WiFi LoRa 32 V3:
   HANGER  : battery wall hanger = body + lid + backplate + slide-in hanging BAR under the bottom edge
             (the sign hangs below the unit; the bar carries a saddle, and a bare Hall sensor sits in a nest under it,
             held by two filament pins). No screws between the parts; wall screws are the only screws.
-  GATEWAY : mains wall box      = body + lid (SMA bulkhead on top, USB-C entry with strain relief)
+            v9.9: a cleaning-mode push button (Owen's Gebildet 16 mm) is FITTED through the bottom wall, pointing down, above
+            the hook and out of sight from the front. The box grew DOWNWARD by H_BASEMENT (41 mm, so 171 tall where v9.8 was
+            130) to give the button an empty bay under the battery; every feature keeps its place measured from the TOP of
+            the box. PARAMS BTN16_ON=False builds the old 130 mm box with no button. The hanger firmware reserves the button's
+            pin (TEST_BUTTON_PIN = 3) but does not act on a press yet, so the README proves the wiring with a meter.
+  GATEWAY : mains wall box      = body + lid (SMA bulkhead on top, USB-C entry with strain relief). Unchanged in v9.9.
 
 Run with the CadQuery venv:
   cadenv/bin/python hazardlink_enclosures.py [out_dir] [--quick] [--no-autocad] [--check]
@@ -136,13 +141,15 @@ P = dict(
     KNOCKOUT_SKIN=0.8,       # assumed: membrane left in knock-outs
 
     # ---- Hanger -----------------------------------------------------------------------
-    H_W=100.0, H_H=130.0, H_D=35.0,   # v7
+    H_W=100.0, H_H=130.0, H_D=35.0,   # v7. These are the values BEFORE the basement: with the button fitted _apply_basement() adds H_BASEMENT (41) to H_H
+                                      # and to every hanger height below (board centre, holder, bulkhead, pegs, catch, antenna, backplate, marks), so the box is 171 tall
     H_BRD_ZC=104.0,          # assumed: board centreline height (window as high as the bosses allow)
     H_PCB_TOP_Y=None,        # derived: the display sits inside the lid, its glass just behind a 1 mm bezel (see hanger_geom)
     HOLDER_L=77.7, HOLDER_W=20.9, HOLDER_H=21.3, HOLDER_CLR=0.5,   # maker's listing: BeiLaMoo BH18650-PC2 (TinyTronics "1x 18650 Battery holder for PCB", marked 18650-PC2)
     HOLDER_STANDOFF=5.0,     # Owen's caliper photo: one solder pin at each end, about 3.4 in from the end face, about 4.3 long. 5.0 leaves room for the pin and the wire soldered to it.
     HOLDER_PIN=(3.4, 4.3, 1.0),   # Owen's caliper photo: pin centre from the end face, pin length, pin width (reference only)
-    HOLDER_X0=11.15, HOLDER_Z0=10.0,    # centred; 10.0 leaves a 4.1 mm passage under the holder for the sensor lead
+    HOLDER_X0=11.15, HOLDER_Z0=10.0,    # centred; 10.0 leaves a 4.1 mm passage under the holder for the sensor lead in the old box (BTN16_ON=False).
+                                        # With the button fitted the holder sits H_BASEMENT higher and the whole bay under it (about 45 mm) is open
     HOLDER_RIB_T=3.0, HOLDER_RIB_H=12.0, HOLDER_LEAD_GAP=8.0,   # assumed
     CELL_D=18.5, CELL_L=65.2,         # packing slip: Murata US18650VTC6 (18650), datasheet maximum size
     BULK_Z=(34.0, 46.0),              # assumed: stiffening bulkhead between bay and board
@@ -166,13 +173,20 @@ P = dict(
     BAR_SADDLE_Y=-2.0,       # assumed: saddle centre, 2 mm in front of the body rim (Y=0), which is 1 mm BEHIND the lid's outer face (Y=-3); sign thickness sits either side
     BAR_SADDLE_W=15.0, BAR_SADDLE_D=2.0,  # assumed: saddle width along Y (folded handle stack 6 to 12, research) and depth
     BAR_WIRE_Y=(6.5, 10.5),  # assumed: lead slot through the channel roof. It opens UNDER the battery holder (holder front face Y=6.2 at HOLDER_STANDOFF 5):
-                             # the leads run forward in the 4.1 mm passage under the holder, then rise in front of it. So they go in BEFORE the holder does.
+                             # the leads come up under the holder (into the bay under the battery since v9.9), bend forward, then rise in front of it.
+                             # So they are fed up and folded forward BEFORE the holder is pressed in: a lead left standing is trapped behind the holder.
     BAR_WIRE_W=8.0,          # assumed
-    WEB_BAND=(-19.0, -15.0), # assumed: the lead groove in the back of the web is open (wires lay in) except this band, which keeps them in
+    WEB_BAND=(-19.0, -15.0), # assumed: the lead groove in the back of the web is open (wires lay in) except this band, which keeps them in.
+                             # The band is closed, so the wire ends have to be THREADED under it (opening BAR_WIRE_W - 2 wide): no plug on them yet
     BULK_LEAD_SLOT=(46.0, 54.0, 2.0, 6.4),   # assumed: slot through the bulkhead right above the channel roof slot (x0, x1, y0, y1)
     BAR_GUSSET=8.0, BAR_GUSSET_W=2.0,    # assumed: short side gussets at the lip root
     HALL_PKG=(4.1, 3.0, 1.5),         # Owen's caliper photo: the lift sensor is a BARE flat 3-leg Hall sensor, TI DRV5032FA in the TO-92 style (LPG) package
                                       # (DigiKey DRV5032FALPG), body about 4.1 wide x 3.0 x 1.5 thick, no carrier board. OMNIPOLAR: either magnet pole works.
+                                      # TI datasheet SLVSDC7H (Table 5-1, Figure 5-5): pin 1 VCC (1.65 to 5.5 V), pin 2 GND = the MIDDLE leg, pin 3 OUT (push-pull).
+                                      # LEG ORDER CONFIRMED: Owen's sensors are marked 32FA, which that datasheet lists as the marking of DRV5032FALPG. Its
+                                      # Figure 7-1 shows that the "top" of the TO-92 package is the marked, bevelled front face, and Figure 5-5 is the top view.
+                                      # So with the MARKED face toward you and the legs pointing DOWN: LEFT = VCC (to 3V3), MIDDLE = GND, RIGHT = OUT (to GPIO6).
+                                      # Never find a leg by putting 3V3 on it: 3V3 on the OUT leg is outside TI's absolute maximum ratings.
     HALL_LEG=(0.45, 1.27, 14.0),      # datasheet (TO-92 style): leg width, pitch, length. The wires are soldered to the legs and each joint sleeved, but the
                                       # first 3 mm of the legs behind the body stays bare, straight and unsleeved: the two retaining pins stand there
     HALL_NEST_CLR=(0.25, 0.3, 0.35),  # review: nest clearance each side, in front, above and below the package (0.35 so a sagging bridge cannot jam it, and every level of the cavity lands on a 0.2 mm layer)
@@ -182,15 +196,17 @@ P = dict(
     HALL_FUNNEL_Y=4.5,                # review: the tunnel narrows to the nest over this length, so the package is steered in
     MAGNET_D=6.0, MAGNET_T=2.0,       # packing slip: XMP neodymium 6 x 2 mm N52
     TAG_WALL=1.2, TAG_CLR=1.0,        # research: tag wall and running clearance (assumed values)
-    BP_W=90.0, BP_H=124.0, BP_T=10.0,   # v7 90 wide; 124 tall (z 3..127) so the plate covers the bar channel mouth; thickness 10 assumed
+    BP_W=90.0, BP_H=124.0, BP_T=10.0,   # v7 90 wide; 124 tall (z 3..127) so the plate covers the bar channel mouth; thickness 10 assumed.
+                                        # With the button fitted H_BASEMENT is added: 165 tall (z 3..168)
     BP_SCREW_D=4.5, BP_SCREW_CSK_D=9.0, BP_SCREW_INSET=10.0,   # v7 / research No.8 csk
     PEG_XS=(30.0, 70.0), PEG_ZS=(55.0, 105.0),   # assumed peg positions (engaged); the head chamber BELOW each peg clears the holder's top rib
     # v9: spring catch on the backplate replaces the internal security screw; released from inside with the lid off
     CATCH_X=50.0, CATCH_Z0=44.0, CATCH_W=8.0, CATCH_T=1.8, CATCH_L=24.0, CATCH_GAP=3.0, CATCH_SLOT=0.8,   # assumed: tongue in the plate's front skin, root at the bottom; cavity open to the back face so the slicer can support it
     CATCH_NOSE=2.3, CATCH_NOSE_H=4.0, CATCH_NOSE_Z=16.0, CATCH_PAD=(1.5, 2.5, 5.0), CATCH_WIN=(9.5, 10.5), CATCH_WIN_CLR=0.5,   # assumed: nose z = root + 16; push pad (proud, height, above nose top); window through the back wall (w, h)
     # antenna, read off Owen's ruler photo: SMA bulkhead pigtail + stubby SMA antenna, black body about 9.5 dia, antenna about
-    # 47 long including its brass connector. Mounted INSIDE: the jack sits in a slotted shelf (its own nut clamps it), the body
-    # snaps into a clip. The knock-out in the top wall above it takes the same jack if an outside antenna is ever wanted.
+    # 47 long including its brass connector. Mounted INSIDE: the jack's neck slides into a slotted shelf FROM THE FRONT with its
+    # flange under the shelf (nut and washer taken off first, then refitted on top: the nut clamps it), the body snaps into a
+    # clip. The knock-out in the top wall above it takes the same jack if an outside antenna is ever wanted.
     ANT_X=86.0, ANT_Y=22.0, ANT_D=9.5, ANT_L=47.0, ANT_SHELF_Z=62.0, ANT_SHELF_T=2.5, ANT_SLOT_W=6.6, ANT_CLIP_Z=100.0,
     SMA_KO=(84.0, 17.5),     # assumed optional SMA knock-out on the top wall
     # label recess removed: it was on the face that sits on the print bed, so it printed over nothing. Use a sticker.
@@ -211,11 +227,18 @@ P = dict(
                              # head dia, head height, body dia, nut across corners, nut thickness
     BTN16_METAL_L=15.0,      # Owen's photo: threaded metal body behind the head
     BTN16_SOCKET_L=25.6,     # Owen's photo: the blue plug-in wire socket that pushes onto the button's pins (five wires leave its end)
-    BTN16_PINS_L=7.5,        # ASSUMED: bare pins if the socket is left off and the wires are soldered on (they are hidden inside the socket in the photo)
-    BTN16_USE_SOCKET=True,   # True keeps the plug-in socket (no soldering at the button, swap a button by unplugging); False makes the box about 18 mm shorter
+    BTN16_PINS_L=7.5,        # ASSUMED, NOT MEASURED: bare pins if the socket is left off and the wires are soldered on (they are hidden inside the socket in the photo)
+    BTN16_USE_SOCKET=True,   # True keeps the plug-in socket (no soldering at the button, swap a button by unplugging). False leaves 18.1 mm less behind
+                             # the head, and because H_BASEMENT is rounded up to a whole millimetre the box comes out 19 mm shorter (152 tall)
     BTN16_XY=(83.8, 21.3),   # assumed: through the bottom wall behind the right latch arm, clear of the hook channel strip (x 30..70) and of the rounded inside corner at the side wall
     BTN16_WIRE=6.0,          # assumed: room above the socket for the five wires to turn
-    BTN16_ON=True,           # False builds the v9.9 box without the button or the basement
+    BTN16_ON=True,           # False builds the box without the button or the basement (the old 130 mm tall box)
+                             # Fitting: bare button up through the hole from below, nut on from inside, then the blue socket onto its pins from inside
+                             # (the socket will not pass through the hole). Of the socket's five wires only the two switch wires go to the board.
+                             # Firmware: TEST_BUTTON_PIN = 3 in firmware/include/pinout.h is RESERVED as the cleaning-mode trigger, and
+                             # firmware/src/hanger/hanger.cpp sets the pin as an input with pull-up, but the hanger loop does not act on a press
+                             # yet, so no document may tell the builder to check for "cleaning mode". The wiring check is a meter continuity test.
+                             # The button's LED voltage is NOT known: nothing here or in the README states one.
 
     # ---- Gateway ----------------------------------------------------------------------
     G_W=120.0, G_H=80.0, G_D=30.0,    # assumed
@@ -701,7 +724,10 @@ def build_hanger_body():
     # bulkhead between the battery bay and the board area
     bz0, bz1 = g["bulk"]
     body = body.union(box(wall - EPS, W - wall + EPS, 0, yb + EPS, bz0, bz1))
-    # lead notches at both ends of the bulkhead (open toward the back wall, 7.5 mm bridge at the front)
+    # lead notches at both ends of the bulkhead for the two battery wires. Each is cut only from Y=12 back to the back wall, so
+    # the front 12 mm of the bulkhead closes it (a 7.5 mm bridge when printed): it is a CLOSED hole, 7.5 mm wide. The battery
+    # cable is one 2-pin plug with two loose ends, so the loose ends are fed DOWN through these notches BEFORE they are
+    # soldered to the holder; once both are soldered the cable is a closed loop and cannot be threaded (README, step 4).
     for (nx0, nx1) in ((wall - 1, wall + 7.5), (W - wall - 7.5, W - wall + 1)):
         body = body.cut(box(nx0, nx1, 12.0, yb + 1, bz0 - 1, bz1 + 1))
     # sensor lead goes straight up: a slot through the bulkhead right above the slot in the channel roof
@@ -755,8 +781,9 @@ def build_hanger_body():
         body = body.union(box(xa, xb, ayc - 0.4 - 1.25 * ab - 0.5, yb + EPS, az0, az0 + aw))
         pts = [(xf - sgn * EPS, ayc + ab), (xf + sgn * ab, ayc), (xf + sgn * ab, ayc - 0.4), (xf - sgn * EPS, ayc - 0.4 - 1.25 * ab)]
         body = body.union(cq.Workplane("XY").polyline(pts).close().extrude(aw).translate((0, 0, az0)))
-    # antenna inside the box, upright on the right: the SMA jack drops into a slotted shelf from the front and its own nut
-    # clamps it (flange under the shelf, washer and nut on top); the antenna body snaps into a C-clip above
+    # antenna inside the box, upright on the right: the SMA jack's neck slides into a slotted shelf from the front (nut and
+    # washer off first) and its own nut clamps it (flange under the shelf, washer and nut on top); the antenna body snaps
+    # into a C-clip above
     ax, ay, ad = P["ANT_X"], P["ANT_Y"], P["ANT_D"]
     sz, st_ = P["ANT_SHELF_Z"], P["ANT_SHELF_T"]
     shelf = box(ax - 8.0, W - wall + EPS, ay - 9.5, yb + EPS, sz, sz + st_)
@@ -797,7 +824,8 @@ def build_hanger_body():
                              D - li, D + 1.0))
     wy0, wy1 = P["BAR_WIRE_Y"]
     body = body.cut(box(W / 2 - P["BAR_WIRE_W"] / 2, W / 2 + P["BAR_WIRE_W"] / 2, wy0, wy1, -1.0, g["strip_top"] + 1.0))
-    # cleaning-mode button: a plain round hole through the bottom wall; the button's own nut clamps it from inside
+    # cleaning-mode button: a plain round hole through the bottom wall, behind the right latch arm and clear of the channel
+    # strip; the button goes up through it from below and its own nut clamps it from inside
     if P["BTN16_ON"]:
         bx_, by_ = P["BTN16_XY"]
         body = body.cut(cyl_z(bx_, by_, P["BTN16"][0], -1.0, wall + 1.0))
@@ -887,8 +915,9 @@ def build_hanger_bar():
     sw, sd = P["BAR_SADDLE_W"], P["BAR_SADDLE_D"]
     part = part.cut(box(bx0 - 1, bx1 + 1, g["saddle_y"] - sw / 2, g["saddle_y"] + sw / 2, g["saddle_floor"], g["bar_top"] + 1))
     # Hall sensor: tunnel from the bar's back face forward to the back of the package, a 45 deg ramp up, then the nest.
-    # The ROOF (slot_ceil) is one flat surface from the bar's back face to the front of the nest; only the floors step
-    # and ramp. So the easy way in is with the bar held upside down: the sensor slides along the roof, nothing to climb.
+    # The ROOF (slot_ceil) is one level from the bar's back face to the front of the nest; only the floors step and ramp.
+    # So the easy way in is with the bar held upside down: the sensor slides along the roof, nothing to climb. The only
+    # break in the roof is the first stage of the pin holes (further down): a slot one 0.2 mm layer deep, just short of the nest.
     hw, nw = g["slot_hw"], g["nest_hw"]
     step = g["nest_floor"] - g["slot_floor"]
     yb0, yf = g["nest_y_back"], g["nest_y_back"] + P["HALL_FUNNEL_Y"]
@@ -919,7 +948,10 @@ def build_hanger_bar():
     # The holes cross the tunnel's bridged roof. So that roof still prints cleanly, the hole opens in stages (the usual FDM
     # trick): first roof layer = one slot right across, so its bridge lines run wall to wall; second = a square, bridged
     # the short way; round from the third layer up. Nothing has to be drilled. A 2 mm hole under each pin, through the
-    # bar's underside, lets it be pushed out with a 1.5 mm rod and drains the cavity.
+    # bar's underside, lets it be pushed out with a 1.5 mm rod and drains the cavity. That 2 mm hole is also the ledge the
+    # pin stands on, and the ledge is thin (bar bottom to pin hole bottom = 1.4 mm). "Stop by feel" is not safe: a 3 mm drill
+    # used to ease a tight pin hole gets a flag of tape 6 mm from its tip, is twisted by hand only, and stops when the tape
+    # reaches the saddle floor (the README and the bar drawing say so).
     pd, lay = P["HALL_PIN_D"], 0.2
     pins = hall_pin_xys(g)
     sxw = max(hw, P["HALL_PIN_X"] + pd / 2)
@@ -996,13 +1028,15 @@ def hanger_refs():
     refs["holder"] = (holder, (0.15, 0.15, 0.15))
     cx = hx0 + hl / 2
     refs["cell"] = (cyl_x(cy, cz, P["CELL_D"], cx - P["CELL_L"] / 2, cx + P["CELL_L"] / 2), (0.20, 0.55, 0.85))
-    # bare flat Hall sensor (DRV5032FA, TO-92 style) in its nest under the saddle, marked face up toward the magnet, three legs running back
+    # cleaning-mode button: head under the bottom wall, threaded metal body up through the hole, nut on the wall's inner
+    # face, then the plug-in socket (or the bare pins) standing up into the bay under the battery
     if P["BTN16_ON"]:
         hole, hd, hh, bd, nut, nut_t = P["BTN16"]
         bx_, by_ = P["BTN16_XY"]
         btn = cyl_z(bx_, by_, hd, -hh, 0.0).union(cyl_z(bx_, by_, bd - 0.2, -EPS, P["BTN16_METAL_L"])).union(cyl_z(bx_, by_, nut, g["wall"], g["wall"] + nut_t))
         btn = btn.union(cyl_z(bx_, by_, 17.0 if P["BTN16_USE_SOCKET"] else 12.0, P["BTN16_METAL_L"] - EPS, btn16_len()))     # socket envelope, latch tab included
         refs["clean_button"] = (btn, (0.75, 0.75, 0.78))
+    # bare flat Hall sensor (DRV5032FA, TO-92 style) in its nest under the saddle, marked face up toward the magnet, three legs running back
     pw, pl, pt = P["HALL_PKG"]
     lw, lp, ll = P["HALL_LEG"]
     sy, sz = g["sensor_y"], g["sensor_z"]
@@ -1432,10 +1466,37 @@ def design_checks(hg, gg):
 
 def write_readme(out_dir, hg, gg):
     """README.txt for the build folder. Every number in it is fed from PARAMS or from the derived geometry, by name, so
-    the text cannot drift when a value changes. Literal percent signs in the template are doubled."""
+    the text cannot drift when a value changes. Literal percent signs in the template are doubled. The text is written for
+    a builder who is not an engineer: every unusual word is explained in WORDS USED, and HANGER ASSEMBLY ORDER is meant to
+    be followed literally, from a pile of parts to a sign hanging on the wall.
+    Four facts the text must keep to (they replaced earlier, more cautious wording):
+      the Hall sensor's leg order is CONFIRMED (marking 32FA, TI SLVSDC7H Figures 7-1 and 5-5, Table 5-1), so no step may put
+        3V3 on an unknown leg to find out which it is;
+      the battery cable's two loose ends are fed DOWN through the bulkhead's end notches BEFORE they are soldered to the holder,
+        because each notch is a closed hole and the cable has one plug;
+      the hanger firmware reserves the cleaning button's pin but does not act on a press yet, so the button is proved with a
+        meter continuity test, never by looking for a "cleaning mode";
+      a drill in a pin hole is stopped by a flag of tape, never by feel."""
     sy = hg["sensor_y"]
     gap = hg["saddle_floor"] + P["TAG_CLR"] + P["TAG_WALL"] - (hg["sensor_z"] + P["HALL_PKG"][2] / 2)
+    base = P.get("H_BASEMENT") or 0.0
+    # what the box would save with the button's plug-in socket left off (same sum as _apply_basement, text only)
+    have = (P["HOLDER_Z0"] - base - P["HOLDER_CLR"] - P["HOLDER_RIB_T"]) - P["WALL"]
+    base_nosock = float(max(0, math.ceil((P["BTN16_METAL_L"] + P["BTN16_PINS_L"] - P["WALL"]) + P["BTN16_WIRE"] - have)))
+    bp_z0 = (hg["H"] - P["BP_H"]) / 2
+    # how far the bottom edge of a lid comes out before its hinge noses drop free: lid height x sin(12 deg), the tilt at which
+    # design_checks proves the noses are clear of the rib. It follows the box height, so it is never a literal in the text.
+    free_tilt = math.radians(12.0)
+    open_h, open_g = hg["H"] * math.sin(free_tilt), gg["H"] * math.sin(free_tilt)
+    pin_depth = hg["saddle_floor"] - (hg["slot_floor"] - 2.0)       # pin hole depth below the saddle floor (build_hanger_bar)
     v = dict(
+        open_h_lo=math.floor(open_h), open_h_hi=math.ceil(open_h), open_g_lo=math.floor(open_g), open_g_hi=math.ceil(open_g), g_box_h=gg["H"],
+        # a drill easing a tight pin hole stops a little short of the hole's floor: tape flag at whole millimetres, at least 0.5 short
+        drill_tape=math.floor(pin_depth - 0.5), ledge_t=(hg["slot_floor"] - 2.0) - hg["bar_bot"],
+        # the bulkhead's two end notches (same literals as build_hanger_body: 7.5 wide, cut from Y=12 back to the back wall)
+        notch_front=12.0, notch_w=7.5, notch_l=hg["y_back"] - 12.0,
+        # room round the button's nut (the design check proves it turns; these say why a spanner does not go on)
+        nut_back=hg["y_back"] - (P["BTN16_XY"][1] + P["BTN16"][4] / 2), nut_side=(hg["W"] - P["WALL"]) - (P["BTN16_XY"][0] + P["BTN16"][4] / 2),
         wall_y=hg["wall_y"], lid_t=P["LID_T"],
         tab_l=P["TAB_L"], arm_l=P["ARM_L"], arm_w=P["ARM_W"], arm_t=P["ARM_T"], strain=P["SNAP_STRAIN_MAX"],
         hook_w=P["HOOK_W"], hook_barb=P["HOOK_BARB"],
@@ -1457,19 +1518,101 @@ def write_readme(out_dir, hg, gg):
         arm_over=P["HOLDER_ARM"][3], post_clr=P["HOLD_POST"][2], cell_clr=P["CELL_RIB"][2], rib_clr=P["LID_RIB_CLR"],
         hall_w=P["HALL_PKG"][0], hall_l=P["HALL_PKG"][1], hall_t=P["HALL_PKG"][2],
         gate=2 * P["HALL_PIN_X"] - 2.85, tunnel_l=hg["bar_back"] - hg["nest_y_back"],
+        tunnel_w=P["HALL_TUNNEL_W"], tunnel_h=P["HALL_SLOT_H"],
         pin_hole=P["HALL_PIN_D"], pin_depth=hg["saddle_floor"] - (hg["slot_floor"] - 2.0), push_d=P["HALL_PIN_PUSH_D"],
         mag_d=P["MAGNET_D"], mag_t=P["MAGNET_T"],
-        ant_d=P["ANT_D"], ant_l=P["ANT_L"],
+        ant_d=P["ANT_D"], ant_l=P["ANT_L"], ant_slot=P["ANT_SLOT_W"],
         sy=sy, sy_front=-sy, sy_behind=P["LID_T"] + sy,
         wire_y0=P["BAR_WIRE_Y"][0], wire_y1=P["BAR_WIRE_Y"][1], holder_front=hg["holder_front"],
         lead_gap=(P["HOLDER_Z0"] - P["HOLDER_CLR"]) - hg["strip_top"],
+        roof_w=P["BAR_WIRE_W"], roof_l=P["BAR_WIRE_Y"][1] - P["BAR_WIRE_Y"][0],
+        bulk_w=P["BULK_LEAD_SLOT"][1] - P["BULK_LEAD_SLOT"][0], bulk_l=P["BULK_LEAD_SLOT"][3] - P["BULK_LEAD_SLOT"][2],
+        band_w=P["BAR_WIRE_W"] - 2.0, band_d=(hg["web_y1"] - 2.5) - (hg["web_y0"] + 2.5),
         xc=hg["W"] / 2, tag_clr=P["TAG_CLR"], tag_wall=P["TAG_WALL"], gap=gap,
         gusset=hg["web_y0"] - hg["plate_y0"], head_w=P["PEG_HEAD_D"] + 2 * P["PEG_HEAD_CLR"], nose_pocket=P["TAB_W"] + 1.0,
         coupon=14.0, win_ww=P["WIN_W"], win_wh=P["WIN_H"], groove_open=hg["bar_back"] - (hg["web_y0"] + 2.5),
         g_screw_x=P["G_LOWER_SCREW"][0], g_screw_z=P["G_LOWER_SCREW"][1], key_l=P["KEY_SLOT_L"],
+        # v9.9: the button under the base and the taller box
+        box_w=hg["W"], box_h=hg["H"], box_d=hg["D"], basement=base, old_h=hg["H"] - base,
+        bp_w=P["BP_W"], bp_h=P["BP_H"], bp_tb=bp_z0, bp_side=(hg["W"] - P["BP_W"]) / 2,
+        peg_top=bp_z0 + P["BP_H"] - max(P["PEG_ZS"]), peg_bot=min(P["PEG_ZS"]) - bp_z0,
+        btn_hole=P["BTN16"][0], btn_head_d=P["BTN16"][1], btn_head_h=P["BTN16"][2], btn_nut=P["BTN16"][4],
+        btn_metal=P["BTN16_METAL_L"], btn_sock=P["BTN16_SOCKET_L"], btn_full=P["BTN16_METAL_L"] + P["BTN16_SOCKET_L"],
+        btn_pins=P["BTN16_PINS_L"], btn_x=P["BTN16_XY"][0], btn_y=P["BTN16_XY"][1], btn_room=P["BAR_DROP"] - P["BTN16"][2],
+        holder_above=have + P["HOLDER_RIB_T"], nosock_save=base - base_nosock, nosock_h=hg["H"] - base + base_nosock,
+        clear_mid=hg["W"] - 2 * (P["HOLDER_X0"] + 12.0 + P["CELL_RIB"][0]),      # between the lid's two cell ribs (build_hanger_lid)
+        body_len=hg["H"] + P["ARM_LIP"][1], wall=P["WALL"],
     )
-    txt = """HazardLink v9.9 enclosures (sized from Owen's own parts): no screws between the parts; every part clipped in even with the lid off; wall-arm latches; flush display; USB-C at the edge (lid on); two finger pads; logo on the face; wide hook bar that prints with no support; bare Hall sensor held by two filament pins. Generated by hazardlink_enclosures.py.
+    txt = """HazardLink v9.9 enclosures (sized from Owen's own parts): no screws between the parts; every part clipped in even with the lid off; wall-arm latches; flush display; USB-C at the edge (lid on); two finger pads; logo on the face; wide hook bar that prints with no support; bare Hall sensor held by two filament pins; NEW in v9.9, a cleaning-mode push button fitted under the base of the hanger, in a hanger box %(basement).0f mm taller to make room for it. Generated by hazardlink_enclosures.py.
 Frame: X right, Z up, Y from the body rim (Y=0) into the wall. The lid's outer face is at Y=-%(lid_t).0f, the wall face at Y=%(wall_y).0f.
+If you are building a hanger, read WORDS USED, then go to HANGER ASSEMBLY ORDER and follow it from the top.
+
+WORDS USED IN THIS FILE
+  front, back, left, right, top, bottom: as you see the box hanging on the wall. The front is the lid, the back is the wall
+    side. "Forward" means toward the open front of the box (toward you). The floor of the box is the inside of its bottom wall.
+  body: the open box. lid: its front cover. backplate: the flat plate that is screwed to the wall. The body hangs on it.
+  hook bar, or just "the bar": the T-shaped part under the box that the sign hangs on. From the top down it has a dovetail
+    plate (a flat tongue with sloping sides), a web (the narrow upright neck) and the wide bar itself, with a lip at the front.
+  saddle: the shallow trough across the top of the bar. The top edge of the sign's hand hole rests in it.
+  cable tie saddle: a different thing. It is a small block on the back wall of the box, below the board, with a tunnel
+    through it for a cable tie. It has nothing to do with the saddle on the bar.
+  tunnel and nest: the tunnel is the flat passage inside the bar, open at the back of the bar. The nest is the snug pocket
+    at its far end, under the middle of the saddle, where the lift sensor sits.
+  channel strip: the raised strip in the floor of the box that the hook bar slides into. The slot in its roof lets the
+    sensor's wires up into the box.
+  bulkhead: the thick shelf across the inside of the box above the battery. It has three openings: a slot in the middle,
+    near the front, for the sensor and button wires, and a notch at each end, against the side walls, for the two battery
+    wires. All three are CLOSED holes, shut in on every side, so a wire cannot be slipped in from the front: it has to be
+    threaded through end first.
+  bay under the battery: the empty space between the floor of the box and the battery holder. It is new in v9.9 and holds
+    only the cleaning-mode button and wires.
+  latch arm: one of two springy strips cut into the bottom wall of a body. The lid's two hooks click into them. The small lip
+    under each arm's tip is what you pull to open the lid.
+  pegs and catch: four mushroom-shaped pegs on the backplate carry the body. The catch is a springy tongue in the middle of
+    the backplate with a bump (the nose) that clicks into a window in the back wall of the body, so the body cannot be lifted
+    off until the nose is pushed back.
+  board: the Heltec WiFi LoRa 32 V3 circuit board. PRG and RST are its two small buttons. Its underside is the side without
+    the display. J3 is the row of 18 solder holes along its long edge on the PRG button's side.
+  PCB: the bare circuit board itself, without the parts on it. "Above the PCB" is measured up from its display side.
+  bezel: the thin skin of lid that is left in front of the display, round its window.
+  firmware: the program that runs on the board. Flashing means loading it onto the board over the USB-C cable.
+  GND, 3V3, GPIO3, GPIO6: the names of four solder holes in Heltec's pinout picture of the board. GND is ground (zero volts),
+    3V3 is the board's 3.3 volt supply, GPIO3 and GPIO6 are two signal pins. HIGH means close to 3.3 volts, LOW means close
+    to zero.
+  U.FL pigtail: the thin antenna cable with a tiny press-on plug. The plug presses onto the board. The other end is a
+    threaded SMA jack that the antenna screws onto.
+  JST 1.25 cable: the battery cable. It has one tiny 2-pin plug, which fits the battery socket on the underside of the board,
+    and two loose wire ends.
+  Hall sensor, or lift sensor: the small black 3-leg part in the bar that senses the magnet on the sign. Its MARKED face is
+    its front face, the one with 32FA printed on it. VCC is its supply leg, GND its ground leg and OUT its output leg.
+  push-pull: the sensor drives its output wire both HIGH and LOW by itself, so it needs no extra resistor.
+  momentary: a momentary button is on only while it is held in.
+  lead: a wire, or a few wires together, going from one part to another. tail: a short wire soldered to the board.
+  heat shrink: thin plastic sleeve that shrinks tight when warmed. It insulates a solder joint. meter: a multimeter. Its
+    continuity setting beeps when its two probes are joined through a wire or a closed switch.
+
+NEW IN v9.9: THE CLEANING-MODE BUTTON UNDER THE BASE, AND A TALLER HANGER BOX
+  A cleaning-mode push button is now FITTED under the base of the hanger. It is Owen's Gebildet 16 mm momentary LED waterproof
+  button (6 bought on Amazon UK): M16 thread, a head %(btn_head_d).1f mm across and %(btn_head_h).1f mm high, %(btn_metal).0f mm of threaded metal body behind the head, then
+  a blue plug-in wire socket %(btn_sock).1f mm long with five wires, so %(btn_full).1f mm behind the head in all. It goes through a %(btn_hole).1f mm hole in the
+  BOTTOM wall of the hanger body at x=%(btn_x).1f, Y=%(btn_y).1f: behind the right-hand latch arm, clear of the channel strip, pointing DOWN,
+  above the hook, out of sight from the front. A cleaner reaches under the box from the right-hand side and presses it upward.
+  There is about %(btn_room).1f mm between the button's face and the hook.
+  The battery holder used to sit only %(holder_above).0f mm above the bottom wall, far too little for a button that long. So the hanger box grew
+  DOWNWARD by %(basement).0f mm: the hanger body is now %(box_h).0f mm tall (it was %(old_h).0f), the lid is %(box_w).0f x %(box_h).0f and the backplate %(bp_w).0f x %(bp_h).0f. Every feature
+  keeps its place measured from the TOP of the box. The new bay under the battery holds only the button and wires. The battery
+  holder's lower ribs are now a shelf standing off the back wall.
+  Wires: the blue socket has five wires. Only the TWO switch wires go up to the board (one to GND, one to GPIO3). The other
+  three are folded back, their bare ends covered, and tucked down in the bay. The working voltage of the button's LED is not
+  known yet, so this file gives none and the LED wires stay unconnected for now.
+  Firmware: firmware/include/pinout.h reserves TEST_BUTTON_PIN = 3, which is GPIO3, as the cleaning-mode trigger, and
+  firmware/src/hanger/hanger.cpp sets that pin up as an input with a pull-up (the pull-up holds the pin HIGH until the button
+  joins it to GND). The hanger program does not act on a press yet: that part of the firmware is still to be written. So the
+  button cannot be tested on the finished unit for now. The proof that it is wired correctly is the meter continuity check
+  in HANGER ASSEMBLY ORDER, step 7.
+  Two switches in PARAMS: BTN16_USE_SOCKET=False (leave the blue socket off and solder the wires to the button's own pins, which
+  are ASSUMED to be %(btn_pins).1f mm long and have not been measured) would make the box %(nosock_save).0f mm shorter (%(nosock_h).0f tall). BTN16_ON=False builds
+  the old %(old_h).0f mm box with no button. The gateway is unchanged.
 
 FILES
   <part>.step / .stl / .png / _drawing.dxf   printable parts: hanger_body, hanger_lid, hanger_bar, hanger_backplate, gateway_body, gateway_lid
@@ -1481,28 +1624,39 @@ FILES
   hanger_section.dxf, gateway_section.dxf      assembly stack-up sections
   *_exploded.png, *_assembled*.png, *_lid_off.png previews
   ref/                                          reference solids, not printed: board, cell, holder, Hall sensor (its file is still named
-                                                hall_carrier), its two pins, magnet, sign handle, antenna, plug; window insert for the gateway only
-  sat_true/                                     true-surface ACIS files for AutoCAD for Mac (run fusion_step2sat.py in Fusion to refresh them)
+                                                hall_carrier), its two pins, magnet, sign handle, antenna, plug, the cleaning button
+                                                (clean_button); window insert for the gateway only
+  stages/                                       the assembly story for AutoCAD. This script does not write it: make_assembly_stages.py
+                                                writes the STEP files and fusion_step2sat.py, run inside Fusion, converts them to .sat.
+  sat_true/                                     true-surface ACIS files for AutoCAD for Mac. This script does not write them. A file in
+                                                there that is older than hanger_body.step may come from an OLDER design (the copies
+                                                that were there when v9.9 was written did): run fusion_step2sat.py in Fusion on the
+                                                current STEP files before using it.
+  autocad/                                      SAT and DXF solids from ../to_autocad.py. A run with --no-autocad does not write them,
+                                                so check their dates against hanger_body.step in the same way.
   manifest.txt                                  bounding boxes and derived positions
 
 HOW THE PARTS HOLD TOGETHER
   Lids (both units): two rigid hinge tabs on the lid's top edge reach %(tab_l).0f mm in and hook into pockets in a rib along the
-    top wall. At the bottom the SPRING is in the body: two arms cut into the bottom wall (%(arm_l).0f long x %(arm_w).1f wide x %(arm_t).1f thick,
+    top wall. At the bottom the SPRING is in the body: two latch arms cut into the bottom wall (%(arm_l).0f long x %(arm_w).1f wide x %(arm_t).1f thick,
     printed along their length so they bend along the layers, strain under %(strain).1f %%). Each arm has a window; the lid carries a
     rigid %(hook_w).0f mm hook with a %(hook_barb).1f mm barb that drops into it. No part of the latch on the lid flexes, so the lid has
     no thin finger to snap off.
-    First use: push each arm tip down once with a screwdriver to break its small moulding tab (it is there so the arm
-    prints cleanly). Fit: top tabs into the rib pockets, swing the bottom edge in until both hooks click.
+    After printing, before the first lid goes on: push each arm tip OUTWARD once with a screwdriver (away from the inside of
+    the box, the same way its pull lip moves when the lid is opened) to break its small breakaway tab. The tab is there so
+    the arm prints cleanly. Fit: top tabs into the rib pockets, swing the bottom edge in until both hooks click.
     Open: pull the lip under one arm tip down about 1 mm with a fingernail or coin, ease that corner of the lid out, do the
-    other, pull the bottom edge out about 25 mm until the top tabs drop free, then take the lid away.
+    other, then pull the bottom edge out until the top tabs drop free, and take the lid away. The tabs drop free when the lid
+    has tilted about 12 degrees. On the hanger lid (%(box_h).0f mm tall) that is with the bottom edge about %(open_h_lo).0f to %(open_h_hi).0f mm out. On the gateway
+    lid (%(g_box_h).0f mm tall) it is about %(open_g_lo).0f to %(open_g_hi).0f mm. Never lever the lid against tabs that are still hooked.
   Display (hanger): the board sits right up behind the lid and the display module sits in a pocket in the lid, behind a
     %(bezel).1f mm bezel. This lid has NO window insert and NO cleats. The pocket allows %(oled_h_max).1f mm above the PCB (OLED_H_MAX)
     plus %(oled_gap).1f mm between glass and bezel, so a display that tall would have its glass %(glass_max).1f mm below the face. Owen's
     display stands about %(oled_h).1f mm on its clear carrier, so its glass is %(glass_now).1f mm below the face (it was 5.5 mm down a well).
     A standing WiFi coil antenna about %(coil_h).1f mm tall sits on the board between the USB end and the display, and the pocket runs
     on over it. OLED_H_MAX has to cover the taller of the two, so NEVER set it below the coil height. The pocket floor is
-    %(pocket_h).1f mm above the PCB now and must stay at least 0.2 mm above the coil top (%(coil_need).1f mm). A lower value fails the design
-    check, and the check runs before any file is written.
+    %(pocket_h).1f mm above the PCB now and must stay at least 0.2 mm above the coil top, so it may never be lower than %(coil_need).1f mm above
+    the PCB. A lower value fails the design check, and the check runs before any file is written.
   Display (gateway): the gateway lid is different. It still has the window insert pocket: a clear %(ins_w).0f x %(ins_h).1f x %(ins_t).0f mm pane
     fits from inside under the two cleats.
   Hook bar to hanger body: the bar's plate is a dovetail that slides into a channel in the body's bottom wall FROM THE WALL
@@ -1511,11 +1665,12 @@ HOW THE PARTS HOLD TOGETHER
     come out. The sign's weight is carried by the dovetail flanks (%(dt_flank).1f mm each side); no snap takes any of it. Nothing of
     the bar sits behind the body's back face, so the body still lifts the %(peg_drop).0f mm it needs to come off the pegs with the
     bar fitted.
-  Body to backplate: four mushroom pegs on the backplate. Offer the body up %(peg_drop).0f mm high so the peg heads pass the keyhole
-    circles (the circles are BELOW the pegs, slots running up) and let it drop; it hangs on the pegs. A spring tongue in the
-    backplate's front face (%(catch_w).0f x %(catch_l).0f mm, %(catch_t).1f thick, root at the bottom) carries a nose that springs into a %(win_w).1f x %(win_h).1f window
-    through the body's back wall as the body drops home; the body cannot be lifted until the nose is pushed back through
-    the window from inside, which needs the lid off. Same tamper resistance as the old security screw for that step.
+  Body to backplate: the backplate goes on the wall FIRST (see HANGER ASSEMBLY ORDER, job B2, for which way up). It carries
+    four mushroom pegs. Offer the body up %(peg_drop).0f mm high so the peg heads pass the keyhole circles (the circles are BELOW the
+    pegs, slots running up) and let it drop; it hangs on the pegs. A spring tongue in the backplate's front face (%(catch_w).0f x %(catch_l).0f mm,
+    %(catch_t).1f thick, fixed end at the bottom) carries a nose that springs into a %(win_w).1f x %(win_h).1f window through the body's back wall as the
+    body drops home; the body cannot be lifted until the nose is pushed back through the window from inside, which needs the
+    lid off. Same tamper resistance as the old security screw for that step.
   Tamper note: the lid opens by hand from underneath (two pull lips under the box). The enclosure has no lid switch: the
     one thing the unit can sense is the sign being lifted off the saddle.
   Face: the board sits against the left wall so the USB-C port is at the edge and a cable plugs in with the lid on. The
@@ -1525,15 +1680,30 @@ HOW THE PARTS HOLD TOGETHER
     it on the right. Each pad is a flap cut into the lid with a thin hinge at its far end and a pusher pin behind it over
     the board's small switch, so pressing anywhere on the pad clicks the switch. The status LEDs show through an open
     %(led_d).1f mm light hole in the RST pad. The badge, the HazardLink wordmark and the two button names are sunk %(mark).1f mm into the
-    face as narrow strokes. To print them in a second colour instead, load print/hanger_lid_inlay.stl with the lid (it is
-    already lined up), assign it to the other hotend and merge the two models; the face then comes off the bed flush and
-    smooth. The gateway lid has its own print/gateway_lid_inlay.stl.
+    face as narrow strokes. They are meant for a WHITE second-colour inlay over the black lid: load
+    print/hanger_lid_inlay.stl with the lid (it is already lined up), assign it to the other hotend and merge the two
+    models; the face then comes off the bed flush and smooth. Printed in one colour they are simply sunk lines. The gateway
+    lid has its own print/gateway_lid_inlay.stl.
   Hook bar: T-shaped. The dovetail and web are narrow (web %(web_w).0f mm); the bar below is %(bar_w).0f mm wide (BAR_W) so it fills the
     sign's hand hole: the sign hangs level and cannot slide sideways off the sensor. BAR_W is PROVISIONAL until the hand
     hole is measured (set it to the hole width minus %(hole_clr).0f mm).
-  Sensor lead (checked by audit_cable_route.py): tunnel in the bar, open lay-in groove up the back of the web, groove
-    along the top of the dovetail plate, slot in the channel roof (it comes up UNDER the battery holder), forward under
-    the holder, up in front of it, slot through the bulkhead, notch in the board cradle wall.
+  Sensor lead (checked by audit_cable_route.py): along the tunnel in the bar; up the groove in the back of the web (the groove
+    is open to the back so the wires lay in, except for one closed band half way up, opening %(band_w).0f x %(band_d).0f mm, that the wire ends have
+    to be THREADED under); forward along the groove in the top of the dovetail plate; up through the slot in the channel roof
+    (%(roof_w).0f x %(roof_l).0f mm), which comes up UNDER the battery holder, into the bay under the battery; forward; up in front of the battery
+    holder; through the slot in the middle of the bulkhead (%(bulk_w).0f x %(bulk_l).1f mm); back to the cable tie saddle on the back wall; up through
+    the notch in the lower wall of the board's pocket to the underside of the board.
+  Button wires (checked by the same script): only the TWO switch wires make this journey. From the button's socket in the bay
+    under the battery, forward and to the right, up past the right-hand end of the battery holder in front of it, along
+    under the bulkhead to the slot in the middle of the bulkhead, up through that slot with the sensor lead, then to the
+    join below the board with it. The socket's other three wires go nowhere: they are folded back, their bare ends are
+    covered, and they are tucked down in the bay beside the socket.
+  Battery wires (this route is NOT checked by audit_cable_route.py): the cable's plug stays ABOVE the bulkhead and its two
+    loose ends go DOWN, one through the notch at each end of the bulkhead (each notch is about %(notch_w).1f x %(notch_l).1f mm), down the side of
+    the box, in through the gap in the rib at that end of the holder, to the holder's pin at that end. Above the bulkhead
+    the cable runs across to the cable tie saddle and up through the same notch in the lower wall of the board's pocket to
+    the battery socket on the underside of the board. Each bulkhead notch is a closed hole: the front %(notch_front).0f mm of the bulkhead
+    closes it. That is why the loose ends are fed through BEFORE they are soldered to the holder (assembly step 4).
   WHAT HOLDS EACH BOUGHT PART (checked by audit_retention.py: free travel in all six directions, target <= 0.5 mm)
     Everything below stays in place with the LID OFF as well (audit_retention.py with AUDIT_ARGS=--lid-off).
     Board: long edges on two rails, pocket walls each side, stops at both ends, and a 45 deg catch on each pocket wall hooked
@@ -1541,83 +1711,387 @@ HOW THE PARTS HOLD TOGETHER
       on, two lid ribs also sit %(rib_clr).1f mm over its header pad strips.
     Battery: Murata US18650VTC6 cell (18650) in the BeiLaMoo BH18650-PC2 holder (%(hold_l).1f x %(hold_w).1f x %(hold_h).1f, two solder pins about
       %(pin_len).1f mm long, one at each end, %(pin_in).1f mm in from the end face). The holder stands on three ribs %(standoff).0f mm off the back wall so
-      its pins and the wires soldered to them have room (%(pin_room).1f mm from pin tip to the back wall), in a ribbed bay on four
-      sides, with a snap arm at each end hooked %(arm_over).1f mm over its front face. The arms are slotted free of the end ribs so
-      they can flex. Press the holder straight in until both arms click. Solder each wire to the SIDE of its pin and lead
-      it out through the gap in the end rib; leave nothing standing beyond the pin tip. With the lid on, two lid posts sit
-      %(post_clr).1f mm in front of the holder's end blocks.
-      ORDER MATTERS: the sensor lead slot in the channel roof is UNDER the holder. Feed the leads up and fold them forward
-      BEFORE the holder is pressed in (see HANGER ASSEMBLY ORDER).
+      its pins and the wires soldered to them have room (%(pin_room).1f mm from pin tip to the back wall), inside ribs on four sides,
+      with a snap arm at each end hooked %(arm_over).1f mm over its front face. The arms are slotted free of the end ribs so they can
+      flex. With the lid on, two lid posts sit %(post_clr).1f mm in front of the holder's end blocks.
+      THREAD, THEN SOLDER, THEN PRESS IN, in that order (HANGER ASSEMBLY ORDER, step 4). The battery cable is ONE 2-pin plug
+      with two loose wire ends, and each wire has to pass through its own closed notch at one end of the bulkhead. Once both
+      wires are soldered to the holder, the cable and the holder make a closed loop, and a closed loop cannot be threaded
+      through two separate holes. So:
+        first feed the two LOOSE ends DOWN through the two notches from the board's side, leaving the plug above the bulkhead;
+        then, with the holder still OUT of the box, solder each wire to the SIDE of its pin and leave nothing standing beyond
+        the pin tip. It has to be done before the holder goes in, because the pins end up behind the holder where no iron
+        can reach;
+        then press the holder straight in until both arms click, guiding each wire out through the gap in the rib at its end
+        of the holder as it goes in, and draw the slack back up through the notches.
+      Nothing is cut and nothing is joined to get the wires through.
+      POLARITY: the battery lead is the 2-pin JST 1.25 cable with Heltec polarity (the Rokland order in SHOPPING.md). The wrong
+      polarity destroys the board, and wire colour proves nothing. The + wire is found against the + and - printed beside the
+      board's battery socket (job B5), and the soldered holder is checked with a meter and a cell before the plug ever goes
+      into the board (step 4).
+      ORDER MATTERS FOR THE OTHER WIRES TOO: the sensor lead slot in the channel roof is UNDER the holder, and the button's five
+      wires leave the top of its socket pointing up at the holder's place. Fold the sensor wires forward and deal with all
+      five button wires BEFORE the holder is pressed in (see HANGER ASSEMBLY ORDER).
     Cell: the holder's own spring contacts, plus two lid ribs %(cell_clr).1f mm in front of it so it cannot leave the holder.
-    Hall sensor: TI DRV5032FA in the TO-92 style (LPG) package, bought from DigiKey as DRV5032FALPG. It is a bare flat 3-leg
-      part, body about %(hall_w).1f x %(hall_l).1f x %(hall_t).1f mm. There is no carrier board. It is OMNIPOLAR, so either magnet pole works, and its
-      output goes LOW with the magnet present. Check the leg order in the TI datasheet before soldering (supply to 3V3,
-      ground to GND, output to GPIO6).
+    Cleaning-mode button: its own nut. The head sits against the underside of the bottom wall and the nut (%(btn_nut).0f mm across its
+      corners) clamps it from inside, in the bay under the battery, where it has room to turn between the side wall, the back
+      wall and the channel strip. Fitting: push the bare button up through the hole from below, put its nut on from inside
+      and tighten, then plug the blue socket onto its pins from inside. The socket will not pass through the hole. A spanner
+      does not go round the nut in that corner (the nut's corners pass %(nut_back).1f mm from the back wall and %(nut_side).1f mm from the side wall):
+      hold the nut with long-nose pliers and turn the button's head from below.
+      Wires: the socket has five. Find the two switch wires with a continuity test (job B6); no colour is given here because
+      none has been checked. Only those two go up to the board. The other three are folded back, covered and tucked down in
+      the bay, all before the battery holder goes in.
+    Hall sensor (the lift sensor): TI DRV5032FA in the TO-92 style (LPG) package, DigiKey part DRV5032FALPG, 25 bought. It is a
+      bare flat 3-leg part, body about %(hall_w).1f x %(hall_l).1f x %(hall_t).1f mm. There is no carrier board. It is OMNIPOLAR, so either magnet pole works.
+      From the TI datasheet SLVSDC7H (Table 5-1 and Figure 5-5): pin 1 = VCC (the supply, 1.65 to 5.5 V), pin 2 = GND, pin 3 = OUT.
+      The output is push-pull and goes LOW while the magnet is present. The sensor switches on at 4.8 mT at most and off again
+      at 0.5 mT at least, samples 20 times a second and draws about 1.6 microamps on average at 3 V. TI recommends a 0.1 uF
+      capacitor from VCC to GND.
+      WHICH LEG IS WHICH (confirmed): Owen's sensors are marked 32FA, and that datasheet lists 32FA as the part marking of the
+      DRV5032FALPG. Its Figure 7-1 shows that the "top" of this package is its marked, bevelled front face, and Figure 5-5 is
+      the view onto that top, with the pin numbers of Table 5-1. So hold the sensor with its MARKED face (32FA) toward you
+      and its legs pointing DOWN:
+          LEFT leg   = VCC, goes to 3V3
+          MIDDLE leg = GND, goes to GND
+          RIGHT leg  = OUT, goes to GPIO6 (HALL_SENSOR_PIN = 6 in firmware/include/pinout.h)
+      Never find a leg by putting 3V3 on it and watching what happens. 3V3 on the OUT leg is outside TI's absolute maximum
+      ratings and can damage the sensor.
       Legs: the first 3 mm of the legs behind the body must stay bare, straight and unsleeved, because that stretch passes
-      between the two pins (the gap between them is %(gate).2f mm). Solder the three wires further back and sleeve each solder
-      joint with heat shrink.
-      Fitting: hold the bar UPSIDE DOWN. The tunnel roof is one flat surface from the back of the bar to the front of the
-      nest (%(tunnel_l).1f mm to the back of the nest), so the sensor slides along it with no step to climb. The floor has 45 degree
-      ramps and the side walls funnel into the nest. The lead groove up the back of the web opens through the roof over
-      the first %(groove_open).1f mm, so start the sensor on the roof just past it. Lay it with its marked face (the flat face with the
-      lettering) against the roof, legs pointing back, and push it forward by its legs or wires until it stops in the
-      nest under the saddle. With the bar turned upright again the marked face points UP, toward the magnet.
+      between the two pins (the gap between them is %(gate).2f mm). Solder the three wires further back. Keep the joints slim,
+      stagger them along the legs so that they do not sit side by side, and heat-shrink each one, because all three have to
+      slide down a tunnel %(tunnel_w).1f mm wide and %(tunnel_h).1f mm tall.
+      Fitting: hold the bar UPSIDE DOWN. The tunnel roof is then underneath and the sensor rides on it. The roof is one level
+      from the back of the bar to the front of the nest (%(tunnel_l).1f mm to the back of the nest), so there is no ramp to climb. The
+      only break in it is a slot one 0.2 mm layer deep where the two pin holes open through, just short of the nest: if the
+      sensor stops there, ease it back a little, keep it flat and push on. The floor has 45 degree ramps and the side walls
+      funnel into the nest. The lead groove up the back of the web opens through the roof over the first %(groove_open).1f mm, so start the
+      sensor on the roof just past it. Lay it with its marked face against the roof, legs pointing back, and push it forward
+      by its wires until it stops in the nest under the saddle. Keep a light forward push on the wires and turn the bar UPRIGHT:
+      the marked face now points UP, toward the magnet. Only then drop the pins in.
       Pins: TWO offcuts of 2.85 mm filament, 6.0 to 6.5 mm long. Never cut one longer, or the sign rests on the pins instead
-      of the saddle (each hole is %(pin_depth).1f mm deep). Drop one into each hole in the saddle floor. They stand one each side
-      of the legs, right behind the body, so the sensor cannot slide back. If a pin will not drop in, check first that the
-      sensor is fully home. The pin holes open through the tunnel roof in printed stages, so NO drilling is needed; if a
-      pin is tight, twist a 3 mm drill through by hand. Under each pin a %(push_d).0f mm hole goes through the underside of the
-      bar: push a pin out from below with a 1.5 mm rod. Those holes also drain the cavity. The sign's handle sits over
-      the pins.
-    Magnet: %(mag_d).0f x %(mag_t).0f mm N52 disc (TinyTronics) in the sign's tag, see MAGNET DATUM.
-    Antenna: SMA bulkhead pigtail and a stubby SMA antenna (about %(ant_d).1f dia x %(ant_l).0f long), both inside the box. The pigtail's SMA
-      jack drops into a slotted shelf and its own nut clamps it; the antenna screws on above and its body snaps into a
-      clip. For an outside antenna, push out the knock-out in the top wall and fit the jack there.
+      of the saddle (each hole is %(pin_depth).1f mm deep). With the bar upright, drop one into each of the two holes in the saddle floor.
+      They stand one each side of the legs, right behind the body, so the sensor cannot slide back. The sign's handle sits
+      over them. Try both pins in their holes BEFORE the sensor goes in: each must drop in under its own weight and tip out
+      again. The %(pin_hole).1f mm holes open through the tunnel roof in printed stages, so no drilling is needed.
+      If a pin hole is tight, ease it with a 3 mm drill bit, and do it like this. Wrap a flag of tape round the bit %(drill_tape).0f mm from
+      its tip. Twist the bit down the hole BY HAND ONLY, never in a power drill, and STOP when the tape reaches the saddle
+      floor. Do not try to stop at the bottom by feel: under each pin hole is a %(push_d).0f mm push-out and drain hole, the ledge round
+      that smaller hole is what the pin stands on, and the ledge is only %(ledge_t).1f mm thick. A drill that goes through it ruins
+      the bar. Shake the chips out from the back of the bar. Never put a drill down a pin hole with the sensor in the bar. If
+      a pin will not drop in with the sensor fitted, the sensor is short of home: push it forward. To get a pin out, push it
+      up from below with a 1.5 mm rod through the %(push_d).0f mm hole in the underside of the bar.
+    Magnet: %(mag_d).0f x %(mag_t).0f mm N52 disc (TinyTronics), fixed to the sign so that it lies flat over the middle of the saddle when the
+      sign hangs. Either face may point down. v9.9 has no printed holder for it yet (the word "tag" further down means that
+      holder). For a first test, tape is enough. See MAGNET POSITION ON THE SIGN.
+    Antenna: SMA bulkhead pigtail (the U.FL pigtail) and a stubby SMA antenna (about %(ant_d).1f dia x %(ant_l).0f long), both inside the box.
+      Take the nut and washer off the pigtail's SMA jack. Slide the jack's threaded neck into the %(ant_slot).1f mm slot in the small
+      shelf on the right of the box from the FRONT, with the jack's flange under the shelf. Put the washer and nut back on
+      top and tighten: the nut clamps the jack to the shelf. The antenna screws on above and its body snaps into the clip.
+      For an outside antenna, push out the knock-out in the top wall and fit the jack there.
     Hook bar: dovetail flanks carry the load; closed channel end in front, backplate behind (about 0.5 mm play each way).
   Wall screws (4 in the backplate; 3 for the gateway, two in keyholes and one in the lower hole) are the only screws. They
-  fix the units to the building. The SMA nuts are part of the bought connectors.
+  fix the units to the building. The SMA nut and the button's nut are part of the bought parts.
 
 HANGER: the sign hangs from the bar under the bottom edge. Nothing on the face except the display window, the PRG and RST
-pads, the LED hole in the RST pad and the sunk logo and names. The web at the back carries the bar %(bar_drop).0f mm below the body; the
-bar reaches %(reach).0f mm out from the wall face and ends in a %(lip_h).0f mm lip; the sign's handle settles in the saddle, which is centred
-%(sy_front).0f mm in front of the body rim (Y=%(sy).0f, which is %(sy_behind).0f mm BEHIND the lid's outer face), directly over the Hall sensor.
+pads, the LED hole in the RST pad and the sunk logo and names. The cleaning-mode button is under the base on the right,
+pointing down. The web at the back carries the bar %(bar_drop).0f mm below the body; the bar reaches %(reach).0f mm out from the wall face and
+ends in a %(lip_h).0f mm lip; the sign's handle settles in the saddle, which is centred %(sy_front).0f mm in front of the body rim (Y=%(sy).0f, which
+is %(sy_behind).0f mm BEHIND the lid's outer face), directly over the Hall sensor.
 The three Hall leads run along the bar, up the web, forward in a groove in the top of the dovetail plate, then up through the
 slot in the channel roof (Y %(wire_y0).1f to %(wire_y1).1f). That slot is under the battery holder (holder front face at Y %(holder_front).1f): the leads come
-up into the %(lead_gap).1f mm passage under the holder, run forward, stand up in the %(holder_front).1f mm space between the holder and the lid, and go
-through the slot in the bulkhead to the board. Terminate them in a 3-way JST-PH plug and solder a short pigtail with the
-socket to the board's underside pads (J3 pin 1 GND, pin 2 3V3, pin 17 GPIO6) so the board comes out without a soldering iron.
+up into the bay under the battery (%(lead_gap).1f mm clear between the channel strip and the holder), bend forward, stand up in the
+%(holder_front).1f mm space between the holder and the lid, and go through the slot in the bulkhead to the board.
+Nothing from the bar or the button is soldered straight to the board. The board carries short tails from its J3 holes (hole 1
+GND, hole 2 3V3, hole 17 GPIO6 for the sensor; hole 1 GND again and hole 14 GPIO3 for the button), and the leads are joined to
+those tails below the board's pocket. The standard join is soldered wire to wire and sleeved with heat shrink, which needs
+nothing extra. OPTIONAL: small wire-to-wire plug and socket pairs (JST-PH or similar: a 3-way pair for the sensor and a 2-way
+pair for the button) let the board come out later without a soldering iron. They are on no order. SHOPPING.md lists them as
+optional too.
 
-HANGER ASSEMBLY ORDER
-  1. Sensor into the bar (bar upside down), both pins in, leads laid in the bar tunnel, the groove up the back of the web and
-     the groove along the top of the plate.
-  2. Feed the leads up through the slot in the channel roof BEFORE the plate slides in, slide the plate into the channel from
-     the wall side, and take up the slack from inside.
-  3. Fold the three leads forward, flat on the channel strip. Only then press the battery holder straight in over them until
-     both arms click. Stand the leads up in front of the holder and thread them through the slot in the bulkhead. A lead left
-     standing gets trapped behind the holder, and then the arms cannot click and the lid cannot close.
-  4. Board: plug the Hall lead and the battery lead into its underside, push it straight in until both catches hook over its
-     edges, then press the U.FL pigtail on from the top. Antenna jack into its shelf, nut on, antenna into its clip.
-  5. Hang the body on the backplate (up %(peg_drop).0f mm, drop until the catch clicks), cell in, lid on.
+HANGER ASSEMBLY ORDER (from a pile of parts to a sign hanging on the wall)
+  The AutoCAD stage drawing (stages/) shows the body hung on the backplate before the holder and board go in. Follow THIS
+  list: it fits everything on the bench first, because the battery holder needs a firm push to click in and its two wires
+  are soldered right beside the box (step 4).
+  YOU NEED
+    Printed: hanger_body, hanger_lid, hanger_bar, hanger_backplate, and two offcuts of the 2.85 mm filament cut 6.0 to 6.5 mm
+      long (the two pins).
+    Bought (SHOPPING.md): the Heltec V3 board, the BH18650-PC2 battery holder, one 18650 cell, one DRV5032FALPG Hall sensor, one
+      %(mag_d).0f x %(mag_t).0f mm magnet, one 16 mm button with its nut and its blue plug-in socket, one 2-pin JST 1.25 battery cable, the U.FL
+      pigtail and the stubby antenna, four No.8 countersunk screws with wall plugs. Also thin hook-up wire in three colours,
+      thin heat shrink, a small cable tie, tape, and the 0.1 uF capacitor TI recommends for the sensor.
+    Optional, on no order: a 3-way and a 2-way wire-to-wire plug and socket pair (JST-PH or similar). They keep the board
+      removable without a soldering iron. Without them the joins below the board are soldered and sleeved, and the build is
+      complete either way.
+    Tools: soldering iron and solder, meter, small flat screwdriver, wire cutters and strippers, long-nose pliers (for the
+      button's nut, where no spanner fits), a small spanner or the pliers for the antenna's nut, a 3 mm drill bit (turned by
+      hand, only if a pin hole is tight), a round file (only if the button hole is tight), a torch, a marker and paper, a
+      lighter or hot air for the heat shrink, a piece of string, and for the wall a drill, a level, a pencil and a
+      screwdriver. A USB-C cable to power the board, and a computer set up for the firmware (job B0).
+  BEFORE YOU START (bench jobs: the firmware, the printed parts, the backplate on the wall, the soldering that can be done on
+  the bench, the button, the magnet)
+    B0. Firmware. A new Heltec board runs the maker's demo program. Until the HazardLink hanger firmware from the repository's
+        firmware folder has been loaded onto it (flashed), the unit can report nothing. The flashing steps are documented
+        with the firmware, in firmware/README.md under "Build + flash" (it is a PlatformIO project, firmware/platformio.ini,
+        and the hanger is its "hanger" environment; firmware/flash.sh is the helper script that goes with it). This file
+        does not repeat them. Flashing is done over the USB-C cable. It can be done now, on the bare board, or later with
+        the lid on, because the USB-C port is at the edge of the box.
+    B1. Printed parts (PRINT.md, After printing).
+        Latch arms: push each of the two arm tips in the bottom wall of the body OUTWARD once with a screwdriver (away from
+        the inside of the box) to break its small breakaway tab.
+        Pins: try both filament pins in the two holes in the saddle floor of the bar. Each must drop in under its own weight
+        and tip out again. If one is tight, wrap a flag of tape round a 3 mm drill bit %(drill_tape).0f mm from its tip, twist the bit down
+        that hole BY HAND ONLY, and STOP when the tape reaches the saddle floor. Do not try to stop at the bottom by feel: the
+        ledge the pin stands on, round the %(push_d).0f mm hole underneath, is only %(ledge_t).1f mm thick. Shake the chips out from the back of
+        the bar.
+        Tunnel: shine a torch into the tunnel from the back of the bar. It must be clean all the way to the nest.
+        Dovetail: slide the bar's plate into the channel in the bottom wall of the body from the BACK of the body and out again
+        a few times. If it is tight, see PRINT.md.
+        Button hole: with its nut and its blue socket off, push a bare button up through the hole in the bottom wall from
+        below. Its thread must pass freely. If it does not, see PRINT.md before using the round file.
+    B2. Backplate on the wall. It goes up FIRST, on its own. Hold it against the wall with its four pegs pointing toward you.
+        Right way up: the catch tongue in the middle of the plate has its fixed end at the BOTTOM, with its nose and its push
+        pad toward the top. As a second check, the pegs are nearer the top: the upper pair is %(peg_top).0f mm below the top edge and
+        the lower pair %(peg_bot).0f mm above the bottom edge. Before drilling, hold the body against the plate and see that the four
+        pegs line up with the four keyholes in the back of the body. Leave room on the wall: the box overhangs the plate by
+        %(bp_tb).0f mm at top and bottom and %(bp_side).0f mm each side, the body has to start %(peg_drop).0f mm above its final place to go on, and the hook bar and
+        the whole sign hang below. Level the plate, mark the four holes, drill, fit the plugs, and drive the four No.8
+        countersunk screws until their heads are flush: a head left standing proud keeps the body off the plate.
+    B3. Board tails (soldering). Work on the UNDERSIDE of the board. J3 is the row of 18 holes along the long edge on the PRG
+        button's side. Count the holes from the USB end: hole 1 is GND, hole 2 is 3V3, hole 14 is GPIO3, hole 17 is GPIO6. Check
+        those names against Heltec's pinout picture for the WiFi LoRa 32 V3 before soldering. Fit these tails, each long enough
+        to reach from its hole, across the underside, out through the notch in the lower wall of the board's pocket in the
+        body and a little beyond (hold the board in front of its pocket and measure with the string):
+          hole 1 (GND): the sensor and the button share it. Twist two thin tails together into the one hole, or fit one
+                        tail and join both GND wires to it later
+          hole 2 (3V3): the sensor's supply          hole 17 (GPIO6): the sensor's output
+          hole 14 (GPIO3): the button (TEST_BUTTON_PIN = 3 in firmware/include/pinout.h)
+        Push each wire in from the underside, solder it, and trim its end flush on the display side, because the lid sits
+        close over the board there. Label each tail with tape. If you are using the optional plugs and sockets, the socket
+        halves go on these tails (a 3-way for GND, 3V3 and GPIO6, a 2-way for GND and GPIO3), but fit them after the sensor
+        check in job B4, which uses the bare ends of the tails.
+        The 0.1 uF capacitor goes between the 3V3 tail and the sensor's GND tail, at the far ends of the tails: solder one
+        of its legs into each of those two joins when you make them (when you fit the 3-way socket, or in assembly step 7
+        if you are joining wire to wire), and sleeve the joins so that the two legs cannot touch. There is no room
+        for it in the bar.
+    B4. Hall sensor (soldering). The leg order is CONFIRMED, so nothing has to be found out by experiment. Look at the sensor's
+        marked face: it must read 32FA. Hold the sensor with that MARKED face toward you and its legs pointing DOWN:
+            LEFT leg   = VCC, which goes to the board's 3V3
+            MIDDLE leg = GND, which goes to the board's GND
+            RIGHT leg  = OUT, which goes to the board's GPIO6
+        This comes from the TI datasheet SLVSDC7H: it lists 32FA as the marking of the DRV5032FALPG, its Figure 7-1 shows that
+        the marked, bevelled face is the "top" of this package, and its Figure 5-5 (the top view) with Table 5-1 gives pin 1
+        = VCC, pin 2 = GND, pin 3 = OUT. If a sensor is marked anything other than 32FA, stop and do not fit it: another
+        part may have another leg order. Never put 3V3 on a leg to find out which leg it is. 3V3 on the OUT leg is outside
+        TI's absolute maximum ratings and can damage the sensor.
+        Choose three wire colours and write down which is VCC, which is GND and which is OUT. Cut the three wires long enough
+        to go from the nest to the join below the board's pocket: lay the string along the route on the printed parts (Sensor
+        lead, under HOW THE PARTS HOLD TOGETHER) and add some spare.
+        Solder: hold the sensor as above, marked face toward you, legs down, and check each wire against your written list
+        as you solder it: VCC colour on the LEFT leg, GND colour on the MIDDLE leg, OUT colour on the RIGHT leg. Leave the
+        first 3 mm of each leg behind the body bare, straight and unsleeved. Solder the wires further back along the legs,
+        stagger the three joints so that they do not sit side by side, keep each joint slim, and shrink a thin sleeve over
+        each. All three have to slide down a tunnel %(tunnel_w).1f mm wide and %(tunnel_h).1f mm tall. Leave the far ends of the wires BARE, with no
+        plug on them: they still have to be threaded under the closed band on the web (%(band_w).0f x %(band_d).0f mm), up through the slot in
+        the channel roof (%(roof_w).0f x %(roof_l).0f mm) and up through the slot in the bulkhead (%(bulk_w).0f x %(bulk_l).1f mm), and a plug may not pass.
+        Check the finished sensor (safe, because it is already wired to the confirmed order). The USB cable is unplugged. Twist
+        the bare end of the sensor's VCC wire onto the bare end of the board's 3V3 tail, and the bare end of its GND wire
+        onto the bare end of a GND tail. Wrap a piece of tape round each twist so that the two cannot touch each other. The
+        OUT wire is joined to nothing: wind its bare end round the tip of the meter's red probe, and hold or tape the black
+        probe's tip on the GND twist. Set the meter to DC volts. Plug the USB cable into the board. With no magnet near, the
+        meter reads HIGH, close to the 3.3 volt supply. Bring the magnet up to the sensor's marked face: the reading falls
+        LOW, to about zero. Take the magnet away: it goes HIGH again. That is the only pass. If the reading does not follow
+        the magnet like that, unplug the USB cable and check the marking, the leg order and your three joints against the
+        list above. Do not swap wires to see what happens. When the check has passed, unplug the USB cable, untwist the two
+        joins and take the tape off.
+    B5. Battery cable and battery holder: find the + of each. NO soldering yet. The cable is the 2-pin JST 1.25 cable. Its two
+        wires are soldered to the holder later, in assembly step 4, AFTER they have been fed through the bulkhead. If they
+        are soldered now, the cable can never be threaded (Battery wires, under HOW THE PARTS HOLD TOGETHER).
+        a. Find the cable's + wire. Unplug the USB cable from the board first. With nothing connected to the cable's loose
+           ends, push its plug into the battery socket on the underside of the board. Look at the + and - printed on the
+           board beside the socket and wrap tape round the wire that lines up with +. Then ease the plug out again by its
+           plastic body, with a fingernail or the small screwdriver, never by its wires. Wire colour proves nothing.
+        b. Find the holder's + end. The cell's + end is the end with the separate round cap and a ring of insulation round
+           it; its - end is the plain flat bottom of the can. Put the cell in the holder, following the + and - marks
+           moulded into the holder if it has them. Meter on DC volts, one probe on each of the holder's two pins. When the
+           reading is positive, with no minus sign, the pin under the RED probe is the + pin. It should be the pin at the
+           end where the cell's capped + end sits. Write + on that end of the holder with the marker, so that from now on
+           the cell always goes in with its + end there. Take the cell OUT.
+        c. Decide which way round the holder goes, and see that the wires are long enough. The printed frame is the same at
+           both ends, so the holder fits either way round. This build puts its + end on the LEFT, so that every unit is the
+           same. The taped wire will go down through the LEFT notch of the bulkhead to the left pin, the other wire down
+           through the RIGHT notch to the right pin, and the right-hand wire has the longer way to go. Lay the string along
+           each route on the printed body (Battery wires, under HOW THE PARTS HOLD TOGETHER), from the battery socket's
+           place under the board to the holder's pin, and compare it with the cable. If a wire is too short, lengthen it
+           now at its loose end with hook-up wire, soldered and sleeved. Keep the join slim: it has to pass down through
+           the notch. If it is the taped wire, put tape on its new end as well.
+    B6. Button: sort out its five wires. Plug the blue socket onto the button on the bench. Set the meter to continuity
+        (the beep setting) and try the five wires in pairs until you find the pair that beeps only while the button is held
+        in. Those are the two switch wires. No wire colour is given here, because none has been checked: the meter decides.
+        Mark those two with tape. One will go to a GND tail on the board (the second one, or the shared one if you fitted
+        only one in job B3) and the other to the GPIO3 tail, either way round.
+        The other three wires are connected to nothing (on buttons of this kind they are the switch's third contact and the
+        LED). The LED's working voltage is not known yet, so connect the LED wires to nothing until it has been checked
+        against the seller's listing. Fold each of the three back along the socket and cover its bare end with heat shrink
+        or tape so that it can touch nothing.
+        See that the two switch wires are long enough. Lay the string along their route on the printed body (Button wires,
+        under HOW THE PARTS HOLD TOGETHER), from the button hole to the join below the board's pocket, and compare it with
+        the two taped wires. If they are too short, lengthen them at their far ends with hook-up wire, soldered and
+        sleeved. Keep the two joins slim and stagger them, because they have to pass up through the slot in the bulkhead
+        (%(bulk_w).0f x %(bulk_l).1f mm) beside the three sensor wires. Leave the far ends bare.
+        Take the socket off the button again, because the socket will not pass through the hole in the box. If the socket
+        has a latch lever on its side, press the lever while you pull. Pull on the socket's body, never on its wires.
+    B7. Magnet on the sign. Fix one %(mag_d).0f x %(mag_t).0f mm magnet flat to the underside of the top edge of the sign's hand hole (the edge
+        that will rest on the bar), half way along the hole and in the middle of the handle's thickness. Either face may
+        point down. For a first test, tape is enough (see MAGNET POSITION ON THE SIGN).
+  ASSEMBLY
+  1. Sensor into the bar. Hold the bar UPSIDE DOWN, with the back of the bar (the end with the upright web) toward you. Lay
+     the sensor on the tunnel roof, which is now underneath, marked face against the roof, legs and wires pointing back
+     toward you, just past the first %(groove_open).1f mm where the web's groove opens through the roof. Push it forward by its wires until it
+     stops in the nest. If it stops just short, at the shallow slot where the pin holes open through, ease it back a little,
+     keep it flat and push on. Keep a light forward push on the wires, turn the bar UPRIGHT, and drop the TWO pins into the
+     two holes in the saddle floor, one each side of the legs. Each pin must end up below the saddle floor. If one will not
+     go down, the sensor is short of home: push it forward. Now let go of the wires.
+     Thread the three wire ends up under the closed band half way up the back of the web, pull them through, press the
+     wires into the groove below and above the band, and lay them forward along the groove in the top of the dovetail plate.
+  2. Bar into the body. The channel strip is the raised strip in the floor of the box; its channel is open underneath and at
+     the back of the body, and the slot in its roof is near its closed front end. From underneath, pass the three wire ends up
+     through that slot so that they come out inside the box, in the bay under the battery. Then slide the bar's dovetail
+     plate into the channel from the BACK of the body until it stops against the closed front end, drawing the slack of the
+     wires up into the box as it goes so that no wire is pinched between the plate and the channel roof.
+  3. Button into the base. Keep to this order, because once the button is tight there is too little room between the top of
+     its blue socket and the battery shelf above to push the socket on. Take the nut off the button. From BELOW the box,
+     push the button's threaded body only PART of the way up through the %(btn_hole).1f mm hole in the bottom wall (on the right,
+     behind the right-hand latch arm), just far enough for the nut to catch. If it came with a rubber sealing ring, the ring
+     stays under the head, outside the box. From inside, in the bay under the battery, spin the nut on by a few turns with
+     your fingers. Now, while the button still hangs low in its hole, push the blue socket onto the button's pins from inside
+     until it is fully home. Then push the button up until its head sits against the underside of the box and spin the nut
+     down with your fingers until it touches the wall (a spanner does not go round the nut in that corner). To finish,
+     hold the nut still with the long-nose pliers from the open front and give the button's HEAD one last quarter turn
+     from below. No more than a quarter turn, so the wires on the socket do not twist. Do not force it: the wall is plastic.
+     Now deal with ALL FIVE of the socket's wires, because they leave the top of the socket pointing up at the battery
+     holder's place. Fold the three unused wires (folded back and covered in job B6) DOWN beside the socket and see that
+     they stay down in the bay, below the shelf that the battery holder will sit on. Lay the two taped switch wires forward
+     (toward the open front of the box) and to the right.
+  4. Battery cable through the bulkhead, its wires onto the holder, then the holder in. Keep to this order. Each notch at the
+     ends of the bulkhead is a closed hole and the cable has one plug, so once both wires are soldered to the holder nothing
+     can be threaded any more.
+     a. Clear the holder's place. Bend the three sensor wires FORWARD where they come up out of the channel strip. See that
+        the button's three unused wires are down in the bay and that its two taped wires lie forward and to the right
+        (step 3). Every wire must end up in FRONT of the battery holder, none behind it.
+     b. Thread. Each notch is at the very end of the bulkhead, against the side wall, and starts %(notch_front).0f mm back from the front
+        edge of the bulkhead. Hold the battery cable above the bulkhead, on the board's side of it, plug uppermost. Feed the
+        loose end of the TAPED (+) wire DOWN through the notch at the LEFT end of the bulkhead, and the loose end of the other
+        wire DOWN through the notch at the RIGHT end. Pull both down until the plug lies just above the bulkhead. The plug
+        stays above the bulkhead from now on. It is not plugged into anything yet.
+     c. Solder, with the holder still OUT of the box. Rest the holder across the open front of the box, in front of its own
+        place, with its + end (job B5) to the LEFT, turned so that its two pins face you while you solder. Solder the taped
+        wire to the SIDE of the pin at the + end, on the left, and the other wire to the SIDE of the pin at the right-hand
+        end. Leave nothing standing beyond the pin tip: only %(pin_room).1f mm is left between the pin tips and the back wall.
+     d. Check with the meter. The meter decides, whatever the marks and colours say. Keep the cable's plug away from the
+        board and from anything metal while the cell is in. Put the cell in the holder, its + end at the holder's + mark.
+        Meter on DC volts, red probe on the pin with the taped wire, black probe on the other pin. The reading must be
+        positive, with no minus sign. A minus sign means the taped wire is on the - pin. First see that the cell is the
+        right way round, its capped + end at the holder's + mark. If it is, the holder was soldered the wrong way round:
+        take the cell out, unsolder both wires, turn the holder end for end so that its + end is on the left, solder again
+        and check again. Leave the wires in their notches. A reversed lead or a reversed cell destroys the board. Take the
+        cell OUT again. It goes in last (step 9).
+     e. Holder in. Turn the holder so that its open side (where the cell goes) faces you and its two pins point at the back
+        wall, + end still on the left. Press it straight back into its place (the ribbed frame on the back wall, between the
+        bay and the bulkhead) until both snap arms click over its front face. As it goes in, guide each battery wire out
+        sideways through the gap in the rib at its end of the holder, and draw the slack back up through the notches from
+        above. A wire left standing behind the holder's front face gets trapped behind the holder, and then the arms cannot
+        click and the lid cannot close.
+  5. Thread the wires upward. The bulkhead is the thick shelf across the inside of the box above the battery; its slot is in
+     the middle, near the front. Stand the three sensor wires up in front of the holder, in the middle of the box's width,
+     and thread them up through that slot. Take the button's two taped wires forward and to the right, up past the right-hand
+     end of the holder in front of it, close to the right-hand wall, then along under the bulkhead to the same slot and up
+     through it beside the sensor wires. The lid has two posts and two ribs that stand close to the front of the holder. The
+     middle %(clear_mid).0f mm of the box's width is clear of them, and so is the corner beside each side wall, so keep the wires to
+     those places. Check that the button's three unused wires are still down in the bay. The two battery wires already run
+     down through the end notches (step 4): draw any slack in them up above the bulkhead, so that no loop of battery wire
+     lies in front of the holder.
+  6. Antenna. The U.FL pigtail is the thin antenna cable with a tiny press-on plug at one end and a threaded SMA jack at the
+     other. Take the nut and washer off the jack. From the FRONT, slide the jack's threaded neck into the slot in the small
+     shelf on the right of the box, above the bulkhead, with the jack's flange UNDER the shelf and its cable hanging down.
+     Put the washer and nut back on the thread above the shelf and tighten. Screw the antenna onto the jack from above and
+     press its body back into the clip until it snaps in. The right-hand battery wire comes up through its notch just
+     below this shelf: lead it past the jack's cable, in front of it or behind it, and see that it is not trapped under
+     the bottom of the jack.
+  7. Board. The cell is still OUT and the USB cable is unplugged. Hold the board in front of its pocket (top left of the
+     box), display toward you, USB port to the left. Pass its tails down through the notch in the lower wall of the pocket.
+     Bring the battery plug up through the same notch and push it into the battery socket on the underside of the board;
+     check once more that the taped wire sits beside the + printed on the board. Push the board straight in until both
+     catches hook over its long edges.
+     Check the button before its wires are joined. Set the meter to continuity and put its probes on the bare ends of the
+     button's two taped switch wires, where they come up through the bulkhead. It must beep only while the cleaning button
+     (on the underside of the box's bottom wall) is pressed in, and stop when the button is let go. If it does not, the
+     wrong pair was marked or the socket is not fully home on the button: go back to job B6. For now this is the proof
+     that the button is wired correctly, because the firmware support for the button is still to be written.
+     Join the wires below the pocket. Sensor: VCC wire to the 3V3 tail, GND wire to a GND tail, OUT wire to the GPIO6 tail,
+     using the colours you wrote down in job B4 (the confirmed leg order, marked face toward you and legs down, is LEFT =
+     VCC, MIDDLE = GND, RIGHT = OUT: TI datasheet SLVSDC7H, Figures 7-1 and 5-5 with Table 5-1). The 0.1 uF capacitor's two
+     legs go in the 3V3 join and that GND join (job B3). Button: one taped wire to the GPIO3 tail, the other to a GND tail
+     (the second one, or the shared one if you fitted only one in job B3). The standard way: slide a piece of heat shrink
+     onto each wire first, solder wire to wire, then slide the sleeve over the joint and shrink it; leave enough spare to
+     pull the ends out of the front of the box while you solder. Shrink every sleeve with the joint pulled well out in
+     front of the box and the heat pointed away from the box, and keep the soldering iron off the printed parts. Printed
+     plastic goes soft long before heat shrink tightens, and a warped rim or latch arm means printing a new body. A
+     piece of card held between the joint and the box is enough protection. With the optional plugs and sockets, fit the plug halves
+     to the threaded wires now instead. Gather the bundle and tie it to the cable tie saddle on the back wall below the
+     pocket. Keep the bundle and the joins away from the small window in the middle of the back wall: the catch is released
+     through it.
+     Press the pigtail's small round plug (the U.FL plug) straight down onto its socket on the top of the board, at the end
+     away from the USB port, until it clicks.
+  8. Body onto the backplate, lid still off. Offer the body up to the backplate %(peg_drop).0f mm higher than its final place, so that the
+     four peg heads enter the round parts of the four keyholes in the back of the body. Press it flat to the plate and let it
+     slide down %(peg_drop).0f mm until the catch clicks. Try to lift it: it must stay down.
+  9. Cell in, its + end at the holder's + mark. It is the last part to go in. The board starts up. With the hanger firmware
+     loaded (job B0) its display lights for about a minute after every fresh start. With the maker's demo still on the
+     board the display shows the demo instead, and the unit reports nothing until it has been flashed.
+  10. Lid. Top tabs into the pockets under the top wall, then swing the bottom edge in until both hooks click. See that no
+     wire is caught under the lid's edge and that the PRG and RST pads still click.
+  11. Hang the sign on the bar through its hand hole, so that the top edge of the hole rests in the saddle with the magnet over
+     the middle. Then check the lift sensor on the display. This needs the hanger firmware (job B0). Press the RST pad: the
+     unit restarts and the display lights for about a minute (on a board's very first start it shows its registration
+     number on a "Register hanger" screen for a few seconds first). The third line of the status screen ends in "Sign ON"
+     while the sign hangs on the bar. Lift the sign off: within a second or two it reads "Sign LIFTED". Hang it back:
+     "Sign ON" again. (These words come from showHangerStatus in firmware/src/hanger/hanger.cpp.)
+     The cleaning button cannot be tested on the unit yet, because the firmware support for it is still to be written. The
+     continuity check in step 7 is the proof that it is wired correctly.
 
 HANGER SERVICE SEQUENCE (unit stays on the wall)
   0. Lift the sign off the bar. The unit senses this as a sign lift.
-  1. Pull the lip under one wall arm down 1 mm, ease that corner of the lid out, then the other; pull the bottom edge out until
-     the top tabs drop free and take the lid away.
-  2. The 18650 cell sits in its holder facing you: push it against the spring end and lift it out. Fit the new cell, same polarity.
-  3. To swap the board: unplug the U.FL antenna from the top of the board, lever one long edge out from under its catch with a
-     fingernail, lift the antenna end, unplug the JST-PH Hall plug and the JST 1.25 battery plug from the exposed underside,
-     lift the board out. No screws hold the board: it rests on the rails under the two catches.
-  4. To swap the Hall sensor: with the lid off, put a flat screwdriver on the catch's push pad (visible through the window in
+  1. Pull the lip under one latch arm down 1 mm, ease that corner of the lid out, then the other; pull the bottom edge out until
+     the top tabs drop free (about %(open_h_lo).0f to %(open_h_hi).0f mm at the bottom edge) and take the lid away.
+  2. The 18650 cell sits in its holder facing you: push it against the spring end and lift it out. Fit the new cell the same
+     way round, its + end at the holder's + mark. A reversed cell destroys the board.
+  3. To swap the board: take the cell out first. Pull the U.FL plug off the top of the board, lever one long edge of the board
+     out from under its catch with a fingernail, lift the antenna end, and ease the JST 1.25 battery plug out of the exposed
+     underside by its plastic body, with a fingernail or the small screwdriver, never by its wires. Undo the joins between
+     the board's tails and the sensor and button wires below the pocket (cut them if they were soldered, unplug them if the
+     optional plugs were fitted). Lift the board out, drawing its tails up through the notch. No screws hold the board: it
+     rests on the rails under the two catches. The new board needs the same tails (job B3) and the hanger firmware (job B0).
+  4. To swap the cleaning button: hold the head still from below and undo the nut with the long-nose pliers, then spin it up
+     the thread with your fingers as far as it will go and let the button drop down in its hole. Now there is room above the
+     socket: reach into the bay under the battery and pull the blue socket off the button (press its latch lever if it has
+     one, and pull on the socket's body, never on its wires). Take the nut right off and let the button drop out. Fit the
+     new one as in assembly step 3. The socket and
+     its wires stay in the box, so nothing has to be threaded again. The body stays on the wall.
+  5. To swap the Hall sensor: take the cell out. Put a flat screwdriver on the catch's push pad (visible through the window in
      the back wall, above the nose), push it back about 3 mm, lift the body 6 mm, withdraw the tool, lift the remaining 8 mm and
-     pull the body forward off the pegs. Unplug the Hall lead from the board and free it back to the roof slot. Slide the bar
-     out of the bottom wall backwards. Turn the bar over and tip the two pins out; if one sticks, push it out from below with
-     a 1.5 mm rod through the %(push_d).0f mm hole in the bar's underside. Slide the sensor out of the bar's back end. Fit the new
-     sensor with the bar upside down (marked face against the tunnel roof, so it faces up in use), drop the pins back in,
-     lay the leads in the bar and plate grooves and feed them up through the roof slot. The holder can stay in: the slot is
-     just behind its front face, so hook the leads forward from inside with tweezers. Slide the plate home while taking up
-     the slack from inside.
-  5. Refit in reverse: bar in from the back, body offered up %(peg_drop).0f mm high onto the pegs and dropped until the catch clicks, cell
-     in, lid tabs in first then latches. Insert the cell last. If the unit needs a restart afterwards, press the RST pad.
+     pull the body forward off the pegs. Undo the join between the sensor's three wires and the board's tails below the
+     pocket; the board can stay in. If a plug was fitted and will not pass a slot, cut it off: it goes onto the new sensor's
+     wires after they have been threaded. Draw the three wires back down through the bulkhead slot into the bay under the
+     battery. Slide the bar slowly out of the back of the body, feeding the wires down into the slot in the channel roof
+     from inside the box as it goes. Turn the bar over and tip the two pins out; if one sticks, push it out from below with
+     a 1.5 mm rod through the %(push_d).0f mm hole in the bar's underside. Slide the sensor out of the back of the bar, drawing its
+     wires out from under the band. Prepare the new sensor as in job B4 and fit it as in assembly steps 1 and 2. The battery
+     holder can stay in: the bay under it is open at the front, so reach in and bend the wires forward so that they rise in
+     FRONT of the holder, then thread them up through the bulkhead slot and join them to the tails.
+  6. Refit in reverse: bar in from the back, body offered up %(peg_drop).0f mm high onto the pegs and dropped until the catch clicks. The
+     cell is the last part to go in. Then the lid: top tabs in first, then the latches. If the unit needs a restart
+     afterwards, press the RST pad.
   Off the wall in one line: lid off, push the catch pad, lift %(peg_drop).0f mm, pull forward.
 
 GATEWAY OFF THE WALL: lid off, remove the No.8 pan head at (%(g_screw_x).0f, %(g_screw_z).0f) from inside, lift %(key_l).0f mm, pull forward.
@@ -1625,29 +2099,47 @@ GATEWAY OFF THE WALL: lid off, remove the No.8 pan head at (%(g_screw_x).0f, %(g
 WHAT OPENS WITH WHAT
   sign off the bar: hands.   lid: fingernail or coin on the two lips underneath.   body off the backplate: lid off + flat screwdriver.
   bar out of the body: body off the wall.   gateway lid: the two lips underneath.   gateway off the wall: lid off + screwdriver.
+  cleaning button out: lid off, its socket taken off from inside, its nut held from inside while the button is unscrewed from
+  below, then the button drops out below.
 
 GATEWAY SERVICE SEQUENCE
-  1. Pull each arm lip under the box down 1 mm in turn, ease the lid's bottom edge out, tilt it until the top tabs drop free.
-  2. Unplug the USB-C plug (cable stays tied to the saddle), unplug the U.FL pigtail, lever one long edge of the board out from
-     under its catch and lift the board off its rails.
+  1. Pull each arm lip under the box down 1 mm in turn, ease the lid's bottom edge out, and tilt the lid until the top tabs
+     drop free (about %(open_g_lo).0f to %(open_g_hi).0f mm at the bottom edge of this shorter lid).
+  2. Unplug the USB-C plug (cable stays tied to the saddle), pull the U.FL plug off the board, lever one long edge of the board
+     out from under its catch and lift the board off its rails.
 
-MAGNET DATUM (publish to the sign tag)
+MAGNET POSITION ON THE SIGN (the figures a magnet holder on the sign has to be made to)
   Magnet: %(mag_d).0f x %(mag_t).0f mm N52 disc. On the bar centreline (x=%(xc).0f), centred on the saddle (Y=%(sy).0f: %(sy_front).0f mm in front of the body rim,
-  %(sy_behind).0f mm behind the lid's outer face), pole face parallel to the saddle floor, facing down. EITHER pole: the DRV5032FA is
-  omnipolar. %(tag_clr).1f mm running clearance and a %(tag_wall).1f mm tag wall (assumed). Air gap magnet face to Hall package top = %(gap).2f mm.
-  Before fixing the magnet in the tag, hold it over the saddle with the unit powered and check that the unit reports the
-  sign present.
+  %(sy_behind).0f mm behind the lid's outer face), flat face parallel to the saddle floor, facing down. EITHER pole: the DRV5032FA is
+  omnipolar. The figures assume a holder (the "tag") that keeps %(tag_clr).1f mm running clearance over the saddle floor and has a
+  %(tag_wall).1f mm wall under the magnet (both assumed). Air gap from the magnet's face to the top of the Hall sensor = %(gap).2f mm. A magnet
+  taped straight under the handle sits closer than that, which only makes the signal stronger.
+  Before fixing the magnet for good, hold it over the saddle with the unit powered and the hanger firmware loaded, press the
+  RST pad so that the display lights, and check that the third line of the status screen ends in "Sign ON" with the magnet
+  there and "Sign LIFTED" with it taken away (assembly step 11). Last step of the build: hang the sign by its hand hole with
+  the handle resting in the saddle, and check again.
 
 PRINTING
   The recipe lives in PRINT.md. If this summary and PRINT.md ever differ, PRINT.md wins. Summary: PLA (Polymaker PolyLite,
-  black, hotend 2), 0.4 nozzle, 0.2 mm layers, 4 walls (1.6 mm), 1.6 mm top and bottom, 60 to 100 %% infill, 215 C, fan 100 %%.
-  PET-G is the alternative (+10 C, fan 30 %%).
-  Use the STLs in print/: they are already turned the right way up.
-  hanger_body: back face down, open front up. The dovetail channel runs along the print direction so its flanks print clean;
-    its closed front end is a %(dt_mouth).0f to %(dt_top).0f mm bridge (turn the bridge settings on, see PRINT.md). The wall arms in the bottom
-    wall each carry a small breakaway tab at the tip so they print cleanly; the hinge ribs grow from the bed and their
-    nose pockets are %(nose_pocket).0f mm bridges; peg pocket roofs bridge %(head_w).1f mm. The holder's snap arms and the board pocket walls with
-    their catches stand straight up from the back wall. No support.
+  black, hotend 2), 0.4 nozzle, 0.2 mm layers (the first layer 0.2 mm as well), 4 walls (1.6 mm), 1.6 mm top and bottom,
+  60 to 100 %% infill, 215 C, fan 100 %%. PET-G is the alternative (+10 C, fan 30 %%).
+  Use the STLs in print/: they are already turned the right way up. print/ORIENTATION.txt lists each one's footprint and height.
+  WHAT TO PRINT NOW AND WHAT SHOULD WAIT: PRINT.md's first-print list has the detail. In short, two measurements are still
+    open. The hook bar's width (BAR_W, %(bar_w).0f mm) is provisional until the sign's hand hole has been measured, so a hanger_bar
+    printed before then may have to be printed again. The depth of the display pocket in the hanger lid rests on readings
+    taken off a photo, until the display and coil heights have been measured with a caliper (MEASURE BEFORE FREEZING), so
+    the same goes for a hanger_lid, and for a full hanger_body too, because the same figure (OLED_H_MAX) also sets how far
+    back the board sits in the body. The body coupon is a test piece and is safe to print now, and so are the gateway
+    parts. A hanger lid printed now to try on the coupon is a fair test of the latches, the hinge tabs and the lip, because
+    none of those depends on either open measurement.
+  hanger_body: back face down, open front up. It is %(body_len).0f mm long on the bed now. The dovetail channel runs along the print
+    direction so its flanks print clean; its closed front end is a %(dt_mouth).0f to %(dt_top).0f mm bridge (turn the bridge settings on, see
+    PRINT.md). The latch arms in the bottom wall each carry a small breakaway tab at the tip so they print cleanly; the hinge
+    ribs grow from the bed and their nose pockets are %(nose_pocket).0f mm bridges; peg pocket roofs bridge %(head_w).1f mm. The holder's shelf and
+    snap arms and the board pocket walls with their catches stand straight up from the back wall. The button hole is a round
+    hole through the bottom wall, which stands upright on the bed, so the top of the hole prints as an unsupported arch only
+    as deep as the wall is thick (%(wall).1f mm). If it sags, ease the hole with a round file until the button's thread passes.
+    No support.
   hanger_lid: outer face down. Only the lip, the rigid hooks and tabs, ribs, posts and the two pusher pins stand up from it. The hook's catch
     face is a %(hook_barb).0f mm overhang; print the lid with the part fan on. The two finger pads print flat on the bed with %(pad_slot).1f mm
     slots round them: keep brim out of the slots. The LED hole is an open %(led_d).1f mm hole. No window insert: the display
@@ -1660,32 +2152,45 @@ PRINTING
     it under the tongue (touching the buildplate only) and pull it out afterwards. Pegs print vertical with a 45 deg cone
     under the head.
   gateway_body: back face down. gateway_lid: outer face down.
-  print/hanger_body_coupon.stl is the front %(coupon).0f mm ring of the hanger body: rim, both wall arms with their hook windows, the
+  print/hanger_body_coupon.stl is the front %(coupon).0f mm ring of the hanger body: rim, both latch arms with their hook windows, the
     front of the hinge ribs, the USB opening. It exists to test the lid latches and the hinge fit, so print it WHOLE and
-    leave its bottom edge alone: that edge carries the latch arms. Print it with one lid before any full body.
+    leave its bottom edge alone: that edge carries the latch arms. The small scallop in its bottom wall on the bed side is
+    the front edge of the button hole and is meant to be there. Print it with one lid before any full body.
   No heat-set inserts and no machine screws. Wall fixings: 4 No.8 countersunk screws with plugs for the backplate, 2 No.8 pan
   heads for the gateway keyholes plus 1 for its lower anti-lift hole.
 
 MEASURE BEFORE FREEZING (still to be measured by Owen)
   The exact display height and coil antenna height above the PCB (now %(oled_h).1f and %(coil_h).1f, read off a side photo at +/- 0.4): close
     the caliper jaws on the top of each and the back of the board, and take off the board thickness. Then set OLED_H_MAX to
-    the taller of the two, never below the coil height.
+    the taller of the two, never below the coil height. OLED_H_MAX sets the depth of the pocket in the hanger lid and also
+    how far back the board sits in the hanger body, so a change to it changes both parts.
   Where the coil antenna stands ACROSS the board (COIL Yb, guessed %(coil_yb).1f): one photo looking straight down on the screen side.
     The lid is relieved for a coil centred anywhere within Yb +/- %(coil_band).2f, which is everything inboard of the header pad rows.
   The sign's hand hole: width and height, and the folded handle thickness (assumed %(sign_t).0f in a %(saddle_w).0f mm saddle; %(free_y).0f mm is free
     between the lip and the web). BAR_W %(bar_w).0f is provisional; reach %(reach).0f and lip %(lip_h).0f are assumed. The magnet position in the
-    handle must match the datum.
+    handle must match MAGNET POSITION ON THE SIGN.
   The OLED active area offset (window is %(win_ww).0f x %(win_wh).0f to cover it with margin).
+  The working voltage of the button's LED, from the seller's listing, before its LED wires are connected to anything.
+  The button's bare pin length (BTN16_PINS_L, assumed %(btn_pins).1f), only if BTN16_USE_SOCKET is ever set to False.
+  The length of the JST 1.25 battery cable and of the button socket's wires against their routes in the box (jobs B5 and
+    B6 measure them with string and lengthen them if they are short).
   Already taken from the delivered parts: board, BH18650-PC2 holder and its pins, 18650 cell, Hall sensor body, %(mag_d).0f x %(mag_t).0f
-    magnet, USB plug body, stub antenna (about %(ant_d).1f dia x %(ant_l).0f long, read off a ruler photo; check the clip fit on the first body).
-
-LATER REVISION (not in this model yet)
-  A cleaning-mode push button (16 mm momentary, LED, waterproof) is planned under the base of the hanger body, above the
-  hook bar, where the public will not see it. Nothing in v9.9 is cut for it and the lid does not carry it.
+    magnet, USB plug body, the 16 mm button with its socket (Owen's caliper photos), stub antenna (about %(ant_d).1f dia x %(ant_l).0f long,
+    read off a ruler photo; check the clip fit on the first body).
+  No longer open: the Hall sensor's leg order. It is confirmed from the 32FA marking on Owen's sensors and TI's datasheet
+    SLVSDC7H (Figures 7-1 and 5-5, Table 5-1): marked face toward you, legs down, LEFT = VCC, MIDDLE = GND, RIGHT = OUT.
+  Still to be WRITTEN, in the firmware and outside these files: acting on a press of the cleaning button. pinout.h reserves
+    TEST_BUTTON_PIN = 3 and hanger.cpp sets the pin up as an input, but the hanger program does nothing with a press yet.
 """ % v
+    if not P.get("BTN16_ON"):
+        txt = txt.replace("\nWORDS USED IN THIS FILE", "\nNOTE: THIS BUILD WAS MADE WITH BTN16_ON=False. The box has no button hole and no bay under the battery, so every "
+                          "paragraph below about the cleaning-mode button and the taller box does not apply to these files.\n\nWORDS USED IN THIS FILE", 1)
+    elif not P.get("BTN16_USE_SOCKET"):
+        txt = txt.replace("\nWORDS USED IN THIS FILE", "\nNOTE: THIS BUILD WAS MADE WITH BTN16_USE_SOCKET=False. The bay under the battery is sized for the button's bare pins, "
+                          "the blue plug-in socket does not fit, and the button's wires are soldered to its pins.\n\nWORDS USED IN THIS FILE", 1)
     if glob.glob(os.path.join(out_dir, "ref", "hanger_window_insert.*")):
-        txt = txt.replace("  sat_true/ ", "  ref/hanger_window_insert.*                    leftover from an older revision (the hanger lid takes no insert). This script no\n"
-                          "                                                longer writes it; delete it by hand.\n  sat_true/ ", 1)
+        txt = txt.replace("  stages/ ", "  ref/hanger_window_insert.*                    leftover from an older revision (the hanger lid takes no insert). This script no\n"
+                          "                                                longer writes it; delete it by hand.\n  stages/ ", 1)
     open(os.path.join(out_dir, "README.txt"), "w").write(txt)
 
 # --------------------------------------------------------------------------------------
@@ -1763,7 +2268,7 @@ def main(out_dir, quick=False, autocad=True):
     zc, x0, pt = hg["zc"], hg["x0"], hg["pcb_top"]
     cxw, czw = x0 + P["OLED_ACT_CX"], zc + P["OLED_ACT_CY"]
     write_part_drawing(os.path.join(out_dir, "hanger_body_drawing.dxf"), "HazardLink hanger body v9.9 (mm)", h_body, [
-        dict(view="front", at=28.0, off=(0, -150), label="FRONT SECTION at Y=28 (near back wall): peg bosses, bulkhead, cradle, holder bay ribs and standoff ribs, holder snap arms, dovetail strip",
+        dict(view="front", at=28.0, off=(0, -150), label="FRONT SECTION at Y=28 (near back wall): peg bosses, bulkhead, cradle, holder shelf ribs and standoff ribs, holder snap arms, the bay under the battery, dovetail strip, cleaning button hole in the bottom wall",
              dims=[("h", (0, 0), (W, 0), -10), ("v", (0, 0), (0, H), -12),
                    ("h", (P["PEG_XS"][0], P["PEG_ZS"][0]), (P["PEG_XS"][1], P["PEG_ZS"][0]), 55, "peg pitch <>"),
                    ("v", (P["PEG_XS"][1] + 8, P["PEG_ZS"][0]), (P["PEG_XS"][1] + 8, P["PEG_ZS"][1]), 112, "peg pitch <>"),
@@ -1779,7 +2284,13 @@ def main(out_dir, quick=False, autocad=True):
         dict(view="side", at=30.0, off=(320, -150), label="SIDE SECTION at X=30 (through peg pockets, holder bay, board pocket)", label_at=(-35, -8),
              dims=[("h", (-D, 0), (0, 0), -8, "depth <>"), ("v", (2, 0), (2, H), 8)]),
     ], notes=["Section edges only. Reference parts on layer REF where shown. Every 'assumed' value is listed in PARAMS in hazardlink_enclosures.py.",
-              "Print body back face down (open front up), no support. 0.4 nozzle, 0.2 layers, 4 walls; the full recipe is in PRINT.md. Peg pocket roofs bridge %.1f mm." % (P["PEG_HEAD_D"] + 2 * P["PEG_HEAD_CLR"])])
+              "Print body back face down (open front up), no support. 0.4 nozzle, 0.2 layers, 4 walls; the full recipe is in PRINT.md. Peg pocket roofs bridge %.1f mm." % (P["PEG_HEAD_D"] + 2 * P["PEG_HEAD_CLR"]),
+              "After printing, push each latch arm tip OUTWARD once (away from the inside of the box) to break its small breakaway tab.",
+              "Battery cable (one 2-pin plug, two loose ends): each notch at the ends of the bulkhead is a CLOSED hole. Feed the two loose ends DOWN through the notches from the board side BEFORE they are soldered to the holder, then solder with the holder out of the box, then press the holder in."]
+             + (["v9.9 cleaning-mode button: %.1f hole through the bottom wall at x=%.1f, Y=%.1f, behind the right latch arm and clear of the channel strip. Button up through it from below, its nut on from inside, then its plug-in socket from inside (the socket will not pass through the hole). Of the socket's five wires only the two switch wires go up to the board; the other three are covered and tucked down in the bay before the battery holder goes in."
+                 % (P["BTN16"][0], P["BTN16_XY"][0], P["BTN16_XY"][1]),
+                 "The box is %.0f mm taller than v9.8 for the button (%.0f tall, was %.0f): every feature keeps its place measured from the TOP. The bay under the battery holds only the button and wires."
+                 % (P["H_BASEMENT"], H, H - P["H_BASEMENT"])] if P["BTN16_ON"] else []))
     write_part_drawing(os.path.join(out_dir, "hanger_lid_drawing.dxf"), "HazardLink hanger lid v9.9 (mm)", h_lid, [
         dict(view="front", at=-1.5, off=(0, -150), label="FRONT SECTION at Y=-1.5 (inside the lid's thickness): window, display pocket with the coil relief, button pad slots, LED hole, USB hollow in the left edge",
              dims=[("h", (0, 0), (W, 0), -10), ("v", (0, 0), (0, H), -12),
@@ -1811,8 +2322,10 @@ def main(out_dir, quick=False, autocad=True):
              dims=[("h", (W / 2 - hg["plate_w1"] / 2, -hg["plate_y0"]), (W / 2 + hg["plate_w1"] / 2, -hg["plate_y0"]), -hg["plate_y0"] + 8, "dovetail top <>")],
              refs=[h_refs["hall_carrier"][0]]),
     ], notes=["Print UPRIGHT on the bar's bottom face, lip pointing up, with NO support at all: a 45 deg gusset off the web carries the front of the dovetail plate. Never let support generate in the sensor tunnel, nest or pin holes. No screws: slides in from the wall side.",
-              "Sensor: bare TI DRV5032FA (TO-92 style, flat 3-leg), marked face up under the saddle. Two pins of 2.85 filament, 6.0 to 6.5 long, in the %.1f holes in the saddle floor; %.1f push-out and drain hole under each. No drilling needed." % (P["HALL_PIN_D"], P["HALL_PIN_PUSH_D"]),
-              "Magnet datum: bar centreline, centred on the saddle %.0f mm in front of the body rim (%.0f mm behind the lid's outer face), pole face parallel to the saddle floor, either pole, %.1f mm running clearance." % (-sy, P["LID_T"] + sy, P["TAG_CLR"])])
+              "Sensor: bare TI DRV5032FA (TO-92 style, flat 3-leg, marked 32FA), marked face up under the saddle. Leg order, confirmed from TI datasheet SLVSDC7H (Figures 7-1 and 5-5, Table 5-1): marked face toward you, legs down, LEFT = VCC (3V3), MIDDLE = GND, RIGHT = OUT (GPIO6). It slides in along the tunnel roof with the bar held UPSIDE DOWN; turn the bar upright before the pins go in.",
+              "Two pins of 2.85 filament, 6.0 to 6.5 long (never longer), in the %.1f holes in the saddle floor; %.1f push-out and drain hole under each. No drilling needed. To ease a tight pin hole: a 3 mm drill with a flag of tape %.0f mm from its tip, twisted by hand only, stopped when the tape reaches the saddle floor. The ledge under each pin hole is only %.1f mm thick, so never stop by feel."
+              % (P["HALL_PIN_D"], P["HALL_PIN_PUSH_D"], math.floor(hg["saddle_floor"] - (hg["slot_floor"] - 2.0) - 0.5), (hg["slot_floor"] - 2.0) - hg["bar_bot"]),
+              "Magnet position on the sign: bar centreline, centred on the saddle %.0f mm in front of the body rim (%.0f mm behind the lid's outer face), flat face parallel to the saddle floor, either pole, %.1f mm running clearance." % (-sy, P["LID_T"] + sy, P["TAG_CLR"])])
     bx0, bz0 = (W - P["BP_W"]) / 2, (H - P["BP_H"]) / 2
     write_part_drawing(os.path.join(out_dir, "hanger_backplate_drawing.dxf"), "HazardLink hanger backplate v9.9 (mm)", h_plate, [
         dict(view="front", at=D + 1.0, off=(0, -150), label="FRONT SECTION at Y=%.0f (just inside the front face): wall screw countersinks, catch tongue" % (D + 1.0),
@@ -1825,6 +2338,7 @@ def main(out_dir, quick=False, autocad=True):
         dict(view="side", at=P["PEG_XS"][0], off=(260, -150), label="SIDE SECTION at X=%.0f (through both pegs)" % P["PEG_XS"][0], label_at=(-45, -8),
              dims=[("v", (-D, P["PEG_ZS"][0]), (-D, P["PEG_ZS"][1]), -D - P["BP_T"] - 10, "peg pitch <>")]),
     ], notes=["Print back face down, support touching the buildplate only (it reaches the catch tongue through the open back of its cavity). Four No.8 / 4 mm countersunk wall screws with plugs. Spring catch tongue at x=%.0f replaces the security screw (push back from inside to release)." % P["CATCH_X"],
+              "The backplate goes on the wall FIRST. Right way up: pegs toward you, the catch tongue's fixed end at the BOTTOM (nose and push pad toward the top); the upper pegs are %.0f below the top edge, the lower pegs %.0f above the bottom edge." % (bz0 + P["BP_H"] - max(P["PEG_ZS"]), min(P["PEG_ZS"]) - bz0),
               "Pegs: %.1f stem x %.1f, %.0f head x %.1f, 45 deg cone under the head. Body slides down %.0f mm onto them." % (P["PEG_STEM_D"], P["PEG_STEM_L"], P["PEG_HEAD_D"], P["PEG_HEAD_L"], P["PEG_DROP"])])
     GW, GH, GD = gg["W"], gg["H"], gg["D"]
     gx0, gzc, gpt = gg["x0"], gg["zc"], gg["pcb_top"]
@@ -1859,7 +2373,7 @@ def main(out_dir, quick=False, autocad=True):
     h_all = [h_body, h_lid, h_bar, h_plate]
     doc = dxf_new(); msp = doc.modelspace()
     dxf_text(msp, "HazardLink hanger v9.9 assembly sections (mm)", (0, 0), (0, 0), h=5.0)
-    for (label, at, off) in (("SIDE SECTION at X=%.0f: hanging bar, saddle, Hall sensor in its nest, magnet datum, sign handle, lid, backplate" % (W / 2), W / 2, (50, -160)),
+    for (label, at, off) in (("SIDE SECTION at X=%.0f: hanging bar, saddle, Hall sensor in its nest, magnet over it, sign handle, lid, backplate, battery holder on its shelf above the bay" % (W / 2), W / 2, (50, -160)),
                              ("SIDE SECTION at X=%.1f: display window, display behind the bezel (no insert), board on rails, backplate" % cxw, cxw, (300, -160))):
         for s in h_all:
             dxf_edges(msp, section_edges([s], "side", at)[0], "side", off)
@@ -1931,7 +2445,7 @@ def main(out_dir, quick=False, autocad=True):
     write_readme(out_dir, hg, gg)
 
     # ---- manifest -----------------------------------------------------------------------
-    lines = ["HazardLink v9.9 enclosures (sized from the real parts; parts clipped in with the lid off; no screws between the parts; wall-arm latches; flush display; USB-C at the edge; two finger pads; logo; wide bar that prints with no support; bare Hall sensor held by two filament pins). Generated by hazardlink_enclosures.py", ""]
+    lines = ["HazardLink v9.9 enclosures (sized from the real parts; parts clipped in with the lid off; no screws between the parts; wall-arm latches; flush display; USB-C at the edge; two finger pads; logo; wide bar that prints with no support; bare Hall sensor held by two filament pins; cleaning-mode button under the base of the hanger). Generated by hazardlink_enclosures.py", ""]
     for name, wp in parts.items():
         lines.append("%-22s %s" % (name, bbox_str(wp)))
     lines += ["", "Key derived positions (world frame, mm):",
@@ -1941,12 +2455,22 @@ def main(out_dir, quick=False, autocad=True):
               % (P["WIN_W"], P["WIN_H"], cxw, czw, P["OLED_POCKET"][0], P["OLED_POCKET"][1], P["BEZEL_T"], P["USB_SLOT_W"], P["USB_SLOT_H"], P["USB_LID_SKIN"]),
               "  bar: %.0f wide (provisional) x %.0f thick, top %.0f mm below the body bottom, reach %.0f mm from the wall face, lip %.0f tall; saddle at Y=%.0f (%.0f mm in front of the body rim, %.0f mm behind the lid's outer face); prints upright with no support"
               % (P["BAR_W"], P["BAR_T"], P["BAR_DROP"], P["BAR_REACH"], P["BAR_LIP_H"], sy, -sy, P["LID_T"] + sy),
-              "  Hall sensor (bare DRV5032FA, TO-92 style): package centre x=%.0f, Y=%.1f, z=%.2f, marked face up; two pin holes %.1f dia at x=%.1f and x=%.1f, Y=%.2f, %.1f mm deep from the saddle floor, for 2.85 filament pins 6.0 to 6.5 long; %.1f dia push-out hole under each"
-              % (W / 2, sy, hg["sensor_z"], P["HALL_PIN_D"], hall_pin_xys(hg)[0][0], hall_pin_xys(hg)[1][0], hall_pin_xys(hg)[0][1], hg["saddle_floor"] - (hg["slot_floor"] - 2.0), P["HALL_PIN_PUSH_D"]),
+              "  Hall sensor (bare DRV5032FA, TO-92 style, marked 32FA): package centre x=%.0f, Y=%.1f, z=%.2f, marked face up; two pin holes %.1f dia at x=%.1f and x=%.1f, Y=%.2f, %.1f mm deep from the saddle floor, for 2.85 filament pins 6.0 to 6.5 long; %.1f dia push-out hole under each, in a ledge %.1f mm thick"
+              % (W / 2, sy, hg["sensor_z"], P["HALL_PIN_D"], hall_pin_xys(hg)[0][0], hall_pin_xys(hg)[1][0], hall_pin_xys(hg)[0][1], hg["saddle_floor"] - (hg["slot_floor"] - 2.0), P["HALL_PIN_PUSH_D"], (hg["slot_floor"] - 2.0) - hg["bar_bot"]),
+              "  Hall sensor legs (confirmed, TI SLVSDC7H Figures 7-1 and 5-5, Table 5-1): marked face toward you, legs down: LEFT = VCC (to 3V3), MIDDLE = GND, RIGHT = OUT (to GPIO6, HALL_SENSOR_PIN = 6)",
               "  magnet datum (%.0f x %.0f disc, either pole): bar centreline x=%.0f, Y=%.0f, pole face at z=%.2f (saddle floor + %.1f clearance + %.1f tag wall); sensor package top at z=%.2f; air gap %.2f mm" % (P["MAGNET_D"], P["MAGNET_T"], W / 2, sy, mag_face, P["TAG_CLR"], P["TAG_WALL"], sens_top, mag_face - sens_top),
-              "  battery: holder %.1f x %.1f x %.1f, front face at Y=%.1f, standing %.1f mm off the back wall; sensor lead slot in the channel roof Y %.1f to %.1f (under the holder)"
-              % (P["HOLDER_L"], P["HOLDER_W"], P["HOLDER_H"], hg["holder_front"], P["HOLDER_STANDOFF"], P["BAR_WIRE_Y"][0], P["BAR_WIRE_Y"][1]),
-              "  gateway board: USB-end corners at x=%.1f, centreline z=%.1f; SMA at (%.0f, %.0f) on the top wall; cable notch at z=%.0f" % (gx0, gzc, P["G_SMA"][0], P["G_SMA"][1], gg["cable_z"]),
+              "  battery: holder %.1f x %.1f x %.1f, z %.1f to %.1f, front face at Y=%.1f, standing %.1f mm off the back wall; sensor lead slot in the channel roof Y %.1f to %.1f (under the holder, %.1f mm below it)"
+              % (P["HOLDER_L"], P["HOLDER_W"], P["HOLDER_H"], P["HOLDER_Z0"], P["HOLDER_Z0"] + P["HOLDER_W"], hg["holder_front"], P["HOLDER_STANDOFF"], P["BAR_WIRE_Y"][0], P["BAR_WIRE_Y"][1], (P["HOLDER_Z0"] - P["HOLDER_CLR"]) - hg["strip_top"]),
+              "  battery cable (one 2-pin JST 1.25 plug, two loose ends): each end notch in the bulkhead is a closed hole, so the loose ends are fed DOWN through the notches before they are soldered to the holder, and the plug stays above the bulkhead",
+              ]
+    if P["BTN16_ON"]:
+        blen = btn16_len()
+        lines += ["  hanger box: %.0f x %.0f x %.0f, grown DOWNWARD by %.0f mm for the button (it was %.0f tall), every feature keeps its place from the top; backplate %.0f x %.0f; bulkhead z %.0f to %.0f; pegs at z %.0f and %.0f"
+                  % (W, H, D, P["H_BASEMENT"], H - P["H_BASEMENT"], P["BP_W"], P["BP_H"], P["BULK_Z"][0], P["BULK_Z"][1], P["PEG_ZS"][0], P["PEG_ZS"][1]),
+                  "  cleaning button (Gebildet 16 mm, %s its plug-in socket): %.1f hole through the bottom wall at x=%.1f, Y=%.1f, behind the right latch arm; head %.1f dia x %.1f under the base, %.1f mm from its face to the hook; %.1f mm long behind the head, top at z=%.1f, battery shelf above it at z=%.1f; only its two switch wires go to the board (GND and GPIO3); firmware reserves TEST_BUTTON_PIN = 3 (GPIO3) as the cleaning-mode trigger but the hanger program does not act on a press yet"
+                  % ("with" if P["BTN16_USE_SOCKET"] else "without", P["BTN16"][0], P["BTN16_XY"][0], P["BTN16_XY"][1], P["BTN16"][1], P["BTN16"][2], P["BAR_DROP"] - P["BTN16"][2],
+                     blen, blen, P["HOLDER_Z0"] - P["HOLDER_CLR"] - P["HOLDER_RIB_T"])]
+    lines += ["  gateway board: USB-end corners at x=%.1f, centreline z=%.1f; SMA at (%.0f, %.0f) on the top wall; cable notch at z=%.0f" % (gx0, gzc, P["G_SMA"][0], P["G_SMA"][1], gg["cable_z"]),
               "", "Elapsed %.0f s" % (time.time() - t0)]
     open(os.path.join(out_dir, "manifest.txt"), "w").write("\n".join(lines) + "\n")
     print("\n".join(lines))

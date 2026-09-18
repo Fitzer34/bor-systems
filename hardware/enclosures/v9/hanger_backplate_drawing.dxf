@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461302.8659027778
+2461302.921238426
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461302.8659027778
+2461302.921238426
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-15C
+15D
   9
 $SURFTAB1
  70
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{4AE3697B-1A84-407C-B8AD-A51A2E50803B}
+{5294F2F3-0C99-45C4-9E59-12854DEE79C2}
   9
 $VERSIONGUID
   2
-{1E7BE9C4-146E-46FC-9AC4-B382B8C1909B}
+{C20984C5-A07D-4CA4-A2F2-6BE8EED642D6}
   9
 $EXTNAMES
 290
@@ -1323,9 +1323,9 @@ ISM
   0
 CLASS
   1
-ACDBPLACEHOLDER
+LAYOUT
   2
-AcDbPlaceHolder
+AcDbLayout
   3
 ObjectDBX Classes
  90
@@ -1339,9 +1339,9 @@ ObjectDBX Classes
   0
 CLASS
   1
-LAYOUT
+ACDBPLACEHOLDER
   2
-AcDbLayout
+AcDbPlaceHolder
   3
 ObjectDBX Classes
  90
@@ -3205,7 +3205,7 @@ ACAD
   0
 APPID
   5
-159
+15A
 330
 3
 100
@@ -3219,7 +3219,7 @@ HATCHBACKGROUNDCOLOR
   0
 APPID
   5
-15A
+15B
 330
 3
 100
@@ -11231,11 +11231,41 @@ AcDbText
  40
 2.5
   1
-Pegs: 5.5 stem x 3.5, 10 head x 3.5, 45 deg cone under the head. Body slides down 14 mm onto them.
+The backplate goes on the wall FIRST. Right way up: pegs toward you, the catch tongue's fixed end at the BOTTOM (nose and push pad toward the top); the upper pegs are 22 below the top edge, the lower pegs 93 above the bottom edge.
  11
 0.0
  21
 -14.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+159
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-18.0
+ 30
+0.0
+ 40
+2.5
+  1
+Pegs: 5.5 stem x 3.5, 10 head x 3.5, 45 deg cone under the head. Body slides down 14 mm onto them.
+ 11
+0.0
+ 21
+-18.0
  31
 0.0
 100
@@ -12331,7 +12361,7 @@ CREATED_BY_EZDXF
   3
 WRITTEN_BY_EZDXF
 350
-15B
+15C
   0
 DICTIONARYVAR
   5
@@ -12343,7 +12373,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:46:54.637141+00:00
+1.4.4 @ 2026-09-18T21:06:35.258455+00:00
   0
 VISUALSTYLE
   5
@@ -13047,7 +13077,7 @@ X-Ray
   0
 DICTIONARYVAR
   5
-15B
+15C
 330
 2D
 100
@@ -13055,7 +13085,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-18T19:46:54.690050+00:00
+1.4.4 @ 2026-09-18T21:06:35.313888+00:00
   0
 ENDSEC
   0
