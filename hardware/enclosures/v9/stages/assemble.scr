@@ -2,14 +2,13 @@ FILEDIA 0
 CMDECHO 0
 ERASE ALL
 
+PERSPECTIVE 0
 -VIEW _SWISO
 VSCURRENT S
 CECOLOR 30
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S0_bar.sat
 CECOLOR 2
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S0_sensor.sat
-CECOLOR 40
-ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S0_sign.sat
 CECOLOR 1
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S0_magnet.sat
 CECOLOR 8
@@ -60,6 +59,8 @@ CECOLOR 6
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_antenna.sat
 CECOLOR 9
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_lid.sat
+CECOLOR 30
+ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S4_logo.sat
 CECOLOR 152
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_plate.sat
 CECOLOR 8
@@ -70,6 +71,8 @@ CECOLOR 2
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_sensor.sat
 CECOLOR 9
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_lid.sat
+CECOLOR 30
+ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_logo.sat
 CECOLOR 40
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S5_sign.sat
 CECOLOR 1
@@ -77,27 +80,28 @@ ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stage
 CECOLOR 9
 ACISIN /Users/owenfitzpatrick/Downloads/bor-systems/hardware/enclosures/v9/stages/sat_true/S6_lid.sat
 CECOLOR 7
--TEXT -20,-150,-45 7 0 0 (SEEN FROM THE WALL SIDE) HOOK
--TEXT -20,-162,-45 7 0 BAR: SENSOR SLIDES INTO ITS SLOT,
--TEXT -20,-174,-45 7 0 PIN DROPS IN BEHIND IT, SIGN
--TEXT -20,-186,-45 7 0 HANDLE AND MAGNET SIT ON TOP
--TEXT 250,-150,-45 7 0 1 (SEEN FROM THE WALL SIDE) HOOK
--TEXT 250,-162,-45 7 0 BAR SLIDES INTO THE DOVETAIL
--TEXT 250,-174,-45 7 0 CHANNEL IN THE BODY
--TEXT 520,-150,-45 7 0 2 BODY LIFTS 14 MM AND DROPS ONTO
--TEXT 520,-162,-45 7 0 THE FOUR BACKPLATE PEGS; THE CATCH
--TEXT 520,-174,-45 7 0 CLICKS
--TEXT 790,-150,-45 7 0 3 BOARD, BATTERY HOLDER, CELL AND
--TEXT 790,-162,-45 7 0 ANTENNA GO IN FROM THE FRONT
--TEXT 1060,-150,-45 7 0 4 ALL PARTS HOME. LID: TOP TABS IN
--TEXT 1060,-162,-45 7 0 FIRST, THEN THE BOTTOM HOOKS CLICK
--TEXT 1060,-174,-45 7 0 INTO THE WALL ARMS
--TEXT 1330,-150,-45 7 0 5 CLOSED. SIGN HANDLE AND MAGNET
--TEXT 1330,-162,-45 7 0 REST IN THE SADDLE OVER THE SENSOR
--TEXT 1600,-150,-45 7 0 6 (SEEN FROM BELOW AND BEHIND THE
--TEXT 1600,-162,-45 7 0 LID) THE LID ALONE: HOOKS, HINGE
--TEXT 1600,-174,-45 7 0 TABS, BATTERY POSTS, DISPLAY
--TEXT 1600,-186,-45 7 0 POCKET
+-TEXT -30,-150,-80 7 0 0 (SEEN FROM THE WALL SIDE) WIDE
+-TEXT -30,-162,-80 7 0 HOOK BAR: SENSOR SLIDES INTO ITS
+-TEXT -30,-174,-80 7 0 SLOT, PIN DROPS IN BEHIND IT, LEAD
+-TEXT -30,-186,-80 7 0 LAYS INTO THE GROOVE UP THE BACK
+-TEXT 270,-150,-80 7 0 1 (SEEN FROM THE WALL SIDE) HOOK BAR
+-TEXT 270,-162,-80 7 0 SLIDES INTO THE DOVETAIL CHANNEL IN
+-TEXT 270,-174,-80 7 0 THE BODY
+-TEXT 570,-150,-80 7 0 2 BODY LIFTS 14 MM AND DROPS ONTO
+-TEXT 570,-162,-80 7 0 THE FOUR BACKPLATE PEGS; THE CATCH
+-TEXT 570,-174,-80 7 0 CLICKS
+-TEXT 870,-150,-80 7 0 3 BOARD, BATTERY HOLDER, CELL AND
+-TEXT 870,-162,-80 7 0 ANTENNA GO IN FROM THE FRONT
+-TEXT 1170,-150,-80 7 0 4 ALL PARTS HOME. LID WITH LOGO AND
+-TEXT 1170,-162,-80 7 0 TWO BUTTON PADS: TOP TABS IN FIRST,
+-TEXT 1170,-174,-80 7 0 THEN THE BOTTOM HOOKS CLICK
+-TEXT 1470,-150,-80 7 0 5 FINISHED. THE SIGN HANGS ON THE
+-TEXT 1470,-162,-80 7 0 WIDE BAR THROUGH ITS HAND HOLE,
+-TEXT 1470,-174,-80 7 0 MAGNET OVER THE SENSOR
+-TEXT 1770,-150,-80 7 0 6 (SEEN FROM BEHIND) THE LID ALONE:
+-TEXT 1770,-162,-80 7 0 HOOKS, HINGE TABS, BATTERY POSTS,
+-TEXT 1770,-174,-80 7 0 DISPLAY POCKET, BUTTON PADS WITH
+-TEXT 1770,-186,-80 7 0 THEIR PINS
 CECOLOR BYLAYER
 ZOOM E
 FILEDIA 1

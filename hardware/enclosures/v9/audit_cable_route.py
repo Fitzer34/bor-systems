@@ -19,13 +19,12 @@ zg = g["plate_z1"] - 0.75                             # mid height of the groove
 x_notch = P["LEAD_NOTCH"]; xn = g["x0"] + (x_notch[0] + x_notch[1]) / 2
 route = [
   ("in the bar: sensor slot and lead tunnel to the web",      (48.5, 3.0, zb),   (48.5, 29.0, zb),  1.4),
-  ("up the shaft inside the web",                             (50.0, 29.0, zb),  (50.0, 29.0, zg),  1.4),
-  ("forward in the groove on top of the dovetail plate",      (50.0, 29.0, zg),  (50.0, 8.5, zg),   1.4),
+  ("up the open groove in the back of the web",               (50.0, 30.5, zb),  (50.0, 30.5, zg),  1.4),
+  ("forward in the groove on top of the dovetail plate",      (50.0, 30.5, zg),  (50.0, 8.5, zg),   1.4),
   ("up through the slot in the body's channel roof",          (50.0, 8.5, zg),   (50.0, 8.5, 9.0),  1.4),
-  ("sideways under the battery holder's front edge",          (50.0, 9.8, 9.0),  (6.0, 9.8, 9.0),   1.4),
-  ("back and up beside the holder's end",                     (6.0, 9.8, 9.0),   (6.0, 16.0, 14.0), 1.4),
-  ("up through the notch at the end of the bulkhead",         (6.0, 16.0, 14.0), (6.0, 16.0, 52.0), 1.4),
-  ("across to under the board",                               (6.0, 16.0, 52.0), (xn, 16.0, 70.0),  1.4),
+  ("straight up in front of the battery holder",              (50.0, 8.5, 9.0),  (50.0, 8.5, 32.0), 1.4),
+  ("through the new slot in the bulkhead",                    (50.0, 8.5, 32.0), (50.0, 8.5, 50.0), 1.4),
+  ("back and across to under the board",                      (50.0, 8.5, 50.0), (xn, 16.0, 70.0),  1.4),
   ("up through the notch in the board cradle wall",           (xn, 16.0, 70.0),  (xn, 16.0, 96.0),  1.4),
 ]
 ok = True

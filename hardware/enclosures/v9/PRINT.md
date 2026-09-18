@@ -47,3 +47,15 @@ IDEX: use Duplication mode to print two lids or two bars in one job when making 
 - Run the bar plate in and out of the channel a few times; if tight, a light pass with 400 grit on the plate flanks. Clearance is 0.45 mm per side.
 - Fit the 36 x 19.5 x 1 mm clear window insert from inside the lid under the two cleats.
 - Wall screws: 4 x No.8 countersunk for the backplate, 2 x No.8 pan head plus 1 for the lower hole for the gateway.
+
+## Two-colour logo (optional, uses the second hotend)
+
+Load `hanger_lid.stl` and `hanger_lid_inlay.stl` together (same for the gateway). They are already lined up: select both,
+right-click, Merge models. Assign the lid to the hotend with the body colour and the inlay to the other hotend (orange or
+yellow suits the brand). The logo, the HazardLink name and the PRG / RST names then print flush in the second colour in the
+first two layers. Without the inlay file the same marks simply print as 0.4 mm sunken lines in one colour.
+
+## Button pads
+
+The two pads in the lid are flaps with a 0.8 mm hinge. They print flat on the bed, so they are strong in the direction they
+bend. Do not use a brim inside the 0.8 mm slots around them; if the first layer closes a slot, run a blade along it.

@@ -48,7 +48,21 @@ P = dict(
     BRD_CLR=0.3,            # assumed: pocket clearance per side (PETG slip fit)
     USB_NOSE=0.65,          # datasheet: USB-C nose proud of the corner points
     USB_SETBACK=1.0,        # assumed: corner points to the wall inner face (nose 0.35 inside); gateway
-    H_USB_SETBACK=3.2,      # assumed: hanger board sits further in so the lid's lip passes in front of the USB nose and closes the wall notch
+    H_USB_SETBACK=3.2,      # assumed: cradle pocket walls start this far in front of the USB-end corners
+    H_BRD_X0=18.7,          # assumed: board moved right so the display window is centred on the 100 mm face (x = 50) and the
+                            # strip to its left is wide enough for two finger-sized buttons. USB-C is reached with the lid off.
+    # v9.3 buttons: each is a flap cut into the lid (U-slot through, thin hinge at the root) with a pin over the switch
+    BTN_PAD=(24.0, 15.0, 1.6, 0.8, 4.0, 0.8),   # assumed: pad length (X), height (Z), pad thickness, hinge thickness, hinge length, slot width
+    BTN_PAD_X1=11.3,        # assumed: pad free end, measured from the board's USB-end corners (2 mm short of the display pocket)
+    BTN_PAD_GAP=1.5,        # assumed: each pad starts this far from the board centreline
+    BTN_PIN_D=3.2, BTN_PIN_GAP=0.3, BTN_TRAVEL=0.3,   # assumed: pin diameter, rest gap over the switch, switch travel
+    LED_HOLE_D=1.8,         # assumed: light hole over the two status LEDs (it falls inside the RST pad)
+    # v9.3 face marks: sunk MARK_DEPTH into the face as narrow strokes (prints cleanly on the bed), or filled flush in a
+    # second colour from the other hotend using print/<lid>_inlay.stl
+    MARK_DEPTH=0.4, LOGO_BADGE=(26.0, 40.0, 5.0, 2.0, -7.0),   # assumed: badge width, height, corner radius, stroke, tilt in degrees
+    LOGO_BANG=(5.0, 17.0, 4.5, 5.5, -11.5),   # assumed: exclamation bar width, height, bar centre z, dot diameter, dot centre z (from the badge centre)
+    H_LOGO=(24.0, 61.0, 1.0), H_WORDMARK=(43.0, 61.0, 7.5),   # assumed: hanger badge centre (x, z, scale), wordmark left edge (x, z, cap height)
+    G_LOGO=(17.0, 58.0, 0.78), G_WORDMARK=(62.0, 66.0, 6.5),  # assumed: gateway
     OLED_H_MAX=5.0,         # datasheet envelope: the most the display can stand above the PCB top. MEASURE the real value (photos suggest 4 to 5)
     BEZEL_T=1.0, OLED_POCKET=(36.0, 20.4), OLED_GAP=0.2,   # assumed: front skin left around the window, pocket for the display module (X, Z), clearance glass to bezel
     OLED_X0=14.9, OLED_X1=47.9, OLED_HALF_W=9.28, OLED_H=5.0,    # datasheet envelope
@@ -113,7 +127,11 @@ P = dict(
     CELL_D=21.25, CELL_L=70.8,        # datasheet Samsung INR21700-50E max
     BULK_Z=(34.0, 46.0),              # assumed: stiffening bulkhead between bay and board
     # ---- hanging bar (Owen: sign hangs from the bottom edge, nothing on the face) -------
-    BAR_W=26.0,              # assumed (measure the sign hand-hole; v7 hook was 22)
+    BAR_W=95.0,              # PROVISIONAL: the bar spans the sign's hand hole so the sign hangs level and cannot slide sideways
+                             # off the sensor. Set to (measured hand-hole width - 5). No manufacturer publishes the hole size.
+    WEB_W=26.0,              # assumed: the web and dovetail stay narrow, so the part is a T
+    BAR_SPREAD=18.0,         # assumed: triangular spreaders each side of the web that carry the wide bar
+    SIGN_HOLE_CLR=5.0, SIGN_HOLE_H=35.0, SIGN_T=12.0,   # assumed: hand hole = bar + 5 wide, 35 tall; folded handle stack 12 thick (reference only)
     BAR_T=10.0,              # assumed: bar thickness
     BAR_DROP=30.0,           # assumed: bar top sits this far below the body bottom (headroom for the sign's handle region, research 20 to 30)
     BAR_WEB_Y=(24.0, 34.0),  # assumed: the web that carries the bar down from the body, under the back of the body (nothing behind the back face, so the body can lift 14 mm past the backplate)
@@ -129,6 +147,8 @@ P = dict(
     BAR_SADDLE_W=15.0, BAR_SADDLE_D=2.0,  # assumed: saddle width along Y (folded handle stack 6 to 12, research) and depth
     BAR_WIRE_Y=(6.5, 10.5),  # assumed: lead slot through the channel roof, in front of the holder (leads rise into the free space under the bulkhead)
     BAR_WIRE_W=8.0,          # assumed
+    WEB_BAND=(-19.0, -15.0), # assumed: the lead groove in the back of the web is open (wires lay in) except this band, which keeps them in
+    BULK_LEAD_SLOT=(46.0, 54.0, 5.0, 11.0),   # assumed: slot through the bulkhead right above the channel roof slot (x0, x1, y0, y1)
     BAR_GUSSET=8.0, BAR_GUSSET_W=2.0,    # assumed: short side gussets at the lip root
     HALL_CARRIER=(8.0, 8.0, 1.6),     # assumed carrier PCB
     HALL_SLOT_CLR=0.3, HALL_SLOT_H=3.0, HALL_SKIN=1.5, HALL_WIRE_H=4.5,   # assumed
@@ -312,7 +332,7 @@ def lid_header_ribs(x0, zc, pcb_top_y):
     z_out = hw - P["POCKET_WALL_T"] * 0 - 0.3      # rib outer edge, 0.3 inside the pocket wall
     y1 = pcb_top_y - P["LID_RIB_CLR"]
     w = P["LID_RIB_W"]
-    j2 = box(x0 + 5.0, x0 + 44.0, -EPS, y1, zc - z_out, zc - z_out + w)
+    j2 = box(x0 + 13.0, x0 + 44.0, -EPS, y1, zc - z_out, zc - z_out + w)      # starts clear of the button pads
     j3 = box(x0 + 13.0, x0 + 34.0, -EPS, y1, zc + z_out - w, zc + z_out)
     return j2.union(j3)
 
@@ -346,24 +366,56 @@ def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False):
         for s in (-1, 1):
             xa, xb = sorted((cx + s * iw / 2, cx + s * (iw / 2 - c)))
             lid = lid.union(box(xa, xb, -pd + P["INSERT_T"] + 0.2, -pd + P["INSERT_T"] + 0.9, cz - 4.0, cz + 4.0))
-    # PRG living-hinge tab: root on +X, thinned to 1.0 mm, 0.8 mm groove closed by a 0.4 mm outer skin
-    tw, tl, tt, tg, ts = P["PRG_TAB"]
-    px, pz = x0 + P["PRG"][0], zc + P["PRG"][1]
-    tx0, tx1 = px - 1.9, px - 1.9 + tl            # free end at tx0, root at tx1
-    tz0, tz1 = pz - tw / 2, pz + tw / 2
-    y_skin = -lid_t + ts
-    y_tab = -lid_t + tt
-    lid = lid.cut(box(tx0 - tg, tx0, y_skin, 1, tz0 - tg, tz1 + tg))
-    lid = lid.cut(box(tx0 - tg, tx1, y_skin, 1, tz0 - tg, tz0))
-    lid = lid.cut(box(tx0 - tg, tx1, y_skin, 1, tz1, tz1 + tg))
-    lid = lid.cut(box(tx0, tx1, y_tab, 1, tz0, tz1))
-    lid = lid.union(cyl_y(px, pz, P["PUSHER_D"], y_tab - EPS, pcb_top_y - P["BTN_H"] - 0.3))
-    lid = lid.cut(cyl_y(px, pz, 3.0, -lid_t - 1, -lid_t + 0.3))     # 0.3 mm dimple marks the press point
-    # RST pinhole (paperclip)
-    lid = lid.cut(cyl_y(x0 + P["RST"][0], zc + P["RST"][1], P["PINHOLE_D"], -lid_t - 1, 1))
-    # sealed LED window: recess from the inside leaving a thin skin
-    lid = lid.cut(cyl_y(x0 + P["LED"][0], zc + P["LED"][1], P["LED_WIN_D"], -lid_t + P["LED_SKIN"], 1))
+    lid = lid_buttons(lid, x0, zc, pcb_top_y, lid_t)
     return lid
+
+def button_pads(x0, zc):
+    """(name, pad x0, x1, z0, z1, pin x, pin z) for the two board buttons."""
+    fw, fh = P["BTN_PAD"][0], P["BTN_PAD"][1]
+    fx1 = x0 + P["BTN_PAD_X1"]
+    out = []
+    for name, (bx, bz) in (("PRG", P["PRG"]), ("RST", P["RST"])):
+        sgn = 1 if bz > 0 else -1
+        za, zb = sorted((zc + sgn * P["BTN_PAD_GAP"], zc + sgn * (P["BTN_PAD_GAP"] + fh)))
+        out.append((name, fx1 - fw, fx1, za, zb, x0 + bx, zc + bz))
+    return out
+
+def lid_buttons(lid, x0, zc, pcb_top_y, lid_t):
+    """Two finger-sized pads in the face. Each is a flap: a slot cut right through on three sides, a thin hinge at the
+    root (it prints flat on the bed, so it bends along the layers), and a pin on the back that sits just over the small
+    switch on the board. Pressing anywhere on the pad clicks the switch."""
+    fw, fh, ft, ht, hl, sl = P["BTN_PAD"]
+    for (name, fx0, fx1, z0, z1, px, pz) in button_pads(x0, zc):
+        lid = lid.cut(box(fx0, fx1 + sl, -lid_t + ft, 1, z0 - sl, z1 + sl))          # pad thinned from the inside
+        lid = lid.cut(box(fx0, fx0 + hl, -lid_t + ht, 1, z0 - sl, z1 + sl))          # hinge thinner still
+        lid = lid.cut(box(fx1, fx1 + sl, -lid_t - 1, 1, z0 - sl, z1 + sl))           # slot: free end
+        lid = lid.cut(box(fx0, fx1 + sl, -lid_t - 1, 1, z0 - sl, z0))                # slot: lower side
+        lid = lid.cut(box(fx0, fx1 + sl, -lid_t - 1, 1, z1, z1 + sl))                # slot: upper side
+        lid = lid.union(cyl_y(px, pz, P["BTN_PIN_D"], -lid_t + ft - EPS, pcb_top_y - P["BTN_H"] - P["BTN_PIN_GAP"]))
+    # light hole over the status LEDs
+    lid = lid.cut(cyl_y(x0 + P["LED"][0], zc + P["LED"][1], P["LED_HOLE_D"], -lid_t - 1, 1))
+    return lid
+
+def face_marks(W, lid_t, logo, wordmark, x0, zc):
+    """Everything sunk into the face: the badge outline with its exclamation mark, the HazardLink wordmark and the two
+    button names. Narrow strokes only, so they print cleanly on the bed; the same solids are the second-colour inlay."""
+    y1 = -lid_t + P["MARK_DEPTH"]; y0 = -lid_t - 1.0
+    bw, bh, br, bs, tilt = P["LOGO_BADGE"]
+    ew, eh, ez, dd, dz = P["LOGO_BANG"]
+    lx, lz, k = logo
+    def rr(w, h, r):
+        return box(-w / 2, w / 2, y0, y1, -h / 2, h / 2).edges("|Y").fillet(r)
+    badge = rr(bw * k, bh * k, br * k).cut(rr((bw - 2 * bs) * k, (bh - 2 * bs) * k, max((br - bs) * k, 0.6)))
+    bang = rr(ew * k, eh * k, ew * k / 2 - 0.05).translate((0, 0, ez * k))
+    dot = cyl_y(0, dz * k, dd * k, y0, y1)
+    mark = badge.union(bang).union(dot).rotate((0, 0, 0), (0, 1, 0), -tilt).translate((lx, 0, lz))
+    def txt(s, x, z, h, halign="left"):
+        return cq.Workplane("XZ", origin=(x, y1, z)).text(s, h, y1 - y0, halign=halign, valign="center", kind="bold")
+    tx, tz, th = wordmark
+    mark = mark.union(txt("HazardLink", tx, tz, th))
+    for (name, fx0, fx1, z0, z1, px, pz) in button_pads(x0, zc):
+        mark = mark.union(txt(name, (fx0 + P["BTN_PAD"][4] + fx1) / 2, (z0 + z1) / 2, 5.0, halign="center"))
+    return mark
 
 def lid_tongue(W, H, wall, bosses, cutouts=()):
     """Inner lip ring (2 x 4) sitting just inside the body walls, relieved around the bosses and
@@ -466,13 +518,15 @@ def hanger_geom():
     """Derived hanger positions shared by body, lid, bar, backplate and references."""
     W, H, D, wall, lt = P["H_W"], P["H_H"], P["H_D"], P["WALL"], P["LID_T"]
     g = dict(W=W, H=H, D=D, wall=wall, y_back=D - wall, lid_t=lt,
-             x0=wall + P["H_USB_SETBACK"], zc=P["H_BRD_ZC"],
+             x0=P["H_BRD_X0"], zc=P["H_BRD_ZC"],
              pcb_top=-lt + P["BEZEL_T"] + P["OLED_GAP"] + P["OLED_H_MAX"])       # glass (at most OLED_H_MAX above the PCB) just behind the bezel
     g["bulk"] = P["BULK_Z"]
     # the wall face is at Y = D + BP_T; the bar runs from there forward to the lip
     g["wall_y"] = D + P["BP_T"]
     g["bar_x0"] = W / 2 - P["BAR_W"] / 2
     g["bar_x1"] = W / 2 + P["BAR_W"] / 2
+    g["web_x0"] = W / 2 - P["WEB_W"] / 2
+    g["web_x1"] = W / 2 + P["WEB_W"] / 2
     g["bar_top"] = -P["BAR_DROP"]
     g["bar_bot"] = g["bar_top"] - P["BAR_T"]
     g["web_y0"], g["web_y1"] = P["BAR_WEB_Y"]
@@ -516,6 +570,9 @@ def build_hanger_body():
     # lead notches at both ends of the bulkhead (open toward the back wall, 7.5 mm bridge at the front)
     for (nx0, nx1) in ((wall - 1, wall + 7.5), (W - wall - 7.5, W - wall + 1)):
         body = body.cut(box(nx0, nx1, 12.0, yb + 1, bz0 - 1, bz1 + 1))
+    # sensor lead goes straight up: a slot through the bulkhead right above the slot in the channel roof
+    sx0, sx1, sy0, sy1 = P["BULK_LEAD_SLOT"]
+    body = body.cut(box(sx0, sx1, sy0, sy1, bz0 - 1, bz1 + 1))
     # snap-fit lid: latch pockets + release pinholes in the bottom wall, hinge ledges on the top wall
     body = body_snap_features(body, W, H, wall, yb, P["H_ARMS"], P["H_TAB_XS"])
     # keyhole peg pockets in 10 mm bosses on the back wall (pegs live on the backplate)
@@ -621,47 +678,65 @@ def build_hanger_lid():
     rl, rw, rc = P["CELL_RIB"]
     for xa in (hx0 + 12.0, hx0 + hl - 12.0 - rl):
         lid = lid.union(box(xa, xa + rl, -EPS, cell_front - rc, hzc - rw / 2, hzc + rw / 2))
-    return lid
+    return lid.cut(hanger_marks())
+
+def hanger_marks():
+    g = hanger_geom()
+    return face_marks(g["W"], g["lid_t"], P["H_LOGO"], P["H_WORDMARK"], g["x0"], g["zc"])
+
+def gateway_marks():
+    g = gateway_geom()
+    return face_marks(g["W"], g["lid_t"], P["G_LOGO"], P["G_WORDMARK"], g["x0"], g["zc"])
+
+def inlay_of(marks, W, H, lid_t):
+    """The second-colour body: the marks, trimmed to the 0.4 mm they occupy in the face."""
+    return marks.intersect(box(-1, W + 1, -lid_t, -lid_t + P["MARK_DEPTH"], -1, H + 1))
 
 def build_hanger_bar():
-    """Slide-in hanging bar (no screws): a dovetail plate that enters the body's bottom-wall channel from the wall side,
-    a web at the very back that carries the bar down BAR_DROP below the body, the bar itself out to an upturned lip, a
-    saddle in the bar's top face where the sign's handle settles, and the Hall carrier in a slot directly under the
-    saddle. The channel is closed at the front and the backplate covers its mouth, so with the body hung the bar cannot
-    come out. Prints UPRIGHT on the bar's bottom face: every bending load (bar, web, plate) is then in-plane, the 45 deg
-    dovetail flanks are self-supporting, and only the front of the plate needs support (it overhangs the bar by 30 mm)."""
+    """Slide-in hanging bar (no screws), T-shaped: a narrow dovetail plate and web join it to the body, and a WIDE bar
+    below spans the sign's hand hole, so the sign hangs level and cannot slide sideways off the sensor. Saddle along the
+    full width, upturned lip at the front, Hall carrier in a slot under the middle of the saddle. Prints UPRIGHT on the
+    bar's bottom face: every bending load is then in-plane, the 45 deg dovetail flanks and the 45 deg spreaders are
+    self-supporting, and only the front of the dovetail plate needs support."""
     g = hanger_geom()
-    x0, x1, W = g["bar_x0"], g["bar_x1"], g["W"]
+    bx0, bx1, wx0, wx1, W = g["bar_x0"], g["bar_x1"], g["web_x0"], g["web_x1"], g["W"]
     w0, w1 = g["plate_w0"] / 2, g["plate_w1"] / 2
     plate = prism_xz([(W / 2 - w0, g["plate_z0"]), (W / 2 + w0, g["plate_z0"]), (W / 2 + w1, g["plate_z1"]), (W / 2 - w1, g["plate_z1"])],
                      g["plate_y0"], g["plate_y1"])
-    web = box(x0, x1, g["web_y0"], g["web_y1"], g["bar_top"] - EPS, g["plate_bot"] + EPS)
-    bar = box(x0, x1, g["lip_front"], g["bar_back"], g["bar_bot"], g["bar_top"])
-    lip = box(x0, x1, g["lip_front"], g["lip_back"], g["bar_bot"], g["lip_top"])
+    web = box(wx0, wx1, g["web_y0"], g["web_y1"], g["bar_top"] - EPS, g["plate_bot"] + EPS)
+    bar = box(bx0, bx1, g["lip_front"], g["bar_back"], g["bar_bot"], g["bar_top"])
+    lip = box(bx0, bx1, g["lip_front"], g["lip_back"], g["bar_bot"], g["lip_top"])
     part = plate.union(web).union(bar).union(lip)
-    # gussets: inside corner where the bar meets the web (both sides), and at the lip root
+    # spreaders each side of the web carry the wide bar back into the web
+    sp = P["BAR_SPREAD"]
+    for sgn, xe in ((-1, wx0), (1, wx1)):
+        part = part.union(prism_xz([(xe - sgn * EPS, g["bar_top"] - EPS), (xe + sgn * sp, g["bar_top"] - EPS), (xe - sgn * EPS, g["bar_top"] + sp)],
+                                   g["web_y0"], g["web_y1"]))
+    # gussets: where the web meets the bar (web edges), and at the lip root (bar ends and either side of the middle)
     gw, gl = P["BAR_GUSSET_W"], P["BAR_GUSSET"]
-    for (gx0, gx1) in ((x0, x0 + gw), (x1 - gw, x1)):
+    for (gx0, gx1) in ((wx0, wx0 + gw), (wx1 - gw, wx1)):
         part = part.union(prism_yz([(g["web_y0"] + EPS, g["bar_top"] - EPS), (g["web_y0"] - gl, g["bar_top"] - EPS), (g["web_y0"] + EPS, g["bar_top"] + gl)], gx0, gx1))
+    for (gx0, gx1) in ((bx0, bx0 + gw), (bx1 - gw, bx1), (wx0 - gw, wx0), (wx1, wx1 + gw)):
         part = part.union(prism_yz([(g["lip_back"] - EPS, g["bar_top"] - EPS), (g["lip_back"] + gl, g["bar_top"] - EPS), (g["lip_back"] - EPS, g["bar_top"] + gl)], gx0, gx1))
-    # saddle across the bar's top face (the handle settles here by gravity)
+    # saddle across the bar's full width (the handle settles here by gravity)
     sw, sd = P["BAR_SADDLE_W"], P["BAR_SADDLE_D"]
-    part = part.cut(box(x0 - 1, x1 + 1, g["saddle_y"] - sw / 2, g["saddle_y"] + sw / 2, g["saddle_floor"], g["bar_top"] + 1))
+    part = part.cut(box(bx0 - 1, bx1 + 1, g["saddle_y"] - sw / 2, g["saddle_y"] + sw / 2, g["saddle_floor"], g["bar_top"] + 1))
     # Hall carrier slot from the bar's back face forward to just past the saddle
     hw = g["slot_hw"]
     part = part.cut(box(W / 2 - hw, W / 2 + hw, g["slot_y_front"], g["bar_back"] + 1, g["slot_floor"], g["slot_ceil"]))
-    # lead channel: along the bar behind the saddle, up the web, then forward in a groove in the plate's top face to the
-    # body's roof slot
+    # lead route: tunnel along the bar behind the saddle; then a groove up the BACK of the web that is open so the wires
+    # simply lay in (one short closed band keeps them there); then a groove along the top of the plate to the roof slot
     cw2 = P["BAR_WIRE_W"] / 2 - 1
     part = part.cut(box(W / 2 - cw2, W / 2 + cw2, g["saddle_y"] + sw / 2, g["bar_back"] + 1, g["wire_z0"], g["slot_ceil"]))
-    part = part.cut(box(W / 2 - cw2, W / 2 + cw2, g["web_y0"] + 2.5, g["web_y1"] - 2.5, g["wire_z0"], g["plate_z1"] + 1))
+    band0, band1 = P["WEB_BAND"]
+    for (za, zb) in ((g["wire_z0"], band0), (band1, g["plate_z1"] + 1)):
+        part = part.cut(box(W / 2 - cw2, W / 2 + cw2, g["web_y0"] + 2.5, g["web_y1"] + 1, za, zb))
+    part = part.cut(box(W / 2 - cw2, W / 2 + cw2, g["web_y0"] + 2.5, g["web_y1"] - 2.5, band0 - EPS, band1 + EPS))
     wy0, wy1 = P["BAR_WIRE_Y"]
     part = part.cut(box(W / 2 - cw2, W / 2 + cw2, wy0 + 0.5, g["plate_y1"] + 1, g["plate_z1"] - 1.5, g["plate_z1"] + 1))
     # retaining pin: a 6.5 mm offcut of 2.85 mm filament stands right behind the carrier, so the sensor cannot slide back
-    # out of its slot. Offset to one side so the three leads pass beside it.
+    # out of its slot. It drops into a blind hole in the saddle floor and the sign's handle sits over it.
     px_, py_ = hall_pin_xy(g)
-    # blind hole from the saddle floor: the pin drops in from the top, rests on the hole bottom, and the sign's handle
-    # sits over it, so gravity and the sign both keep it in
     part = part.cut(cyl_z(px_, py_, P["HALL_PIN_D"], g["slot_floor"] - 2.0, g["saddle_floor"] + 1.0))
     return part
 
@@ -730,9 +805,13 @@ def hanger_refs():
     refs["hall_carrier"] = (carrier, (0.05, 0.35, 0.10))
     px_, py_ = hall_pin_xy(g)
     refs["hall_pin"] = (cyl_z(px_, py_, 2.85, g["slot_floor"] - 2.0, g["saddle_floor"]), (0.9, 0.9, 0.9))
-    # sign handle stack (assumed 24 wide x 12 thick x 20 tall) settled in the saddle, magnet in its underside
+    # top of a folded sign (reference): a plate with a hand hole; the hole's top edge rests in the saddle and the bar
+    # fills the hole's width, so the sign cannot slide sideways. Magnet in the underside of the handle, over the sensor.
     bar_bot = g["saddle_floor"] + P["TAG_CLR"]
-    bar = box(W / 2 - 12, W / 2 + 12, sy - 6.0, sy + 6.0, bar_bot, bar_bot + P["HANDLE_H"])
+    hole_w = P["BAR_W"] + P["SIGN_HOLE_CLR"]
+    st = P["SIGN_T"] / 2
+    bar = box(W / 2 - hole_w / 2 - 28, W / 2 + hole_w / 2 + 28, sy - st, sy + st, bar_bot - P["SIGN_HOLE_H"] - 14, bar_bot + P["HANDLE_H"])
+    bar = bar.cut(box(W / 2 - hole_w / 2, W / 2 + hole_w / 2, sy - st - 1, sy + st + 1, bar_bot - P["SIGN_HOLE_H"], bar_bot))
     bar = bar.cut(cyl_z(W / 2, sy, P["MAGNET_D"] + 0.2, bar_bot - 1, bar_bot + P["TAG_WALL"] + P["MAGNET_T"]))
     refs["sign_handle"] = (bar, (0.95, 0.80, 0.10))
     refs["magnet"] = (cyl_z(W / 2, sy, P["MAGNET_D"], bar_bot + P["TAG_WALL"], bar_bot + P["TAG_WALL"] + P["MAGNET_T"]), (0.6, 0.6, 0.65))
@@ -806,7 +885,7 @@ def build_gateway_lid():
     # knock-out for a 12 mm panel button on GPIO3 (factory reset), skin left outside
     bx, bz, bd = P["G_BTN_KO"]
     lid = lid.cut(cyl_y(bx, bz, bd, -lt + P["KNOCKOUT_SKIN"], 1))
-    return lid
+    return lid.cut(gateway_marks())
 
 def gateway_refs():
     g = gateway_geom()
@@ -934,15 +1013,23 @@ def export_part(out_dir, name, wp):
 PRINT_ORIENT = {"hanger_body": "back_down", "hanger_lid": "face_down", "hanger_bar": "upright",
                 "hanger_backplate": "back_down", "gateway_body": "back_down", "gateway_lid": "face_down"}
 
-def export_print_stl(print_dir, name, wp, orient):
-    """STL already rotated into its print orientation (build direction = +Z, part resting on z=0)."""
-    solid = wp.val()
-    if orient == "back_down":        # back face (max Y) onto the bed: y -> -z
-        solid = solid.rotate(cq.Vector(0, 0, 0), cq.Vector(1, 0, 0), -90)
-    elif orient == "face_down":      # outer face (min Y) onto the bed: y -> +z
-        solid = solid.rotate(cq.Vector(0, 0, 0), cq.Vector(1, 0, 0), 90)
+def export_print_stl(print_dir, name, wp, orient, companion=None):
+    """STL already rotated into its print orientation (build direction = +Z, part resting on z=0). A companion (the
+    second-colour inlay) gets exactly the same move, so the two line up when loaded together in the slicer."""
+    def turn(shape):
+        if orient == "back_down":        # back face (max Y) onto the bed: y -> -z
+            return shape.rotate(cq.Vector(0, 0, 0), cq.Vector(1, 0, 0), -90)
+        if orient == "face_down":        # outer face (min Y) onto the bed: y -> +z
+            return shape.rotate(cq.Vector(0, 0, 0), cq.Vector(1, 0, 0), 90)
+        return shape
+    solid = turn(wp.val())
     bb = solid.BoundingBox()
-    solid = solid.translate(cq.Vector(-bb.xmin, -bb.ymin, -bb.zmin))
+    shift = cq.Vector(-bb.xmin, -bb.ymin, -bb.zmin)
+    solid = solid.translate(shift)
+    if companion is not None:
+        cname, cwp = companion
+        comp = cq.Compound.makeCompound([turn(sh).translate(shift) for sh in cwp.vals()])
+        cq.exporters.export(cq.Workplane("XY").add(comp), os.path.join(print_dir, cname + ".stl"), tolerance=0.01, angularTolerance=0.1)
     cq.exporters.export(cq.Workplane("XY").add(solid), os.path.join(print_dir, name + ".stl"), tolerance=0.01, angularTolerance=0.1)
     bb = solid.BoundingBox()
     return "%-18s %-10s footprint %.0f x %.0f mm, height %.1f mm" % (name, orient, bb.xlen, bb.ylen, bb.zlen)
@@ -1043,7 +1130,19 @@ def design_checks(hg, gg):
         out.append((x + P["TAB_W"] / 2 + P["TAB_RIB_SIDE"] + 1.0 <= P["SMA_KO"][0] - P["SMA_HOLE_D"] / 2 or x - P["TAB_W"] / 2 - P["TAB_RIB_SIDE"] - 1.0 >= P["SMA_KO"][0] + P["SMA_HOLE_D"] / 2, "hinge rib at x=%.0f clears the SMA knock-out" % x))
     out.append((P["DT_ROOF"] >= 1.2, "dovetail channel roof %.1f mm (>= 1.2)" % P["DT_ROOF"]))
     out.append((hg["strip_top"] <= holder_bot, "channel strip top z=%.1f under the holder (z=%.1f)" % (hg["strip_top"], holder_bot)))
-    out.append((P["DT_MOUTH"] >= P["BAR_W"] + 0.8, "channel mouth %.1f passes the %.0f mm web with 0.4 per side" % (P["DT_MOUTH"], P["BAR_W"])))
+    out.append((P["DT_MOUTH"] >= P["WEB_W"] + 0.8, "channel mouth %.1f passes the %.0f mm web with 0.4 per side" % (P["DT_MOUTH"], P["WEB_W"])))
+    out.append((P["BAR_W"] <= W + 20.0 and P["BAR_W"] >= P["WEB_W"], "hook bar %.0f mm wide (PROVISIONAL: set to the sign's hand-hole width minus %.0f)" % (P["BAR_W"], P["SIGN_HOLE_CLR"])))
+    fw, fh, ft, ht, hl, sl = P["BTN_PAD"]
+    arm = (hg["x0"] + P["PRG"][0]) - (hg["x0"] + P["BTN_PAD_X1"] - fw + hl / 2)
+    eps_btn = 100.0 * (ht / 2) * ((P["BTN_PIN_GAP"] + P["BTN_TRAVEL"]) / arm) / hl
+    out.append((eps_btn <= P["SNAP_STRAIN_MAX"], "button pad hinge strain %.2f %% for a full press (hinge %.1f x %.0f mm, pin %.1f mm from it; <= %.1f %%)" % (eps_btn, ht, hl, arm, P["SNAP_STRAIN_MAX"])))
+    out.append((fw >= 20.0 and fh >= 14.0, "button pads %.0f x %.0f mm: a full fingertip" % (fw, fh)))
+    pads = button_pads(hg["x0"], hg["zc"])
+    disp_x0 = hg["x0"] + P["OLED_ACT_CX"] - P["OLED_POCKET"][0] / 2
+    out.append((max(pd[2] for pd in pads) + sl + 1.0 <= disp_x0, "button pads end %.1f mm short of the display pocket" % (disp_x0 - max(pd[2] for pd in pads) - sl)))
+    out.append((min(pd[1] for pd in pads) >= wall + P["TONGUE_CLR"] + P["TONGUE_T"] + 1.0, "button pad hinges start clear of the lid's lip"))
+    out.append((max(pd[4] for pd in pads) + sl + 0.8 <= H - wall - P["TONGUE_CLR"] - 2 * P["TONGUE_T"] - 0.25, "upper pad clears the hinge tab roots"))
+    out.append((abs(hg["x0"] + P["OLED_ACT_CX"] - W / 2) < 0.05, "display window centred on the face (x=%.1f)" % (hg["x0"] + P["OLED_ACT_CX"])))
     out.append(((P["DT_TOP"] - P["DT_MOUTH"]) / 2 >= 2.0, "dovetail flank overhang %.2f mm per side (>= 2.0)" % ((P["DT_TOP"] - P["DT_MOUTH"]) / 2)))
     out.append((P["DT_STRIP_W"] >= P["DT_TOP"] + 2 * 3.0, "channel strip leaves >= 3 mm beside the dovetail top"))
     out.append((hg["plate_y1"] <= hg["wall_y"] - 1.0 and hg["plate_y0"] >= P["DT_Y0"] + 0.5, "bar plate Y %.0f..%.0f inside the channel (front end %.0f, wall %.0f)" % (hg["plate_y0"], hg["plate_y1"], P["DT_Y0"], hg["wall_y"])))
@@ -1072,7 +1171,7 @@ def design_checks(hg, gg):
 def write_readme(out_dir, hg, gg):
     sy = hg["sensor_y"]
     gap = hg["saddle_floor"] + P["TAG_CLR"] + P["TAG_WALL"] - (hg["sensor_z"] + P["SOT23"][2] / 2)
-    txt = """HazardLink v9.2 enclosures: NO SCREWS in the assembly; springs in the body wall, display flush with the face. Generated by hazardlink_enclosures.py.
+    txt = """HazardLink v9.3 enclosures: no screws; wall-arm latches; flush centred display; two big button pads; logo on the face; wide hook bar. Generated by hazardlink_enclosures.py.
 Frame: X right, Z up, Y from the front face into the wall. Wall face at Y=%.0f.
 
 FILES
@@ -1109,6 +1208,18 @@ HOW THE PARTS HOLD TOGETHER (v9)
     the window from inside, which needs the lid off. Same tamper resistance as the old security screw for that step.
   Tamper note: the lid opens by hand from underneath (two pull lips). With a sign hung they sit behind the sign's top edge.
     Firmware rule: a lid-open or a lift without a service login is a tamper alarm.
+  Face (v9.3): the display window is centred. To its left are two finger-sized button pads, PRG above and RST below. Each
+    pad is a flap cut into the lid with a thin hinge at its left end and a pin behind it over the board's small switch, so
+    pressing anywhere on the pad clicks the switch. The status LEDs show through a small hole in the RST pad. The badge,
+    the HazardLink name and the two button names are sunk 0.4 mm into the face as narrow strokes. To print them in a second
+    colour instead, load print/<lid>_inlay.stl with the lid (it is already lined up), assign it to the other hotend and
+    merge the two models; the face then comes off the bed flush and smooth.
+  Hook bar (v9.3): T-shaped. The narrow dovetail and web are unchanged; the bar below is BAR_W wide so it fills the sign's
+    hand hole: the sign hangs level and cannot slide sideways off the sensor. BAR_W is PROVISIONAL until the hand hole is
+    measured (set it to the hole width minus 5 mm).
+  Sensor lead (checked by audit_cable_route.py): tunnel in the bar, open lay-in groove up the back of the web, groove
+    along the top of the dovetail plate, slot in the channel roof, straight up in front of the battery holder, slot through
+    the bulkhead, notch in the board cradle wall.
   WHAT HOLDS EACH BOUGHT PART (checked by audit_retention.py: free travel in all six directions, target <= 0.5 mm)
     Board: long edges on two rails, pocket walls each side, stops at both ends, clamped from the front by two lid ribs.
     Battery holder: ribbed bay on four sides, the back wall behind it, and two lid posts bearing on its end blocks.
@@ -1220,7 +1331,11 @@ def main(out_dir, quick=False, autocad=True):
         export_part(out_dir, name, wp)
     print_dir = os.path.join(out_dir, "print"); os.makedirs(print_dir, exist_ok=True)
     print("Exporting print-oriented STLs")
-    print_lines = [export_print_stl(print_dir, name, wp, PRINT_ORIENT[name]) for name, wp in parts.items()]
+    inlays = {"hanger_lid": ("hanger_lid_inlay", inlay_of(hanger_marks(), hg["W"], hg["H"], hg["lid_t"])),
+              "gateway_lid": ("gateway_lid_inlay", inlay_of(gateway_marks(), gg["W"], gg["H"], gg["lid_t"]))}
+    print_lines = [export_print_stl(print_dir, name, wp, PRINT_ORIENT[name], companion=inlays.get(name)) for name, wp in parts.items()]
+    for unit, (iname, iwp) in inlays.items():
+        cq.exporters.export(iwp, os.path.join(out_dir, iname + ".stl"), tolerance=0.01, angularTolerance=0.1)   # un-rotated copy for previews
     for l in print_lines:
         print("  " + l)
     # test coupon: the front 14 mm of the hanger body (rim, wall arms, hinge ribs, USB notch). Prints in about 2 hours and
@@ -1424,7 +1539,7 @@ def main(out_dir, quick=False, autocad=True):
     write_readme(out_dir, hg, gg)
 
     # ---- manifest -----------------------------------------------------------------------
-    lines = ["HazardLink v9.2 enclosures (no screws; wall-arm latches; flush display). Generated by hazardlink_enclosures.py", ""]
+    lines = ["HazardLink v9.3 enclosures (no screws; wall-arm latches; flush centred display; button pads; logo; wide bar). Generated by hazardlink_enclosures.py", ""]
     for name, wp in parts.items():
         lines.append("%-22s %s" % (name, bbox_str(wp)))
     lines += ["", "Key derived positions (world frame, mm):",

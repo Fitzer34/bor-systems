@@ -8,15 +8,11 @@
   "colour": 2
  },
  {
-  "file": "S0_sign",
-  "colour": 40
- },
- {
   "file": "S0_magnet",
   "colour": 1
  },
  {
-  "label": "0 (SEEN FROM THE WALL SIDE) HOOK BAR: SENSOR SLIDES INTO ITS SLOT, PIN DROPS IN BEHIND IT, SIGN HANDLE AND MAGNET SIT ON TOP",
+  "label": "0 (SEEN FROM THE WALL SIDE) WIDE HOOK BAR: SENSOR SLIDES INTO ITS SLOT, PIN DROPS IN BEHIND IT, LEAD LAYS INTO THE GROOVE UP THE BACK",
   "x": 0.0
  },
  {
@@ -33,7 +29,7 @@
  },
  {
   "label": "1 (SEEN FROM THE WALL SIDE) HOOK BAR SLIDES INTO THE DOVETAIL CHANNEL IN THE BODY",
-  "x": 270.0
+  "x": 300.0
  },
  {
   "file": "S2_plate",
@@ -53,7 +49,7 @@
  },
  {
   "label": "2 BODY LIFTS 14 MM AND DROPS ONTO THE FOUR BACKPLATE PEGS; THE CATCH CLICKS",
-  "x": 540.0
+  "x": 600.0
  },
  {
   "file": "S3_plate",
@@ -89,7 +85,7 @@
  },
  {
   "label": "3 BOARD, BATTERY HOLDER, CELL AND ANTENNA GO IN FROM THE FRONT",
-  "x": 810.0
+  "x": 900.0
  },
  {
   "file": "S4_plate",
@@ -128,8 +124,12 @@
   "colour": 9
  },
  {
-  "label": "4 ALL PARTS HOME. LID: TOP TABS IN FIRST, THEN THE BOTTOM HOOKS CLICK INTO THE WALL ARMS",
-  "x": 1080.0
+  "file": "S4_logo",
+  "colour": 30
+ },
+ {
+  "label": "4 ALL PARTS HOME. LID WITH LOGO AND TWO BUTTON PADS: TOP TABS IN FIRST, THEN THE BOTTOM HOOKS CLICK",
+  "x": 1200.0
  },
  {
   "file": "S5_plate",
@@ -152,6 +152,10 @@
   "colour": 9
  },
  {
+  "file": "S5_logo",
+  "colour": 30
+ },
+ {
   "file": "S5_sign",
   "colour": 40
  },
@@ -160,15 +164,15 @@
   "colour": 1
  },
  {
-  "label": "5 CLOSED. SIGN HANDLE AND MAGNET REST IN THE SADDLE OVER THE SENSOR",
-  "x": 1350.0
+  "label": "5 FINISHED. THE SIGN HANGS ON THE WIDE BAR THROUGH ITS HAND HOLE, MAGNET OVER THE SENSOR",
+  "x": 1500.0
  },
  {
   "file": "S6_lid",
   "colour": 9
  },
  {
-  "label": "6 (SEEN FROM BELOW AND BEHIND THE LID) THE LID ALONE: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET",
-  "x": 1620.0
+  "label": "6 (SEEN FROM BEHIND) THE LID ALONE: HOOKS, HINGE TABS, BATTERY POSTS, DISPLAY POCKET, BUTTON PADS WITH THEIR PINS",
+  "x": 1800.0
  }
 ]
