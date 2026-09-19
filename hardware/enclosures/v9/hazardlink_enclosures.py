@@ -150,33 +150,34 @@ P = dict(
                                       # and to every hanger height below (board centre, holder, bulkhead, pegs, catch, antenna, backplate, marks), so the box is 171 tall
     H_BRD_ZC=104.0,          # assumed: board centreline height (window as high as the bosses allow)
     H_PCB_TOP_Y=None,        # derived: the display sits inside the lid, its glass just behind a 1 mm bezel (see hanger_geom)
-    HOLDER_L=77.7, HOLDER_W=20.9, HOLDER_H=21.3, HOLDER_CLR=0.5,   # maker's listing: BeiLaMoo BH18650-PC2 (TinyTronics "1x 18650 Battery holder for PCB", marked 18650-PC2)
+    HOLDER_L=77.7, HOLDER_W=20.9, HOLDER_H=21.31, HOLDER_CLR=0.5,   # maker: BeiLaMoo BH18650-PC2 listing, identical to the MPD BH-18650-PC drawing it is a copy of (maker tolerance +/-0.5, so keep 0.5 clearance a side)
     HOLDER_STANDOFF=5.0,     # Owen's caliper photo: one solder pin at each end, about 3.4 in from the end face, about 4.3 long. 5.0 leaves room for the pin and the wire soldered to it.
-    HOLDER_PIN=(3.4, 4.3, 1.0),   # Owen's caliper photo: pin centre from the end face, pin length, pin width (reference only)
+    HOLDER_PIN=(2.40, 3.30, 1.52),   # maker (MPD BH-18650-PC drawing): flat tab on the centreline 2.40 in from each end, 3.30 below the base, 1.52 wide x 0.38 thick
+    HOLDER_PIN_ENV=4.8,      # clearance the standoff must give: BeiLaMoo publish no pin drawing and Owen's photo read about 4.3, so allow 4.3 + 0.5
     HOLDER_X0=11.15, HOLDER_Z0=10.0,    # centred; 10.0 leaves a 4.1 mm passage under the holder for the sensor lead in the old box (BTN16_ON=False).
                                         # With the button fitted the holder sits H_BASEMENT higher and the whole bay under it (about 45 mm) is open
     HOLDER_RIB_T=3.0, HOLDER_RIB_H=12.0, HOLDER_LEAD_GAP=8.0,   # assumed
     CELL_D=18.5, CELL_L=65.2,         # packing slip: Murata US18650VTC6 (18650), datasheet maximum size
     BULK_Z=(34.0, 46.0),              # assumed: stiffening bulkhead between bay and board
     # ---- hanging bar (Owen: sign hangs from the bottom edge, nothing on the face) -------
-    BAR_W=95.0,              # PROVISIONAL: the bar spans the sign's hand hole so the sign hangs level and cannot slide sideways
-                             # off the sensor. Set to (measured hand-hole width - 5). No manufacturer publishes the hole size.
+    BAR_W=88.0,              # no maker publishes a hand-hole size. Scaled from the makers' own product photos the narrowest common one is Rubbermaid FG6112xx at about 105 mm (low bound 92),
+                             # Carlisle about 111, the generic UK/IE 620 x 300 moulding about 120. 88 enters every one of them. A wider bar (108) for the generic moulding alone is a parameter change.
     WEB_W=26.0,              # assumed: the web and dovetail stay narrow, so the part is a T
     BAR_SPREAD=18.0,         # assumed: triangular spreaders each side of the web that carry the wide bar
-    SIGN_HOLE_CLR=5.0, SIGN_HOLE_H=35.0, SIGN_T=12.0,   # assumed: hand hole = bar + 5 wide, 35 tall; folded handle stack 12 thick (reference only)
+    SIGN_HOLE_CLR=17.0, SIGN_HOLE_H=47.0, SIGN_T=38.0,   # reference sign = Rubbermaid FG6112xx: hole about 105 x 47 (photo scaled); 38.0 closed depth is Rubbermaid's published packaging depth (1.50 in), the thickest of the common signs
     BAR_T=10.0,              # assumed: bar thickness
-    BAR_DROP=30.0,           # assumed: bar top sits this far below the body bottom (headroom for the sign's handle region, research 20 to 30)
+    BAR_DROP=46.0,           # the sign stands 36 to 42 mm above the top of its hand hole (photo scaled across the common makes), so the bar hangs 46 below the body and the sign's top clears the box
     BAR_WEB_Y=(24.0, 34.0),  # assumed: the web that carries the bar down from the body, under the back of the body (nothing behind the back face, so the body can lift 14 mm past the backplate)
     # v9: the bar's plate is a dovetail that slides into a channel in the body's bottom wall FROM THE WALL SIDE;
     # the channel is closed at the front and the backplate covers its mouth, so with the body hung the bar cannot come out
     DT_MOUTH=27.0, DT_TOP=34.0, DT_H=3.5, DT_CLR=0.45, DT_ROOF=1.9, DT_STRIP_W=40.0, DT_Y0=6.0, DT_LEADIN=0.6,   # assumed: mouth width, top width (45 deg flanks: top - mouth = 2 x height), height, plate clearance per side (flanks print as 45 deg overhangs), roof, strip width, closed front end, mouth chamfer
     PLATE_Y=(6.6, 34.5),     # assumed: bar plate span along Y (flush with the web's back face, 1 mm inside the body's back face)
-    HANDLE_H=20.0,           # assumed: sign panel height above the hand-hole that rests on the bar (research 20 to 30)
-    BAR_REACH=70.0,          # assumed: wall face to the lip front (research: >= 45 so a folded sign clears the wall)
+    HANDLE_H=42.0,           # sign height above the top of its hand hole (see BAR_DROP)
+    BAR_REACH=86.0,          # wall face to the lip front: far enough out that a 38 mm thick folded sign hangs wholly in front of the hook's gusset and the button under the base
     BAR_LIP_T=9.0,           # v7 lip thickness
     BAR_LIP_H=20.0,          # assumed: lip rises this much above the bar top (forward of the lid, so no clash)
-    BAR_SADDLE_Y=-2.0,       # assumed: saddle centre, 2 mm in front of the body rim (Y=0), which is 1 mm BEHIND the lid's outer face (Y=-3); sign thickness sits either side
-    BAR_SADDLE_W=15.0, BAR_SADDLE_D=2.0,  # assumed: saddle width along Y (folded handle stack 6 to 12, research) and depth
+    BAR_SADDLE_Y=-11.0,      # saddle centre: the 42 mm seat runs from the lip back to Y=+10, in front of the gusset (which starts to drop at Y=6.6) and of the cleaning button (Y >= 11.9)
+    BAR_SADDLE_W=42.0, BAR_SADDLE_D=2.0,  # seat width along Y = thickest folded sign (38) + 4; depth
     BAR_WIRE_Y=(6.5, 10.5),  # assumed: lead slot through the channel roof. It opens UNDER the battery holder (holder front face Y=6.2 at HOLDER_STANDOFF 5):
                              # the leads come up under the holder (into the bay under the battery since v9.9), bend forward, then rise in front of it.
                              # So they are fed up and folded forward BEFORE the holder is pressed in: a lead left standing is trapped behind the holder.
@@ -228,9 +229,9 @@ P = dict(
     HALL_PIN_D=3.1, HALL_PIN_X=3.2,  # assumed: TWO holes for 2.85 mm filament offcuts (6.0 to 6.5 long), one each side of the sensor's legs right behind its body: the legs pass between them, the 4.1 mm body cannot
 
     # ---- cleaning-mode button UNDER THE BASE (Owen: out of sight of the public, above the hook) ----------
-    BTN16=(16.4, 18.2, 3.2, 16.0, 22.0, 3.2),   # Owen's caliper photos of his Gebildet 16 mm button (scaled off its own M16 thread): hole for the thread,
-                             # head dia, head height, body dia, nut across corners, nut thickness
-    BTN16_METAL_L=15.0,      # Owen's photo: threaded metal body behind the head
+    BTN16=(16.4, 18.8, 3.2, 16.0, 22.0, 3.2),   # maker (Gebildet listing drawing, APIELE AP16B datasheet for the same family): M16 x 1 thread in a 16 mm hole (16.4 printed), head dia 18.8 max,
+                             # 3.2 allowed under the base for the head on its uncompressed O-ring, body dia 16, nut 22 across corners x 3.2
+    BTN16_METAL_L=18.9,      # with BTN16_SOCKET_L this makes 44.5 behind the head = Gebildet's printed 46 mm overall minus the 1.6 mm head (Owen's own part reads 42.5 to 43.0, so 44.5 already carries margin)
     BTN16_SOCKET_L=25.6,     # Owen's photo: the blue plug-in wire socket that pushes onto the button's pins (five wires leave its end)
     BTN16_PINS_L=7.5,        # ASSUMED, NOT MEASURED: bare pins if the socket is left off and the wires are soldered on (they are hidden inside the socket in the photo)
     BTN16_USE_SOCKET=True,   # True keeps the plug-in socket (no soldering at the button, swap a button by unplugging). False leaves 18.1 mm less behind
@@ -779,7 +780,7 @@ def build_hanger_body():
     body = body.union(box(hx0 + 10.0, hx1 - 10.0, yb - rh, yb + EPS, hz1, bz0 + EPS))
     # standoff ribs: the holder's underside (with its two solder pins, one at each end) stands HOLDER_STANDOFF off the back wall on
     # three cross ribs; the pins and the wires soldered to them live in the gap and leave through the end-rib gaps
-    for fx in (0.22, 0.5, 0.78):
+    for fx in (0.25, 0.5, 0.75):                # clear of the maker's two mounting-hole rings under the base (7 to 15 mm in from each end)
         rx = hx0 + fx * (hx1 - hx0)
         body = body.union(box(rx - 1.5, rx + 1.5, g["holder_back"], yb + EPS, hz0, hz1))
     # snap arms at both ends of the holder: each rises from the back wall beside the holder's end face and hooks 0.8 mm over
@@ -954,8 +955,8 @@ def build_hanger_bar():
     gw, gl = P["BAR_GUSSET_W"], P["BAR_GUSSET"]
     for (gx0, gx1) in ((wx0, wx0 + gw), (wx1 - gw, wx1)):
         part = part.union(prism_yz([(g["web_y0"] + EPS, g["bar_top"] - EPS), (g["web_y0"] - gl, g["bar_top"] - EPS), (g["web_y0"] + EPS, g["bar_top"] + gl)], gx0, gx1))
-    for (gx0, gx1) in ((bx0, bx0 + gw), (bx1 - gw, bx1), (wx0 - gw, wx0), (wx1, wx1 + gw)):
-        part = part.union(prism_yz([(g["lip_back"] - EPS, g["bar_top"] - EPS), (g["lip_back"] + gl, g["bar_top"] - EPS), (g["lip_back"] - EPS, g["bar_top"] + gl)], gx0, gx1))
+    # (no gussets at the lip root any more: a folded sign is up to 38 mm thick and fills the seat right up to the lip; the
+    # lip is 9 mm thick and only has to stop the sign sliding forward)
     # saddle across the bar's full width (the handle settles here by gravity)
     sw, sd = P["BAR_SADDLE_W"], P["BAR_SADDLE_D"]
     part = part.cut(box(bx0 - 1, bx1 + 1, g["saddle_y"] - sw / 2, g["saddle_y"] + sw / 2, g["saddle_floor"], g["bar_top"] + 1))
@@ -1467,7 +1468,7 @@ def design_checks(hg, gg):
     out.append((coil_air >= P["COIL_AIR"] - 0.01 and P["COIL_SKIN"] >= 0.6 and P["COIL_KEEPOUT_D"] >= kd + 2 * (tol_xy + 1.0), "coil antenna: %.1f mm of air over a worst-case %.1f mm coil (%.1f over a nominal one) under a %.1f mm face skin, and a %.1f mm clear circle round it" % (coil_air, kh + tol_h, coil_air + tol_h, P["COIL_SKIN"], P["COIL_KEEPOUT_D"])))
     coil_clear = (hg["pcb_top"] - kh) - (-hg["lid_t"] + P["BEZEL_T"])
     out.append((True, "coil antenna position from Heltec's STEP: Xb %.1f, Yb %+.1f (leg hole Xb 13.08, Yb +7.24)" % (kx, ky)))
-    out.append((P["HOLDER_STANDOFF"] >= P["HOLDER_PIN"][1] + 0.5, "holder stands %.1f mm off the back wall for its %.1f mm solder pins (>= pin + 0.5)" % (P["HOLDER_STANDOFF"], P["HOLDER_PIN"][1])))
+    out.append((P["HOLDER_STANDOFF"] >= P["HOLDER_PIN_ENV"] + 0.2 - 0.01, "holder stands %.1f mm off the back wall: clears the %.1f mm pin allowance (maker's pin is %.2f long)" % (P["HOLDER_STANDOFF"], P["HOLDER_PIN_ENV"], P["HOLDER_PIN"][1])))
     if P["BTN16_ON"]:
         hole, hd, hh, bd, nut, nut_t = P["BTN16"]
         blen = btn16_len()
