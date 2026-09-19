@@ -873,6 +873,30 @@ def build_hanger_lid():
         lid = lid.union(box(xa, xa + rl, -EPS, cell_front - rc, hzc - rw / 2, hzc + rw / 2))
     return lid.cut(hanger_marks())
 
+def build_hanger_window_gauge():
+    """Small test piece that proves the screen lines up BEFORE a full lid is printed: the part of the hanger lid round the
+    display window and the two button pads, plus low fences on its inside that hold the board exactly where the body's
+    cradle will hold it. Lay the board in face down, turn it over and look: the whole picture must sit inside the window.
+    It also proves the display and coil fit under the bezel (the board must lie flat on the two ribs, not rock) and that
+    the PRG and RST pads click their switches. Prints face down like the lid, no support."""
+    g = hanger_geom()
+    x0, zc, pt, lt = g["x0"], g["zc"], g["pcb_top"], g["lid_t"]
+    lid = build_hanger_lid()
+    keep = box(-1, x0 + P["BRD_L"] + 6.0, -lt - 1, pt + 3.0, zc - 18.5, zc + 18.5).union(
+           box(-1, 15.9, -lt - 1, pt + 3.0, zc - 21.5, zc + 21.5))                 # the pad column is taller than the board strip
+    piece = lid.intersect(keep)
+    piece = cq.Workplane("XY").add(max(piece.solids().vals(), key=lambda sol: sol.Volume()))
+    clr, ft = P["BRD_CLR"], 1.6
+    top = pt + P["BRD_T"] + 0.6
+    hw = P["BRD_W"] / 2 + clr
+    fences = []
+    for sgn in (-1, 1):
+        za, zb = sorted((zc + sgn * hw, zc + sgn * (hw + ft)))
+        fences.append(box(x0 + 17.0, x0 + P["BRD_L"] - 4.5, -EPS, top, za, zb))       # along each long edge, clear of the pad slots and the far corners
+        ea, eb = sorted((zc + sgn * 7.5, zc + sgn * 10.4))
+        fences.append(box(x0 - clr - ft, x0 - clr, -EPS, top, ea, eb))              # stops for the USB end, either side of the socket
+    return piece.union(union_all(fences))
+
 def hanger_marks():
     g = hanger_geom()
     return face_marks(g["W"], g["lid_t"], P["H_LOGO"], P["H_WORDMARK"], g["x0"], g["zc"], vertical=P["H_PAD_V"])
@@ -2165,6 +2189,16 @@ PRINTING
     front of the hinge ribs, the USB opening. It exists to test the lid latches and the hinge fit, so print it WHOLE and
     leave its bottom edge alone: that edge carries the latch arms. The small scallop in its bottom wall on the bed side is
     the front edge of the button hole and is meant to be there. Print it with one lid before any full body.
+  print/hanger_window_gauge.stl is a small test piece that proves the screen lines up with the window on YOUR board before a
+    full lid is printed. It is the part of the lid round the display window and the two button pads, with low fences on
+    the inside that hold the board exactly where the body will hold it. Print it outer face down like the lid, no
+    support. Lay the board in it face down, USB end against the two short stops, and push it flat. Three checks:
+    1. The board lies FLAT on the two long ribs and does not rock. If it rocks on the screen or on the coil antenna, the
+       pocket is too shallow for your board: tell whoever edits the design (OLED_H_MAX) and do not print the lid yet.
+    2. Turn it over with the screen switched on. The WHOLE picture must show inside the window with a dark border all
+       round, about the same left and right. If the picture is cut off or sits hard against one edge, note which edge and
+       by about how much, and the window is moved in the design (OLED_ACT_CX, OLED_ACT_CY).
+    3. Press the PRG pad and the RST pad from the front. Each must click its switch.
   No heat-set inserts and no machine screws. Wall fixings: 4 No.8 countersunk screws with plugs for the backplate, 2 No.8 pan
   heads for the gateway keyholes plus 1 for its lower anti-lift hole.
 
@@ -2252,6 +2286,8 @@ def main(out_dir, quick=False, autocad=True):
     ring = max(coupon.solids().vals(), key=lambda sol: sol.Volume())
     coupon = cq.Workplane("XY").add(ring)
     print_lines.append(export_print_stl(print_dir, "hanger_body_coupon", coupon, "back_down"))
+    # window gauge: proves on the real board that the screen lines up with the window, before a full lid is printed
+    print_lines.append(export_print_stl(print_dir, "hanger_window_gauge", build_hanger_window_gauge(), "face_down"))
     open(os.path.join(print_dir, "ORIENTATION.txt"), "w").write(
         "Print-ready STLs: build direction is +Z, each part rests on z=0 in the orientation the design assumes.\n"
         "Do not rotate them in the slicer.\n\n" + "\n".join(print_lines) + "\n")

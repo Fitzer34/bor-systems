@@ -19,6 +19,7 @@ Part sizes, from `manifest.txt` and `print/ORIENTATION.txt`:
 | hanger_backplate | 90 x 165 | 90 x 165 mm | 17.0 mm |
 | hanger_bar | 95 wide | 95 x 60 mm | 43.1 mm |
 | hanger_body_coupon | front 14 mm of the body | 100 x 172 mm | 14.0 mm |
+| hanger_window_gauge | the lid round the screen window and pads, with fences for the board | 61 x 43 mm | 9.6 mm |
 | gateway_body | 120 x 30 x 80 | 120 x 81 mm | 30.0 mm |
 | gateway_lid | 120 x 80 | 120 x 80 mm | 17.0 mm |
 
@@ -57,6 +58,7 @@ Dry the filament first if the spool has been open more than a couple of weeks: P
 | hanger_lid, gateway_lid | outer face on the bed, hooks and hinge tabs pointing up | none. The catch face of each hook is a 1 mm overhang (an overhang is a piece of the print that sticks out sideways over open air), so keep the part fan running |
 | hanger_body, gateway_body | back face on the bed, open front up | none (channel end and hinge pockets are bridges). On the hanger body the 16.4 mm button hole goes through the bottom wall, which stands upright during the print, so the hole prints lying on its side as a round arch. It needs no support |
 | hanger_body_coupon | the same way up as the body: cut face on the bed, open front up | none |
+| hanger_window_gauge | outer face down, like the lid | none |
 | hanger_backplate | back face on the bed, pegs pointing up | yes, touching buildplate only. The catch tongue is the springy strip in the face of the backplate that locks the body on. The cavity behind it is open to the back face on purpose, so support from the bed reaches the underside of the tongue. Pull the support out afterwards. |
 | hanger_bar | standing on the bar's bottom face, lip pointing up | none at all. Every sloping underside on the bar is cut at 45 degrees, which a printer can build over open air without support. That covers the two sloping sides of the sliding tongue on top of the bar, the two triangular braces beside the narrow upright neck, and the brace under the front of the tongue. Leave support switched off for this part: anything generated inside the sensor tunnel, the nest or the pin holes can never be cleaned out. |
 
@@ -71,6 +73,7 @@ Two values in this design still rest on estimates, so some parts are safe to pri
 - **The sign's hand hole.** The hook bar is 95 mm wide (BAR_W in PARAMS). That width is provisional. It is meant to be the width of the hand hole minus 5 mm, so 95 mm suits a hole 100 mm wide, and nobody has measured the hole on the real sign yet. Measure its width. If the hole is narrower than 100 mm, the sign may not go over the bar. If it is wider, the sign can slide sideways along the bar, away from the sensor. Either way, set BAR_W to the measured width minus 5, rebuild the files and print the bar from the new ones. Only the hook bar depends on this value.
 - **The display and the coil antenna on the board.** The pocket inside the hanger lid allows 6.0 mm above the board (OLED_H_MAX in PARAMS). The two heights it has to clear, about 5.6 mm for the display and about 5.9 mm for the coil antenna beside it, were read off a photo, give or take 0.4 mm. Close the caliper jaws over the top of each one and the back of the board, then take off the thickness of the board. Both must come to 6.0 mm or less. If either is taller, raise OLED_H_MAX and rebuild the files. The same value sets how deep the board sits in the hanger body, so the hanger lid and the hanger body both depend on it. A lid printed too shallow would be clicked shut onto the coil antenna.
 
+0. Print `print/hanger_window_gauge.stl` FIRST. It is small, and it proves on your own board that the screen lines up with the window, that the screen and the coil antenna fit under the lid, and that the two pads click their switches. The three checks are in the v9 README under PRINTING. If it passes, the hanger lid no longer has to wait for the display and coil measurements.
 1. Safe to print now, whatever the two measurements turn out to be: `print/hanger_body_coupon.stl`, hanger_backplate, gateway_body and gateway_lid. The coupon is the front 14 mm ring of the hanger body: the rim, both latch arms, the hinge ribs and the USB-C opening. It is a throwaway test piece. Print it whole, exactly as exported. Do not trim it or cut it down in the slicer, because its bottom edge carries the two latch arms it is there to test.
 2. Once the display and the coil antenna have been measured, print one hanger lid. Once the hand hole has been measured, print one hook bar.
    - With the lid and the coupon, check that both lid hooks click into the arm windows, that the hinge tabs seat in the rib pockets, that the lid's lip sits inside the rim, and that the USB-C plug goes in with the lid on.

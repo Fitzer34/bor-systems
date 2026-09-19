@@ -612,6 +612,16 @@ PRINTING
     front of the hinge ribs, the USB opening. It exists to test the lid latches and the hinge fit, so print it WHOLE and
     leave its bottom edge alone: that edge carries the latch arms. The small scallop in its bottom wall on the bed side is
     the front edge of the button hole and is meant to be there. Print it with one lid before any full body.
+  print/hanger_window_gauge.stl is a small test piece that proves the screen lines up with the window on YOUR board before a
+    full lid is printed. It is the part of the lid round the display window and the two button pads, with low fences on
+    the inside that hold the board exactly where the body will hold it. Print it outer face down like the lid, no
+    support. Lay the board in it face down, USB end against the two short stops, and push it flat. Three checks:
+    1. The board lies FLAT on the two long ribs and does not rock. If it rocks on the screen or on the coil antenna, the
+       pocket is too shallow for your board: tell whoever edits the design (OLED_H_MAX) and do not print the lid yet.
+    2. Turn it over with the screen switched on. The WHOLE picture must show inside the window with a dark border all
+       round, about the same left and right. If the picture is cut off or sits hard against one edge, note which edge and
+       by about how much, and the window is moved in the design (OLED_ACT_CX, OLED_ACT_CY).
+    3. Press the PRG pad and the RST pad from the front. Each must click its switch.
   No heat-set inserts and no machine screws. Wall fixings: 4 No.8 countersunk screws with plugs for the backplate, 2 No.8 pan
   heads for the gateway keyholes plus 1 for its lower anti-lift hole.
 
