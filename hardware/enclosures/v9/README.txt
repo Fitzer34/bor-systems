@@ -107,12 +107,12 @@ HOW THE PARTS HOLD TOGETHER
     has tilted about 12 degrees. On the hanger lid (171 mm tall) that is with the bottom edge about 35 to 36 mm out. On the gateway
     lid (80 mm tall) it is about 16 to 17 mm. Never lever the lid against tabs that are still hooked.
   Display (hanger): the board sits right up behind the lid and the display module sits in a pocket in the lid, behind a
-    1.0 mm bezel. This lid has NO window insert and NO cleats. The pocket allows 6.0 mm above the PCB (OLED_H_MAX)
+    1.0 mm bezel. This lid has NO window insert and NO cleats. The pocket allows 5.4 mm above the PCB (OLED_H_MAX)
     plus 0.2 mm between glass and bezel, so a display that tall would have its glass 1.2 mm below the face. Owen's
-    display stands about 5.6 mm on its clear carrier, so its glass is 1.6 mm below the face (it was 5.5 mm down a well).
-    A standing WiFi coil antenna about 5.9 mm tall sits on the board between the USB end and the display, and the pocket runs
+    display stands about 5.1 mm on its clear carrier, so its glass is 2.3 mm below the face (it was 5.5 mm down a well).
+    A standing WiFi coil antenna about 6.0 mm tall sits on the board between the USB end and the display, and the pocket runs
     on over it. OLED_H_MAX has to cover the taller of the two, so NEVER set it below the coil height. The pocket floor is
-    6.2 mm above the PCB now and must stay at least 0.2 mm above the coil top, so it may never be lower than 6.1 mm above
+    5.6 mm above the PCB now and must stay at least 0.2 mm above the coil top, so it may never be lower than 6.2 mm above
     the PCB. A lower value fails the design check, and the check runs before any file is written.
   Display (gateway): the gateway lid is different. It still has the window insert pocket: a clear 36 x 19.5 x 1 mm pane
     fits from inside under the two cleats.
@@ -133,7 +133,7 @@ HOW THE PARTS HOLD TOGETHER
   Face: the board sits against the left wall so the USB-C port is at the edge and a cable plugs in with the lid on. The
     opening is 14.0 x 8.0 mm in the left wall, shared by the body wall and a hollow in the lid edge, and the lid keeps a
     1.4 mm skin over the plug. On this board the port sits between the two buttons, so the two finger pads run down the
-    left edge: PRG above the port, RST below it, each 9 x 17.5 mm. The display is left of centre and the badge balances
+    left edge: PRG above the port, RST below it, each 8 x 17.5 mm. The display is left of centre and the badge balances
     it on the right. Each pad is a flap cut into the lid with a thin hinge at its far end and a pusher pin behind it over
     the board's small switch, so pressing anywhere on the pad clicks the switch. There is NO light hole in the hanger's face: the board's two small status lights (one is the charging light) are hidden with the lid on, and the display shows what the unit is doing. Take the lid off if you need to see the charging light. The badge, the HazardLink wordmark and the two button names are sunk 0.6 mm into the
     face as narrow strokes. They are meant for a WHITE second-colour inlay over the black lid: load
@@ -626,16 +626,16 @@ PRINTING
   heads for the gateway keyholes plus 1 for its lower anti-lift hole.
 
 MEASURE BEFORE FREEZING (still to be measured by Owen)
-  The exact display height and coil antenna height above the PCB (now 5.6 and 5.9, read off a side photo at +/- 0.4): close
+  The exact display height and coil antenna height above the PCB (now 5.1 and 6.0, read off a side photo at +/- 0.4): close
     the caliper jaws on the top of each and the back of the board, and take off the board thickness. Then set OLED_H_MAX to
     the taller of the two, never below the coil height. OLED_H_MAX sets the depth of the pocket in the hanger lid and also
     how far back the board sits in the hanger body, so a change to it changes both parts.
   Where the coil antenna stands ACROSS the board (COIL Yb, guessed 7.3): one photo looking straight down on the screen side.
-    The lid is relieved for a coil centred anywhere within Yb +/- 9.15, which is everything inboard of the header pad rows.
+    The lid is relieved for a coil centred anywhere within Yb +/- 9.35, which is everything inboard of the header pad rows.
   The sign's hand hole: width and height, and the folded handle thickness (assumed 12 in a 15 mm saddle; 40 mm is free
     between the lip and the web). BAR_W 95 is provisional; reach 70 and lip 20 are assumed. The magnet position in the
     handle must match MAGNET POSITION ON THE SIGN.
-  The OLED active area offset (window is 30 x 16 to cover it with margin).
+  The OLED active area offset (window is 24 x 13 to cover it with margin).
   The working voltage of the button's LED, from the seller's listing, before its LED wires are connected to anything.
   The button's bare pin length (BTN16_PINS_L, assumed 7.5), only if BTN16_USE_SOCKET is ever set to False.
   The length of the JST 1.25 battery cable and of the button socket's wires against their routes in the box (jobs B5 and

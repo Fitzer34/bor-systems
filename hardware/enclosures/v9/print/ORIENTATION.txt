@@ -8,4 +8,4 @@ hanger_backplate   back_down  footprint 90 x 165 mm, height 17.0 mm
 gateway_body       back_down  footprint 120 x 81 mm, height 30.0 mm
 gateway_lid        face_down  footprint 120 x 80 mm, height 17.0 mm
 hanger_body_coupon back_down  footprint 100 x 172 mm, height 14.0 mm
-hanger_window_gauge face_down  footprint 61 x 43 mm, height 9.6 mm
+hanger_window_gauge face_down  footprint 61 x 43 mm, height 9.8 mm

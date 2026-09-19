@@ -8,8 +8,8 @@ gateway_body           X -0.0..120.0  Y -0.0..30.0  Z -1.2..80.0  (120.0 x 30.0 
 gateway_lid            X -0.0..120.0  Y -3.0..14.0  Z -0.0..80.0  (120.0 x 17.0 x 80.0 mm)
 
 Key derived positions (world frame, mm):
-  hanger board: USB-end corners at x=3.5, centreline z=145.0, PCB top at Y=4.2; glass of the 5.6 mm display at Y=-1.4 (1.6 mm behind the lid's outer face); coil antenna top (5.9 mm) at Y=-1.7, pocket floor at Y=-2.0
-  hanger window: 30 x 16 centred at (34.8, 145.5); display pocket 36 x 20.4 behind a 1.0 mm bezel, no window insert; USB-C opening 14.0 x 8.0 in the left wall, 1.4 mm lid skin over the plug
+  hanger board: USB-end corners at x=3.5, centreline z=145.0, PCB top at Y=4.4; glass of the 5.1 mm display at Y=-0.7 (2.3 mm behind the lid's outer face); coil antenna top (6.0 mm) at Y=-1.6, pocket floor at Y=-2.0
+  hanger window: 24 x 13 centred at (34.9, 146.8); display pocket 34 x 20.6 behind a 1.0 mm bezel, no window insert; USB-C opening 14.0 x 8.0 in the left wall, 1.4 mm lid skin over the plug
   bar: 95 wide (provisional) x 10 thick, top 30 mm below the body bottom, reach 70 mm from the wall face, lip 20 tall; saddle at Y=-2 (2 mm in front of the body rim, 1 mm behind the lid's outer face); prints upright with no support
   Hall sensor (bare DRV5032FA, TO-92 style, marked 32FA): package centre x=50, Y=-2.0, z=-34.70, marked face up; two pin holes 3.1 dia at x=46.8 and x=53.2, Y=0.54, 6.6 mm deep from the saddle floor, for 2.85 filament pins 6.0 to 6.5 long; 2.0 dia push-out hole under each, in a ledge 1.4 mm thick
   Hall sensor legs (confirmed, TI SLVSDC7H Figures 7-1 and 5-5, Table 5-1): marked face toward you, legs down: LEFT = VCC (to 3V3), MIDDLE = GND, RIGHT = OUT (to GPIO6, HALL_SENSOR_PIN = 6)
@@ -20,4 +20,4 @@ Key derived positions (world frame, mm):
   cleaning button (Gebildet 16 mm, with its plug-in socket): 16.4 hole through the bottom wall at x=83.8, Y=21.3, behind the right latch arm; head 18.2 dia x 3.2 under the base, 26.8 mm from its face to the hook; 40.6 mm long behind the head, top at z=40.6, battery shelf above it at z=47.5; only its two switch wires go to the board (GND and GPIO3); firmware reserves TEST_BUTTON_PIN = 3 (GPIO3) as the cleaning-mode trigger but the hanger program does not act on a press yet
   gateway board: USB-end corners at x=46.0, centreline z=42.0; SMA at (104, 15) on the top wall; cable notch at z=42
 
-Elapsed 17 s
+Elapsed 18 s

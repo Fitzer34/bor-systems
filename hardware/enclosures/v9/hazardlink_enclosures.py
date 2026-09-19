@@ -67,8 +67,7 @@ P = dict(
     USB_LID_SKIN=1.4,       # review: seven layers left over the plug's overmold where the opening runs into the lid edge (the plug sits 1 mm deeper since v9.7, so 0.75 was needlessly fragile)
     # v9.3 buttons: each is a flap cut into the lid (U-slot through, thin hinge at the root) with a pin over the switch
     BTN_PAD=(24.0, 15.0, 1.6, 0.8, 4.0, 0.8),   # assumed: pad length (X), height (Z), pad thickness, hinge thickness, hinge length, slot width
-    BTN_PAD_X1=11.3,        # assumed: pad edge nearest the display, measured from the board's USB-end corners (2 mm short of the display pocket;
-                            # on the hanger the coil relief runs the pocket on to the slot at this edge)
+    BTN_PAD_X1=10.3,        # pad edge nearest the display, from the board's USB-end edge: it stops short of the coil antenna's worst-case edge (Xb 10.45), so a pad is never over the coil
     BTN_PAD_GAP=1.5,        # assumed: each pad starts this far from the board centreline
     BTN_PIN_D=3.2, BTN_PIN_GAP=0.3, BTN_TRAVEL=0.3,   # assumed: pin diameter, rest gap over the switch, switch travel
     BTN_LABEL=(4.2, 2.4),   # pad names are 4.2 tall and run up the LEFT side of each pad (centre 2.4 from the pad's left edge), clear of where the status lights sit under the RST pad
@@ -82,16 +81,17 @@ P = dict(
     LOGO_BANG=(5.0, 17.0, 4.5, 5.5, -11.5),   # assumed: exclamation bar width, height, bar centre z, dot diameter, dot centre z (from the badge centre)
     H_LOGO=(74.0, 100.0, 1.0), H_WORDMARK=(50.0, 64.0, 8.0, "center"),   # assumed: badge to the right of the display, wordmark centred below the row
     G_LOGO=(17.0, 58.0, 0.78), G_WORDMARK=(62.0, 66.0, 6.5, "left"),     # assumed: gateway
-    OLED_H_MAX=6.0,         # Owen's side photo of his own board (scaled off the USB-C shell): display on its clear carrier stands about 5.6 above the
-                            # PCB and the coil antenna beside it about 5.9, both +/- 0.4. 6.0 clears both. A caliper-jaw reading would close the last few tenths.
-                            # NEVER set this below the coil height: the pocket floor (OLED_H_MAX + OLED_GAP above the PCB) must stay at least 0.2 above
-                            # the coil top, and design_checks stops the build before any file is written if it does not.
-    COIL=(13.75, 7.3, 3.3, 5.9),   # Owen's side photo: WiFi coil antenna STANDING on the board between the USB end and the display (Xb 12.1 to 15.4, about 3.3 dia,
-                            # 5.9 tall). Its position across the board (Yb) is NOT visible in that photo; 7.3 is where Heltec's V3.2 puts its RF part. Confirm with a top photo.
-    BEZEL_T=1.0, OLED_POCKET=(36.0, 20.4), OLED_GAP=0.2,   # assumed: front skin left around the window, pocket for the display module (X, Z), clearance glass to bezel
-    OLED_X0=14.9, OLED_X1=47.9, OLED_HALF_W=9.28, OLED_H=5.6,    # datasheet envelope; height from Owen's side photo
-    OLED_ACT_CX=31.3, OLED_ACT_CY=0.5,       # research: window centre (active area ~1 mm toward +Yb)
-    WIN_W=30.0, WIN_H=16.0,                  # research: conservative window showing the whole picture
+    OLED_H_MAX=5.4,         # maker: Heltec's drawing and STEP put the display top 5.0 above the PCB; the panel maker's worst-case glass top is 5.25. 5.4 + OLED_GAP keeps all lid material 5.6 clear of it.
+                            # The COIL is taller than the display, so in practice the coil sets how far back the board sits (see hanger_geom).
+    COIL=(12.7, 7.3, 2.9, 6.0),   # WiFi coil (spring) antenna standing on the board: its leg hole is at Xb 13.08, Yb +7.24 in Heltec's detailed STEP (exact); body axis Xb 12.6 +/-0.6, Yb +7.3 +/-0.4 and
+                            # dia 2.9 scaled from Heltec's photo; height 6.0 +/-0.5 (Heltec's 5.0 display top + about 1 mm, agrees with Owen's side photo). Heltec publishes no coil height.
+    COIL_TOL=(0.6, 0.5), COIL_SKIN=0.6, COIL_AIR=0.3, COIL_KEEPOUT_D=6.5,   # position and height tolerance; lid skin left over the coil (3 layers); air left over a worst-case coil; clear diameter round it (Heltec: a squashed or touched spring antenna causes resets)
+    BEZEL_T=1.0, OLED_GAP=0.2,   # front skin left around the window; clearance over the tallest display
+    OLED_POCKET=(14.3, 48.2, -10.4, 10.2),   # maker: lid pocket over the display carrier in board coordinates (Xb0, Xb1, Yb0, Yb1): carrier Xb 14.88..47.88, Yb +/-9.3, and the glass ledge overhangs to Yb -10.0 on the RST (flex) side
+    OLED_X0=14.9, OLED_X1=47.9, OLED_HALF_W=9.3, OLED_H=5.1,    # maker: Heltec STEP carrier 33.0 x 18.6 at Xb 14.88..47.88, centred on the board; glass top nominal 5.1
+    OLED_ACT_CX=31.4, OLED_ACT_CY=1.8,       # maker: centre of the PICTURE (active area). The glass has a 2.1 mm border on the PRG side and 6.3 on the RST (flex) side, so the picture sits 1.8 toward PRG
+    OLED_AA=(21.744, 10.864),                # maker: active area (Heltec QG-2864KSWEG01 / Univision UG-2864HSWEG01 drawing)
+    WIN_W=24.0, WIN_H=13.1,                  # maker: the panel's view area is 23.744 x 12.864 (1 mm round the picture); drawn 24.0 x 13.1 because printed holes close up a little. Flared 45 deg outward through the bezel.
     INSERT_W=36.0, INSERT_H=19.5, INSERT_T=1.0, INSERT_POCKET=1.3,   # assumed 1 mm acrylic or PETG pane (GATEWAY lid only; the hanger lid is flush and takes no insert)
     INSERT_CLEAT=0.6,                        # assumed: retaining cleat overhang into the pocket (gateway lid only)
     PRG=(3.4, 7.9), RST=(3.4, -7.9), BTN_H=2.0,   # datasheet (STEP)
@@ -107,7 +107,8 @@ P = dict(
     RAIL_LIP_ABOVE=4.5,                # assumed: pocket side wall height above the PCB top
     POCKET_WALL_T=2.0,                 # assumed
     LID_RIB_W=1.9, LID_RIB_CLR=0.3,    # assumed: lid rib on the header pad strip
-    LEAD_NOTCH=(20.5, 28.5),           # assumed: Xb span of the lead notch in the J2 pocket wall
+    LEAD_NOTCH=(14.5, 22.5),           # Xb span of the lead notch in the J2 pocket wall, moved toward the USB end so the wires stay off the display's flex fold
+    FLEX_FOLD=(22.6, 40.2),            # maker: the display's flex tail folds over the RST-side (J2) board edge between Xb 23.6 and 39.2 (Heltec STEP and photos); 1 mm added each end. No rib, ledge or catch may bear there.
     WIFI_KEEPOUT=15.0,                 # research: last 10 mm of board + 5 beyond, no metal
 
     # ---- FDM rules --------------------------------------------------------------------
@@ -219,7 +220,7 @@ P = dict(
     # v9.5: parts stay put with the lid OFF. Clips flex across the print layers here (the body prints back-face down), so
     # their strain is held under SNAP_STRAIN_XLAYER, well below the limit used for flexures that print flat.
     SNAP_STRAIN_XLAYER=0.7,
-    BRD_BARB=(0.5, 6.0, 22.0, 32.0),   # assumed: board catch engagement over the PCB edge, catch length, J3-side start Xb, J2-side start Xb
+    BRD_BARB=(0.5, 6.0, 22.0, 41.0),   # board catch engagement over the PCB edge, catch length, J3-side start Xb, J2-side start Xb (the J2 catch sits beyond the flex fold)
     HOLDER_ARM_ROOT=3.0,             # review: the arm is slotted free of the end rib except for this much at the back wall
     HOLDER_ARM=(2.0, 6.0, 24.9, 0.8),  # assumed: battery holder snap arm thickness (X), width (Z), lower edge z, engagement over the holder's front face
     HOLD_POST=(4.0, 8.0, 0.3),      # assumed: lid posts on the holder's end blocks (X thickness, Z width, clearance)
@@ -380,6 +381,11 @@ def heltec_ref(x0, zc, pcb_top_y):
     parts.append(box(sx0, sx1, -shw, shw, -t - sh, -t))
     parts.append(box(20.4, 27.4, -3.5, 3.5, -t - 0.8, -t))
     parts.append(box(45.0, 51.0, 8.0, 12.7, 0, 1.6))    # V3.2 block antenna (approx)
+    # maker (Heltec STEP + photos): the display's flex tail folds over the RST-side board edge and tucks underneath; and the
+    # display carrier is held by three screws whose heads stand proud of the underside
+    parts.append(box(23.6, 39.2, -13.0, -10.0, -t - 0.3, 5.0))
+    for (sx_, sy_) in ((16.78, -7.0), (45.98, -7.0), (45.98, 7.0)):
+        parts.append(cq.Workplane("XY").circle(1.6).extrude(-1.2).translate((sx_, sy_, -t)))
     if P.get("COIL"):                                   # Owen's boards: WiFi coil antenna standing beside the display
         kx, ky, kd, kh = P["COIL"]
         parts.append(cq.Workplane("XY").circle(kd / 2).extrude(kh).translate((kx, ky, 0)))
@@ -399,7 +405,9 @@ def board_cradle(x0, zc, pcb_top_y, y_back, x_wall_inner, setback=None):
     x_end = x0 + L + clr + 2.0
     parts = []
     # J2 side (-Z): continuous ledge and wall
-    parts.append(box(x0 + 1.5, x0 + L - 3.0, pcb_bot, y_back + EPS, zc - hw, zc - hw + P["RAIL_W"]))
+    fx0, fx1 = P["FLEX_FOLD"]
+    for (la, lb) in ((1.5, fx0), (fx1, L - 3.0)):                      # the ledge stops either side of the display's flex fold
+        parts.append(box(x0 + la, x0 + lb, pcb_bot, y_back + EPS, zc - hw, zc - hw + P["RAIL_W"]))
     parts.append(box(x_start, x_end, y_lip, y_back + EPS, zc - hw - wt, zc - hw))
     # J3 side (+Z): ledge segments avoiding the wire pads
     gaps = [(hdr_x(p) - 2.2, hdr_x(p) + 2.2) for p in P["WIRE_PINS_J3"]]
@@ -429,6 +437,8 @@ def board_cradle(x0, zc, pcb_top_y, y_back, x_wall_inner, setback=None):
     for (zf, sgn, xb) in ((zc + hw, -1, xb3), (zc - hw, 1, xb2)):
         parts.append(prism_yz([(yc + b, zf - sgn * EPS), (yc, zf + sgn * b), (yc - 0.4, zf + sgn * b), (yc - 0.4 - 1.25 * b, zf - sgn * EPS)], x0 + xb, x0 + xb + bl))
     cradle = union_all(parts)
+    # the flex adds about 0.3 mm outside the board edge where it folds over: relieve the J2 wall's inner face there
+    cradle = cradle.cut(box(x0 + fx0, x0 + fx1, -1, y_back - 0.01, zc - hw - 0.6, zc - hw + EPS))
     # lead notch through the J2 wall + ledge, leaving the front part of the wall as a bridge
     n0, n1 = P["LEAD_NOTCH"]
     cradle = cradle.cut(box(x0 + n0, x0 + n1, pcb_bot + 5.0, y_back + 1, zc - hw - wt - 1, zc - hw + P["RAIL_W"] + 1))
@@ -446,7 +456,8 @@ def lid_header_ribs(x0, zc, pcb_top_y):
     def rib(xa, xb, z0, z1, gap0):
         r = box(x0 + xa, x0 + xb, -EPS, y1, z0, z1)
         return r.cut(box(x0 + gap0 - 1.0, x0 + gap0 + bl + 1.0, -1, y1 + 1, z0 - 1, z1 + 1))     # clear of the board catch
-    j2 = rib(13.0, 44.0, zc - z_out, zc - z_out + w, xb2)      # starts clear of the button pads
+    fx0, fx1 = P["FLEX_FOLD"]
+    j2 = rib(13.0, fx0, zc - z_out, zc - z_out + w, xb2)      # RST side: stops before the display's flex fold; beyond the fold the board catch stands, so there is no rib there
     j3 = rib(13.0, 34.0, zc + z_out - w, zc + z_out, xb3)
     return j2.union(j3)
 
@@ -461,26 +472,27 @@ def lid_board_features(lid, x0, zc, pcb_top_y, lid_t, flush=False, vertical=None
     lid = lid.cut(box(cx - ww / 2, cx + ww / 2, -lid_t - 1, 1, cz - wh / 2, cz + wh / 2))
     # true 45 deg chamfer 0.6 deep round the outside of the window (self-supporting face down; the old square rebate left a
     # one-layer flash ring round the display)
-    c = 0.6
+    c = P["BEZEL_T"] - 0.2          # flared almost through the bezel (0.2 mm land at the glass side), so the edge rows are not hidden when you look from an angle
     cha = prism_yz([(-lid_t - 1, cz - wh / 2 - c - 1), (-lid_t - 1, cz + wh / 2 + c + 1), (-lid_t + c, cz + wh / 2), (-lid_t + c, cz - wh / 2)], cx - ww / 2 - c - 2, cx + ww / 2 + c + 2)
     chb = cq.Workplane("XY").polyline([(cx - ww / 2 - c - 1, -lid_t - 1), (cx + ww / 2 + c + 1, -lid_t - 1), (cx + ww / 2, -lid_t + c), (cx - ww / 2, -lid_t + c)]).close() \
         .extrude(wh + 2 * c + 4).translate((0, 0, cz - wh / 2 - c - 2))
     lid = lid.cut(cha.intersect(chb))
     if flush:
         # the display module itself sits in this pocket, its glass OLED_GAP behind a BEZEL_T front skin; no insert, no cleats
-        iw, ih = P["OLED_POCKET"]
-        px0 = cx - iw / 2
+        pxa, pxb, pya, pyb = P["OLED_POCKET"]
+        lid = lid.cut(box(x0 + pxa, x0 + pxb, -lid_t + P["BEZEL_T"], 0.5, zc + pya, zc + pyb))
+        # the display's flex tail folds over the RST-side board edge as high as the display itself: relieve the lid over it
+        ffa, ffb = P["FLEX_FOLD"]
+        flex_top = pcb_top_y - 5.0 - 0.4
+        if flex_top < 0:
+            lid = lid.cut(box(x0 + ffa, x0 + ffb, flex_top, 0.5, zc - P["BRD_W"] / 2 - 0.8, zc + pya + EPS))
         if P.get("COIL"):
-            # the coil antenna stands between the pads and the display, as tall as the display; where it sits ACROSS the board is
-            # not known yet, so the pocket runs on to the pads' end slot over its whole height
-            px0 = min(px0, x0 + P["BTN_PAD_X1"] + P["BTN_PAD"][5])
-        lid = lid.cut(box(px0, cx + iw / 2, -lid_t + P["BEZEL_T"], 0.5, cz - ih / 2, cz + ih / 2))
-        if P.get("COIL"):
-            # review: over the coil's own stretch of the board the relief runs right out to the header ribs' inner faces, with
-            # 0.5 mm of margin along the board, so the coil clears anywhere inboard of the header pad rows
+            # the coil antenna's position is known from Heltec's STEP: a round relief of COIL_KEEPOUT_D leaves air all round
+            # it under a COIL_SKIN face skin. It stops at the pads' end slot, so the pad itself is never thinned.
             kx, ky, kd, kh = P["COIL"]
-            zr = P["BRD_W"] / 2 + P["BRD_CLR"] - 0.3 - P["LID_RIB_W"]
-            lid = lid.cut(box(x0 + kx - kd / 2 - 0.5, x0 + kx + kd / 2 + 0.5, -lid_t + P["BEZEL_T"], 0.5, zc - zr, zc + zr))
+            relief = cyl_y(x0 + kx, zc + ky, P["COIL_KEEPOUT_D"], -lid_t + P["COIL_SKIN"], 0.5)
+            relief = relief.intersect(box(x0 + P["BTN_PAD_X1"] + P["BTN_PAD"][5], x0 + pxb, -lid_t, 1.0, zc - 20, zc + 20))
+            lid = lid.cut(relief)
         # relief over the USB-C shell (3.25 above the PCB top) where it would touch the lid
         usb_top = pcb_top_y - 3.25 - 0.4
         if usb_top < 0:
@@ -674,7 +686,8 @@ def hanger_geom():
     W, H, D, wall, lt = P["H_W"], P["H_H"], P["H_D"], P["WALL"], P["LID_T"]
     g = dict(W=W, H=H, D=D, wall=wall, y_back=D - wall, lid_t=lt,
              x0=P["H_BRD_X0"], zc=P["H_BRD_ZC"],
-             pcb_top=-lt + P["BEZEL_T"] + P["OLED_GAP"] + P["OLED_H_MAX"])       # glass (at most OLED_H_MAX above the PCB) just behind the bezel
+             pcb_top=max(-lt + P["BEZEL_T"] + P["OLED_GAP"] + P["OLED_H_MAX"],                          # glass (at most OLED_H_MAX above the PCB) just behind the bezel
+                         -lt + P["COIL_SKIN"] + P["COIL_AIR"] + P["COIL"][3] + P["COIL_TOL"][1]))     # and a worst-case coil antenna still has air under a 3-layer skin
     g["bulk"] = P["BULK_Z"]
     g["holder_back"] = g["y_back"] - P["HOLDER_STANDOFF"]            # the holder's pin side rests here, on standoff ribs
     g["holder_front"] = g["holder_back"] - P["HOLDER_H"]
@@ -892,7 +905,9 @@ def build_hanger_window_gauge():
     fences = []
     for sgn in (-1, 1):
         za, zb = sorted((zc + sgn * hw, zc + sgn * (hw + ft)))
-        fences.append(box(x0 + 17.0, x0 + P["BRD_L"] - 4.5, -EPS, top, za, zb))       # along each long edge, clear of the pad slots and the far corners
+        spans = ((17.0, P["BRD_L"] - 4.5),) if sgn > 0 else ((17.0, P["FLEX_FOLD"][0]), (P["FLEX_FOLD"][1], P["BRD_L"] - 4.5))   # RST side: open where the display's flex folds over the edge
+        for (fa, fb) in spans:
+            fences.append(box(x0 + fa, x0 + fb, -EPS, top, za, zb))                 # along each long edge, clear of the pad slots and the far corners
         ea, eb = sorted((zc + sgn * 7.5, zc + sgn * 10.4))
         fences.append(box(x0 - clr - ft, x0 - clr, -EPS, top, ea, eb))              # stops for the USB end, either side of the socket
     return piece.union(union_all(fences))
@@ -1343,11 +1358,12 @@ def design_checks(hg, gg):
     out.append((hg["wall_y"] - hg["lip_front"] >= 45.0, "wall face to lip front = %.0f mm (>= 45 for a folded sign)" % (hg["wall_y"] - hg["lip_front"])))
     out.append((hg["lip_back"] < -hg["lid_t"], "lip (Y<=%.1f) is forward of the lid face (Y=%.1f)" % (hg["lip_back"], -hg["lid_t"])))
     out.append((hg["bar_bot"] + 3.0 <= hg["slot_floor"], "bar bottom skin under the Hall slot = %.1f mm (>= 3)" % (hg["slot_floor"] - hg["bar_bot"])))
-    ax0, ax1 = P["OLED_ACT_CX"] - 21.7 / 2, P["OLED_ACT_CX"] + 21.7 / 2
-    ay0, ay1 = 1.0 - 10.9 / 2, 1.0 + 10.9 / 2
+    aw_, ah_ = P["OLED_AA"]
+    ax0, ax1 = P["OLED_ACT_CX"] - aw_ / 2, P["OLED_ACT_CX"] + aw_ / 2
+    ay0, ay1 = P["OLED_ACT_CY"] - ah_ / 2, P["OLED_ACT_CY"] + ah_ / 2
     wx0, wx1 = P["OLED_ACT_CX"] - P["WIN_W"] / 2, P["OLED_ACT_CX"] + P["WIN_W"] / 2
     wy0, wy1 = P["OLED_ACT_CY"] - P["WIN_H"] / 2, P["OLED_ACT_CY"] + P["WIN_H"] / 2
-    out.append((wx0 < ax0 and wx1 > ax1 and wy0 < ay0 and wy1 > ay1, "OLED active area (assumed 21.7 x 10.9) inside the %g x %g window" % (P["WIN_W"], P["WIN_H"])))
+    out.append((wx0 < ax0 and wx1 > ax1 and wy0 < ay0 and wy1 > ay1, "picture (maker's active area %.3f x %.3f, centred Xb %.1f, Yb %+.1f) sits in the middle of the %g x %g window with %.2f mm round it (the maker's own view area allows 1.0)" % (aw_, ah_, P["OLED_ACT_CX"], P["OLED_ACT_CY"], P["WIN_W"], P["WIN_H"], min(ax0 - wx0, wx1 - ax1, ay0 - wy0, wy1 - ay1))))
     out.append((P["HOLDER_Z0"] + P["HOLDER_W"] + P["HOLDER_CLR"] + 2.0 <= hg["bulk"][0], "holder top rib fits under the bulkhead"))
     holder_bot = P["HOLDER_Z0"] - P["HOLDER_CLR"]
     head = hg["saddle_floor"] + P["TAG_CLR"] + P["HANDLE_H"]
@@ -1399,10 +1415,16 @@ def design_checks(hg, gg):
     out.append((max(eps_arm2, eps_arm3) <= P["SNAP_STRAIN_XLAYER"], "battery holder arms: %.1f mm over the holder's front face; free length %.1f mm (slotted out of the end rib); strain %.2f %%, or %.2f %% with the holder hard against one arm (<= %.1f %% across layers)" % (ae, arm_len, eps_arm2, eps_arm3, P["SNAP_STRAIN_XLAYER"])))
     out.append((az0 >= P["HOLDER_Z0"] + P["HOLDER_W"] / 2 + P["HOLD_POST"][1] / 2 + 0.4 and az0 + aw <= P["HOLDER_Z0"] + P["HOLDER_W"], "holder arms (z %.1f..%.1f) sit above the lid's holder posts and within the holder's height" % (az0, az0 + aw)))
     # flush display
-    glass = hg["pcb_top"] - P["OLED_H_MAX"]
-    out.append((abs(glass - (-hg["lid_t"] + P["BEZEL_T"] + P["OLED_GAP"])) < 0.01, "display glass (tallest case %.1f mm above the PCB) sits %.1f mm behind a %.1f mm bezel: %.1f mm below the face (was 5.5)" % (P["OLED_H_MAX"], P["OLED_GAP"], P["BEZEL_T"], P["BEZEL_T"] + P["OLED_GAP"])))
-    out.append((P["OLED_POCKET"][0] >= (P["OLED_X1"] - P["OLED_X0"]) + 1.0 and P["OLED_POCKET"][1] / 2 - abs(P["OLED_ACT_CY"]) >= P["OLED_HALF_W"] + 0.3, "lid pocket %.0f x %.1f takes the %.1f x %.1f display module" % (P["OLED_POCKET"][0], P["OLED_POCKET"][1], P["OLED_X1"] - P["OLED_X0"], 2 * P["OLED_HALF_W"])))
-    out.append((P["WIN_W"] <= (P["OLED_X1"] - P["OLED_X0"]) - 2.0 and P["WIN_H"] <= 2 * P["OLED_HALF_W"] - 2.0, "window %g x %g is smaller than the glass, so the bezel frames it and hides its edges" % (P["WIN_W"], P["WIN_H"])))
+    pocket_floor = -hg["lid_t"] + P["BEZEL_T"]
+    out.append((hg["pcb_top"] - P["OLED_H_MAX"] - P["OLED_GAP"] >= pocket_floor - 0.01, "display: tallest glass (%.2f above the PCB) clears the bezel by %.2f mm; a nominal %.1f mm glass sits %.1f mm below the face (first print: 5.5). The coil antenna beside it is taller, so it sets this depth." % (P["OLED_H_MAX"], hg["pcb_top"] - P["OLED_H_MAX"] - pocket_floor, P["OLED_H"], hg["lid_t"] + hg["pcb_top"] - P["OLED_H"])))
+    pxa, pxb, pya, pyb = P["OLED_POCKET"]
+    out.append((pxa <= P["OLED_X0"] - 0.3 and pxb >= P["OLED_X1"] + 0.3 and pya <= -10.0 - 0.3 and pyb >= P["OLED_HALF_W"] + 0.3, "lid pocket Xb %.1f..%.1f, Yb %.1f..%.1f takes the display carrier (Xb %.1f..%.1f, Yb +/-%.1f) and the glass ledge that overhangs to Yb -10.0 on the flex side" % (pxa, pxb, pya, pyb, P["OLED_X0"], P["OLED_X1"], P["OLED_HALF_W"])))
+    rib_in = P["BRD_W"] / 2 + P["BRD_CLR"] - 0.3 - P["LID_RIB_W"]
+    out.append((pya >= -rib_in + 0.3 - 0.01, "pocket edge Yb %.1f leaves the RST-side lid rib (inner face Yb -%.1f) standing" % (pya, rib_in)))
+    fxa, fxb = P["FLEX_FOLD"]; bl_, xb3_, xb2_ = P["BRD_BARB"][1], P["BRD_BARB"][2], P["BRD_BARB"][3]
+    out.append((xb2_ >= fxb or xb2_ + bl_ <= fxa, "RST-side board catch (Xb %.0f..%.0f) is clear of the display's flex fold (Xb %.1f..%.1f); ledge, lid rib and lead notch (Xb %.1f..%.1f) stop short of it too" % (xb2_, xb2_ + bl_, fxa, fxb, P["LEAD_NOTCH"][0], P["LEAD_NOTCH"][1])))
+    out.append((P["LEAD_NOTCH"][1] <= fxa, "lead notch ends before the flex fold"))
+    out.append((P["OLED_ACT_CX"] - P["WIN_W"] / 2 >= 18.03 + 0.5 and P["OLED_ACT_CX"] + P["WIN_W"] / 2 <= 44.73 - 0.5 and P["OLED_ACT_CY"] + P["WIN_H"] / 2 <= 9.30 - 0.5 and P["OLED_ACT_CY"] - P["WIN_H"] / 2 >= -9.96 + 0.5, "window %g x %g lies wholly over the glass (maker: Xb 18.03..44.73, Yb -9.96..+9.30), so the bezel hides the glass edges" % (P["WIN_W"], P["WIN_H"])))
     out.append((hg["lid_t"] - (P["IPEX_H"] + P["UFL_PLUG_H"] + 0.4 - hg["pcb_top"]) >= 1.5, "lid left over the U.FL relief = %.1f mm (>= 1.5)" % (hg["lid_t"] - (P["IPEX_H"] + P["UFL_PLUG_H"] + 0.4 - hg["pcb_top"]))))
     out.append((hg["pcb_top"] - P["BTN_H"] >= 0.5, "PRG/RST button tops Y=%.1f clear the lid inner face" % (hg["pcb_top"] - P["BTN_H"])))
     nose = hg["x0"] - P["USB_NOSE"]
@@ -1434,13 +1456,17 @@ def design_checks(hg, gg):
         arm = abs(pz - hc) if hc is not None else px - (fx0 + hl / 2)
         eps_btn = 100.0 * (ht / 2) * ((P["BTN_PIN_GAP"] + P["BTN_TRAVEL"]) / arm) / hl
         out.append((eps_btn <= P["SNAP_STRAIN_MAX"], "%s pad %.1f x %.1f mm, hinge strain %.2f %% for a full press (pin %.1f mm from the hinge; <= %.1f %%)" % (name, fx1 - fx0, z1 - z0, eps_btn, arm, P["SNAP_STRAIN_MAX"])))
-        out.append((min(fx1 - fx0, z1 - z0) >= 8.5 and (fx1 - fx0) * (z1 - z0) >= 150.0, "%s pad is fingertip sized (%.0f mm2)" % (name, (fx1 - fx0) * (z1 - z0))))
+        out.append((min(fx1 - fx0, z1 - z0) >= 8.0 and (fx1 - fx0) * (z1 - z0) >= 135.0, "%s pad is fingertip sized (%.1f x %.1f = %.0f mm2; it stops short of the coil antenna)" % (name, fx1 - fx0, z1 - z0, (fx1 - fx0) * (z1 - z0))))
         out.append((fx0 <= px - P["H_PAD_V"][2] / 2 and px + P["H_PAD_V"][2] / 2 <= fx1 and z0 < pz < z1, "%s pin sits wholly on its pad" % name))
     kx, ky, kd, kh = P["COIL"]
     slot_edge = P["BTN_PAD_X1"] + sl
-    out.append((kx - kd / 2 - 0.4 >= slot_edge - 0.5 - 0.05, "coil antenna (Xb %.1f to %.1f, from Owen's photo, +/- 0.4) stays inside the relief, which starts at Xb %.1f" % (kx - kd / 2, kx + kd / 2, slot_edge - 0.5)))
+    tol_xy, tol_h = P["COIL_TOL"]
+    coil_edge = kx - tol_xy - kd / 2 - 0.1
+    out.append((coil_edge >= P["BTN_PAD_X1"] - 0.01, "coil antenna: worst-case edge Xb %.2f is past the PRG pad's end (Xb %.1f), so no pad is ever over it" % (coil_edge, P["BTN_PAD_X1"])))
+    coil_air = (hg["pcb_top"] - kh - tol_h) - (-hg["lid_t"] + P["COIL_SKIN"])
+    out.append((coil_air >= P["COIL_AIR"] - 0.01 and P["COIL_SKIN"] >= 0.6 and P["COIL_KEEPOUT_D"] >= kd + 2 * (tol_xy + 1.0), "coil antenna: %.1f mm of air over a worst-case %.1f mm coil (%.1f over a nominal one) under a %.1f mm face skin, and a %.1f mm clear circle round it" % (coil_air, kh + tol_h, coil_air + tol_h, P["COIL_SKIN"], P["COIL_KEEPOUT_D"])))
     coil_clear = (hg["pcb_top"] - kh) - (-hg["lid_t"] + P["BEZEL_T"])
-    out.append((coil_clear >= 0.2, "coil antenna top (%.1f above the PCB) clears the pocket floor by %.1f mm (>= 0.2); relieved for a coil centred anywhere within Yb +/-%.2f, which is everything inboard of the header pad rows" % (kh, coil_clear, P["BRD_W"] / 2 + P["BRD_CLR"] - 0.3 - P["LID_RIB_W"] - kd / 2)))
+    out.append((True, "coil antenna position from Heltec's STEP: Xb %.1f, Yb %+.1f (leg hole Xb 13.08, Yb +7.24)" % (kx, ky)))
     out.append((P["HOLDER_STANDOFF"] >= P["HOLDER_PIN"][1] + 0.5, "holder stands %.1f mm off the back wall for its %.1f mm solder pins (>= pin + 0.5)" % (P["HOLDER_STANDOFF"], P["HOLDER_PIN"][1])))
     if P["BTN16_ON"]:
         hole, hd, hh, bd, nut, nut_t = P["BTN16"]
@@ -2497,7 +2523,7 @@ def main(out_dir, quick=False, autocad=True):
               "  hanger board: USB-end corners at x=%.1f, centreline z=%.1f, PCB top at Y=%.1f; glass of the %.1f mm display at Y=%.1f (%.1f mm behind the lid's outer face); coil antenna top (%.1f mm) at Y=%.1f, pocket floor at Y=%.1f"
               % (x0, zc, pt, P["OLED_H"], pt - P["OLED_H"], P["LID_T"] + pt - P["OLED_H"], P["COIL"][3], pt - P["COIL"][3], -P["LID_T"] + P["BEZEL_T"]),
               "  hanger window: %.0f x %.0f centred at (%.1f, %.1f); display pocket %.0f x %.1f behind a %.1f mm bezel, no window insert; USB-C opening %.1f x %.1f in the left wall, %.1f mm lid skin over the plug"
-              % (P["WIN_W"], P["WIN_H"], cxw, czw, P["OLED_POCKET"][0], P["OLED_POCKET"][1], P["BEZEL_T"], P["USB_SLOT_W"], P["USB_SLOT_H"], P["USB_LID_SKIN"]),
+              % (P["WIN_W"], P["WIN_H"], cxw, czw, P["OLED_POCKET"][1] - P["OLED_POCKET"][0], P["OLED_POCKET"][3] - P["OLED_POCKET"][2], P["BEZEL_T"], P["USB_SLOT_W"], P["USB_SLOT_H"], P["USB_LID_SKIN"]),
               "  bar: %.0f wide (provisional) x %.0f thick, top %.0f mm below the body bottom, reach %.0f mm from the wall face, lip %.0f tall; saddle at Y=%.0f (%.0f mm in front of the body rim, %.0f mm behind the lid's outer face); prints upright with no support"
               % (P["BAR_W"], P["BAR_T"], P["BAR_DROP"], P["BAR_REACH"], P["BAR_LIP_H"], sy, -sy, P["LID_T"] + sy),
               "  Hall sensor (bare DRV5032FA, TO-92 style, marked 32FA): package centre x=%.0f, Y=%.1f, z=%.2f, marked face up; two pin holes %.1f dia at x=%.1f and x=%.1f, Y=%.2f, %.1f mm deep from the saddle floor, for 2.85 filament pins 6.0 to 6.5 long; %.1f dia push-out hole under each, in a ledge %.1f mm thick"
