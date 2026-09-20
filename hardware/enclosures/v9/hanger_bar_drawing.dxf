@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461303.9207060183
+2461304.1540740742
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461303.9207060183
+2461304.1540740742
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-16D
+16E
   9
 $SURFTAB1
  70
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{88260B43-4CA5-4256-AA30-13D2C10C070F}
+{8AFD0FCC-753C-4A47-874F-32C2A45725B8}
   9
 $VERSIONGUID
   2
-{57E4C32C-4B6E-40BD-B433-501D7C251CBB}
+{6EC1463A-F8C6-4128-8E9D-BCFDA775C52B}
   9
 $EXTNAMES
 290
@@ -3205,7 +3205,7 @@ ACAD
   0
 APPID
   5
-16A
+16B
 330
 3
 100
@@ -3219,7 +3219,7 @@ HATCHBACKGROUNDCOLOR
   0
 APPID
   5
-16B
+16C
 330
 3
 100
@@ -7437,7 +7437,7 @@ AcDbText
  40
 5.0
   1
-HazardLink hanger bar v9.9 (mm)
+HazardLink hanger bar v9.10 (mm)
  11
 0.0
  21
@@ -10849,7 +10849,7 @@ AcDbText
  40
 2.5
   1
-Print UPRIGHT on the bar's bottom face, lip pointing up, with NO support at all: a 45 deg gusset off the web carries the front of the dovetail plate. Never let support generate in the sensor tunnel, nest or pin holes. No screws: slides in from the wall side.
+Print in WHITE (nozzle 1), UPRIGHT on the bar's bottom face, lip pointing up, with NO support at all: a 45 deg gusset off the web carries the front of the dovetail plate. Never let support generate in the sensor tunnel, nest or pin holes. No screws: slides in from the wall side.
  11
 0.0
  21
@@ -10939,11 +10939,41 @@ AcDbText
  40
 2.5
   1
-Magnet position on the sign: bar centreline, centred on the saddle 11 mm in front of the body rim (-8 mm behind the lid's outer face), flat face parallel to the saddle floor, either pole, 1.0 mm running clearance.
+Magnet position on the sign: bar centreline, centred on the saddle 11 mm in front of the body rim (8 mm in front of the lid's outer face), flat face parallel to the saddle floor, either pole, 1.0 mm running clearance.
  11
 0.0
  21
 -22.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+16A
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-26.0
+ 30
+0.0
+ 40
+2.5
+  1
+Bar 88 wide: no maker publishes a hand-hole size; scaled from the makers' own photos the narrowest common hole is about 105 (Rubbermaid FG6112xx). Seat 42 for a folded sign up to 38 thick (Rubbermaid's published closed depth). Bar 46 below the body, reach 86 from the wall face, no gussets at the lip root.
+ 11
+0.0
+ 21
+-26.0
  31
 0.0
 100
@@ -12039,7 +12069,7 @@ CREATED_BY_EZDXF
   3
 WRITTEN_BY_EZDXF
 350
-16C
+16D
   0
 DICTIONARYVAR
   5
@@ -12051,7 +12081,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.119236+00:00
+1.4.4 @ 2026-09-20T02:41:52.902063+00:00
   0
 VISUALSTYLE
   5
@@ -12755,7 +12785,7 @@ X-Ray
   0
 DICTIONARYVAR
   5
-16C
+16D
 330
 2D
 100
@@ -12763,7 +12793,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.206550+00:00
+1.4.4 @ 2026-09-20T02:41:52.972205+00:00
   0
 ENDSEC
   0

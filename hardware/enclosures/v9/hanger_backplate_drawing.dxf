@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461303.9207060183
+2461304.1540740742
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461303.9207060183
+2461304.1540856482
   9
 $TDUUPDATE
  40
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{533682CD-64A3-4A05-A929-503E6A1BC728}
+{F17D89CB-4C12-46B0-AB30-79A10BD06F0A}
   9
 $VERSIONGUID
   2
-{3017436A-3310-496D-879A-17107474C459}
+{400E3548-EAEB-4DB7-936C-E25A97D70280}
   9
 $EXTNAMES
 290
@@ -7449,7 +7449,7 @@ AcDbText
  40
 5.0
   1
-HazardLink hanger backplate v9.9 (mm)
+HazardLink hanger backplate v9.10 (mm)
  11
 0.0
  21
@@ -11201,7 +11201,7 @@ AcDbText
  40
 2.5
   1
-Print back face down, support touching the buildplate only (it reaches the catch tongue through the open back of its cavity). Four No.8 / 4 mm countersunk wall screws with plugs. Spring catch tongue at x=50 replaces the security screw (push back from inside to release).
+Print in BLACK (nozzle 2), back face down, support touching the buildplate only (it reaches the catch tongue through the open back of its cavity). Four No.8 / 4 mm countersunk wall screws with plugs. Spring catch tongue at x=50 replaces the security screw (push back from inside to release).
  11
 0.0
  21
@@ -12373,7 +12373,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.212471+00:00
+1.4.4 @ 2026-09-20T02:41:52.977704+00:00
   0
 VISUALSTYLE
   5
@@ -13085,7 +13085,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.270739+00:00
+1.4.4 @ 2026-09-20T02:41:53.026053+00:00
   0
 ENDSEC
   0

@@ -1,5 +1,7 @@
 Print-ready STLs: build direction is +Z, each part rests on z=0 in the orientation the design assumes.
 Do not rotate them in the slicer.
+Colours: nozzle 1 = WHITE PLA, nozzle 2 = BLACK PLA. hanger_bar and the two lid inlays (hanger_lid_inlay.stl, gateway_lid_inlay.stl)
+print in WHITE on nozzle 1. Everything else prints in BLACK on nozzle 2. Load each inlay together with its lid and merge the two.
 
 hanger_body        back_down  footprint 100 x 175 mm, height 35.0 mm
 hanger_lid         face_down  footprint 100 x 174 mm, height 17.1 mm

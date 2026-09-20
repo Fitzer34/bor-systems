@@ -1,6 +1,6 @@
 # HazardLink: full project cost breakdown
 
-Updated 2026-09-18 (the Phase 1 parts were checked against what was actually bought; every price in this file is still the estimate from 2026-05-21)
+Updated 2026-09-19 (the Phase 1 parts were checked against what was actually bought, and the enclosure notes match design v9.10; every price in this file is still the estimate from 2026-05-21)
 
 All figures EUR unless marked otherwise. Quantity-pricing estimates assume
 EU/Ireland sourcing for assembly + Chinese sourcing for raw components.
@@ -27,7 +27,7 @@ says what was bought in the end. Prices actually paid are on the order confirmat
 | 868MHz 5dBi SMA antenna + IPEX→SMA pigtail | Amazon UK | €17 | |
 | Qorvo DWM3001CDK dev kits × 2 (UWB) | Mouser IE | €160 | Not part of the v1 hanger build, which finds a sign over BLE with the Heltec board's own radio. The kits were bought separately on a DigiKey order, see `docs/UWB_PLAN.md` for where that work stands |
 | CR2032 cells + holders (×5) | TinyTronics | €10 | `SHOPPING.md` later swapped these for LiPo cells. 4 x PKCELL LiPo 350 mAh were delivered |
-| Plastic enclosure prototypes (3D-printed PETG) | DIY | €10 | Test parts are printed in PLA (Polymaker PolyLite). PET-G is for units that go on a wall |
+| Plastic enclosure prototypes (3D-printed PETG) | DIY | €10 | Test parts are printed in PLA: black (Polymaker PolyLite) for the box, white for the hook bar and the lettering on the lids. PET-G is for units that go on a wall |
 | Shipping to Ireland | | ~€20 | |
 | **Total prototype (May estimate)** | | **~€350** | |
 
@@ -38,16 +38,23 @@ prototype hangers and four are spare. Price on the order confirmation. The firmw
 (`TEST_BUTTON_PIN = 3` in `firmware/include/pinout.h`) but does not act on a press yet, so that firmware work is still to
 be done and is not costed here.
 
-The button is long (40.6 mm behind its head with its plug-in wire socket on), so in v9.9 the hanger box grew downward by
-41 mm to make room for it under the battery: the hanger body is now 171 mm tall (it was 130). The taller body, lid and
-backplate use more filament than the €10 printing line above allowed for. That line has not been re-estimated.
+The button is long. Gebildet's own listing drawing gives 46 mm overall with its plug-in wire socket on, which is 44.5 mm
+behind the head. So the hanger box grew downward by 44 mm to make room for it under the battery: in v9.10 the hanger body
+is 174 mm tall (it was 130 before the button was added). The taller body, lid and backplate use more filament than the
+€10 printing line above allowed for, and the design now prints in two colours. That line has not been re-estimated. The
+button's LED is a 12 to 24 V type per the listing, so it will not light from the board's 3.3 V and only the two switch
+wires are used. No LED driver or extra supply is costed.
+
+The enclosure sizes come from the makers' own drawings, 3D models and listings. `hardware/enclosures/v9/PRINT.md` lists
+them under "Where the sizes come from". Nothing has to be measured.
 
 Still to buy, with no price recorded: thin hook-up wire for the sensor lead and the board's tails, one 0.1 uF capacitor
 per Hall sensor (TI's datasheet recommends it), thin heat shrink, one small cable tie per hanger, a clear 36 x 19.5 x 1 mm
-pane for the gateway lid, and the wall screws and plugs. Two more things are optional: small wire-to-wire plug and socket
-pairs (a 3-way pair for the sensor lead and a 2-way pair for the two button wires, per hanger), which only keep the board
-removable, with soldered and sleeved joins as the fallback, and a spool of white PLA if the lids are to have white
-writing. `SHOPPING.md` lists all of them under "Things the build needs that are not on any order below". None of these
+pane for the gateway lid, and the wall screws and plugs. The white 2.85 mm PLA is already on the printer and its price is
+not recorded here either. It is Owen's colour choice: the hook bar and the lettering on the lids print in white from
+nozzle 1, and everything else prints in black from nozzle 2. One more thing is optional: small wire-to-wire plug and socket pairs (a 3-way pair for the sensor lead and a 2-way pair
+for the two button wires, per hanger), which only keep the board removable, with soldered and sleeved joins as the
+fallback. `SHOPPING.md` lists all of them under "Things the build needs that are not on any order below". None of these
 is in the ~€350.
 
 ---
@@ -71,7 +78,7 @@ the product in real environments.
 | **Per unit** | **€35** | **€15** | **€49** |
 
 The per-hanger column was estimated in May, before the cleaning-mode button was added and before the hanger box grew to
-171 mm tall. The button's price is on the Amazon order confirmation and has not been worked into the €35.
+174 mm tall. The button's price is on the Amazon order confirmation and has not been worked into the €35.
 
 ### Pilot total (5 sites × 10 hangers + 10 tags + 1 gateway each)
 

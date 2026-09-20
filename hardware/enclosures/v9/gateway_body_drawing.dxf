@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461303.9207060183
+2461304.1540856482
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461303.9207060183
+2461304.1540856482
   9
 $TDUUPDATE
  40
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{5C7538D8-3C41-4654-B337-FA33906AE525}
+{4B89AE8C-E2F7-45B8-B411-B0D2C9B6B409}
   9
 $VERSIONGUID
   2
-{2ECEEBF6-DD06-4E78-87C5-B253DDD5D746}
+{ED2B77AB-D6A0-4001-B6AD-23F6D99DB460}
   9
 $EXTNAMES
 290
@@ -8761,7 +8761,7 @@ AcDbText
  40
 5.0
   1
-HazardLink gateway body v9.9 (mm)
+HazardLink gateway body v9.10 (mm)
  11
 0.0
  21
@@ -17767,7 +17767,7 @@ AcDbText
  40
 2.5
   1
-Print back face down. SMA: 6.5 D-hole with a 6.0 flat in a 3.0 mm pad; use the 11 mm extended-thread U.FL-to-SMA pigtail.
+Print in BLACK (nozzle 2), back face down. SMA: 6.5 D-hole with a 6.0 flat in a 3.0 mm pad; use the 11 mm extended-thread U.FL-to-SMA pigtail.
  11
 0.0
  21
@@ -18909,7 +18909,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.277163+00:00
+1.4.4 @ 2026-09-20T02:41:53.031663+00:00
   0
 VISUALSTYLE
   5
@@ -19621,7 +19621,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.398870+00:00
+1.4.4 @ 2026-09-20T02:41:53.131270+00:00
   0
 ENDSEC
   0

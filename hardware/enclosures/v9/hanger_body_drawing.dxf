@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461303.9206944443
+2461304.1540740742
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461303.9206944443
+2461304.1540740742
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-2ED
+2EE
   9
 $SURFTAB1
  70
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{3E5E662D-8CC5-48BC-BAB3-A94719C3D034}
+{7B1256DD-17DD-4B76-A25C-2FC0897DD3C0}
   9
 $VERSIONGUID
   2
-{528363A9-7D87-43A8-A33B-32A6430AE6BB}
+{008A82D0-2D20-4D46-9CB8-00E6B9DBCD8A}
   9
 $EXTNAMES
 290
@@ -3205,7 +3205,7 @@ ACAD
   0
 APPID
   5
-2EA
+2EB
 330
 3
 100
@@ -3219,7 +3219,7 @@ HATCHBACKGROUNDCOLOR
   0
 APPID
   5
-2EB
+2EC
 330
 3
 100
@@ -9021,7 +9021,7 @@ AcDbText
  40
 5.0
   1
-HazardLink hanger body v9.9 (mm)
+HazardLink hanger body v9.10 (mm)
  11
 0.0
  21
@@ -22903,7 +22903,7 @@ AcDbText
  40
 2.5
   1
-Section edges only. Reference parts on layer REF where shown. Every 'assumed' value is listed in PARAMS in hazardlink_enclosures.py.
+Section edges only. Reference parts on layer REF where shown. Sizes of bought parts come from the makers' documents (README, WHERE THE SIZES COME FROM); every design choice is marked 'assumed' in PARAMS in hazardlink_enclosures.py.
  11
 0.0
  21
@@ -22933,7 +22933,7 @@ AcDbText
  40
 2.5
   1
-Print body back face down (open front up), no support. 0.4 nozzle, 0.2 layers, 4 walls; the full recipe is in PRINT.md. Peg pocket roofs bridge 11.5 mm.
+Print body in BLACK (nozzle 2), back face down (open front up), no support. 0.4 nozzle, 0.2 layers, 4 walls; the full recipe is in PRINT.md. Peg pocket roofs bridge 11.5 mm.
  11
 0.0
  21
@@ -22963,7 +22963,7 @@ AcDbText
  40
 2.5
   1
-After printing, push each latch arm tip OUTWARD once (away from the inside of the box) to break its small breakaway tab.
+Board pocket: the display's flex tail folds over the RST-side (lower) board edge between Xb 23.6 and 39.2. The lower rail stops either side of it (Xb 22.6 to 40.2), the pocket wall is relieved there, the lower catch stands at Xb 41 to 47 and the lead notch at Xb 14.5 to 22.5. Never press on that fold.
  11
 0.0
  21
@@ -22993,7 +22993,7 @@ AcDbText
  40
 2.5
   1
-Battery cable (one 2-pin plug, two loose ends): each notch at the ends of the bulkhead is a CLOSED hole. Feed the two loose ends DOWN through the notches from the board side BEFORE they are soldered to the holder, then solder with the holder out of the box, then press the holder in.
+After printing, push each latch arm tip OUTWARD once (away from the inside of the box) to break its small breakaway tab.
  11
 0.0
  21
@@ -23023,7 +23023,7 @@ AcDbText
  40
 2.5
   1
-v9.9 cleaning-mode button: 16.4 hole through the bottom wall at x=83.8, Y=21.3, behind the right latch arm and clear of the channel strip. Button up through it from below, its nut on from inside, then its plug-in socket from inside (the socket will not pass through the hole). Of the socket's five wires only the two switch wires go up to the board; the other three are covered and tucked down in the bay before the battery holder goes in.
+Battery cable (one 2-pin plug, two loose ends): each notch at the ends of the bulkhead is a CLOSED hole. Feed the two loose ends DOWN through the notches from the board side BEFORE they are soldered to the holder, then solder with the holder out of the box, then press the holder in.
  11
 0.0
  21
@@ -23053,11 +23053,41 @@ AcDbText
  40
 2.5
   1
-The box is 44 mm taller than v9.8 for the button (174 tall, was 130): every feature keeps its place measured from the TOP. The bay under the battery holds only the button and wires.
+Cleaning-mode button (Gebildet 16 mm, sizes from the maker's listing drawing): 16.4 hole through the bottom wall at x=83.8, Y=21.3, behind the right latch arm and clear of the channel strip. Button up through it from below, its nut on from inside, then its plug-in socket from inside (the socket will not pass through the hole). Of the socket's five wires only the two switch wires go up to the board; the other three are covered and tucked down in the bay before the battery holder goes in.
  11
 0.0
  21
 -30.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+2EA
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-34.0
+ 30
+0.0
+ 40
+2.5
+  1
+The box is 44 mm taller for the button (174 tall; with no button it is 130): the button is 44.5 mm long behind its head with its socket on. Every feature keeps its place counted from the TOP. The bay under the battery holds only the button and wires.
+ 11
+0.0
+ 21
+-34.0
  31
 0.0
 100
@@ -24153,7 +24183,7 @@ CREATED_BY_EZDXF
   3
 WRITTEN_BY_EZDXF
 350
-2EC
+2ED
   0
 DICTIONARYVAR
   5
@@ -24165,7 +24195,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:48.235286+00:00
+1.4.4 @ 2026-09-20T02:41:52.099056+00:00
   0
 VISUALSTYLE
   5
@@ -24869,7 +24899,7 @@ X-Ray
   0
 DICTIONARYVAR
   5
-2EC
+2ED
 330
 2D
 100
@@ -24877,7 +24907,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:48.394480+00:00
+1.4.4 @ 2026-09-20T02:41:52.237561+00:00
   0
 ENDSEC
   0

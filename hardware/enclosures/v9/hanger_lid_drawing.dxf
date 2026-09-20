@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461303.9206944443
+2461304.1540740742
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461303.9207060183
+2461304.1540740742
   9
 $TDUUPDATE
  40
@@ -549,7 +549,7 @@ $SPLINESEGS
   9
 $HANDSEED
   5
-2D0
+2D3
   9
 $SURFTAB1
  70
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{A36B4D07-48CF-485B-95F1-E0B17F5B48BE}
+{FC9B877B-5266-4B3F-BD04-17F67FA85866}
   9
 $VERSIONGUID
   2
-{81A33306-D641-43BD-8F62-5D1A9556A514}
+{53AF79BD-48D9-4CDC-B517-5C8FF59FE6DC}
   9
 $EXTNAMES
 290
@@ -3205,7 +3205,7 @@ ACAD
   0
 APPID
   5
-2CD
+2D0
 330
 3
 100
@@ -3219,7 +3219,7 @@ HATCHBACKGROUNDCOLOR
   0
 APPID
   5
-2CE
+2D1
 330
 3
 100
@@ -7449,7 +7449,7 @@ AcDbText
  40
 5.0
   1
-HazardLink hanger lid v9.9 (mm)
+HazardLink hanger lid v9.10 (mm)
  11
 0.0
  21
@@ -48251,7 +48251,7 @@ AcDbText
  40
 2.5
   1
-Print lid outer face down, no support. NO window insert and no cleats: the display module sits in the pocket with its glass behind the 1.0 mm bezel.
+Print lid in BLACK (nozzle 2) with the WHITE inlay print/hanger_lid_inlay.stl (nozzle 1) merged into it, outer face down, no support. NO window insert and no cleats: the display module sits in the pocket with its glass behind the 1.0 mm bezel.
  11
 0.0
  21
@@ -48281,7 +48281,7 @@ AcDbText
  40
 2.5
   1
-PRG and RST: two finger pads down the left edge, each 8.0 x 17.5, 1.6 thick, cut free on three sides by 0.8 slots, 0.8 hinge at the far end, 2.6 dia pusher pin behind it over its switch.
+Window 24.0 x 13.1, centred on the PICTURE at Xb 31.4, Yb +1.8 (maker's active area 21.744 x 10.864; the glass has a 2.1 border on the PRG side and 6.3 on the flex side), flared 45 deg outward through the bezel.
  11
 0.0
  21
@@ -48311,11 +48311,101 @@ AcDbText
  40
 2.5
   1
-No LED hole in the hanger lid. Badge, wordmark and button names sunk 0.6; second colour inlay: print/hanger_lid_inlay.stl.
+Coil antenna: round relief 6.5 dia under a 0.6 face skin, centred Xb 12.7, Yb +7.3 (Heltec STEP leg hole Xb 13.08, Yb +7.24). Nothing may touch or squash the coil. It sets the depth: PCB top at Y=4.4, a nominal 5.1 glass sits 2.3 below the face.
  11
 0.0
  21
 -18.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+2CD
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-22.0
+ 30
+0.0
+ 40
+2.5
+  1
+The lid is relieved over the display's flex fold (RST side, Xb 22.6 to 40.2) and the RST-side rib stops before it: nothing bears on the fold.
+ 11
+0.0
+ 21
+-22.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+2CE
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-26.0
+ 30
+0.0
+ 40
+2.5
+  1
+PRG and RST: two finger pads down the left edge, each 8.0 x 17.5, stopping short of the coil antenna, 1.6 thick, cut free on three sides by 0.8 slots, 0.8 hinge at the far end, 2.6 dia pusher pin behind it over its switch. Pad names run up the left of each pad.
+ 11
+0.0
+ 21
+-26.0
+ 31
+0.0
+100
+AcDbText
+  0
+TEXT
+  5
+2CF
+330
+17
+100
+AcDbEntity
+  8
+NOTES
+100
+AcDbText
+ 10
+0.0
+ 20
+-30.0
+ 30
+0.0
+ 40
+2.5
+  1
+No LED hole in the hanger lid. Badge, wordmark and button names sunk 0.6 and filled flush in WHITE: print/hanger_lid_inlay.stl on nozzle 1.
+ 11
+0.0
+ 21
+-30.0
  31
 0.0
 100
@@ -49411,7 +49501,7 @@ CREATED_BY_EZDXF
   3
 WRITTEN_BY_EZDXF
 350
-2CF
+2D2
   0
 DICTIONARYVAR
   5
@@ -49423,7 +49513,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:48.406852+00:00
+1.4.4 @ 2026-09-20T02:41:52.249227+00:00
   0
 VISUALSTYLE
   5
@@ -50127,7 +50217,7 @@ X-Ray
   0
 DICTIONARYVAR
   5
-2CF
+2D2
 330
 2D
 100
@@ -50135,7 +50225,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.092940+00:00
+1.4.4 @ 2026-09-20T02:41:52.879204+00:00
   0
 ENDSEC
   0

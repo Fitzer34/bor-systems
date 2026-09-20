@@ -489,7 +489,7 @@ $SKPOLY
   9
 $TDCREATE
  40
-2461303.9207060183
+2461304.1540856482
   9
 $TDUCREATE
  40
@@ -497,7 +497,7 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461303.9207060183
+2461304.1540856482
   9
 $TDUUPDATE
  40
@@ -929,11 +929,11 @@ $PSTYLEMODE
   9
 $FINGERPRINTGUID
   2
-{7A84D933-D310-4A96-A2D1-E14958FD17B0}
+{0B83B134-8362-4458-A2B9-DC2DFF8D7AC9}
   9
 $VERSIONGUID
   2
-{57BCAD5B-C773-4281-9A9D-64AE2E63BB15}
+{4DE93311-062A-4C28-802B-CEE4E3C39DC7}
   9
 $EXTNAMES
 290
@@ -7181,7 +7181,7 @@ AcDbText
  40
 5.0
   1
-HazardLink gateway lid v9.9 (mm)
+HazardLink gateway lid v9.10 (mm)
  11
 0.0
  21
@@ -10153,7 +10153,7 @@ AcDbText
  40
 2.5
   1
-Print outer face down, no support. No screws: two hinge tabs at the top, two rigid hooks at the bottom that drop into the spring arms in the body's bottom wall; open with the pull lips under the box.
+Print in BLACK (nozzle 2) with the WHITE inlay print/gateway_lid_inlay.stl (nozzle 1) merged into it, outer face down, no support. No screws: two hinge tabs at the top, two rigid hooks at the bottom that drop into the spring arms in the body's bottom wall; open with the pull lips under the box.
  11
 0.0
  21
@@ -11295,7 +11295,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.409058+00:00
+1.4.4 @ 2026-09-20T02:41:53.140303+00:00
   0
 VISUALSTYLE
   5
@@ -12007,7 +12007,7 @@ DictionaryVariables
 280
 0
   1
-1.4.4 @ 2026-09-19T21:05:49.522418+00:00
+1.4.4 @ 2026-09-20T02:41:53.232721+00:00
   0
 ENDSEC
   0
