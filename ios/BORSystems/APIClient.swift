@@ -174,12 +174,17 @@ private struct AnyEncodable: Encodable {
 
 extension APIClient {
     struct LoginBody: Encodable { let email: String; let password: String }
+    struct TwoFactorLoginBody: Encodable { let challengeToken: String; let code: String }
     struct DutyBody: Encodable { let onDuty: Bool }
     struct CloseBody: Encodable { let reason: String; let note: String? }
     struct PushTokenBody: Encodable { let pushToken: String }
 
-    func login(email: String, password: String) async throws -> LoginResponse {
+    func login(email: String, password: String) async throws -> LoginStepResponse {
         try await request("/auth/login", method: "POST", body: LoginBody(email: email, password: password))
+    }
+    /// Second step of sign-in: the challenge from `login` plus a 6-digit or recovery code.
+    func completeTwoFactorLogin(challengeToken: String, code: String) async throws -> LoginResponse {
+        try await request("/auth/login/2fa", method: "POST", body: TwoFactorLoginBody(challengeToken: challengeToken, code: code))
     }
     func currentUser() async throws -> CurrentUser {
         try await request("/users/me")

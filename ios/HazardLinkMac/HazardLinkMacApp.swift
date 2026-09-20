@@ -14,13 +14,18 @@ struct HazardLinkMacApp: App {
     @StateObject private var alerts = MacAlertWatcher()
 
     var body: some Scene {
-        WindowGroup("HazardLink") {
+        // The id is what the menu-bar extra's "Open HazardLink" asks for; without it that
+        // button could not bring the window back once it had been closed.
+        WindowGroup("HazardLink", id: "main") {
             MacRootView()
                 .environmentObject(auth)
                 .environmentObject(discipline)
                 .environmentObject(notifications)
                 .environmentObject(alerts)
                 .frame(minWidth: 1000, minHeight: 640)
+                .tint(Color.hlPrimary)
+                .preferredColorScheme(.light)
+                .onAppear { HLAppearance.pinLight() }
                 .task {
                     await auth.bootstrap()
                     _ = try? await UNUserNotificationCenter.current()
@@ -30,12 +35,23 @@ struct HazardLinkMacApp: App {
         .defaultSize(width: 1280, height: 800)
         .commands {
             CommandGroup(replacing: .newItem) { }
+            CommandGroup(after: .toolbar) {
+                Button("Refresh") {
+                    NotificationCenter.default.post(name: .macRefresh, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command])
+            }
             CommandMenu("Go") {
-                ForEach(MacSection.allCases) { s in
-                    Button(s.title) {
-                        NotificationCenter.default.post(name: .macGoToSection, object: s)
+                ForEach(Array(MacSection.menuGroups.enumerated()), id: \.offset) { i, group in
+                    if i > 0 { Divider() }
+                    ForEach(group) { s in
+                        if let k = s.shortcut {
+                            Button(s.title) { NotificationCenter.default.post(name: .macGoToSection, object: s) }
+                                .keyboardShortcut(k.key, modifiers: k.modifiers)
+                        } else {
+                            Button(s.title) { NotificationCenter.default.post(name: .macGoToSection, object: s) }
+                        }
                     }
-                    .keyboardShortcut(s.shortcut, modifiers: [.command])
                 }
             }
         }
@@ -46,6 +62,8 @@ struct HazardLinkMacApp: App {
                 .environmentObject(auth)
                 .environmentObject(notifications)
                 .environmentObject(alerts)
+                .tint(Color.hlPrimary)
+                .preferredColorScheme(.light)
         } label: {
             Label {
                 Text(notifications.unreadCount > 0 ? "\(notifications.unreadCount)" : "")
@@ -59,6 +77,8 @@ struct HazardLinkMacApp: App {
 
 extension Notification.Name {
     static let macGoToSection = Notification.Name("hl.mac.goToSection")
+    /// View > Refresh (⌘R): rebuild the screen in front so it loads again.
+    static let macRefresh = Notification.Name("hl.mac.refresh")
     /// Same name the iPhone app posts when a notification is tapped, so the
     /// shared HomeView's deep-link listener compiles here too.
     static let borOpenAlert = Notification.Name("BOROpenAlertNotification")

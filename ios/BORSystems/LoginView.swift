@@ -4,12 +4,78 @@ struct LoginView: View {
     @EnvironmentObject var auth: AuthStore
     @State private var email = ""
     @State private var password = ""
+    @State private var code = ""
     @FocusState private var focused: Field?
-    enum Field { case email, password }
+    enum Field { case email, password, code }
 
     var body: some View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
+            if auth.twoFactorChallenge != nil {
+                codeStep
+            } else {
+                passwordStep
+            }
+        }
+    }
+
+    /// Second step for accounts with two-step sign-in: the 6-digit code, or a recovery code.
+    private var codeStep: some View {
+        VStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Enter your code")
+                    .font(.title2.weight(.semibold))
+                Text("Open your authenticator app and type the 6-digit code for HazardLink. A recovery code works too.")
+                    .foregroundStyle(.secondary)
+                    .font(.subheadline)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextField("6-digit code", text: $code)
+                .keyboardType(.numbersAndPunctuation)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textContentType(.oneTimeCode)
+                .padding(12)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .focused($focused, equals: .code)
+                .submitLabel(.go)
+                .onSubmit { Task { await auth.completeTwoFactor(code: code) } }
+
+            if let err = auth.lastError {
+                Text(err).foregroundStyle(.red).font(.footnote)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button {
+                Task { await auth.completeTwoFactor(code: code) }
+            } label: {
+                HStack {
+                    if auth.isLoading { ProgressView().tint(.white) }
+                    Text("Verify and sign in").bold()
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .background(Color.black, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .foregroundStyle(.white)
+            .disabled(auth.isLoading || code.isEmpty)
+            .opacity(code.isEmpty ? 0.5 : 1)
+
+            Button("Back to sign in") {
+                code = ""
+                auth.cancelTwoFactor()
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(20)
+        .onAppear { focused = .code }
+    }
+
+    private var passwordStep: some View {
             VStack(spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("HazardLink")
@@ -88,7 +154,6 @@ struct LoginView: View {
             .padding(20)
             .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(20)
-        }
     }
 
     private func submit() async {

@@ -30,6 +30,15 @@ struct LoginResponse: Codable {
     let user: CurrentUser
 }
 
+/// What POST /auth/login really sends back. With two-step sign-in on, the server replies with a
+/// short-lived challenge in place of a session, and the 6-digit code goes to /auth/login/2fa.
+struct LoginStepResponse: Decodable {
+    let token: String?
+    let user: CurrentUser?
+    let challenge: String?
+    let challengeToken: String?
+}
+
 /// Planned Preventive Maintenance task. Dates are kept as plain strings —
 /// `nextDueDate` is a date-only "YYYY-MM-DD" value the shared ISO8601 decoder
 /// can't parse, so we format it ourselves for display.
