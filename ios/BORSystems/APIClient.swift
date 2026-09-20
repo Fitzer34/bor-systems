@@ -23,9 +23,22 @@ final class APIClient {
 
     private static let tokenKey = "auth_token"
 
+    // The token also lives in memory, so a sign-in keeps working for this run of the app even if
+    // the Keychain refuses the write (see Keychain.swift for the Mac case that caused every
+    // request to go out with a stale token).
+    private let tokenLock = NSLock()
+    private var memoryToken: String?
+
     var token: String? {
-        get { Keychain.get(Self.tokenKey) }
+        get {
+            tokenLock.lock(); defer { tokenLock.unlock() }
+            if let t = memoryToken { return t }
+            memoryToken = Keychain.get(Self.tokenKey)
+            return memoryToken
+        }
         set {
+            tokenLock.lock(); defer { tokenLock.unlock() }
+            memoryToken = newValue
             if let v = newValue { Keychain.set(v, for: Self.tokenKey) }
             else { Keychain.remove(Self.tokenKey) }
         }
