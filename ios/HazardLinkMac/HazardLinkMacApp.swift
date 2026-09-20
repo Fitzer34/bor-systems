@@ -33,6 +33,8 @@ struct HazardLinkMacApp: App {
                 }
         }
         .defaultSize(width: 1280, height: 800)
+        // Each page carries its own title, and a window title would sit on the navy column.
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandGroup(after: .toolbar) {

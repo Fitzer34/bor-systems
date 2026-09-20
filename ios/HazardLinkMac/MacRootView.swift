@@ -57,6 +57,48 @@ enum MacSection: String, CaseIterable, Identifiable {
         }
     }
 
+    /// One line under the page title: what the screen is for, in plain words.
+    var blurb: String {
+        switch self {
+        case .dashboard: return "Everything live across your sites."
+        case .sites: return "Every building you look after, and how each one is doing right now."
+        case .assistant: return "Ask about your own sites, jobs and records. Answers come from your data only."
+        case .alerts: return "Wet floor signs that are out right now, who has them, and how long they have been open."
+        case .floorPlans: return "Your floor plans with every sign pinned where it hangs."
+        case .dispatch: return "Send a cleaner to a spot with a message they get on their phone."
+        case .schedule: return "Who is working where, this week and next."
+        case .inspections: return "Cleaning rounds and inspections, with what was checked and what failed."
+        case .sds: return "Safety data sheets for the chemicals kept on site."
+        case .gateways: return "The radio gateways that carry sign signals to HazardLink."
+        case .hangers: return "Every smart sign hanger, where it hangs, its battery and when it was last heard from."
+        case .overview: return "How maintenance is running: backlog, planned work, response times and spend."
+        case .workOrders: return "Every maintenance job from logged to done."
+        case .ppms: return "Planned preventive maintenance and when each task is next due."
+        case .assets: return "The equipment you maintain, by site."
+        case .parts: return "Spare parts, stock levels and what needs reordering."
+        case .meters: return "Meter readings and the limits that trigger work."
+        case .contractors: return "The contractors you use, their trades and their paperwork."
+        case .compliance: return "Statutory checks and certificates, and what is coming due."
+        case .slas: return "Response and fix targets, and how jobs are tracking against them."
+        case .permits: return "Permits to work: requested, approved, live and closed."
+        case .competency: return "Who is trained and certified for what, and what is about to lapse."
+        case .security: return "Guard patrols and the incidents they report."
+        case .visitors: return "Who is signed in on site right now, and who has been."
+        case .timesheets: return "Hours clocked by your team, ready to approve."
+        case .leave: return "Your team, who is off, and leave requests waiting on you."
+        case .forms: return "Checklists and forms your team fills in on site."
+        case .users: return "Who can sign in, their role and the sites they cover."
+        case .reports: return "Spills, response times and workload over time."
+        case .portals: return "Read-only links you share with clients."
+        case .billing: return "Your plan, seats and invoices."
+        case .automations: return "Rules that do routine work for you."
+        case .notificationsLog: return "Every alert HazardLink sent, to whom, and whether it arrived."
+        case .auditLog: return "A record of who changed what, and when."
+        case .settings: return "Organisation settings."
+        case .profile: return "Your details, password and two-step sign-in."
+        }
+    }
+
     var icon: String {
         switch self {
         case .dashboard: return "square.grid.2x2"
@@ -158,39 +200,39 @@ enum MacSection: String, CaseIterable, Identifiable {
         case .dashboard: MacDashboardView()
         case .sites: MacSitesView(goTo: { NotificationCenter.default.post(name: .macGoToSection, object: $0) })
         case .assistant: MacAssistantView()
-        case .alerts: HomeView()
+        case .alerts: MacSpillConsoleView()
         case .floorPlans: MacFloorPlansView()
-        case .dispatch: DispatchSendView()
-        case .schedule: ScheduleView()
+        case .dispatch: MacDispatchView()
+        case .schedule: MacScheduleView()
         case .inspections: MacInspectionsView()
         case .sds: MacSdsView()
-        case .gateways: GatewaysView()
-        case .hangers: HangersView()
-        case .overview: MaintenanceKpisView()
-        case .workOrders: MaintenanceJobsView()
-        case .ppms: PPMsView()
+        case .gateways: MacGatewaysView()
+        case .hangers: MacHangersView()
+        case .overview: MacMaintenanceOverviewView()
+        case .workOrders: MacWorkOrdersView()
+        case .ppms: MacPpmsView()
         case .assets: MacAssetsView()
         case .parts: MacPartsView()
-        case .meters: MetersView()
+        case .meters: MacMetersView()
         case .contractors: MacContractorsView()
-        case .compliance: ComplianceView()
+        case .compliance: MacComplianceView()
         case .slas: MacSlasView()
-        case .permits: PermitsView()
-        case .competency: CompetencyView()
+        case .permits: MacPermitsView()
+        case .competency: MacCompetencyView()
         case .security: MacSecurityView()
         case .visitors: MacVisitorsView()
-        case .timesheets: TimesheetsView()
-        case .leave: LeaveView()
-        case .forms: FormsView()
-        case .users: UsersView()
-        case .reports: ReportsView()
+        case .timesheets: MacTimesheetsView()
+        case .leave: MacLeaveView()
+        case .forms: MacFormsView()
+        case .users: MacUsersView()
+        case .reports: MacReportsView()
         case .portals: MacPortalsView()
         case .billing: MacBillingView()
         case .automations: MacAutomationsView()
-        case .notificationsLog: NotificationsLogView()
-        case .auditLog: AuditLogView()
-        case .settings: SettingsView()
-        case .profile: ProfileView()
+        case .notificationsLog: MacNotificationsLogView()
+        case .auditLog: MacAuditLogView()
+        case .settings: MacSettingsView()
+        case .profile: MacProfileView()
         }
     }
 }
@@ -236,17 +278,17 @@ struct MacRootView: View {
     }
 
     private var signedIn: some View {
-        NavigationSplitView {
+        // A plain row, not a NavigationSplitView: the split view puts a custom sidebar inside its
+        // own scrolling container, which let the whole navy column (brand and footer included)
+        // slide out of view. Here the column is a fixed width and only its list scrolls.
+        HStack(spacing: 0) {
             MacSidebar(selection: $selection, signOut: {
                 notifications.reset()
                 alerts.stop()
                 auth.logout()
             })
-            .navigationSplitViewColumnWidth(min: 224, ideal: 244, max: 300)
-            // The toggle is a dark glyph that would sit on the navy column; the sidebar is the
-            // app's only navigation, so it stays put.
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
+            .frame(width: 244)
+
             NavigationStack {
                 if let s = selection {
                     s.view
@@ -261,6 +303,9 @@ struct MacRootView: View {
             .background(Color.hlPage)
         }
         .toolbar {
+            // With the window title hidden the toolbar has nothing pushing its buttons to the
+            // right, and they landed on the traffic lights. This spacer does the pushing.
+            ToolbarItem(placement: .navigation) { Spacer() }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     refreshTick += 1

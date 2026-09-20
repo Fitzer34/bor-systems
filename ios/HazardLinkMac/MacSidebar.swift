@@ -72,9 +72,7 @@ struct MacSidebar: View {
             }
             footer
         }
-        // The split view sizes a custom column from its content, and buttons on their own ask for
-        // very little, so the width is stated here as well as on the column.
-        .frame(minWidth: 232, idealWidth: 244, maxWidth: 300)
+        .frame(maxHeight: .infinity)
         .background(Color.hlSidebar.ignoresSafeArea())
     }
 

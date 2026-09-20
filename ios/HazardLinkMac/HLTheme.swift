@@ -303,6 +303,96 @@ struct HLLoadError: View {
     }
 }
 
+// MARK: - Screen scaffolding
+
+/// The frame every Mac screen sits in: light page, scrolls, comfortable margins, a width cap so
+/// lines stay readable on a wide display.
+struct HLScreen<Content: View>: View {
+    var maxWidth: CGFloat = 1240
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) { content() }
+                .padding(28)
+                .frame(maxWidth: maxWidth, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .hlPage()
+    }
+}
+
+/// A white card holding rows split by hairlines: the website's table-in-a-card.
+struct HLRows<Data: RandomAccessCollection, Row: View>: View where Data.Element: Identifiable {
+    let data: Data
+    @ViewBuilder var row: (Data.Element) -> Row
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(data.enumerated()), id: \.element.id) { i, item in
+                if i > 0 { Divider().overlay(Color.hlLine) }
+                row(item).padding(.vertical, 10).padding(.horizontal, 16)
+            }
+        }
+        .hlCard(padding: 0)
+    }
+}
+
+/// A small column heading row for `HLRows` tables.
+struct HLColumnHeader: View {
+    let titles: [(String, CGFloat?)]   // title, fixed width (nil = flexible)
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(Array(titles.enumerated()), id: \.offset) { _, t in
+                Text(t.0.uppercased())
+                    .font(.system(size: 10.5, weight: .bold)).tracking(0.5)
+                    .foregroundStyle(Color.hlInk3)
+                    .frame(width: t.1, alignment: .leading)
+                    .frame(maxWidth: t.1 == nil ? .infinity : nil, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+}
+
+/// Frames a screen that was written for the iPhone: page header on top, the screen itself in a
+/// white card with a sensible width, forms drawn the grouped Mac way. It is the fallback for any
+/// section that has no Mac-built screen yet.
+struct HLHostedPage<Content: View>: View {
+    let title: String
+    var detail: String = ""
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HLPageHeader(title: title, detail: detail)
+            content()
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color.hlCard, in: RoundedRectangle(cornerRadius: HLRadius.card, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: HLRadius.card, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: HLRadius.card, style: .continuous).stroke(Color.hlLine, lineWidth: 1))
+        }
+        .padding(28)
+        .frame(maxWidth: 1100, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .hlPage()
+    }
+}
+
+/// Toast shown at the bottom of a screen after an action, then cleared by the caller.
+struct HLToast: View {
+    let text: String
+    var body: some View {
+        Text(text).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(Color.hlInk.opacity(0.92), in: Capsule())
+            .padding(.bottom, 18)
+    }
+}
+
 // MARK: - App appearance
 
 enum HLAppearance {
