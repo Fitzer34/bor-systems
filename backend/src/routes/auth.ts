@@ -91,6 +91,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
           role: user.role,
           name: user.name,
           chal: "totp",
+          typ: "2fa_challenge",
         },
         { expiresIn: "5m" },
       );
@@ -98,6 +99,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const token = app.jwt.sign({
+      typ: "session",
       sub: user.id,
       orgId: user.organisationId,
       role: user.role,
@@ -164,6 +166,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       });
 
       const token = app.jwt.sign({
+      typ: "session",
         sub: result.admin.id,
         orgId: result.org.id,
         role: result.admin.role,

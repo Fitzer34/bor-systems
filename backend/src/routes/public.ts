@@ -631,6 +631,7 @@ export default async function publicRoutes(app: FastifyInstance): Promise<void> 
     });
 
     const sessionToken = app.jwt.sign({
+      typ: "session",
       sub: u.id,
       orgId: u.organisationId,
       role: u.role,

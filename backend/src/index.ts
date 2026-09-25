@@ -8,6 +8,7 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { join } from "node:path";
 import { config } from "./config.js";
+import { isSessionPayload, loadActiveUser } from "./services/auth-context.js";
 import authRoutes from "./routes/auth.js";
 import twoFactorRoutes from "./routes/two-factor.js";
 import alertRoutes from "./routes/alerts.js";
@@ -131,6 +132,16 @@ async function main(): Promise<void> {
     } catch {
       return reply.code(401).send({ error: "unauthorized" });
     }
+    // A signed token is not enough: it must be a session (not a 2FA challenge)
+    // and the person must still be active, with their current role.
+    if (!isSessionPayload(req.user)) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const active = await loadActiveUser(req.user.sub);
+    if (!active || active.orgId !== req.user.orgId) {
+      return reply.code(401).send({ error: "account_deactivated" });
+    }
+    req.user.role = active.role;
 
     // ── Sliding session refresh ─────────────────────────────────────
     // Goal: a user who keeps using the app never has to log in again.
@@ -148,6 +159,7 @@ async function main(): Promise<void> {
       const ageSec = u?.iat ? Math.floor(Date.now() / 1000) - u.iat : 0;
       if (ageSec > 24 * 60 * 60) {
         const fresh = app.jwt.sign({
+          typ: "session",
           sub: u.sub,
           orgId: u.orgId,
           role: u.role,
@@ -201,7 +213,7 @@ async function main(): Promise<void> {
   });
 
   // Version string is bumped on every deploy so the rollout can be polled.
-  app.get("/health", async () => ({ ok: true, version: "0.7.8-multisite-fixes" }));
+  app.get("/health", async () => ({ ok: true, version: "0.7.9-auth-hardening" }));
 
   await app.register(authRoutes);
   await app.register(twoFactorRoutes);

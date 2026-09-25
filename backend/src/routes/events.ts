@@ -1,11 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { config } from "../config.js";
 import { eventBus } from "../services/event-bus.js";
+import { isSessionPayload, loadActiveUser } from "../services/auth-context.js";
 
 interface JwtPayload {
   sub: string;
   orgId: string;
   role: string;
+  typ?: string;
+  chal?: string;
 }
 
 export default async function eventsRoutes(app: FastifyInstance): Promise<void> {
@@ -28,6 +31,10 @@ export default async function eventsRoutes(app: FastifyInstance): Promise<void> 
 
     const orgId = payload.orgId;
     if (!orgId) return reply.code(401).send({ error: "no_org_in_token" });
+    // Same standing as `authenticate`: a real session from an active user.
+    if (!isSessionPayload(payload)) return reply.code(401).send({ error: "invalid_token" });
+    const active = await loadActiveUser(payload.sub);
+    if (!active || active.orgId !== orgId) return reply.code(401).send({ error: "account_deactivated" });
 
     reply.raw.statusCode = 200;
     reply.raw.setHeader("Content-Type", "text/event-stream");

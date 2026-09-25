@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import argon2 from "argon2";
 import { db, schema } from "../db/client.js";
 import { ctx } from "../services/auth-context.js";
+import { forgetActiveUser } from "../services/auth-context.js";
 import { validatePassword } from "../services/password-policy.js";
 import { sendStaffInvite } from "../services/invites.js";
 import { getPermissions, requirePermission } from "../services/permissions.js";
@@ -325,6 +326,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
       await db.update(schema.users)
         .set({ deactivatedAt: new Date(), onDuty: false })
         .where(and(eq(schema.users.id, id), eq(schema.users.organisationId, c.orgId)));
+      forgetActiveUser(id);
       await db.insert(schema.auditLog).values({
         organisationId: c.orgId,
         actorUserId: c.sub,
@@ -352,6 +354,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
       await db.update(schema.users)
         .set({ deactivatedAt: null })
         .where(eq(schema.users.id, id));
+      forgetActiveUser(id);
       await db.insert(schema.auditLog).values({
         organisationId: c.orgId,
         actorUserId: c.sub,
@@ -381,6 +384,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
       await db.update(schema.users)
         .set({ role: parsed.data.role })
         .where(eq(schema.users.id, id));
+      forgetActiveUser(id);
       await db.insert(schema.auditLog).values({
         organisationId: c.orgId,
         actorUserId: c.sub,
@@ -410,6 +414,7 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
           onDuty: false,
         })
         .where(and(eq(schema.users.id, id), eq(schema.users.organisationId, c.orgId)));
+      forgetActiveUser(id);
       await db.insert(schema.auditLog).values({
         organisationId: c.orgId,
         actorUserId: c.sub,

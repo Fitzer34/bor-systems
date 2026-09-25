@@ -166,13 +166,15 @@ export default async function twoFactorRoutes(app: FastifyInstance): Promise<voi
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
 
-    let payload: { sub: string; orgId: string; role: string; chal: string; name?: string };
+    let payload: { sub: string; orgId: string; role: string; chal: string; typ?: string; name?: string };
     try {
       payload = app.jwt.verify(body.data.challengeToken);
     } catch {
       return reply.code(401).send({ error: "invalid_challenge" });
     }
-    if (payload.chal !== "totp") return reply.code(401).send({ error: "invalid_challenge" });
+    if (payload.chal !== "totp" || (payload.typ !== undefined && payload.typ !== "2fa_challenge")) {
+      return reply.code(401).send({ error: "invalid_challenge" });
+    }
 
     const [user] = await db
       .select()
@@ -223,6 +225,7 @@ export default async function twoFactorRoutes(app: FastifyInstance): Promise<voi
       .limit(1);
 
     const token = app.jwt.sign({
+      typ: "session",
       sub: user.id,
       orgId: user.organisationId,
       role: user.role,
