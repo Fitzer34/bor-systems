@@ -39,3 +39,6 @@ android/.kotlin/
 
 # extracted prototype reference source (not shipped)
 web/src/prototype/_source/
+
+# Wrangler CLI cache (account cache, never source)
+.wrangler/
