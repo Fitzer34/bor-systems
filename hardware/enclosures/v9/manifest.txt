@@ -24,4 +24,4 @@ Key derived positions (world frame, mm):
   colours: nozzle 1 = WHITE PLA (hanger_bar, and the lettering inlays print/hanger_lid_inlay.stl and print/gateway_lid_inlay.stl); nozzle 2 = BLACK PLA (bodies, lids, backplate, window gauge, body coupon)
   proof on the real parts: print/hanger_window_gauge.stl (a pass or fail test print; nothing is measured)
 
-Elapsed 2940 s
+Elapsed 17 s
